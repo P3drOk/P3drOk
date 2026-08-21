@@ -62,7 +62,19 @@ void recalcularResolucao() {
 // ---------------------------------------------------------------------
 bool enviarComando(TipoComando tipo, int32_t a, int32_t b, float f1, float f2) {
   if (!filaComandos) return false;
-  Comando c{tipo, a, b, f1, f2};
+  Comando c;
+  c.tipo = tipo; c.a = a; c.b = b; c.f1 = f1; c.f2 = f2;
+  c.nome[0] = '\0';
+  return xQueueSend(filaComandos, &c, 0) == pdTRUE;
+}
+
+bool enviarComandoNomeado(TipoComando tipo, const char* nome,
+                          int32_t a, int32_t b) {
+  if (!filaComandos) return false;
+  Comando c;
+  c.tipo = tipo; c.a = a; c.b = b; c.f1 = 0.0f; c.f2 = 0.0f;
+  strncpy(c.nome, nome ? nome : "", MAX_NOME_ARQ);
+  c.nome[MAX_NOME_ARQ] = '\0';
   return xQueueSend(filaComandos, &c, 0) == pdTRUE;
 }
 
@@ -217,6 +229,14 @@ void carregarConfiguracoes() {
   prepararConfigPendente();   // a area de preparo nasce coerente com o vivo
 
   Serial.println("[NVS] Configuracoes carregadas.");
+}
+
+uint32_t proximaSessao() {
+  prefs.begin("robo2dof", false);
+  const uint32_t s = prefs.getUInt("sessao", 0) + 1;
+  prefs.putUInt("sessao", s);
+  prefs.end();
+  return s;
 }
 
 void salvarConfiguracoes() {

@@ -9,6 +9,7 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/FastAccelStepper.h` | rampa trapezoidal, posição acumulada, `isRunning()` |
 | `mocks/Preferences.h` | NVS em RAM |
 | `mocks/freertos/` | fila de comandos com capacidade real e contagem de descartes |
+| `mocks/SD.h`, `mocks/FS.h`, `mocks/SPI.h` | sistema de arquivos em memória, com cartão ausente e escrita falhando |
 | `mocks/WiFi.h`, `mocks/WebServer.h` | só para o `.ino` compilar |
 
 `servidor_web.cpp` fica de fora da execução (roda no core 0 e depende de rede),
@@ -46,8 +47,47 @@ no próprio `checar(...)`.
 | A13 | condicionamento da cinemática inversa perto do braço esticado |
 | A14 | configuração aplicada só pelo core 1 e só em modo manual |
 | A15 | **regressão**: calibrar, ensinar, ensaiar, soldar e reproduzir, ponta a ponta |
+| A16 | joystick: zona morta, velocidade proporcional, diagonal, servos desligados |
+| B01 | cartão removido e recolocado; a máquina inteira sem cartão |
+| B02 | programa: salvar e carregar de volta |
+| B03 | programa em graus sobrevive à troca de resolução |
+| B04 | arquivo corrompido não derruba o programa da máquina |
+| B05 | nome de arquivo vindo de HTTP não escapa da pasta |
+| B06 | trajetória binária ida e volta; buffer emprestado bloqueia gravação |
+| B07 | backup e restauração de ajustes, com validação de faixa |
+| B08 | carregar arquivo não troca o programa em execução |
+| B09 | eventos de segurança chegam ao arquivo de log |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
+
+## A tarefa de cartão
+
+`armazenamento.cpp` roda numa tarefa própria no core 0. No banco não há
+thread: a tarefa é bombeada a mão, um ciclo por milissegundo de simulação
+(`armCicloTeste()`, compilado só com `-DROBOCNC_TESTE`). O mock de
+sistema de arquivos é instantâneo, então o que se testa é a **lógica** —
+o protocolo de troca entre os núcleos, a validação e a degradação sem
+cartão — e não a latência real de um SD.
+
+## Banco da interface
+
+```sh
+./testes/interface/rodar.sh
+```
+
+Sobe um servidor que finge ser o ESP32 (`servidor_falso.py`), serve a
+página extraída de `pagina_web.h` e roda a interface num Chromium de
+verdade via Playwright, em viewport de celular e de computador.
+
+Verifica que a página carrega sem erro de JavaScript, que as cinco abas
+mostram o conteúdo certo, que o joystick manda `/api/jogxy` proporcional
+nos dois eixos, que o botão acompanha o dedo, que soltar e mandar o app
+para segundo plano param o jog, que arrastar para fora do disco satura em
+vez de soltar o comando, e que a aba Arquivos lista e aciona o cartão.
+Deixa as capturas em `testes/saida/ui/`.
+
+O servidor lê `pagina_web.h` ao subir, então ele **precisa** subir junto
+do teste — um servidor deixado de pé serve a página antiga em memória.
 
 ## Como o simulador anda
 

@@ -29,7 +29,12 @@ void zerarPosicoes();
 // ---------------------------------------------------------------------
 // Registra a intencao de jog. O movimento so acontece em jogAtualizar(),
 // que revalida a postura a cada ciclo e exige heartbeat da interface.
-void jogDefinir(uint8_t junta, int8_t direcao);
+//
+// 'fracao' e a intensidade, de 0 a 1, e existe para o joystick da
+// interface: o botao de seta manda 1 (velocidade cheia configurada), o
+// disco manda o quanto o dedo se afastou do centro. Cada eixo tem sua
+// propria fracao, entao o movimento sai na direcao real do polegar.
+void jogDefinir(uint8_t junta, int8_t direcao, float fracao = 1.0f);
 void jogAtualizar();
 void jogZerar();
 

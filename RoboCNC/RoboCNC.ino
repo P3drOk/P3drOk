@@ -15,6 +15,7 @@
 #include "solda.h"
 #include "calibracao.h"
 #include "programa.h"
+#include "armazenamento.h"
 #include "servidor_web.h"
 #include <math.h>
 
@@ -93,7 +94,9 @@ static const char* NOME_CMD[] = {
   "TRAJ_LIMPAR","SOLDA","TESTE_RELE","PONTO_GRAVAR","PONTO_REMOVER",
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
-  "CALIB_INI","CALIB_CONF","CALIB_CANC"
+  "CALIB_INI","CALIB_CONF","CALIB_CANC","JOG_XY",
+  "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
+  "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
 
 // ---------------------------------------------------------------------
@@ -149,6 +152,25 @@ static void processarComando(const Comando& c) {
       if (modoAtual == MODO_MANUAL || modoAtual == MODO_GRAVANDO ||
           modoAtual == MODO_CALIBRANDO) {
         jogDefinir((uint8_t)c.a, (int8_t)c.b);
+      }
+      break;
+
+    // Joystick: os dois eixos num comando so. f1 e f2 vao de -1 a +1;
+    // o sinal e a direcao e o modulo e a fracao da velocidade.
+    case CMD_JOG_XY:
+      if (modoAtual == MODO_MANUAL || modoAtual == MODO_GRAVANDO ||
+          modoAtual == MODO_CALIBRANDO) {
+        const float f[2] = { c.f1, c.f2 };
+        for (uint8_t i = 0; i < 2; i++) {
+          const float mag = fabsf(f[i]);
+          // A zona morta e aplicada aqui, no core 1, e nao so no
+          // navegador: comando que chega de fora tambem passa por ela.
+          if (mag < JOY_ZONA_MORTA) { jogDefinir(i + 1, 0, 0.0f); continue; }
+          // Reescala para que o movimento comece do zero na borda da
+          // zona morta, em vez de dar um salto ao sair dela.
+          const float frac = (mag - JOY_ZONA_MORTA) / (1.0f - JOY_ZONA_MORTA);
+          jogDefinir(i + 1, (f[i] > 0.0f) ? 1 : -1, frac);
+        }
       }
       break;
 
@@ -290,6 +312,9 @@ static void processarComando(const Comando& c) {
         break;
       }
       modoAtual = MODO_EXECUTANDO;
+      logEvento("%s iniciado: %u pontos, cordao a %.1f mm/s",
+                ensaio ? "ensaio" : "PROGRAMA COM ARCO",
+                (unsigned)progQuantidade(), velCordaoMmS);
       break;
     }
 
@@ -330,6 +355,96 @@ static void processarComando(const Comando& c) {
     case CMD_CALIB_CANCELAR:
       if (modoAtual == MODO_CALIBRANDO) calibCancelar();
       break;
+
+    // -----------------------------------------------------------------
+    // ARQUIVOS. O core 1 nunca encosta no SPI do cartao: ele so prepara
+    // ou consome as areas de troca e delega a tarefa do core 0.
+    // -----------------------------------------------------------------
+    case CMD_ARQ_SALVAR_PROG:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Salve arquivos com o robo parado no modo manual");
+        break;
+      }
+      if (progQuantidade() < 2) {
+        definirMensagem("Nada para salvar: grave pelo menos 2 pontos");
+        break;
+      }
+      // Copia rapida para a area de troca; a gravacao e da tarefa de SD.
+      armStagingDefinir(progLista(), progQuantidade());
+      if (!armSolicitar(TAR_SALVAR_PROG, c.nome)) {
+        definirMensagem("Cartao ocupado ou ausente");
+      }
+      break;
+
+    case CMD_ARQ_APLICAR_PROG: {
+      // Postado pela tarefa de SD depois de ler e validar a sintaxe.
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Carregue programas com o robo no modo manual");
+        break;
+      }
+      const char* motivo = nullptr;
+      if (!progCarregarDe(armStagingPontos(), armStagingN(), &motivo)) {
+        definirMensagem("Programa recusado: %s", motivo ? motivo : "invalido");
+        break;
+      }
+      // Os pontos sao gravados em graus. Com outro comprimento de elo, o
+      // mesmo par de angulos aponta para outro lugar da chapa.
+      const float e1 = armStagingElo1(), e2 = armStagingElo2();
+      if (e1 > 0.0f && e2 > 0.0f &&
+          (fabsf(e1 - elo1Mm) > 0.5f || fabsf(e2 - elo2Mm) > 0.5f)) {
+        definirMensagem("Programa \"%s\" carregado, mas foi feito com elos %.0f+%.0f mm (agora %.0f+%.0f). Ensaie antes de soldar",
+                        c.nome, e1, e2, elo1Mm, elo2Mm);
+      } else {
+        definirMensagem("Programa \"%s\" carregado: %u pontos",
+                        c.nome, (unsigned)progQuantidade());
+      }
+      logEvento("programa carregado: %s (%u pontos)", c.nome,
+                (unsigned)progQuantidade());
+      break;
+    }
+
+    case CMD_ARQ_SALVAR_TRAJ:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Salve arquivos com o robo parado no modo manual");
+        break;
+      }
+      if (trajPontos() < 2) { definirMensagem("Nenhuma trajetoria gravada"); break; }
+      // Empresta o buffer: enquanto a tarefa de SD estiver lendo, gravar
+      // ou reproduzir fica recusado.
+      if (!trajEmprestar()) { definirMensagem("Trajetoria em uso"); break; }
+      if (!armSolicitar(TAR_SALVAR_TRAJ, c.nome)) {
+        trajDevolver();
+        definirMensagem("Cartao ocupado ou ausente");
+      }
+      break;
+
+    case CMD_ARQ_CARREGAR_TRAJ:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Carregue arquivos com o robo no modo manual");
+        break;
+      }
+      if (!trajEmprestar()) { definirMensagem("Trajetoria em uso"); break; }
+      if (!armSolicitar(TAR_CARREGAR_TRAJ, c.nome)) {
+        trajDevolver();
+        definirMensagem("Cartao ocupado ou ausente");
+      }
+      break;
+
+    case CMD_ARQ_LIBERAR_TRAJ:
+      trajDevolver();
+      break;
+
+    case CMD_ARQ_SALVAR_CONFIG:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Salve arquivos com o robo parado no modo manual");
+        break;
+      }
+      // A area de preparo ja e a forma canonica da configuracao viva.
+      prepararConfigPendente();
+      if (!armSolicitar(TAR_SALVAR_CONFIG, c.nome)) {
+        definirMensagem("Cartao ocupado ou ausente");
+      }
+      break;
   }
 }
 
@@ -353,6 +468,9 @@ static void supervisionar() {
     modoAtual = MODO_FALHA;
     definirMensagem("ALARME do driver (J1:%d J2:%d). Verifique e rearme",
                     (int)J1.alarme, (int)J2.alarme);
+    logEvento("ALARME driver J1=%d J2=%d em t1=%.1f t2=%.1f",
+              (int)J1.alarme, (int)J2.alarme,
+              passosParaGraus(J1, posicaoJ1()), passosParaGraus(J2, posicaoJ2()));
   }
 
   // Emergencia por NIVEL. A borda dispara a parada completa; enquanto o
@@ -363,6 +481,7 @@ static void supervisionar() {
     if (!emergenciaAtiva) {
       emergenciaAtiva = true;
       pararTudo("EMERGENCIA acionada no botao fisico");
+      logEvento("EMERGENCIA acionada no botao fisico");
     }
     if (servosLigados) servosHabilitar(false);
   } else if (emergenciaAtiva) {
@@ -373,6 +492,7 @@ static void supervisionar() {
   if (semConexao && !conexaoPerdida) {
     conexaoPerdida = true;
     pararTudo("Conexao perdida: movimento e solda interrompidos");
+    logEvento("conexao perdida: movimento e arco cortados");
   } else if (!semConexao) {
     conexaoPerdida = false;
   }
@@ -469,7 +589,12 @@ void setup() {
 
   xTaskCreatePinnedToCore(tarefaRede, "rede", 8192, nullptr, 1, nullptr, 0);
 
+  // Cartao por ultimo: ele le o contador de partidas no NVS (core 1) e
+  // so entao cria a propria tarefa no core 0.
+  armIniciar();
+
   definirMensagem("Pronto. Habilite os servos para comecar");
+  logEvento("sistema iniciado");
 }
 
 // ---------------------------------------------------------------------

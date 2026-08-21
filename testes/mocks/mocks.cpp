@@ -1,6 +1,7 @@
 #include "Arduino.h"
 #include "Preferences.h"
 #include "WiFi.h"
+#include "SD.h"
 #include "freertos/queue.h"
 
 uint32_t g_millis = 0;
@@ -24,6 +25,8 @@ int g_comandosDescartados = 0;
 SerialMock Serial;
 WiFiMock   WiFi;
 NvsMock    g_nvs;
+FsMock     g_fs;
+SDMock     SD;
 
 void pinMode(uint8_t p, int m) {
   if (p >= 64) return;

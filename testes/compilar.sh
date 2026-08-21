@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 mkdir -p testes/saida
 
-FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I RoboCNC"
+FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I RoboCNC -DROBOCNC_TESTE"
 
 # servidor_web.cpp roda no core 0 e depende de rede, entao fica fora do
 # banco -- mas passa por conferencia de compilacao para nao apodrecer.
@@ -24,5 +24,6 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     RoboCNC/solda.cpp \
     RoboCNC/trajetoria.cpp \
     RoboCNC/programa.cpp \
-    RoboCNC/calibracao.cpp
+    RoboCNC/calibracao.cpp \
+    RoboCNC/armazenamento.cpp
 exec testes/saida/banco

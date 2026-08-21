@@ -28,3 +28,19 @@ uint32_t trajDuracaoMs();
 uint8_t  trajProgresso();          // 0..100
 
 const Waypoint* trajBuffer();
+
+// ---------------------------------------------------------------------
+// EMPRESTIMO DO BUFFER (arquivos)
+//
+// Gravar 1500 waypoints num cartao levaria uma copia de 18 kB se a
+// tarefa de SD nao pudesse ler o buffer vivo. Em vez disso o core 1
+// EMPRESTA o buffer: enquanto emprestado, gravacao e reproducao ficam
+// recusadas, entao ninguem escreve nele pelas costas da tarefa de SD.
+// ---------------------------------------------------------------------
+bool trajEmprestar();     // false se estiver gravando ou reproduzindo
+void trajDevolver();
+bool trajEmprestado();
+
+// Validos apenas com o buffer emprestado.
+Waypoint* trajBufferGravavel();
+void      trajDefinirN(uint16_t n);

@@ -69,6 +69,37 @@ bool progAdicionarPonto(long p1, long p2, const char** motivo) {
   return true;
 }
 
+bool progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo) {
+  if (fase != FASE_PARADO) {
+    if (motivo) *motivo = "pare o programa antes de carregar outro";
+    return false;
+  }
+  if (!origem || n < 2) {
+    if (motivo) *motivo = "arquivo com menos de 2 pontos";
+    return false;
+  }
+  if (n > MAX_PONTOS) {
+    if (motivo) *motivo = "arquivo com pontos demais";
+    return false;
+  }
+  // Valida tudo ANTES de escrever: nada de programa carregado pela metade.
+  for (uint8_t i = 0; i < n; i++) {
+    const char* m = nullptr;
+    if (!posturaValidaPassos(origem[i].p1, origem[i].p2, &m)) {
+      static char aviso[96];
+      snprintf(aviso, sizeof(aviso), "ponto %u do arquivo: %s",
+               (unsigned)(i + 1), m ? m : "postura invalida");
+      if (motivo) *motivo = aviso;
+      return false;
+    }
+  }
+  memcpy(pontos, origem, (size_t)n * sizeof(Ponto));
+  nPontos = n;
+  // O ultimo ponto nao tem "proximo": solda ligada nele nao significa nada.
+  pontos[nPontos - 1].soldaAteProximo = 0;
+  return true;
+}
+
 bool progRemoverPonto(uint8_t indice) {
   if (indice >= nPontos) return false;
   for (uint8_t i = indice; i + 1 < nPontos; i++) pontos[i] = pontos[i + 1];

@@ -7,6 +7,7 @@ static FastAccelStepperEngine engine = FastAccelStepperEngine();
 
 static int8_t   jogDir[2]     = {0, 0};
 static uint32_t jogUltimoMs[2] = {0, 0};
+static float    jogFracao[2]  = {1.0f, 1.0f};
 
 // ---------------------------------------------------------------------
 static uint32_t limitarFreq(uint32_t v) {
@@ -105,15 +106,19 @@ void zerarPosicoes() {
 // ---------------------------------------------------------------------
 // JOG
 // ---------------------------------------------------------------------
-void jogDefinir(uint8_t junta, int8_t direcao) {
+void jogDefinir(uint8_t junta, int8_t direcao, float fracao) {
   if (junta != 1 && junta != 2) return;
   const uint8_t i = junta - 1;
+  if (fracao < 0.0f) fracao = 0.0f;
+  if (fracao > 1.0f) fracao = 1.0f;
   jogDir[i]      = direcao;
+  jogFracao[i]   = fracao;
   jogUltimoMs[i] = millis();
 }
 
 void jogZerar() {
   jogDir[0] = jogDir[1] = 0;
+  jogFracao[0] = jogFracao[1] = 1.0f;
   if (J1.motor) J1.motor->stopMove();
   if (J2.motor) J2.motor->stopMove();
 }
@@ -161,6 +166,16 @@ void jogAtualizar() {
     if (jogDir[i] == 0) {
       j.motor->stopMove();
       continue;
+    }
+
+    // Velocidade proporcional a intensidade do joystick. A base continua
+    // sendo a velocidade configurada (normal ou precisao), entao o teto
+    // nao muda: o disco so escolhe qual fracao dela usar.
+    {
+      const uint32_t base = modoPrecisao ? velPrecisao : velNormal;
+      float f = jogFracao[i];
+      if (f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
+      j.motor->setSpeedInHz(limitarFreq((uint32_t)(base * f)));
     }
 
     // Antecipa a postura no fim da freada e para antes de violar.

@@ -75,6 +75,10 @@ extern char         ultimaMensagem[96];
 extern QueueHandle_t filaComandos;
 bool enviarComando(TipoComando tipo, int32_t a = 0, int32_t b = 0,
                    float f1 = 0.0f, float f2 = 0.0f);
+// Mesma fila, carregando um nome de arquivo. O nome e copiado para
+// dentro do Comando: nada de ponteiro atravessando nucleo.
+bool enviarComandoNomeado(TipoComando tipo, const char* nome,
+                          int32_t a = 0, int32_t b = 0);
 
 // ---------------------------------------------------------------------
 // PARADA: caminho fora da fila.
@@ -169,6 +173,10 @@ void aplicarConfigPendente();    // core 1: copia de volta e recalcula
 // Persistencia
 // ---------------------------------------------------------------------
 void recalcularResolucao();
+// Contador de partidas, guardado no NVS. O ESP32 nao tem relogio de
+// tempo real: sem esse numero todo arquivo de log da maquina nasceria
+// com o mesmo nome e o anterior seria sobrescrito a cada boot.
+uint32_t proximaSessao();
 void carregarConfiguracoes();
 void salvarConfiguracoes();
 void restaurarPadroes();

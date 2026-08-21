@@ -20,8 +20,12 @@ static uint32_t  velSeguir2   = 1000;
 
 static const long DEADBAND_PASSOS = 3;
 
+// Buffer emprestado para a tarefa de cartao (ver trajetoria.h).
+static bool emprestado = false;
+
 // ---------------------------------------------------------------------
 void trajLimpar() {
+  if (emprestado) return;
   nPontos = 0;
   gravando = false;
   reproduzindo = false;
@@ -34,6 +38,23 @@ bool trajGravando()      { return gravando; }
 bool trajReproduzindo()  { return reproduzindo; }
 const Waypoint* trajBuffer() { return buffer; }
 
+bool trajEmprestado() { return emprestado; }
+
+bool trajEmprestar() {
+  if (gravando || reproduzindo) return false;
+  emprestado = true;
+  return true;
+}
+
+void trajDevolver() { emprestado = false; }
+
+Waypoint* trajBufferGravavel() { return emprestado ? buffer : nullptr; }
+
+void trajDefinirN(uint16_t n) {
+  if (!emprestado) return;
+  nPontos = (n > MAX_WAYPOINTS) ? MAX_WAYPOINTS : n;
+}
+
 uint8_t trajProgresso() {
   const uint32_t dur = trajDuracaoMs();
   if (!reproduzindo || dur == 0) return 0;
@@ -45,6 +66,7 @@ uint8_t trajProgresso() {
 // GRAVACAO
 // ---------------------------------------------------------------------
 bool trajIniciarGravacao() {
+  if (emprestado) return false;   // cartao lendo/gravando este buffer
   nPontos         = 0;
   gravando        = true;
   t0Gravacao      = millis();
@@ -122,6 +144,10 @@ static void calcularVelocidadesSeguimento() {
 }
 
 bool trajIniciarReproducao(const char** motivo) {
+  if (emprestado) {
+    if (motivo) *motivo = "aguarde o cartao terminar de ler a trajetoria";
+    return false;
+  }
   if (nPontos < 2) {
     if (motivo) *motivo = "nenhuma trajetoria gravada";
     return false;

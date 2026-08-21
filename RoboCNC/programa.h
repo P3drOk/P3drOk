@@ -19,6 +19,11 @@ struct Ponto {
 };
 
 bool    progAdicionarPonto(long p1, long p2, const char** motivo);
+
+// Substitui o programa inteiro de uma vez (carga de arquivo). Valida
+// TODOS os pontos antes de tocar no programa vivo: arquivo com um ponto
+// fora da area util nao apaga o programa que estava na maquina.
+bool    progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo);
 bool    progRemoverPonto(uint8_t indice);
 void    progDefinirSolda(uint8_t indice, bool ligar);
 void    progLimpar();

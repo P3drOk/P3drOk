@@ -35,6 +35,53 @@
 // Botao de emergencia fisico (contato NC -> LOW significa emergencia)
 #define PIN_ESTOP         27
 
+// ---------------------------------------------------------------------
+// CARTAO MICRO SD (modulo adaptador TF de 6 pinos, SPI)
+// ---------------------------------------------------------------------
+// O modulo pequeno de 6 pinos (o azul com os quatro resistores 103) e
+// 3,3 V PURO: nao tem regulador nem conversor de nivel. Ligue em 3V3.
+// Em 5 V o cartao morre.
+//
+//   modulo      ESP32          observacao
+//   -------     -----------    --------------------------------------
+//   3V3         3V3            NUNCA no 5V deste modulo
+//   GND         GND
+//   CS          GPIO 5         tem pull-up interno, seguro no boot
+//   SCK         GPIO 14
+//   MOSI        GPIO 13
+//   MISO        GPIO 12 NAO!   -> GPIO 25 (ver abaixo)
+//
+// ATENCAO AO GPIO 12. A pinagem "padrao" do HSPI usa 12 para MISO, e o
+// modulo tem pull-up de 10k nessa linha. O GPIO 12 e strapping (MTDI):
+// alto no boot programa o regulador do flash para 1,8 V e a placa nao
+// da mais boot. Por isso o MISO vai para o 25. O ESP32 remapeia SPI por
+// matriz de GPIO, entao nao ha perda nenhuma.
+//
+// Ponha 10 uF ceramico entre 3V3 e GND junto ao modulo: o cartao puxa
+// picos de ~100 mA na escrita e a queda de tensao derruba a montagem.
+#ifndef PIN_SD_CS
+#define PIN_SD_CS    5
+#endif
+#ifndef PIN_SD_SCK
+#define PIN_SD_SCK   14
+#endif
+#ifndef PIN_SD_MOSI
+#define PIN_SD_MOSI  13
+#endif
+#ifndef PIN_SD_MISO
+#define PIN_SD_MISO  25
+#endif
+
+// Deixe false para compilar sem nenhum codigo de cartao (a maquina
+// continua funcionando exatamente como antes, so em NVS).
+#ifndef CARTAO_INSTALADO
+#define CARTAO_INSTALADO  true
+#endif
+
+// 20 MHz e conservador e funciona com cabo de protoboard. Suba para
+// 40000000 so com fiacao curta e soldada.
+static const uint32_t SD_FREQ_HZ = 20000000;
+
 // LED de status. Deixe 255 para desligar (necessario quando o rele esta
 // usando o GPIO 2, senao os dois brigam pelo mesmo pino).
 #define PIN_LED_STATUS    255
@@ -134,6 +181,20 @@ static const uint32_t DWELL_ABRE_ARCO_MS  = 400;    // espera o arco estabilizar
 static const uint32_t DWELL_FECHA_ARCO_MS = 250;    // fecha a cratera no fim
 
 // ---------------------------------------------------------------------
+// ARQUIVOS
+// ---------------------------------------------------------------------
+static const uint8_t  MAX_NOME_ARQ    = 24;   // sem extensao, sem caminho
+static const uint8_t  MAX_ARQ_LISTA   = 40;   // arquivos mostrados por pasta
+static const uint8_t  MAX_LOG_SESSOES = 40;   // arquivos de log antes de girar
+
+// Zona morta do joystick: abaixo disso o eixo fica parado. Sem ela o
+// dedo tremendo no centro do disco manda pulso o tempo todo.
+static const float JOY_ZONA_MORTA = 0.12f;
+// Fracao minima de velocidade quando o joystick sai da zona morta: o
+// movimento comeca perceptivel em vez de "quase parado".
+static const float JOY_FRACAO_MIN = 0.05f;
+
+// ---------------------------------------------------------------------
 // WIFI
 // ---------------------------------------------------------------------
 static const char* const WIFI_AP_SSID  = "Robo2dof";
@@ -190,7 +251,20 @@ enum TipoComando : uint8_t {
   CMD_IR_HOME,
   CMD_CALIB_INICIAR,
   CMD_CALIB_CONFIRMAR,
-  CMD_CALIB_CANCELAR
+  CMD_CALIB_CANCELAR,
+
+  // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
+  // +1. Um comando so para os dois eixos - metade das requisicoes HTTP
+  // do heartbeat comparado a mandar CMD_JOG por eixo.
+  CMD_JOG_XY,
+
+  // Arquivos. O 'nome' do Comando carrega o nome do arquivo.
+  CMD_ARQ_SALVAR_PROG,     // core 1: copia pontos -> staging e pede a gravacao
+  CMD_ARQ_APLICAR_PROG,    // core 1: staging -> pontos (postado pela tarefa SD)
+  CMD_ARQ_SALVAR_TRAJ,     // core 1: empresta o buffer e pede a gravacao
+  CMD_ARQ_CARREGAR_TRAJ,   // core 1: empresta o buffer e pede a leitura
+  CMD_ARQ_LIBERAR_TRAJ,    // core 1: devolve o buffer (postado pela tarefa SD)
+  CMD_ARQ_SALVAR_CONFIG    // core 1: prepara a area e pede a gravacao
 };
 
 struct Comando {
@@ -199,6 +273,8 @@ struct Comando {
   int32_t b;
   float   f1;
   float   f2;
+  // Nome de arquivo, para os comandos de armazenamento. Vazio nos demais.
+  char    nome[MAX_NOME_ARQ + 1];
 };
 
 struct Waypoint {

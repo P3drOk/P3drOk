@@ -24,6 +24,10 @@ inline BaseType_t xQueueSend(QueueHandle_t f, const void* item, uint32_t) {
   f->itens.push_back(std::move(v));
   return pdTRUE;
 }
+inline void vQueueDelete(QueueHandle_t f) { delete f; }
+inline size_t uxQueueMessagesWaiting(QueueHandle_t f) {
+  return f ? f->itens.size() : 0;
+}
 inline BaseType_t xQueueReceive(QueueHandle_t f, void* destino, uint32_t) {
   if (!f || f->itens.empty()) return pdFALSE;
   memcpy(destino, f->itens.front().data(), f->tamItem);

@@ -3,6 +3,7 @@
 #include "cinematica.h"
 #include "trajetoria.h"
 #include "programa.h"
+#include "armazenamento.h"
 #include "pagina_web.h"
 
 static WebServer server(80);
@@ -27,6 +28,11 @@ static void erro(const char* msg)   { server.send(400, "text/plain", msg); }
 static void enfileirar(TipoComando tipo, int32_t a = 0, int32_t b = 0,
                        float f1 = 0.0f, float f2 = 0.0f) {
   if (enviarComando(tipo, a, b, f1, f2)) ok();
+  else server.send(503, "text/plain", "fila cheia: comando nao aceito");
+}
+
+static void enfileirarNomeado(TipoComando tipo, const char* nome) {
+  if (enviarComandoNomeado(tipo, nome)) ok();
   else server.send(503, "text/plain", "fila cheia: comando nao aceito");
 }
 
@@ -185,6 +191,17 @@ static void handleJog() {
   const long d = argL("d", 0);
   if (j != 1 && j != 2) { erro("junta invalida"); return; }
   enfileirar(CMD_JOG, (int32_t)j, (int32_t)(d > 0 ? 1 : (d < 0 ? -1 : 0)));
+}
+
+// Joystick: os dois eixos numa requisicao so. Metade do trafego de
+// heartbeat comparado a mandar /api/jog por eixo, o que importa num
+// WebServer que atende uma conexao por vez.
+static void handleJogXY() {
+  registrarContatoWeb();
+  const float a = argF("a", 0.0f);
+  const float b = argF("b", 0.0f);
+  enfileirar(CMD_JOG_XY, 0, 0,
+             constrain(a, -1.0f, 1.0f), constrain(b, -1.0f, 1.0f));
 }
 
 // A PARADA nao entra na fila: escreve direto a flag que o loop() testa no
@@ -351,12 +368,157 @@ static void handleReset() {
 }
 
 // ---------------------------------------------------------------------
+// CARTAO SD
+//
+// Nenhum handler faz I/O: eles consultam o estado publicado pela tarefa
+// do core 0 ou enfileiram um pedido. O 'seq' na resposta muda a cada
+// tarefa concluida, e e assim que a interface sabe que ha resultado novo
+// sem ficar perguntando.
+// ---------------------------------------------------------------------
+static const char* NOMES_ARM[] = {
+  "DESLIGADO", "SEM_CARTAO", "PRONTO", "OCUPADO", "ERRO"
+};
+
+static void handleSdEstado() {
+  registrarContatoWeb();
+  char json[320];
+  const uint8_t e = (uint8_t)armEstado();
+  snprintf(json, sizeof(json),
+    "{\"estado\":\"%s\",\"ocupado\":%s,\"seq\":%lu,"
+    "\"totalMB\":%lu,\"livreMB\":%lu,\"msg\":\"%s\"}",
+    (e < 5) ? NOMES_ARM[e] : "?",
+    armOcupado() ? "true" : "false",
+    (unsigned long)armSequencia(),
+    (unsigned long)(armBytesTotais() / (1024ULL * 1024ULL)),
+    (unsigned long)(armBytesLivres() / (1024ULL * 1024ULL)),
+    armMensagem());
+  server.send(200, "application/json", json);
+}
+
+static void handleSdLista() {
+  registrarContatoWeb();
+  const ArmTipo t = armTipoDe(server.arg("tipo").c_str());
+  if (t == TIPO_INVALIDO) { erro("tipo invalido"); return; }
+
+  // A listagem publicada pode ser de outra pasta: pede a atualizacao e
+  // devolve o que ha agora. A interface recarrega quando 'seq' mudar.
+  if (armListaTipo() != t && !armOcupado()) armSolicitar(TAR_LISTAR, server.arg("tipo").c_str());
+
+  String out;
+  out.reserve(1024);
+  out += "{\"tipo\":\"";
+  out += server.arg("tipo");
+  out += "\",\"pronto\":";
+  out += (armListaTipo() == t) ? "true" : "false";
+  out += ",\"arq\":[";
+  if (armListaTipo() == t) {
+    const ArmEntrada* l = armLista();
+    for (uint8_t i = 0; i < armListaN(); i++) {
+      if (i) out += ',';
+      out += "{\"n\":\""; out += l[i].nome;
+      out += "\",\"b\":";  out += String((int)l[i].bytes);
+      out += '}';
+    }
+  }
+  out += "]}";
+  server.send(200, "application/json", out);
+}
+
+static void handleSdMontar() {
+  registrarContatoWeb();
+  if (!armSolicitar(TAR_MONTAR, "")) { erro("cartao ocupado"); return; }
+  ok();
+}
+
+static void handleSdApagar() {
+  registrarContatoWeb();
+  const String tipo = server.arg("tipo");
+  const String nome = server.arg("nome");
+  if (armTipoDe(tipo.c_str()) == TIPO_INVALIDO) { erro("tipo invalido"); return; }
+  if (!armNomeValido(nome.c_str()))             { erro("nome invalido"); return; }
+  char alvo[48];
+  snprintf(alvo, sizeof(alvo), "%s/%s", tipo.c_str(), nome.c_str());
+  if (!armSolicitar(TAR_APAGAR, alvo)) { erro("cartao ocupado ou ausente"); return; }
+  ok();
+}
+
+// Salvar passa pelo core 1 (ele prepara a area de troca); carregar de
+// programa e configuracao vai direto para a tarefa de SD, que so avisa o
+// core 1 depois de ler e validar o arquivo. Trajetoria e a excecao: o
+// core 1 precisa emprestar o buffer antes.
+static void handleSdSalvar() {
+  registrarContatoWeb();
+  const String tipo = server.arg("tipo");
+  const String nome = server.arg("nome");
+  if (!armNomeValido(nome.c_str())) {
+    erro("nome invalido: use letras, numeros, espaco, - e _");
+    return;
+  }
+  switch (armTipoDe(tipo.c_str())) {
+    case TIPO_PROG: enfileirarNomeado(CMD_ARQ_SALVAR_PROG,   nome.c_str()); return;
+    case TIPO_TRAJ: enfileirarNomeado(CMD_ARQ_SALVAR_TRAJ,   nome.c_str()); return;
+    case TIPO_CFG:  enfileirarNomeado(CMD_ARQ_SALVAR_CONFIG, nome.c_str()); return;
+    default:        erro("tipo invalido"); return;
+  }
+}
+
+static void handleSdCarregar() {
+  registrarContatoWeb();
+  const String tipo = server.arg("tipo");
+  const String nome = server.arg("nome");
+  if (!armNomeValido(nome.c_str())) { erro("nome invalido"); return; }
+
+  const ArmTipo t = armTipoDe(tipo.c_str());
+  if (t == TIPO_TRAJ) {
+    // Precisa do emprestimo do buffer, entao passa pelo core 1.
+    enfileirarNomeado(CMD_ARQ_CARREGAR_TRAJ, nome.c_str());
+    return;
+  }
+  const ArmTarefa tarefa = (t == TIPO_PROG) ? TAR_CARREGAR_PROG
+                         : (t == TIPO_CFG)  ? TAR_CARREGAR_CONFIG
+                                            : TAR_NENHUMA;
+  if (tarefa == TAR_NENHUMA) { erro("tipo invalido"); return; }
+  if (!armSolicitar(tarefa, nome.c_str())) { erro("cartao ocupado ou ausente"); return; }
+  ok();
+}
+
+// ---------------------------------------------------------------------
+// Manifesto: e o que faz o navegador do celular tratar a pagina como
+// aplicativo (tela cheia, sem barra de endereco) quando o operador usa
+// "adicionar a tela inicial". Icone embutido em SVG para nao depender de
+// arquivo nenhum - o ponto de acesso nao tem internet.
+// ---------------------------------------------------------------------
+static const char MANIFESTO[] PROGMEM =
+  "{\"name\":\"RoboCNC 2DOF\",\"short_name\":\"RoboCNC\","
+  "\"start_url\":\"/\",\"display\":\"standalone\",\"orientation\":\"any\","
+  "\"background_color\":\"#0f1216\",\"theme_color\":\"#0f1216\","
+  "\"icons\":[{\"src\":\"/icone.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\","
+  "\"purpose\":\"any\"}]}";
+
+static const char ICONE[] PROGMEM =
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'>"
+  "<rect width='192' height='192' rx='34' fill='#0f1216'/>"
+  "<g fill='none' stroke='#ff6a2b' stroke-width='13' stroke-linecap='round'>"
+  "<path d='M46 140 L96 74 L150 96'/></g>"
+  "<circle cx='46' cy='140' r='13' fill='#7d9dff'/>"
+  "<circle cx='96' cy='74' r='9' fill='#7d9dff'/>"
+  "<circle cx='150' cy='96' r='7' fill='#ff3b1f'/></svg>";
+
+static void handleManifesto() {
+  server.send_P(200, "application/manifest+json", MANIFESTO);
+}
+static void handleIcone() {
+  server.send_P(200, "image/svg+xml", ICONE);
+}
+
+// ---------------------------------------------------------------------
 void servidorIniciar() {
   server.on("/",                  HTTP_GET,  handleRaiz);
   server.on("/api/status",        HTTP_GET,  handleStatus);
   server.on("/api/trajetoria",    HTTP_GET,  handleTrajetoria);
 
   server.on("/api/jog",           HTTP_POST, handleJog);
+  server.on("/api/jogxy",         HTTP_POST, handleJogXY);
   server.on("/api/parar",         HTTP_POST, handleParar);
   server.on("/api/precisao",      HTTP_POST, handlePrecisao);
   server.on("/api/servos",        HTTP_POST, handleServos);
@@ -384,6 +546,16 @@ void servidorIniciar() {
   server.on("/api/geometria",     HTTP_POST, handleGeometria);
   server.on("/api/protecoes",     HTTP_POST, handleProtecoes);
   server.on("/api/config/reset",  HTTP_POST, handleReset);
+
+  server.on("/api/sd",            HTTP_GET,  handleSdEstado);
+  server.on("/api/sd/lista",      HTTP_GET,  handleSdLista);
+  server.on("/api/sd/salvar",     HTTP_POST, handleSdSalvar);
+  server.on("/api/sd/carregar",   HTTP_POST, handleSdCarregar);
+  server.on("/api/sd/apagar",     HTTP_POST, handleSdApagar);
+  server.on("/api/sd/montar",     HTTP_POST, handleSdMontar);
+
+  server.on("/manifest.webmanifest", HTTP_GET, handleManifesto);
+  server.on("/icone.svg",            HTTP_GET, handleIcone);
 
   server.on("/api/calib/iniciar",   HTTP_POST, handleCalibIni);
   server.on("/api/calib/confirmar", HTTP_POST, handleCalibConf);

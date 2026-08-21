@@ -18,7 +18,10 @@
 #include "trajetoria.h"
 #include "programa.h"
 #include "calibracao.h"
+#include "armazenamento.h"
 #include "Preferences.h"
+#include "FS.h"
+#include <string>
 #include <stdlib.h>
 
 extern void setup();
@@ -60,6 +63,10 @@ static void rodar(uint32_t ms) {
     if (J1.motor) J1.motor->avancar(DT_MS);
     if (J2.motor) J2.motor->avancar(DT_MS);
     loop();
+    // A tarefa de cartao roda no core 0; aqui ela e bombeada a mao, um
+    // ciclo por milissegundo. O mock de sistema de arquivos e
+    // instantaneo, entao o que se testa e a logica, nao a latencia.
+    armCicloTeste();
   }
 }
 // Simula o navegador vivo: heartbeat HTTP a cada 200 ms.
@@ -91,6 +98,8 @@ static void prepararRoboCalibrado(float grausCurso = 90.0f) {
 
 static void reiniciarSistema() {
   g_nvs = NvsMock();
+  g_fs  = FsMock();
+  armReiniciarTeste();
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -890,6 +899,488 @@ static void teste_A15_fluxo_completo() {
        (unsigned long)J1.motor->getAcceleration(), (unsigned long)J1.aceleracao);
 }
 
+
+
+// =====================================================================
+//  A16 - Joystick: velocidade proporcional e zona morta
+// =====================================================================
+static float velJ1() { return fabsf(J1.motor->getCurrentSpeedInMilliHz() / 1000.0f); }
+static float velJ2() { return fabsf(J2.motor->getCurrentSpeedInMilliHz() / 1000.0f); }
+
+static void teste_A16_joystick() {
+  secao("A16  Joystick: a velocidade acompanha o quanto o dedo se afastou?");
+  reiniciarSistema();
+  prepararRoboCalibrado(170.0f);
+  protEnvelope = false;
+
+  // Fracao esperada: a zona morta e descontada e o resto e reescalado,
+  // para o movimento comecar do zero na borda dela em vez de dar um salto.
+  auto esperado = [](float f) {
+    const float m = fabsf(f);
+    if (m < JOY_ZONA_MORTA) return 0.0f;
+    return velNormal * ((m - JOY_ZONA_MORTA) / (1.0f - JOY_ZONA_MORTA));
+  };
+  auto manter = [&](float a, float b, uint32_t ms) {
+    for (uint32_t t = 0; t < ms; t += 50) {
+      enviarComando(CMD_JOG_XY, 0, 0, a, b);
+      rodarComWeb(50);
+    }
+  };
+
+  // --- dentro da zona morta: nada se move ---
+  J1.motor->setCurrentPosition(0); J2.motor->setCurrentPosition(0);
+  rodarComWeb(5);
+  const long p0 = posicaoJ1();
+  manter(0.08f, -0.05f, 400);
+  const bool parado = (posicaoJ1() == p0) && (velJ1() < 1.0f);
+  manter(0, 0, 400);
+
+  checar(parado, "A16a", "dedo tremendo perto do centro nao move nada");
+  nota("comando 0,08 / -0,05 (zona morta = %.2f): J1 andou %ld passos",
+       JOY_ZONA_MORTA, posicaoJ1() - p0);
+
+  // --- meia forca num eixo so ---
+  manter(0.5f, 0.0f, 900);
+  const float v50 = velJ1(), v50b = velJ2();
+  const float alvo50 = esperado(0.5f);
+  manter(0, 0, 500);
+
+  checar(fabsf(v50 - alvo50) < alvo50 * 0.08f && v50b < 1.0f, "A16b",
+         "meio caminho no disco da meia velocidade, e so no eixo pedido");
+  nota("comando 0,50: J1 a %.0f Hz (esperado %.0f), J2 a %.0f Hz",
+       v50, alvo50, v50b);
+
+  // --- borda do disco: velocidade cheia configurada ---
+  // Longe do fim de curso, senao a antecipacao de frenagem entra no meio
+  // da medicao e o eixo ja esta desacelerando quando se le a velocidade.
+  J1.motor->setCurrentPosition(grausParaPassos(J1, -150.0f));
+  rodarComWeb(5);
+  manter(1.0f, 0.0f, 1200);
+  const float v100 = velJ1();
+  manter(0, 0, 500);
+
+  checar(fabsf(v100 - (float)velNormal) < velNormal * 0.05f, "A16c",
+         "na borda o eixo anda na velocidade de jog configurada, nao acima");
+  nota("comando 1,00: J1 a %.0f Hz (jog normal configurado = %lu Hz)",
+       v100, (unsigned long)velNormal);
+
+  // --- diagonal: os dois eixos, cada um na sua fracao ---
+  J1.motor->setCurrentPosition(0); J2.motor->setCurrentPosition(0);
+  rodarComWeb(5);
+  manter(0.9f, 0.35f, 1000);
+  const float va = velJ1(), vb = velJ2();
+  const float ea = esperado(0.9f), eb = esperado(0.35f);
+  manter(0, 0, 600);
+
+  checar(fabsf(va - ea) < ea * 0.08f && fabsf(vb - eb) < eb * 0.12f &&
+         va > vb * 2.0f, "A16d",
+         "na diagonal os dois eixos andam juntos, cada um na sua fracao");
+  nota("comando 0,90 / 0,35: J1 a %.0f Hz (esperado %.0f), J2 a %.0f Hz (esperado %.0f)",
+       va, ea, vb, eb);
+  nota("Um comando so para os dois eixos: metade das requisicoes HTTP que");
+  nota("mandar /api/jog por eixo, num WebServer que atende uma por vez.");
+
+  // --- soltar o dedo para ---
+  const bool parou = (velJ1() < 1.0f && velJ2() < 1.0f);
+  checar(parou, "A16e", "soltar o joystick para os dois eixos");
+  nota("apos o comando zero: J1 %.0f Hz, J2 %.0f Hz", velJ1(), velJ2());
+
+  // --- sem servos o joystick nao move nada ---
+  enviarComando(CMD_SERVOS, 0); rodarComWeb(30);
+  const long q0 = posicaoJ1();
+  manter(1.0f, 1.0f, 600);
+  checar(posicaoJ1() == q0, "A16f",
+         "com os servos desligados o joystick tambem e recusado");
+  nota("servos=%d, J1 andou %ld passos", (int)servosLigados, posicaoJ1() - q0);
+}
+
+// =====================================================================
+//  B - CARTAO DE MEMORIA
+// =====================================================================
+static void prepararCartao() {
+  // setup() ja chamou armIniciar(); aqui so se deixa a tarefa rodar os
+  // primeiros ciclos, em que ela monta o cartao e abre o log.
+  rodarComWeb(30);
+}
+
+// Espera a tarefa de cartao terminar o que estava fazendo.
+static bool esperarCartao(uint32_t limiteMs = 500) {
+  uint32_t t = 0;
+  while (armOcupado() && t < limiteMs) { rodarComWeb(5); t += 5; }
+  rodarComWeb(20);          // deixa o core 1 consumir o comando postado
+  return !armOcupado();
+}
+
+static void gravarTresPontos() {
+  progLimpar();
+  const float T1[3] = { 10, 25, 40 };
+  const float T2[3] = { -30, -30, -50 };
+  for (int i = 0; i < 3; i++) {
+    J1.motor->setCurrentPosition(grausParaPassos(J1, T1[i]));
+    J2.motor->setCurrentPosition(grausParaPassos(J2, T2[i]));
+    rodarComWeb(5);
+    enviarComando(CMD_PONTO_GRAVAR); rodarComWeb(15);
+  }
+  enviarComando(CMD_PONTO_SOLDA, 0, 1); rodarComWeb(15);
+}
+
+// ---------------------------------------------------------------------
+static void teste_B01_sem_cartao() {
+  secao("B01  Sem cartao no slot, a maquina continua inteira?");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+
+  // Operador tira o cartao do slot e manda procurar de novo. E o mesmo
+  // caminho de quem liga a maquina sem cartao nenhum.
+  g_fs.cartaoPresente = false;
+  armSolicitar(TAR_MONTAR, "");
+  esperarCartao();
+
+  checar(armEstado() == ARM_SEM_CARTAO, "B01a",
+         "o firmware percebe que o cartao sumiu, sem travar");
+  nota("estado do cartao: %s", armMensagem());
+
+  // Tudo o que nao depende de arquivo tem que seguir funcionando.
+  gravarTresPontos();
+  const long antes = posicaoJ1();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(400);
+
+  enviarComandoNomeado(CMD_ARQ_SALVAR_PROG, "qualquer");
+  rodarComWeb(60);
+
+  checar(progQuantidade() == 3 && posicaoJ1() != antes && modoAtual == MODO_MANUAL,
+         "B01b", "jog, pontos e modo seguem normais sem cartao");
+  nota("%u pontos gravados, jog %ld -> %ld passos, modo=%d",
+       (unsigned)progQuantidade(), antes, posicaoJ1(), (int)modoAtual);
+  nota("Pedir para salvar sem cartao apenas recusa: \"%s\"", ultimaMensagem);
+  nota("(estado do cartao: \"%s\")", armMensagem());
+
+  // E quando o cartao volta ao slot, ele e reencontrado sozinho.
+  g_fs.cartaoPresente = true;
+  rodarComWeb(3600);        // a retentativa periodica e de 3 s
+  checar(armEstado() == ARM_PRONTO, "B01c",
+         "recolocando o cartao, o firmware o encontra sozinho");
+  nota("apos %.1f s: %s  (o modulo de 6 pinos nao tem sinal de deteccao,",
+       3.6, armMensagem());
+  nota("entao a unica forma de perceber e tentar montar de tempos em tempos)");
+}
+
+// ---------------------------------------------------------------------
+static void teste_B02_programa_ida_e_volta() {
+  secao("B02  Programa: salvar no cartao e carregar de volta");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  gravarTresPontos();
+
+  Ponto original[MAX_PONTOS];
+  const uint8_t n0 = progQuantidade();
+  memcpy(original, progLista(), (size_t)n0 * sizeof(Ponto));
+
+  enviarComandoNomeado(CMD_ARQ_SALVAR_PROG, "chapa 30x60");
+  esperarCartao();
+  const bool salvou = (armEstado() == ARM_PRONTO);
+  nota("salvar: %s", armMensagem());
+
+  // Apaga o programa da maquina e recarrega do cartao.
+  enviarComando(CMD_PROG_LIMPAR); rodarComWeb(20);
+  const bool vazio = (progQuantidade() == 0);
+
+  armSolicitar(TAR_CARREGAR_PROG, "chapa 30x60");
+  esperarCartao();
+
+  bool igual = (progQuantidade() == n0);
+  long piorErro = 0;
+  if (igual) {
+    for (uint8_t i = 0; i < n0; i++) {
+      const long d1 = labs((long)progLista()[i].p1 - original[i].p1);
+      const long d2 = labs((long)progLista()[i].p2 - original[i].p2);
+      if (d1 > piorErro) piorErro = d1;
+      if (d2 > piorErro) piorErro = d2;
+      if (progLista()[i].soldaAteProximo != original[i].soldaAteProximo) igual = false;
+    }
+    if (piorErro > 1) igual = false;
+  }
+
+  checar(salvou && vazio && igual, "B02",
+         "o programa volta do cartao identico ao que foi salvo");
+  nota("%u pontos salvos, programa apagado (%s), %u pontos lidos de volta",
+       (unsigned)n0, vazio ? "sim" : "nao", (unsigned)progQuantidade());
+  nota("maior diferenca em passos: %ld (arredondamento de graus para passos)",
+       piorErro);
+  nota("carregar: %s", ultimaMensagem);
+}
+
+// ---------------------------------------------------------------------
+static void teste_B03_programa_em_graus() {
+  secao("B03  Programa gravado em graus sobrevive a troca de resolucao?");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  gravarTresPontos();
+
+  const float t1Original = passosParaGraus(J1, progLista()[0].p1);
+  enviarComandoNomeado(CMD_ARQ_SALVAR_PROG, "portatil");
+  esperarCartao();
+
+  // Troca a engrenagem eletronica: mesma maquina, outra resolucao.
+  prepararConfigPendente();
+  configPendente.ppv1 = J1.passosPorVolta * 2;
+  configPendente.ppv2 = J2.passosPorVolta * 2;
+  enviarComando(CMD_APLICAR_CONFIG);
+  rodarComWeb(40);
+  nota("resolucao J1: %.2f -> %.2f pulsos por grau", 27.78, J1.passosPorGrau);
+
+  // Recalibra o curso para a nova escala e recarrega.
+  J1.passosMin = grausParaPassos(J1, -90.0f); J1.passosMax = grausParaPassos(J1, 90.0f);
+  J2.passosMin = grausParaPassos(J2, -90.0f); J2.passosMax = grausParaPassos(J2, 90.0f);
+  recalcularResolucao();
+  enviarComando(CMD_PROG_LIMPAR); rodarComWeb(20);
+
+  armSolicitar(TAR_CARREGAR_PROG, "portatil");
+  esperarCartao();
+
+  const float t1Depois = (progQuantidade() > 0)
+                       ? passosParaGraus(J1, progLista()[0].p1) : -999.0f;
+
+  checar(progQuantidade() == 3 && fabsf(t1Depois - t1Original) < 0.02f, "B03",
+         "o ponto volta no mesmo ANGULO, nao no mesmo numero de passos");
+  nota("ponto 1: %.3f graus ao salvar, %.3f graus ao carregar", t1Original, t1Depois);
+  nota("em passos: %ld antes da troca, %ld depois",
+       (long)grausParaPassos(J1, t1Original) / 2, (long)progLista()[0].p1);
+  nota("Guardar passos amarraria o arquivo a engrenagem eletronica em uso;");
+  nota("em graus ele continua valendo e da para escrever um no computador.");
+}
+
+// ---------------------------------------------------------------------
+static void teste_B04_arquivo_corrompido() {
+  secao("B04  Arquivo corrompido derruba o programa que esta na maquina?");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  gravarTresPontos();
+  const uint8_t n0 = progQuantidade();
+
+  // Um arquivo qualquer que nao e um programa.
+  g_fs.arquivos["/prog/lixo.prg"] = "isto aqui nao e um programa\nbla bla\n";
+  armSolicitar(TAR_CARREGAR_PROG, "lixo");
+  esperarCartao();
+  const bool recusou1 = (armEstado() == ARM_ERRO);
+  const uint8_t n1 = progQuantidade();
+
+  // Cabecalho certo, ponto fora do curso calibrado.
+  g_fs.arquivos["/prog/fora.prg"] =
+      "ROBOCNC-PROG 1\nelos=200.000,200.000\npontos=2\n"
+      "10.0000 -30.0000 1\n"
+      "500.0000 -30.0000 0\n";
+  armSolicitar(TAR_CARREGAR_PROG, "fora");
+  esperarCartao();
+  const uint8_t n2 = progQuantidade();
+
+  checar(recusou1 && n1 == n0 && n2 == n0, "B04",
+         "arquivo invalido e recusado sem apagar o programa da maquina");
+  nota("programa na maquina: %u pontos antes, %u apos o lixo, %u apos o ponto fora",
+       (unsigned)n0, (unsigned)n1, (unsigned)n2);
+  nota("recusa 1: %s", armMensagem());
+  nota("recusa 2: %s", ultimaMensagem);
+  nota("A tarefa de SD le para uma area de troca e so entao pede ao core 1");
+  nota("que aplique; o core 1 valida cada ponto antes de tocar no vivo.");
+}
+
+// ---------------------------------------------------------------------
+static void teste_B05_nome_de_arquivo() {
+  secao("B05  Nome de arquivo vindo de HTTP pode escapar da pasta?");
+
+  struct { const char* nome; bool esperado; } casos[] = {
+    { "chapa 30x60",           true  },
+    { "flange-4_lados",        true  },
+    { "../../boot",            false },
+    { "/etc/passwd",           false },
+    { "prog/../../log/s0001",  false },
+    { "com.ponto",             false },
+    { "",                      false },
+    { " comeca com espaco",    false },
+    { "nome_absurdamente_grande_que_nao_cabe", false },
+  };
+  bool todos = true;
+  for (auto& c : casos) {
+    const bool r = armNomeValido(c.nome);
+    if (r != c.esperado) todos = false;
+    nota("%-42s %s  (esperado %s)", c.nome[0] ? c.nome : "(vazio)",
+         r ? "aceito " : "recusado", c.esperado ? "aceito" : "recusado");
+  }
+  checar(todos, "B05", "so nomes simples passam; nada de travessia de diretorio");
+  nota("armNomeValido() aceita apenas [A-Za-z0-9 _-] e ate %u caracteres.",
+       (unsigned)MAX_NOME_ARQ);
+}
+
+// ---------------------------------------------------------------------
+static void teste_B06_trajetoria_binaria() {
+  secao("B06  Trajetoria: gravar, salvar em binario e recarregar");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+
+  enviarComando(CMD_GRAVAR_INICIAR); rodarComWeb(20);
+  for (int i = 0; i < 8; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(60); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(200);
+  enviarComando(CMD_GRAVAR_PARAR); rodarComWeb(20);
+
+  const uint16_t n0 = trajPontos();
+  const uint32_t dur0 = trajDuracaoMs();
+  Waypoint copia[64];
+  const uint16_t k = (n0 < 64) ? n0 : 64;
+  memcpy(copia, trajBuffer(), (size_t)k * sizeof(Waypoint));
+
+  enviarComandoNomeado(CMD_ARQ_SALVAR_TRAJ, "contorno"); esperarCartao();
+  const bool salvou = (armEstado() == ARM_PRONTO);
+  const uint32_t bytes = (uint32_t)g_fs.arquivos["/traj/contorno.trj"].size();
+
+  enviarComando(CMD_TRAJ_LIMPAR); rodarComWeb(20);
+  const bool limpou = (trajPontos() == 0);
+
+  enviarComandoNomeado(CMD_ARQ_CARREGAR_TRAJ, "contorno"); esperarCartao();
+
+  bool igual = (trajPontos() == n0) && (trajDuracaoMs() == dur0);
+  if (igual) igual = (memcmp(trajBuffer(), copia, (size_t)k * sizeof(Waypoint)) == 0);
+
+  checar(salvou && limpou && igual, "B06",
+         "a trajetoria volta byte a byte igual");
+  nota("%u waypoints, %.2f s, %lu bytes no cartao (%u por ponto)",
+       (unsigned)n0, dur0 / 1000.0f, (unsigned long)bytes,
+       (unsigned)sizeof(Waypoint));
+  nota("mesmos %u pontos apos recarregar: %s",
+       (unsigned)trajPontos(), igual ? "sim" : "NAO");
+  nota("O buffer vivo e emprestado para a tarefa de SD (trajEmprestar), entao");
+  nota("nao existe copia de %u kB na RAM so para gravar.",
+       (unsigned)(MAX_WAYPOINTS * sizeof(Waypoint) / 1024));
+
+  // Buffer emprestado: gravar tem que ser recusado enquanto isso.
+  trajEmprestar();
+  const bool recusou = !trajIniciarGravacao();
+  trajDevolver();
+  checar(recusou, "B06b",
+         "com o buffer emprestado ao cartao, gravar e recusado");
+  nota("trajIniciarGravacao() com emprestimo ativo: %s",
+       recusou ? "recusado" : "ACEITO (corromperia a leitura)");
+}
+
+// ---------------------------------------------------------------------
+static void teste_B07_config_backup() {
+  secao("B07  Ajustes: backup no cartao e restauracao");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+
+  // Configuracao "boa", salva em arquivo.
+  prepararConfigPendente();
+  configPendente.velNormal = 4321;
+  configPendente.elo1      = 234.0f;
+  configPendente.protEnvelope = true;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(40);
+  enviarComandoNomeado(CMD_ARQ_SALVAR_CONFIG, "backup-oficina"); esperarCartao();
+  const bool salvou = (armEstado() == ARM_PRONTO);
+  nota("salvo: velN=%lu, elo1=%.0f, protecao de mesa=%d",
+       (unsigned long)velNormal, elo1Mm, (int)protEnvelope);
+
+  // Alguem baguncou tudo.
+  prepararConfigPendente();
+  configPendente.velNormal = 900;
+  configPendente.elo1      = 100.0f;
+  configPendente.protEnvelope = false;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(40);
+  nota("bagunçado: velN=%lu, elo1=%.0f, protecao de mesa=%d",
+       (unsigned long)velNormal, elo1Mm, (int)protEnvelope);
+
+  armSolicitar(TAR_CARREGAR_CONFIG, "backup-oficina");
+  esperarCartao();
+  rodarComWeb(40);
+
+  checar(salvou && velNormal == 4321 && fabsf(elo1Mm - 234.0f) < 0.01f &&
+         protEnvelope, "B07a", "a restauracao devolve os ajustes salvos");
+  nota("restaurado: velN=%lu, elo1=%.0f, protecao de mesa=%d",
+       (unsigned long)velNormal, elo1Mm, (int)protEnvelope);
+  nota("Carregar preenche a area de preparo e enfileira CMD_APLICAR_CONFIG:");
+  nota("o mesmo caminho do POST /api/config, com as mesmas validacoes.");
+
+  // Arquivo com valor absurdo nao pode passar so por vir do cartao.
+  g_fs.arquivos["/cfg/torto.cfg"] =
+      "ROBOCNC-CFG 1\nvelN=9999999\nl1=200\n";
+  const uint32_t antes = velNormal;
+  armSolicitar(TAR_CARREGAR_CONFIG, "torto");
+  esperarCartao();
+  rodarComWeb(40);
+  checar(velNormal == antes, "B07b",
+         "configuracao com valor fora de faixa e recusada");
+  nota("velN pedido = 9999999 (teto do driver = %lu); velN atual = %lu",
+       (unsigned long)FREQ_PULSO_MAX_HZ, (unsigned long)velNormal);
+  nota("recusa: %s", armMensagem());
+}
+
+// ---------------------------------------------------------------------
+static void teste_B08_arquivo_durante_execucao() {
+  secao("B08  Mexer em arquivo com o programa rodando");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  gravarTresPontos();
+
+  enviarComandoNomeado(CMD_ARQ_SALVAR_PROG, "base"); esperarCartao();
+  enviarComando(CMD_PROG_EXECUTAR, 0); rodarComWeb(1200);
+  const bool rodando = (modoAtual == MODO_EXECUTANDO);
+  const uint8_t n0 = progQuantidade();
+
+  // Carregar outro programa no meio da solda seria trocar o chao sob os pes.
+  armSolicitar(TAR_CARREGAR_PROG, "base");
+  esperarCartao();
+
+  checar(rodando && progQuantidade() == n0 && modoAtual == MODO_EXECUTANDO,
+         "B08", "carregar arquivo nao troca o programa em execucao");
+  nota("modo=%d, %u pontos (inalterado), mensagem: %s",
+       (int)modoAtual, (unsigned)progQuantidade(), ultimaMensagem);
+  nota("A tarefa de SD le o arquivo, mas CMD_ARQ_APLICAR_PROG exige modo");
+  nota("manual: a area de troca fica preenchida e o vivo nao e tocado.");
+  enviarComando(CMD_PROG_PARAR); rodarComWeb(600);
+}
+
+// ---------------------------------------------------------------------
+static void teste_B09_registro_de_eventos() {
+  secao("B09  Registro de eventos no cartao");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  gravarTresPontos();
+
+  enviarComando(CMD_PROG_EXECUTAR, 1); rodarComWeb(200);
+  enviarComando(CMD_PROG_PARAR); rodarComWeb(600);
+
+  // Perde a conexao: o supervisor registra.
+  rodar(4000);
+  rodarComWeb(1500);        // deixa o escoamento periodico rodar
+
+  std::string log;
+  for (auto& a : g_fs.arquivos)
+    if (a.first.rfind("/log/", 0) == 0) log = a.second;
+
+  const bool temCabecalho = log.find("ms_desde_boot") != std::string::npos;
+  const bool temInicio    = log.find("sistema iniciado") != std::string::npos;
+  const bool temConexao   = log.find("conexao perdida") != std::string::npos;
+
+  checar(temCabecalho && temInicio && temConexao, "B09",
+         "eventos de seguranca chegam ao arquivo de log");
+  nota("arquivo de log com %u bytes", (unsigned)log.size());
+  for (size_t i = 0, l = 0; i < log.size() && l < 6; l++) {
+    const size_t f = log.find('\n', i);
+    nota("  %s", log.substr(i, (f == std::string::npos ? log.size() : f) - i).c_str());
+    if (f == std::string::npos) break;
+    i = f + 1;
+  }
+  nota("logEvento() so enfileira (timeout zero) e quem grava e a tarefa do");
+  nota("core 0: registrar nunca atrasa o laco de controle.");
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -912,6 +1403,17 @@ int main() {
   teste_A13_troca_de_cotovelo();
   teste_A14_config_durante_movimento();
   teste_A15_fluxo_completo();
+  teste_A16_joystick();
+
+  teste_B01_sem_cartao();
+  teste_B02_programa_ida_e_volta();
+  teste_B03_programa_em_graus();
+  teste_B04_arquivo_corrompido();
+  teste_B05_nome_de_arquivo();
+  teste_B06_trajetoria_binaria();
+  teste_B07_config_backup();
+  teste_B08_arquivo_durante_execucao();
+  teste_B09_registro_de_eventos();
 
   printf("\n\033[1mRESULTADO: %d passaram, %d anomalias\033[0m\n\n", nPassa, nAnomalia);
   (void)secaoAtual;
