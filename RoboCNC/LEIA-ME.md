@@ -38,6 +38,10 @@ troca mais um `Comando` na fila.
 
 ## Ligação elétrica
 
+A referência completa de fiação, com os cuidados de cada pino e a ordem
+de energização na primeira vez, está em [`LIGACOES.md`](../LIGACOES.md).
+O resumo:
+
 **Antes de energizar, confira:**
 
 1. **Nível de pulso.** O ESP32 sai em 3,3 V. A entrada do T3D espera 5 V.
@@ -229,8 +233,14 @@ No celular a página se comporta como app: abas embaixo no alcance do
 polegar, uma tela por vez, sem barra de endereço quando adicionada à tela
 inicial (`display: standalone` no manifesto).
 
-Cinco abas: **Mesa** (traçado), **Mover** (joystick), **Programa**
-(pontos, ensaio, solda, trajetória), **Arquivos** (cartão) e **Ajustes**.
+Cinco abas: **Mesa** (traçado), **Mover** (joystick, ir para ângulo,
+gravar ponto), **Programa** (pontos, ensaio, solda, trajetória a mão
+livre), **Arquivos** (cartão) e **Ajustes**.
+
+Nada de botão mudo: quando uma ação está bloqueada, uma linha abaixo dela
+diz o que resolver, na ordem em que resolver — *habilite os servos*,
+*calibre as juntas*, *robô ocupado*. O joystick apaga e mostra o motivo
+em vez de parecer pronto.
 O botão PARAR ocupa as duas linhas do cabeçalho — alvo alto, no canto
 onde o polegar já está, alcançável de qualquer aba.
 

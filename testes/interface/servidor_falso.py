@@ -38,6 +38,11 @@ PONTOS = {"pts": [
     {"t1": 25.0, "t2": -30.0, "x": 375, "y": 40,  "s": 0},
     {"t1": 40.0, "t2": -50.0, "x": 340, "y": 111, "s": 0},
 ]}
+# caminho a mao livre: um arco de circulo, metade com solda
+import math as _m
+TRAJ = [[round(300 * _m.cos(_a / 40.0), 1), round(300 * _m.sin(_a / 40.0) - 60, 1),
+         1 if _a < 20 else 0] for _a in range(-20, 21)]
+
 SD = {"estado": "PRONTO", "ocupado": False, "seq": 7,
       "totalMB": 3782, "livreMB": 3779, "msg": "cartao montado"}
 LISTA = {
@@ -74,7 +79,7 @@ class H(BaseHTTPRequestHandler):
         if caminho == "/api/pontos":
             return self._envia(json.dumps(PONTOS))
         if caminho == "/api/trajetoria":
-            return self._envia(json.dumps({"pts": []}))
+            return self._envia(json.dumps({"pts": TRAJ}))
         if caminho == "/api/sd":
             return self._envia(json.dumps(SD))
         if caminho == "/api/sd/lista":
@@ -93,7 +98,13 @@ class H(BaseHTTPRequestHandler):
         return self._envia("nao existe", "text/plain", 404)
 
     def do_POST(self):
-        self._rota()
+        caminho, q = self._rota()
+        # Gancho so do banco de testes: permite encenar outros estados da
+        # maquina (sem calibracao, servos desligados, executando...).
+        if caminho == "/teste/estado":
+            tam = int(self.headers.get("Content-Length", 0))
+            estado.update(json.loads(self.rfile.read(tam) or b"{}"))
+            return self._envia("ok", "text/plain")
         return self._envia("ok", "text/plain")
 
 

@@ -79,7 +79,13 @@ Sobe um servidor que finge ser o ESP32 (`servidor_falso.py`), serve a
 página extraída de `pagina_web.h` e roda a interface num Chromium de
 verdade via Playwright, em viewport de celular e de computador.
 
-Verifica que a página carrega sem erro de JavaScript, que as cinco abas
+Clica **todo** botão de **toda** seção, uma seção aberta por vez, e
+reprova se algum estiver invisível dentro da própria seção, não disparar
+requisição nenhuma, ou estiver desabilitado sem motivo escrito na tela.
+Também confere ids repetidos, botão sem handler e sanfona vazando entre
+abas.
+
+Além disso verifica que a página carrega sem erro de JavaScript, que as cinco abas
 mostram o conteúdo certo, que o joystick manda `/api/jogxy` proporcional
 nos dois eixos, que o botão acompanha o dedo, que soltar e mandar o app
 para segundo plano param o jog, que arrastar para fora do disco satura em
@@ -88,6 +94,16 @@ Deixa as capturas em `testes/saida/ui/`.
 
 O servidor lê `pagina_web.h` ao subir, então ele **precisa** subir junto
 do teste — um servidor deixado de pé serve a página antiga em memória.
+
+## Conferência da fiação
+
+```sh
+python3 testes/conferir_ligacoes.py     # roda junto com compilar.sh
+```
+
+Reprova se `LIGACOES.md` divergir dos pinos de `RoboCNC/config.h`.
+Documento de fiação que mente é pior que documento nenhum: o operador
+liga o fio no pino errado.
 
 ## Como o simulador anda
 

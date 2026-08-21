@@ -10,6 +10,9 @@ FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I 
 # banco -- mas passa por conferencia de compilacao para nao apodrecer.
 g++ $FLAGS -DESTOP_FISICO_INSTALADO=true -fsyntax-only RoboCNC/servidor_web.cpp
 
+# Documento de fiacao que mente e pior que documento nenhum.
+python3 testes/conferir_ligacoes.py
+
 # O banco compila com o botao de emergencia "instalado" para exercitar
 # esse ramo. O config.h de producao mantem ESTOP_FISICO_INSTALADO=false
 # ate o botao existir de verdade.

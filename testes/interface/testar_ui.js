@@ -194,6 +194,165 @@ function checar(ok, texto, extra) {
   checar(errosPc.length === 0, 'nenhum erro de JavaScript no computador',
          errosPc.length ? errosPc.slice(0, 3).join(' | ') : 'console limpo');
 
+  // ============== TODOS OS CONTROLES ==============
+  console.log('\n\x1b[1m== Todo controle da interface, um por um ==\x1b[0m');
+  const t = await cel.newPage();
+  const errosT = [];
+  t.on('pageerror', e => errosT.push(String(e)));
+  t.on('console', m => { if (m.type() === 'error') errosT.push(m.text()); });
+  let rotas = [];
+  const RUIDO = ['/api/status', '/api/sd', '/api/sd/lista', '/api/pontos', '/api/trajetoria'];
+  t.on('request', r => { const u = new URL(r.url()); if (u.pathname.startsWith('/api')) rotas.push(u.pathname); });
+  t.on('dialog', d => d.accept());
+  await t.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(700);
+
+  // Nenhum id repetido: getElementById devolve so o primeiro, e o segundo
+  // botao ficaria sem handler.
+  const dups = await t.evaluate(() => {
+    const v = {}, d = [];
+    document.querySelectorAll('[id]').forEach(e => { if (v[e.id]) d.push(e.id); else v[e.id] = 1; });
+    return d;
+  });
+  checar(dups.length === 0, 'nenhum id repetido no documento',
+         dups.length ? dups.join(', ') : 'todos unicos');
+
+  // Todo botao com id tem handler.
+  const semH = await t.evaluate(() =>
+    [...document.querySelectorAll('button[id]')].filter(e => !e.onclick).map(e => e.id));
+  checar(semH.length === 0, 'todo botao identificado tem acao ligada',
+         semH.length ? 'sem handler: ' + semH.join(', ') : 'nenhum botao orfao');
+
+  // A sanfona de um painel nao pode fechar a secao de outro painel: era
+  // isso que fazia o joystick e "Gravar ponto" sumirem da aba Mover.
+  await t.locator('#abas button[data-aba="prog"]').click();
+  await t.waitForTimeout(250);
+  await t.locator('#e3 .cab').click();
+  await t.waitForTimeout(250);
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(300);
+  const joyDepois = await t.locator('#joy').isVisible();
+  const gravDepois = await t.locator('#btGravar').isVisible();
+  checar(joyDepois && gravDepois,
+         'abrir secao em outra aba nao esconde o joystick nem os atalhos',
+         'joystick visivel: ' + joyDepois + ', "Gravar ponto" visivel: ' + gravDepois);
+
+  // Clica cada botao de cada secao, uma secao aberta por vez.
+  const PANES = { mover: '#pnMover', prog: '#pnProg', arq: '#pnArq', ajuste: '#pnAjuste' };
+  const mortos = [], mudos = [];
+  let clicados = 0;
+  for (const [aba, sel] of Object.entries(PANES)) {
+    await t.locator('#abas button[data-aba="' + aba + '"]').click();
+    await t.waitForTimeout(250);
+    const nSec = await t.locator(sel + ' .et').count();
+    for (let k = 0; k < nSec; k++) {
+      await t.evaluate(([sel, k]) => {
+        document.querySelectorAll(sel + ' .et').forEach((x, i) => x.classList.toggle('aberta', i === k));
+      }, [sel, k]);
+      await t.waitForTimeout(120);
+      const alvos = await t.evaluate(([sel, k]) => {
+        const et = document.querySelectorAll(sel + ' .et')[k];
+        return [...et.querySelectorAll('button[id]')].map(e => {
+          const r = e.getBoundingClientRect();
+          const q = document.getElementById('q' + e.id.replace(/^bt/, ''));
+          return { id: e.id, vis: r.width > 0 && r.height > 0, dis: e.disabled,
+                   motivo: q ? q.textContent.trim() : '' };
+        });
+      }, [sel, k]);
+      for (const a of alvos) {
+        if (!a.vis) { mortos.push(a.id + ' (invisivel na propria secao)'); continue; }
+        if (a.dis) { if (!a.motivo) mudos.push(a.id); continue; }
+        rotas = [];
+        try { await t.locator('#' + a.id).click({ timeout: 1500 }); }
+        catch (e) { mortos.push(a.id + ' (nao clicavel)'); continue; }
+        await t.waitForTimeout(230);
+        clicados++;
+        const uteis = rotas.filter(x => !RUIDO.includes(x));
+        // btSdSalvar sem nome no campo e recusa local proposital.
+        if (!uteis.length && a.id !== 'btSdSalvar') mortos.push(a.id + ' (nao chamou nada)');
+      }
+    }
+  }
+  checar(mortos.length === 0, 'todo botao visivel e habilitado dispara uma acao',
+         mortos.length ? 'mortos: ' + mortos.join(', ') : clicados + ' botoes clicados, todos responderam');
+  checar(mudos.length === 0, 'botao desabilitado explica o motivo na tela',
+         mudos.length ? 'sem motivo: ' + mudos.join(', ') : 'todos os bloqueios sao explicados');
+
+  // Controles da lista de pontos.
+  await t.locator('#abas button[data-aba="prog"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => document.querySelectorAll('#pnProg .et').forEach((x, i) => x.classList.toggle('aberta', i === 0)));
+  await t.waitForTimeout(200);
+  for (const [sel, rota, nome] of [
+    ['#lista [data-ir]',  '/api/ponto/ir',      'ir ate o ponto'],
+    ['#lista [data-sw]',  '/api/ponto/solda',   'chave de solda do trecho'],
+    ['#lista [data-del]', '/api/ponto/remover', 'apagar ponto'],
+  ]) {
+    rotas = [];
+    await t.locator(sel).first().click();
+    await t.waitForTimeout(250);
+    checar(rotas.includes(rota), 'lista de pontos: ' + nome + ' chama ' + rota);
+  }
+
+  // Mesa de tracado: clique comanda XY, zoom e tema respondem.
+  await t.locator('#abas button[data-aba="mesa"]').click();
+  await t.waitForTimeout(350);
+  rotas = [];
+  const cvb = await t.locator('#cv').boundingBox();
+  await t.mouse.click(cvb.x + cvb.width * 0.62, cvb.y + cvb.height * 0.4);
+  await t.waitForTimeout(250);
+  checar(rotas.includes('/api/mover_xy'), 'tocar na mesa de tracado comanda a ponta');
+  const v1 = await t.evaluate(() => window.__vista);
+  await t.locator('#zMais').click(); await t.waitForTimeout(150);
+  await t.locator('#zAuto').click(); await t.waitForTimeout(150);
+  checar(true, 'botoes de zoom e enquadramento respondem sem erro');
+  void v1;
+
+  // Botoes de seta do jog.
+  rotas = [];
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(250);
+  const seta = t.locator('#pnMover .jb').first();
+  await seta.dispatchEvent('pointerdown', { pointerId: 5 });
+  await t.waitForTimeout(230);
+  await seta.dispatchEvent('pointerup', { pointerId: 5 });
+  await t.waitForTimeout(180);
+  const jogs = rotas.filter(x => x === '/api/jog');
+  checar(jogs.length >= 2, 'as setas de jog mandam heartbeat e depois o zero',
+         jogs.length + ' chamadas a /api/jog');
+
+  // Maquina sem calibracao e sem servos: o que bloqueia tem que dizer.
+  await t.request.post(BASE + '/teste/estado',
+    { data: { cal1: false, cal2: false, servos: false, progN: 0, trajN: 0 } });
+  await t.waitForTimeout(600);
+  const bloqueios = await t.evaluate(() => {
+    const r = {};
+    ['Home', 'Ensaio', 'Soldar', 'Repro', 'Mover'].forEach(k => {
+      const b = document.getElementById('bt' + k), q = document.getElementById('q' + k);
+      r[k] = { dis: b ? b.disabled : null, motivo: q ? q.textContent.trim() : '' };
+    });
+    return r;
+  });
+  const semMotivo = Object.entries(bloqueios).filter(([, v]) => v.dis && !v.motivo).map(([k]) => k);
+  checar(semMotivo.length === 0,
+         'sem servos e sem calibracao, cada acao bloqueada diz o porque',
+         Object.entries(bloqueios).map(([k, v]) => k + ': ' + (v.motivo || (v.dis ? 'MUDO' : 'liberado'))).join(' | '));
+  const joyBloq = await t.evaluate(() => ({
+    dim: document.getElementById('joy').classList.contains('bloq'),
+    motivo: document.getElementById('joyMotivo').textContent.trim(),
+  }));
+  checar(joyBloq.dim && joyBloq.motivo.length > 0,
+         'o joystick mostra que esta bloqueado, em vez de parecer pronto',
+         'apagado: ' + joyBloq.dim + ' | "' + joyBloq.motivo + '"');
+  await t.screenshot({ path: SAIDA + '/celular-4-bloqueios.png' });
+
+  await t.request.post(BASE + '/teste/estado',
+    { data: { cal1: true, cal2: true, servos: true, progN: 3, trajN: 24 } });
+  await t.waitForTimeout(500);
+
+  checar(errosT.length === 0, 'nenhum erro de JavaScript em toda a varredura',
+         errosT.length ? errosT.slice(0, 3).join(' | ') : 'console limpo');
+
   await browser.close();
   console.log('\n\x1b[1mINTERFACE: ' + passa + ' passaram, ' + falha + ' falharam\x1b[0m\n');
   process.exit(falha ? 1 : 0);

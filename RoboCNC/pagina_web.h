@@ -110,6 +110,7 @@ button,input{font:inherit;color:inherit}
  letter-spacing:.1em;color:var(--letra2);text-transform:uppercase}
 .lg i{width:18px;border-top:3px solid var(--quente)}
 .lg.d i{border-top:1px dashed #7b8795}
+.lg.t i{border-top:2px solid #7b8795;opacity:.55}
 
 .zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:5px}
 .zb{width:32px;height:32px;background:var(--painel);opacity:.94;border:1px solid var(--linha);
@@ -131,7 +132,10 @@ button,input{font:inherit;color:inherit}
 .coluna{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;
  display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .rol{overflow-y:auto;overflow-x:hidden;padding:10px;flex:1;scrollbar-width:thin;min-width:0}
-.tira{padding:10px 12px;background:var(--painel);border:1px solid var(--linha);
+/* Grudada no topo da coluna: a resposta de cada acao ("Ponto 3 gravado",
+   "Movimento recusado: ...") tem que estar visivel sem rolar de volta. */
+.tira{position:sticky;top:0;z-index:6;
+ padding:10px 12px;background:var(--painel);border:1px solid var(--linha);
  border-left:3px solid var(--linha2);border-radius:3px;margin-bottom:9px;font-size:12px;
  color:var(--letra2);min-height:40px;line-height:1.45}
 .tira.er{border-left-color:var(--brasa);color:#ffc6bc}
@@ -142,6 +146,8 @@ button,input{font:inherit;color:inherit}
 .et.feita{border-color:#2a5c42}
 .et.agora{border-color:var(--arco);box-shadow:inset 3px 0 0 var(--arco)}
 .cab{display:flex;align-items:center;gap:11px;padding:12px;cursor:pointer;user-select:none}
+/* Sem seta = secao fixa, nao recolhe: o cursor nao pode prometer clique. */
+.cab:not(:has(.chv)){cursor:default}
 .mk{width:26px;height:26px;border-radius:3px;background:var(--face);color:var(--letra2);
  display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:700;
  flex:0 0 auto;border:1px solid var(--linha)}
@@ -216,6 +222,10 @@ h4:first-child{margin-top:0}
 .cp input:focus{outline:none;border-color:var(--arco)}
 .cp .un{font-family:var(--mono);font-size:9px;color:var(--letra3);width:34px}
 .nt{font-size:11.5px;color:var(--letra2);margin:0 0 10px;line-height:1.55}
+/* Motivo de um botao estar fora de acao. Nada de botao morto e mudo. */
+.pq2{display:none;font-size:11px;color:var(--quente);margin:-5px 0 10px;
+ line-height:1.5;padding-left:2px}
+.b:disabled{opacity:.42;cursor:not-allowed}
 .nt b{color:var(--letra);font-weight:600}
 .perigo{font-size:11.5px;background:var(--face);border-left:3px solid var(--quente);border-top:1px solid var(--linha);border-right:1px solid var(--linha);border-bottom:1px solid var(--linha);color:var(--letra);
  padding:10px 11px;border-radius:3px;margin-bottom:10px;line-height:1.55}
@@ -273,7 +283,12 @@ h4:first-child{margin-top:0}
  display:grid;place-items:center;transition:border-color .12s,background .12s}
 .joy.ativo .joyKnob{background:var(--arco);border-color:var(--arco)}
 .joy.ativo .joyKnob b{color:#fff}
-.joy.trav .joyKnob{border-color:var(--brasa)}
+/* Bloqueado: o disco nao pode parecer pronto quando o braco nao vai
+   sair do lugar. */
+.joy.bloq{opacity:.4}
+.joy.bloq .joyKnob{border-color:var(--letra3)}
+.joyMotivo{text-align:center;font-size:11.5px;color:var(--quente);
+ margin:8px 0 0;line-height:1.5;min-height:1px}
 .joyKnob b{font-family:var(--mono);font-size:9px;letter-spacing:.06em;
  color:var(--letra2);text-transform:uppercase;pointer-events:none}
 .joyEix{position:absolute;font-family:var(--mono);font-size:9px;
@@ -400,6 +415,7 @@ h4:first-child{margin-top:0}
         <div class="legenda">
           <div class="lg"><i></i>cordao · reta</div>
           <div class="lg d"><i></i>deslocamento · curva das juntas</div>
+          <div class="lg t"><i></i>trajetoria gravada a mao livre</div>
         </div>
         <div class="zoom">
           <button class="zb" id="zMais" title="Aproximar">+</button>
@@ -444,6 +460,7 @@ h4:first-child{margin-top:0}
               <span>J1 <b id="joyA">0%</b></span>
               <span>J2 <b id="joyB">0%</b></span>
             </div>
+            <div class="joyMotivo" id="joyMotivo"></div>
             <div class="nt">Quanto mais longe do centro, mais rapido. O circulo
             tracejado e a zona morta. Soltando o dedo, o braco para.</div>
             <button class="b mini" id="btPrec">Precisao: desligada</button>
@@ -460,9 +477,17 @@ h4:first-child{margin-top:0}
               <button class="jb" data-j="2" data-d="1">&#8593;</button>
             </div>
 
+            <h4>Ir para um angulo</h4>
+            <div class="cp"><label>Junta 1</label><input type="number" id="inMt1" step="0.5"><span class="un">°</span></div>
+            <div class="cp"><label>Junta 2</label><input type="number" id="inMt2" step="0.5"><span class="un">°</span></div>
+            <button class="b mini" id="btMover">Ir para esses angulos</button>
+            <div class="pq2" id="qMover"></div>
+
             <h4>Atalhos</h4>
             <button class="b ok" id="btGravar">Gravar ponto na posicao atual</button>
+            <div class="pq2" id="qGravar"></div>
             <button class="b mini" id="btHome">Ir para o zero da maquina</button>
+            <div class="pq2" id="qHome"></div>
             <div class="nt">Tocar na mesa de tracado tambem leva a ponta ate o
             ponto tocado.</div>
           </div>
@@ -489,6 +514,7 @@ h4:first-child{margin-top:0}
           <div class="dentro">
             <div class="nt">Percorre o programa inteiro com o rele travado desligado, na mesma velocidade e sequencia da solda.</div>
             <button class="b pri" id="btEnsaio">Executar ensaio</button>
+            <div class="pq2" id="qEnsaio"></div>
           </div>
         </div>
 
@@ -501,6 +527,7 @@ h4:first-child{margin-top:0}
             <div class="cp"><label>Velocidade do cordao</label><input type="number" id="inVc" min="0.5" step="0.5"><span class="un">mm/s</span></div>
             <div class="nt">Mais devagar aquece e penetra mais. Vale so nos trechos com solda ligada.</div>
             <button class="b quente" id="btSoldar">Executar com arco</button>
+            <div class="pq2" id="qSoldar"></div>
             <div class="pgr"><i id="pg"></i></div>
           </div>
         </div>
@@ -514,9 +541,20 @@ h4:first-child{margin-top:0}
             estado do arco em cada instante. Serve para percurso organico; para
             cordao reto use os pontos acima, que saem em reta de verdade.</div>
             <button class="b" id="btGravIni">Iniciar gravacao</button>
+            <div class="pq2" id="qGravIni"></div>
             <button class="b" id="btGravFim">Encerrar gravacao</button>
+            <div class="pq2" id="qGravFim"></div>
+            <h4>Arco durante a gravacao</h4>
+            <div class="perigo">Este botao abre o arco de verdade, agora. E o
+            que a gravacao registra em cada instante do percurso.</div>
+            <button class="b quente" id="btArco">Abrir arco</button>
+            <div class="pq2" id="qArco"></div>
+            <h4>Reproduzir</h4>
+            <div class="cp"><label>Velocidade da reproducao</label><input type="number" id="inEsc" min="10" max="200" step="5"><span class="un">%</span></div>
             <button class="b pri" id="btRepro">Reproduzir</button>
+            <div class="pq2" id="qRepro"></div>
             <button class="b mini" id="btTrajLimpar">Apagar trajetoria</button>
+            <div class="pq2" id="qTrajLimpar"></div>
           </div>
         </div>
       </section>
@@ -703,19 +741,31 @@ addEventListener("keyup",function(e){const m=TK[e.key];if(m)jogOff(m[0],null);})
 addEventListener("blur",function(){jogOff("1",null);jogOff("2",null);});
 
 /* ---------- etapas ---------- */
+/* Sanfona: SO nas secoes que tem a seta, e fechando apenas as do MESMO
+   painel. Antes fechava todas as .et da pagina, entao abrir "Ensinar o
+   caminho" na aba Programa fechava a secao do Mover -- e ao voltar para
+   la o joystick, "Gravar ponto" e "Ir para o zero" tinham sumido, o que
+   parecia botao que nao faz nada. A secao do joystick e a do cartao nao
+   tem seta e nao recolhem: sao a superficie principal de cada aba. */
 document.querySelectorAll(".cab").forEach(function(c){
+  if(!c.querySelector(".chv"))return;
   c.addEventListener("click",function(){
     const et=c.parentElement,ja=et.classList.contains("aberta");
-    document.querySelectorAll(".et").forEach(function(x){x.classList.remove("aberta");});
+    const painel=et.closest(".pane")||document;
+    painel.querySelectorAll(".et").forEach(function(x){
+      if(x.querySelector(".cab .chv"))x.classList.remove("aberta");});
     if(!ja)et.classList.add("aberta");});
 });
 function abrir(n){
   /* As etapas moram em abas diferentes: abrir a etapa 2 sem trazer a aba
      junto deixaria o operador olhando para uma tela que nao mudou. */
   irAba(n<=1||n>=5?"ajuste":"prog");
-  document.querySelectorAll(".et").forEach(function(x){x.classList.remove("aberta");});
   const e=$("e"+n);
-  if(e)e.classList.add("aberta");
+  if(!e)return;
+  const painel=e.closest(".pane")||document;
+  painel.querySelectorAll(".et").forEach(function(x){
+    if(x.querySelector(".cab .chv"))x.classList.remove("aberta");});
+  e.classList.add("aberta");
 }
 
 /* ---------- acoes ---------- */
@@ -771,6 +821,16 @@ $("btReset").onclick =function(){
 
 /* ---------- pontos ---------- */
 let pontos=[];
+
+/* Caminho gravado a mao livre. /api/trajetoria ja existia no firmware,
+   reamostrado e convertido para XY, e nao tinha nenhum consumidor: a
+   trajetoria era gravada e nunca aparecia no desenho. */
+let traj=[],ultTrajN=-1;
+function lerTraj(){
+  return fetch("/api/trajetoria").then(function(r){return r.json();})
+   .then(function(j){traj=j.pts||[];}).catch(function(){});
+}
+
 function lerPontos(){
   return fetch("/api/pontos").then(function(r){return r.json();})
    .then(function(j){pontos=j.pts||[];pintarLista();}).catch(function(){});
@@ -908,6 +968,23 @@ function pintar(){
   if(D.protEnv&&D.envR){ct.beginPath();ct.arc(ox,oy,D.envR*esc,0,TAU);
     ct.fillStyle="rgba(185,28,28,.13)";ct.fill();}
 
+  /* Caminho gravado a mao livre, por baixo dos pontos do programa:
+     laranja onde o arco estava aberto, cinza onde era so deslocamento. */
+  if(traj.length>1){
+    ct.lineCap="round";ct.lineJoin="round";
+    for(let i=0;i<traj.length-1;i++){
+      const A=traj[i],B=traj[i+1],quente=A[2]===1;
+      ct.strokeStyle=quente?C.quente:C.letra2;
+      ct.globalAlpha=quente?.85:.4;
+      ct.lineWidth=quente?3:1.5;
+      ct.beginPath();
+      ct.moveTo(P(A[0],A[1])[0],P(A[0],A[1])[1]);
+      ct.lineTo(P(B[0],B[1])[0],P(B[0],B[1])[1]);
+      ct.stroke();
+    }
+    ct.globalAlpha=1;
+  }
+
   /* trechos */
   ct.lineCap="round";
   for(let i=0;i<pontos.length-1;i++){
@@ -1019,6 +1096,23 @@ const PC={HOME:[1,"Leve o braco ate a posicao de referencia (o zero da maquina) 
  CONCLUIDO:[6,"Curso medido. Confira os limites em graus: se nao baterem com a maquina real, o erro esta na resolucao daquele eixo."]};
 
 let quedas=0,ultN=-1,ultCal="";
+/* Um botao fora de acao tem que dizer por que. Desabilitar em silencio e
+   o que faz o operador achar que o sistema esta quebrado. */
+function acao(id,motivo){
+  const b=$("bt"+id), q=$("q"+id);
+  if(b)b.disabled=!!motivo;
+  if(q){q.textContent=motivo||"";q.style.display=motivo?"block":"none";}
+}
+/* Motivo comum a tudo que move o braco, na ordem em que o operador
+   precisa resolver. */
+function porQueNaoMove(d){
+  if(d.modo==="FALHA")            return "sistema em falha: rearme os servos primeiro";
+  if(!d.servos)                   return "habilite os servos (aba Ajustes, etapa 1)";
+  if(!d.cal1||!d.cal2)            return "calibre as juntas (aba Ajustes, etapa 1)";
+  if(d.modo!=="MANUAL")           return "robo ocupado: "+(RM[d.modo]||d.modo);
+  return "";
+}
+
 function lamp(el,cls,txt){
   el.className="lp"+(cls?" "+cls:"");
   if(txt!==undefined)$("lModoT").textContent=txt;}
@@ -1060,16 +1154,23 @@ function aplicar(d){
   const nq=pontos.filter(function(p,i){return i<pontos.length-1&&p.s;}).length;
   $("e2").classList.toggle("feita",d.progN>=2);
   $("sb2").textContent=d.progN===0?"nenhum ponto":(d.progN+" pontos · "+nq+" cordao(oes)");
-  $("btGravar").disabled=(d.modo!=="MANUAL");
+  acao("Gravar", d.modo==="FALHA" ? "sistema em falha: rearme os servos primeiro"
+       : d.modo!=="MANUAL" ? "grave pontos com o robo parado: "+(RM[d.modo]||d.modo) : "");
   $("btPrec").textContent="Precisao: "+(d.precisao?"ligada":"desligada");
 
   $("btEnsaio").textContent=(rodando&&d.ensaio)?"Parar ensaio":"Executar ensaio";
   $("btEnsaio").className="b "+((rodando&&d.ensaio)?"rod":"pri");
-  $("btEnsaio").disabled=(d.progN<2)||!(d.cal1&&d.cal2)||(rodando&&!d.ensaio);
+  acao("Ensaio", (rodando&&d.ensaio) ? ""
+       : (rodando&&!d.ensaio) ? "execucao com arco em andamento"
+       : (d.progN<2) ? "grave pelo menos 2 pontos na aba Mover"
+       : porQueNaoMove(d));
   $("e3").classList.toggle("feita",d.progN>=2&&!rodando);
   $("btSoldar").textContent=(rodando&&!d.ensaio)?"PARAR":"Executar com arco";
   $("btSoldar").className="b "+((rodando&&!d.ensaio)?"rod":"quente");
-  $("btSoldar").disabled=(d.progN<2)||!pronto||(rodando&&d.ensaio);
+  acao("Soldar", (rodando&&!d.ensaio) ? ""
+       : (rodando&&d.ensaio) ? "ensaio em andamento"
+       : (d.progN<2) ? "grave pelo menos 2 pontos na aba Mover"
+       : porQueNaoMove(d));
   $("pg").style.width=(rodando?d.progPct:0)+"%";
 
   const passo=!pronto?1:(d.progN<2?2:(rodando&&!d.ensaio?4:3));
@@ -1093,6 +1194,8 @@ function aplicar(d){
     $("inPv2").value=d.ppv2;$("inRd2").value=d.red2;
     $("inL1").value=d.l1;$("inL2").value=d.l2;$("inDb").value=d.dobra;
     $("inEy").value=d.envY;$("inEr").value=d.envR;
+    $("inEsc").value=d.escala;
+    $("inMt1").value=d.t1.toFixed(1);$("inMt2").value=d.t2.toFixed(1);
   }
 
   const veu=$("veu");
@@ -1114,14 +1217,26 @@ function aplicar(d){
 
   $("sbTraj").textContent=d.trajN<2?"nenhuma gravada":
     (d.trajN+" pontos · "+(d.trajMs/1000).toFixed(1)+" s");
-  $("btGravIni").disabled=(d.modo!=="MANUAL");
-  $("btGravFim").disabled=(d.modo!=="GRAVANDO");
-  $("btRepro").disabled  =(d.modo!=="MANUAL")||(d.trajN<2)||!pronto;
-  $("btTrajLimpar").disabled=(d.modo!=="MANUAL")||(d.trajN<2);
-  $("sbMover").textContent=d.servos?
-    (d.precisao?"precisao · joystick":"joystick das duas juntas"):
-    "servos desligados";
-  $("btHome").disabled=(d.modo!=="MANUAL")||!pronto;
+  acao("GravIni", d.modo==="GRAVANDO" ? "ja esta gravando" : porQueNaoMove(d));
+  acao("GravFim", d.modo==="GRAVANDO" ? "" : "nao ha gravacao em andamento");
+  acao("Repro", (d.trajN<2) ? "nenhuma trajetoria gravada" : porQueNaoMove(d));
+  $("btArco").textContent=d.solda?"FECHAR ARCO":"Abrir arco";
+  $("btArco").className="b "+(d.solda?"rod":"quente");
+  acao("Arco", d.solda ? ""
+       : (d.modo!=="MANUAL"&&d.modo!=="GRAVANDO") ? "arco manual so no modo manual ou gravando"
+       : !d.servos ? "habilite os servos (aba Ajustes, etapa 1)" : "");
+  acao("Mover", porQueNaoMove(d));
+  acao("TrajLimpar", (d.trajN<2) ? "nao ha trajetoria para apagar"
+       : (d.modo!=="MANUAL") ? "so com o robo parado no modo manual" : "");
+  const bloqJog=porQueNaoMove(d);
+  joy.classList.toggle("bloq",!!bloqJog);
+  $("joyMotivo").textContent=bloqJog;
+  $("sbMover").textContent=bloqJog||
+    (d.precisao?"precisao · joystick":"joystick das duas juntas");
+  acao("Home", porQueNaoMove(d));
+
+  if(d.trajN!==ultTrajN){ultTrajN=d.trajN;
+    if(d.modo!=="GRAVANDO")lerTraj();else traj=[];}
 
   if(d.progN!==ultN){ultN=d.progN;lerPontos();}
   else if(rodando)pintarLista();
@@ -1352,6 +1467,22 @@ $("btRepro").onclick     =function(){post("/api/reproduzir");};
 $("btTrajLimpar").onclick=function(){
   if(confirm("Apagar a trajetoria gravada?"))post("/api/traj/limpar");};
 $("btHome").onclick      =function(){post("/api/home");};
+/* /api/solda existia desde sempre no firmware e nao tinha acionamento
+   nenhum na interface: gravar a mao livre registrava o estado do rele em
+   cada instante, mas nao havia como ligar o rele. */
+$("btArco").onclick=function(){
+  if(D.solda){post("/api/solda?v=0");return;}
+  if(confirm("O ARCO VAI ABRIR AGORA.\n\nMascara, aterramento na peca e area livre conferidos?"))
+    post("/api/solda?v=1");
+};
+$("btMover").onclick=function(){
+  post("/api/mover?t1="+($("inMt1").value||0)+"&t2="+($("inMt2").value||0));
+};
+/* A escala de reproducao ja existia no firmware (escalaVelocidadeTraj) e
+   nao tinha campo: ficava presa em 100%. */
+$("inEsc").onchange=function(){
+  post("/api/config?escala="+$("inEsc").value);
+};
 
 medir();
 

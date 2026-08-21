@@ -486,3 +486,81 @@ eletrônica. Confira na bancada, nesta ordem:
 O botão físico de emergência (S1.2) só entra em serviço depois de trocar
 `ESTOP_FISICO_INSTALADO` para `true` em `config.h` — a lógica já está pronta e
 testada.
+
+---
+
+# Rodada 2 — controles mortos na interface
+
+Encontrados depois de o operador relatar que *"Gravar ponto na posição
+atual"* e *"Ir para o zero da máquina"* não faziam nada. A auditoria foi
+feita clicando **todo** controle num Chromium de verdade e comparando as
+rotas registradas no firmware com as chamadas que a interface faz.
+
+## R1 · A sanfona era global, e escondia o painel de outra aba  ✅
+
+```js
+document.querySelectorAll(".et").forEach(x => x.classList.remove("aberta"));
+```
+
+Abrir uma seção fechava **todas** as seções da página, não só as do mesmo
+painel. Como a aba Mover tem uma seção só, bastava abrir *"Ensaiar sem
+arco"* na aba Programa para que, ao voltar ao Mover, o joystick, *"Gravar
+ponto"* e *"Ir para o zero"* estivessem recolhidos — parecendo botão que
+não responde.
+
+**Corrigido.** A sanfona fecha apenas as seções do mesmo `.pane`, e só
+age em cabeçalhos que têm seta (`.chv`). As seções do joystick e do
+cartão não recolhem: são a superfície principal de cada aba.
+
+## R2 · Botão desabilitado sem dizer por quê  ✅
+
+`btHome` ficava desabilitado quando faltava calibração ou servos —
+correto, mas mudo. Clicar não fazia nada e não explicava nada.
+
+**Corrigido.** Toda ação principal passa por `acao(id, motivo)`: quando
+bloqueada, aparece uma linha laranja abaixo do botão dizendo o que
+resolver, na ordem em que resolver (*"habilite os servos (aba Ajustes,
+etapa 1)"* → *"calibre as juntas"* → *"robô ocupado"*). O joystick
+também apaga e mostra o motivo em vez de parecer pronto.
+
+## R3 · Três rotas do firmware sem nenhum acionamento  ✅
+
+Auditoria automática comparando `server.on(...)` com as chamadas do
+`pagina_web.h`:
+
+| Rota | O que estava perdido |
+|------|----------------------|
+| `/api/solda` | **Nenhum botão abria o arco manualmente.** A gravação a mão livre registra o estado do relé em cada instante do percurso — e não havia como ligar o relé. O modo estava quebrado desde sempre. |
+| `/api/trajetoria` | O firmware reamostra o caminho gravado e converte para XY para desenhar. Nada consumia: a trajetória era gravada e nunca aparecia na mesa. |
+| `/api/mover` | Posicionar por ângulo digitado não tinha campo. |
+
+**Corrigido.** Botão *Abrir arco* (com confirmação) na seção de
+trajetória, desenho do caminho gravado na mesa (laranja onde o arco
+estava aberto, cinza onde era só deslocamento) e dois campos de ângulo na
+aba Mover.
+
+Também apareceu que `escalaVelocidadeTraj` existia no firmware e não
+tinha campo — a velocidade de reprodução ficava presa em 100%.
+
+## R4 · A tira de mensagem rolava para fora da tela  ✅
+
+A resposta de cada ação (*"Ponto 3 gravado"*, *"Movimento recusado: …"*)
+ficava no topo da coluna e sumia ao rolar. **Corrigido:** `position:
+sticky`.
+
+## Como isso não volta
+
+O banco da interface passou a clicar **todo** botão de **toda** seção, uma
+seção aberta por vez, e reprova se algum:
+
+- estiver invisível dentro da própria seção aberta;
+- não disparar nenhuma requisição ao ser clicado;
+- estiver desabilitado sem motivo escrito na tela.
+
+Mais: ids repetidos, botão sem handler, sanfona vazando entre abas,
+controles da lista de pontos, clique na mesa de traçado, setas de jog, e
+a máquina sem servos nem calibração. **38 verificações.**
+
+E `testes/conferir_ligacoes.py` reprova se `LIGACOES.md` divergir dos
+pinos de `config.h` — documento de fiação que mente é pior que documento
+nenhum.
