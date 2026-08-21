@@ -22,6 +22,14 @@ static const char* const NOMES_CALIB[] = {
 static void ok()                    { server.send(200, "text/plain", "ok"); }
 static void erro(const char* msg)   { server.send(400, "text/plain", msg); }
 
+// Enfileirar pode falhar (fila cheia). Responder 200 nesse caso faz a
+// interface acreditar que o comando foi aceito quando ele foi descartado.
+static void enfileirar(TipoComando tipo, int32_t a = 0, int32_t b = 0,
+                       float f1 = 0.0f, float f2 = 0.0f) {
+  if (enviarComando(tipo, a, b, f1, f2)) ok();
+  else server.send(503, "text/plain", "fila cheia: comando nao aceito");
+}
+
 static float argF(const char* nome, float padrao) {
   return server.hasArg(nome) ? server.arg(nome).toFloat() : padrao;
 }
@@ -176,30 +184,36 @@ static void handleJog() {
   const long j = argL("j", 0);
   const long d = argL("d", 0);
   if (j != 1 && j != 2) { erro("junta invalida"); return; }
-  enviarComando(CMD_JOG, (int32_t)j, (int32_t)(d > 0 ? 1 : (d < 0 ? -1 : 0)));
+  enfileirar(CMD_JOG, (int32_t)j, (int32_t)(d > 0 ? 1 : (d < 0 ? -1 : 0)));
+}
+
+// A PARADA nao entra na fila: escreve direto a flag que o loop() testa no
+// primeiro instante do ciclo, antes de drenar a fila de comandos.
+static void handleParar() {
+  registrarContatoWeb();
+  solicitarParada();
   ok();
 }
 
-static void handleParar()      { registrarContatoWeb(); enviarComando(CMD_PARAR); ok(); }
-static void handlePrecisao()   { registrarContatoWeb(); enviarComando(CMD_PRECISAO, argL("v", -1)); ok(); }
-static void handleServos()     { registrarContatoWeb(); enviarComando(CMD_SERVOS, argL("v", 0)); ok(); }
-static void handleSolda()      { registrarContatoWeb(); enviarComando(CMD_SOLDA, argL("v", 0)); ok(); }
-static void handleTesteRele()  { registrarContatoWeb(); enviarComando(CMD_TESTE_RELE); ok(); }
-static void handlePontoGravar(){ registrarContatoWeb(); enviarComando(CMD_PONTO_GRAVAR); ok(); }
-static void handlePontoRemover(){registrarContatoWeb(); enviarComando(CMD_PONTO_REMOVER, argL("i",-1)); ok(); }
-static void handlePontoSolda() { registrarContatoWeb(); enviarComando(CMD_PONTO_SOLDA, argL("i",-1), argL("v",0)); ok(); }
-static void handleProgLimpar() { registrarContatoWeb(); enviarComando(CMD_PROG_LIMPAR); ok(); }
-static void handleProgParar()  { registrarContatoWeb(); enviarComando(CMD_PROG_PARAR); ok(); }
-static void handleIrPonto()    { registrarContatoWeb(); enviarComando(CMD_IR_PARA_PONTO, argL("i",-1)); ok(); }
-static void handleProgExec()   { registrarContatoWeb(); enviarComando(CMD_PROG_EXECUTAR, argL("ensaio",1)); ok(); }
-static void handleGravarIni()  { registrarContatoWeb(); enviarComando(CMD_GRAVAR_INICIAR); ok(); }
-static void handleGravarFim()  { registrarContatoWeb(); enviarComando(CMD_GRAVAR_PARAR); ok(); }
-static void handleReproduzir() { registrarContatoWeb(); enviarComando(CMD_REPRODUZIR); ok(); }
-static void handleTrajLimpar() { registrarContatoWeb(); enviarComando(CMD_TRAJ_LIMPAR); ok(); }
-static void handleHome()       { registrarContatoWeb(); enviarComando(CMD_IR_HOME); ok(); }
-static void handleCalibIni()   { registrarContatoWeb(); enviarComando(CMD_CALIB_INICIAR); ok(); }
-static void handleCalibConf()  { registrarContatoWeb(); enviarComando(CMD_CALIB_CONFIRMAR); ok(); }
-static void handleCalibCanc()  { registrarContatoWeb(); enviarComando(CMD_CALIB_CANCELAR); ok(); }
+static void handlePrecisao()   { registrarContatoWeb(); enfileirar(CMD_PRECISAO, argL("v", -1)); }
+static void handleServos()     { registrarContatoWeb(); enfileirar(CMD_SERVOS, argL("v", 0)); }
+static void handleSolda()      { registrarContatoWeb(); enfileirar(CMD_SOLDA, argL("v", 0)); }
+static void handleTesteRele()  { registrarContatoWeb(); enfileirar(CMD_TESTE_RELE); }
+static void handlePontoGravar(){ registrarContatoWeb(); enfileirar(CMD_PONTO_GRAVAR); }
+static void handlePontoRemover(){registrarContatoWeb(); enfileirar(CMD_PONTO_REMOVER, argL("i",-1)); }
+static void handlePontoSolda() { registrarContatoWeb(); enfileirar(CMD_PONTO_SOLDA, argL("i",-1), argL("v",0)); }
+static void handleProgLimpar() { registrarContatoWeb(); enfileirar(CMD_PROG_LIMPAR); }
+static void handleProgParar()  { registrarContatoWeb(); enfileirar(CMD_PROG_PARAR); }
+static void handleIrPonto()    { registrarContatoWeb(); enfileirar(CMD_IR_PARA_PONTO, argL("i",-1)); }
+static void handleProgExec()   { registrarContatoWeb(); enfileirar(CMD_PROG_EXECUTAR, argL("ensaio",1)); }
+static void handleGravarIni()  { registrarContatoWeb(); enfileirar(CMD_GRAVAR_INICIAR); }
+static void handleGravarFim()  { registrarContatoWeb(); enfileirar(CMD_GRAVAR_PARAR); }
+static void handleReproduzir() { registrarContatoWeb(); enfileirar(CMD_REPRODUZIR); }
+static void handleTrajLimpar() { registrarContatoWeb(); enfileirar(CMD_TRAJ_LIMPAR); }
+static void handleHome()       { registrarContatoWeb(); enfileirar(CMD_IR_HOME); }
+static void handleCalibIni()   { registrarContatoWeb(); enfileirar(CMD_CALIB_INICIAR); }
+static void handleCalibConf()  { registrarContatoWeb(); enfileirar(CMD_CALIB_CONFIRMAR); }
+static void handleCalibCanc()  { registrarContatoWeb(); enfileirar(CMD_CALIB_CANCELAR); }
 
 static void handleMover() {
   registrarContatoWeb();
@@ -209,8 +223,7 @@ static void handleMover() {
   const float t2 = argF("t2", s.t2);
   const char* motivo = nullptr;
   if (!posturaValida(t1, t2, &motivo)) { erro(motivo ? motivo : "postura invalida"); return; }
-  enviarComando(CMD_MOVER_ANGULOS, 0, 0, t1, t2);
-  ok();
+  enfileirar(CMD_MOVER_ANGULOS, 0, 0, t1, t2);
 }
 
 static void handleMoverXY() {
@@ -230,15 +243,33 @@ static void handleMoverXY() {
     erro(motivo ? motivo : "ponto invalido");
     return;
   }
-  enviarComando(CMD_MOVER_ANGULOS, 0, 0, t1, t2);
-  ok();
+  enfileirar(CMD_MOVER_ANGULOS, 0, 0, t1, t2);
 }
 
 // ---------------------------------------------------------------------
 // Configuracao
 // ---------------------------------------------------------------------
+// Os tres handlers abaixo NAO escrevem nas variaveis vivas. Eles validam
+// os argumentos, preenchem a area de preparo (estado.h) e enfileiram
+// CMD_APLICAR_CONFIG. Quem copia para o estado vivo e chama
+// recalcularResolucao() e o core 1, num ponto seguro do ciclo e so com o
+// robo em modo manual.
+//
+// A versao anterior escrevia direto daqui, do core 0: recalcularResolucao()
+// altera passosPorGrau, grausMin e grausMax enquanto jogAtualizar() os le.
+static bool exigirManual() {
+  Snapshot s;
+  lerSnapshot(s);
+  if (s.modo != MODO_MANUAL) {
+    erro("ajuste so com o robo parado no modo manual");
+    return false;
+  }
+  return true;
+}
+
 static void handleConfig() {
   registrarContatoWeb();
+  if (!exigirManual()) return;
 
   const long vn = argL("velN",  velNormal);
   const long vp = argL("velP",  velPrecisao);
@@ -261,27 +292,25 @@ static void handleConfig() {
     erro("velocidade acima do limite do driver"); return;
   }
 
-  velNormal     = (uint32_t)vn;
-  velPrecisao   = (uint32_t)vp;
-  velAuto       = (uint32_t)va;
-  velCordaoMmS  = vs;
-  if (vc > 0.05f) velCordaoMmS = vc;
-  J1.aceleracao = (uint32_t)a1;
-  J2.aceleracao = (uint32_t)a2;
-  J1.passosPorVolta = (uint32_t)pv1;
-  J1.reducao        = rd1;
-  J2.passosPorVolta = (uint32_t)pv2;
-  J2.reducao        = rd2;
-  escalaVelocidadeTraj = (uint16_t)constrain(es, 10, 200);
+  prepararConfigPendente();
+  configPendente.velNormal    = (uint32_t)vn;
+  configPendente.velPrecisao  = (uint32_t)vp;
+  configPendente.velAuto      = (uint32_t)va;
+  configPendente.velCordaoMmS = (vc > 0.05f) ? vc : vs;
+  configPendente.acel1        = (uint32_t)a1;
+  configPendente.acel2        = (uint32_t)a2;
+  configPendente.ppv1         = (uint32_t)pv1;
+  configPendente.red1         = rd1;
+  configPendente.ppv2         = (uint32_t)pv2;
+  configPendente.red2         = rd2;
+  configPendente.escalaTraj   = (uint16_t)constrain(es, 10, 200);
 
-  recalcularResolucao();
-
-  enviarComando(CMD_APLICAR_CONFIG);
-  ok();
+  enfileirar(CMD_APLICAR_CONFIG);
 }
 
 static void handleGeometria() {
   registrarContatoWeb();
+  if (!exigirManual()) return;
 
   const float l1 = argF("l1", elo1Mm);
   const float l2 = argF("l2", elo2Mm);
@@ -293,29 +322,32 @@ static void handleGeometria() {
   if (db < 0 || db > 90)  { erro("folga de dobra deve ficar entre 0 e 90"); return; }
   if (er < 0)             { erro("raio minimo invalido"); return; }
 
-  elo1Mm     = l1;
-  elo2Mm     = l2;
-  folgaDobra = db;
-  envYMin    = ey;
-  envRaioMin = er;
+  prepararConfigPendente();
+  configPendente.elo1       = l1;
+  configPendente.elo2       = l2;
+  configPendente.folgaDobra = db;
+  configPendente.envY       = ey;
+  configPendente.envRaio    = er;
 
-  enviarComando(CMD_APLICAR_CONFIG);
-  ok();
+  enfileirar(CMD_APLICAR_CONFIG);
 }
 
 static void handleProtecoes() {
   registrarContatoWeb();
-  if (server.hasArg("curso"))    protCurso    = (argL("curso", 1) != 0);
-  if (server.hasArg("dobra"))    protDobra    = (argL("dobra", 1) != 0);
-  if (server.hasArg("envelope")) protEnvelope = (argL("envelope", 0) != 0);
-  enviarComando(CMD_APLICAR_CONFIG);
-  ok();
+  if (!exigirManual()) return;
+
+  prepararConfigPendente();
+  if (server.hasArg("curso"))    configPendente.protCurso    = (argL("curso", 1) != 0);
+  if (server.hasArg("dobra"))    configPendente.protDobra    = (argL("dobra", 1) != 0);
+  if (server.hasArg("envelope")) configPendente.protEnvelope = (argL("envelope", 0) != 0);
+
+  enfileirar(CMD_APLICAR_CONFIG);
 }
 
 static void handleReset() {
   registrarContatoWeb();
-  enviarComando(CMD_RESTAURAR_PADROES);
-  ok();
+  if (!exigirManual()) return;
+  enfileirar(CMD_RESTAURAR_PADROES);
 }
 
 // ---------------------------------------------------------------------

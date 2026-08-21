@@ -136,6 +136,18 @@ static long distanciaFreada(const Junta& j) {
 void jogAtualizar() {
   const uint32_t agora = millis();
 
+  // Portao unico de movimento (ver estado.h). Sem servos habilitados o
+  // gerador de pulso continua contando passos com o eixo parado, e todo
+  // limite de curso passa a apontar para o lugar errado.
+  if (!movimentoLiberado) {
+    if (jogDir[0] != 0 || jogDir[1] != 0) {
+      jogZerar();
+      definirMensagem("Jog bloqueado: %s",
+                      !servosLigados ? "habilite os servos" : "intertravamento de seguranca");
+    }
+    return;
+  }
+
   for (uint8_t i = 0; i < 2; i++) {
     Junta& j = (i == 0) ? J1 : J2;
     if (!j.motor) continue;
@@ -236,6 +248,8 @@ void pararEmergencia() {
   pararSuave();
   aplicarAceleracao();
   aplicarVelocidadeManual();
-  modoAtual = MODO_MANUAL;
+  // FALHA nao se limpa com uma parada: quem rearma e CMD_SERVOS, depois
+  // de confirmar que o alarme do driver sumiu.
+  if (modoAtual != MODO_FALHA) modoAtual = MODO_MANUAL;
   definirMensagem("PARADA: movimento interrompido e solda desligada");
 }

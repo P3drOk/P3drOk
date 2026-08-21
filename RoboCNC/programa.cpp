@@ -4,6 +4,7 @@
 #include "cinematica.h"
 #include "solda.h"
 #include <math.h>
+#include <stdio.h>
 
 static Ponto   pontos[MAX_PONTOS];
 static uint8_t nPontos = 0;
@@ -128,6 +129,11 @@ bool progIniciar(bool modoEnsaio, const char** motivo) {
     if (motivo) *motivo = "calibre as juntas antes de executar";
     return false;
   }
+  // Vale para o ensaio tambem: ele move o braco pelo percurso inteiro.
+  if (!servosLigados) {
+    if (motivo) *motivo = "habilite os servos antes de executar";
+    return false;
+  }
   for (uint8_t i = 0; i < nPontos; i++) {
     const char* m = nullptr;
     if (!posturaValidaPassos(pontos[i].p1, pontos[i].p2, &m)) {
@@ -135,10 +141,39 @@ bool progIniciar(bool modoEnsaio, const char** motivo) {
       return false;
     }
   }
-  // Trechos de solda percorrem reta: valide a reta inteira, nao so as pontas.
+
+  // Aproximacao ate o primeiro ponto: interpolada nas juntas.
+  {
+    const char* m = nullptr;
+    if (!caminhoJuntasValidoPassos(posicaoJ1(), posicaoJ2(),
+                                   pontos[0].p1, pontos[0].p2, &m)) {
+      static char aviso[96];
+      snprintf(aviso, sizeof(aviso),
+               "o caminho ate o ponto 1 passa por: %s", m ? m : "postura invalida");
+      if (motivo) *motivo = aviso;
+      return false;
+    }
+  }
+
+  // Cada trecho pelo que ele realmente percorre: reta cartesiana quando
+  // ha solda, interpolacao nas juntas quando e so deslocamento. Validar
+  // so as pontas do deslocamento deixava o braco atravessar a zona
+  // proibida no meio do caminho.
   for (uint8_t i = 0; i + 1 < nPontos; i++) {
-    if (!pontos[i].soldaAteProximo) continue;
-    if (!retaPercorrivel(i, motivo)) return false;
+    if (pontos[i].soldaAteProximo) {
+      if (!retaPercorrivel(i, motivo)) return false;
+      continue;
+    }
+    const char* m = nullptr;
+    if (!caminhoJuntasValidoPassos(pontos[i].p1, pontos[i].p2,
+                                   pontos[i + 1].p1, pontos[i + 1].p2, &m)) {
+      static char aviso[96];
+      snprintf(aviso, sizeof(aviso),
+               "o deslocamento %u->%u passa por: %s",
+               (unsigned)(i + 1), (unsigned)(i + 2), m ? m : "postura invalida");
+      if (motivo) *motivo = aviso;
+      return false;
+    }
   }
 
   ensaio = modoEnsaio;

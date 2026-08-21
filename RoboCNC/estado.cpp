@@ -1,6 +1,7 @@
 #include "estado.h"
 #include <Preferences.h>
 #include <stdarg.h>
+#include <string.h>
 
 Junta J1;
 Junta J2;
@@ -29,6 +30,11 @@ bool        servosLigados = false;
 char        ultimaMensagem[96] = "Sistema iniciado";
 
 QueueHandle_t filaComandos = nullptr;
+
+volatile bool pedidoParada    = false;
+bool          movimentoLiberado = false;
+
+ConfigPendente configPendente;
 
 volatile uint32_t ultimoContatoWebMs = 0;
 
@@ -60,6 +66,17 @@ bool enviarComando(TipoComando tipo, int32_t a, int32_t b, float f1, float f2) {
   return xQueueSend(filaComandos, &c, 0) == pdTRUE;
 }
 
+// A parada nao passa pela fila: ver estado.h.
+void solicitarParada() {
+  pedidoParada = true;
+}
+
+void limparFilaComandos() {
+  if (!filaComandos) return;
+  Comando descarte;
+  while (xQueueReceive(filaComandos, &descarte, 0) == pdTRUE) { }
+}
+
 void registrarContatoWeb() {
   ultimoContatoWebMs = millis();
 }
@@ -77,13 +94,82 @@ void lerSnapshot(Snapshot& destino) {
   portEXIT_CRITICAL(&muxSnapshot);
 }
 
+// definirMensagem() e chamada de dentro do laco de 1 ms do core 1 (o jog
+// de recuperacao chamava a cada ciclo). Serial.print() BLOQUEIA quando o
+// buffer de TX enche, e quem trava e o laco que roda supervisionar() -
+// uma frase informativa passando na frente da supervisao de seguranca.
+//
+// A mensagem sempre atualiza (a interface ve tudo). O eco na serial e que
+// e poupado: repeticao identica nao imprime, e ha um piso de 50 ms entre
+// impressoes, o que limita a UART a ~9% da banda.
 void definirMensagem(const char* fmt, ...) {
+  static uint32_t ultimoEcoMs = 0;
+
+  char buf[sizeof(ultimaMensagem)];
   va_list args;
   va_start(args, fmt);
-  vsnprintf(ultimaMensagem, sizeof(ultimaMensagem), fmt, args);
+  vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
+
+  const bool repetida = (strcmp(buf, ultimaMensagem) == 0);
+  memcpy(ultimaMensagem, buf, sizeof(ultimaMensagem));
+  if (repetida) return;
+
+  const uint32_t agora = millis();
+  if (ultimoEcoMs != 0 && (agora - ultimoEcoMs) < 50) return;
+  ultimoEcoMs = agora;
+
   Serial.print("[MSG] ");
   Serial.println(ultimaMensagem);
+}
+
+// ---------------------------------------------------------------------
+// Configuracao: preparo no core 0, aplicacao no core 1.
+// ---------------------------------------------------------------------
+void prepararConfigPendente() {
+  configPendente.velNormal    = velNormal;
+  configPendente.velPrecisao  = velPrecisao;
+  configPendente.velAuto      = velAuto;
+  configPendente.velCordaoMmS = velCordaoMmS;
+  configPendente.acel1        = J1.aceleracao;
+  configPendente.acel2        = J2.aceleracao;
+  configPendente.ppv1         = J1.passosPorVolta;
+  configPendente.ppv2         = J2.passosPorVolta;
+  configPendente.red1         = J1.reducao;
+  configPendente.red2         = J2.reducao;
+  configPendente.escalaTraj   = escalaVelocidadeTraj;
+  configPendente.elo1         = elo1Mm;
+  configPendente.elo2         = elo2Mm;
+  configPendente.folgaDobra   = folgaDobra;
+  configPendente.envY         = envYMin;
+  configPendente.envRaio      = envRaioMin;
+  configPendente.protCurso    = protCurso;
+  configPendente.protDobra    = protDobra;
+  configPendente.protEnvelope = protEnvelope;
+}
+
+void aplicarConfigPendente() {
+  velNormal         = configPendente.velNormal;
+  velPrecisao       = configPendente.velPrecisao;
+  velAuto           = configPendente.velAuto;
+  velCordaoMmS      = configPendente.velCordaoMmS;
+  J1.aceleracao     = configPendente.acel1;
+  J2.aceleracao     = configPendente.acel2;
+  J1.passosPorVolta = configPendente.ppv1;
+  J2.passosPorVolta = configPendente.ppv2;
+  J1.reducao        = configPendente.red1;
+  J2.reducao        = configPendente.red2;
+  escalaVelocidadeTraj = configPendente.escalaTraj;
+  elo1Mm            = configPendente.elo1;
+  elo2Mm            = configPendente.elo2;
+  folgaDobra        = configPendente.folgaDobra;
+  envYMin           = configPendente.envY;
+  envRaioMin        = configPendente.envRaio;
+  protCurso         = configPendente.protCurso;
+  protDobra         = configPendente.protDobra;
+  protEnvelope      = configPendente.protEnvelope;
+
+  recalcularResolucao();
 }
 
 // ---------------------------------------------------------------------
@@ -128,6 +214,7 @@ void carregarConfiguracoes() {
   prefs.end();
 
   recalcularResolucao();
+  prepararConfigPendente();   // a area de preparo nasce coerente com o vivo
 
   Serial.println("[NVS] Configuracoes carregadas.");
 }
@@ -186,7 +273,9 @@ void restaurarPadroes() {
   folgaDobra     = FOLGA_DOBRA_PADRAO;
   envYMin        = ENV_Y_MIN_PADRAO;
   envRaioMin     = ENV_RAIO_MIN_PADRAO;
+  escalaVelocidadeTraj = 100;
 
   recalcularResolucao();
+  prepararConfigPendente();
   salvarConfiguracoes();
 }

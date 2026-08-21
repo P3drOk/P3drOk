@@ -19,12 +19,14 @@
 #include "programa.h"
 #include "calibracao.h"
 #include "Preferences.h"
+#include <stdlib.h>
 
 extern void setup();
 extern void loop();
 extern int  g_comandosDescartados;
 extern uint32_t g_msgCount;
 extern uint32_t g_serialBytes;
+extern bool g_serialSilencioso;
 extern NvsMock g_nvs;
 
 // ---------------------------------------------------------------------
@@ -92,6 +94,15 @@ static void reiniciarSistema() {
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
+  // Cada cenario comeca com os geradores de pulso no estado de boot: o
+  // mock reaproveita os objetos entre setup()s, entao o movimento
+  // residual de um teste vazaria para o seguinte.
+  if (J1.motor) J1.motor->reiniciar();
+  if (J2.motor) J2.motor->reiniciar();
+  // progLimpar()/trajLimpar() zeram os buffers estaticos dos modulos, que
+  // sobrevivem a um setup() e vazariam pontos de um cenario para o outro.
+  progLimpar();
+  trajLimpar();
   // Descarta o transiente do boot.
   registrarContatoWeb();
   rodarComWeb(50);
@@ -105,19 +116,40 @@ static void teste_A01_fila_de_comandos() {
   reiniciarSistema();
   prepararRoboCalibrado();
 
-  // O core 1 esta ocupado (situacao real: um ciclo longo). Enquanto isso
-  // a interface continua mandando heartbeat de jog a cada 100 ms e o
-  // operador aperta PARAR.
-  int enfileirados = 0;
-  for (int i = 0; i < 24; i++) if (enviarComando(CMD_JOG, 1, 1)) enfileirados++;
-  const bool paradaAceita = enviarComando(CMD_PARAR);
+  // Poe o braco em movimento de verdade: jog continuo na junta 1.
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(60); }
+  const bool andando = motoresEmMovimento();
 
-  checar(paradaAceita, "A01",
-         "CMD_PARAR entra na fila mesmo com a fila cheia de jog");
-  nota("fila de %d posicoes; %d jogs enfileirados; PARAR %s",
-       24, enfileirados, paradaAceita ? "aceito" : "DESCARTADO");
-  nota("handleParar() em servidor_web.cpp responde 200 \"ok\" sem olhar o");
-  nota("retorno de enviarComando(): a interface diz que parou e nao parou.");
+  // Agora a fila enche de heartbeat de jog (a interface manda um a cada
+  // 100 ms por eixo e o core 1 esta ocupado), e o operador aperta PARAR.
+  int enfileirados = 0;
+  for (int i = 0; i < 40; i++) if (enviarComando(CMD_JOG, 1, 1)) enfileirados++;
+  const bool filaCheia = !enviarComando(CMD_JOG, 1, 1);
+
+  // handleParar() nao enfileira: escreve a flag que o loop() testa antes
+  // de drenar a fila.
+  solicitarParada();
+  rodarComWeb(5);
+  const float velLogoApos = J1.motor ? fabsf(J1.motor->getCurrentSpeedInMilliHz() / 1000.0f) : 0;
+  rodarComWeb(1200);   // tempo de sobra para a rampa de desaceleracao
+
+  checar(andando && filaCheia && !motoresEmMovimento(), "A01",
+         "a parada tem que agir mesmo com a fila de comandos cheia");
+  nota("braco em movimento antes: %s | %d jogs enfileirados ate encher",
+       andando ? "sim" : "nao", enfileirados);
+  nota("apos solicitarParada(): 5 ms depois ainda a %.0f Hz (rampa de", velLogoApos);
+  nota("desaceleracao), 1,2 s depois motores %s, arco %s",
+       motoresEmMovimento() ? "AINDA ANDANDO" : "parados",
+       soldaLigada() ? "LIGADO" : "desligado");
+  nota("A flag pedidoParada e testada no topo do loop(), fora da fila.");
+  nota("handleParar() responde 200; os demais handlers respondem 503");
+  nota("quando enviarComando() falha, em vez de mentir \"ok\".");
+
+  // O caminho antigo continua existindo para uso interno, mas agora e o
+  // unico que pode ser descartado -- e nao e o que a interface usa.
+  const bool viaFila = enviarComando(CMD_PARAR);
+  nota("(CMD_PARAR pela fila, so para comparacao: %s)",
+       viaFila ? "aceito" : "descartado - era este o furo");
 }
 
 // =====================================================================
@@ -142,9 +174,10 @@ static void teste_A02_jog_sem_servos() {
   nota("servosLigados=%d, posicao J1: %ld -> %ld (%+ld passos = %.1f graus)",
        (int)servosLigados, antes, depois, depois - antes,
        (depois - antes) / J1.passosPorGrau);
-  nota("O firmware gerou pulsos para um driver desabilitado. O eixo nao");
-  nota("se moveu, mas a referencia de calibracao andou: todo limite de");
-  nota("curso passa a apontar para o lugar errado.");
+  nota("Gerar pulso para driver desabilitado nao move o eixo, mas move o");
+  nota("contador -- e e nele que toda a protecao de curso se apoia.");
+  nota("Bloqueado pelo portao movimentoLiberado (estado.h), avaliado por");
+  nota("supervisionar() e consultado em jogAtualizar().");
 }
 
 // =====================================================================
@@ -175,10 +208,11 @@ static void teste_A03_faixa_morta_da_margem() {
        J1.grausMin, MARGEM_LIMITE_GRAUS);
   nota("posturaValida() = %s (%s)  |  gravidadeViolacao() = %.3f",
        valida ? "true" : "false", motivo ? motivo : "-", grav);
-  nota("posturaValida usa grausMin+MARGEM; gravidadeViolacao usa grausMin");
-  nota("cru. Na faixa entre os dois a postura e invalida E a gravidade e");
-  nota("zero, entao o criterio de recuperacao (gAtual>0.001) nunca vale.");
-  nota("Movimento: %ld -> %ld passos.", antes, depois);
+  nota("As duas contas usam a MESMA margem. Antes, posturaValida() usava");
+  nota("grausMin+MARGEM e gravidadeViolacao() usava grausMin cru: na faixa");
+  nota("entre os dois a postura era invalida E a gravidade era zero, entao");
+  nota("o criterio de recuperacao (gAtual>0.001) nunca liberava a volta.");
+  nota("Movimento de recuperacao: %ld -> %ld passos.", antes, depois);
 }
 
 // =====================================================================
@@ -209,8 +243,12 @@ static void teste_A04_curso_minimo_aceito() {
 
   checar(!aceitou, "A04",
          "calibracao com curso menor que a margem de seguranca deve ser recusada");
-  nota("calibrada=%s, curso medido J1 = %.3f grau (margem exigida = %.1f x2)",
-       aceitou ? "SIM" : "nao", curso1, MARGEM_LIMITE_GRAUS);
+  nota("calibrada=%s, curso medido = %.3f grau; minimo exigido = %.0f graus",
+       aceitou ? "SIM" : "nao", curso1, CURSO_MINIMO_GRAUS);
+  nota("ajustarCurso() mede em GRAUS. O criterio antigo (> 10 passos)");
+  nota("aceitava 0,4 grau na resolucao padrao -- menos que os 2 x %.1f de",
+       MARGEM_LIMITE_GRAUS);
+  nota("margem, o que produzia intervalo util negativo e travava os eixos.");
 
   if (aceitou) {
     // O braco esta em zero, dentro do curso. Ainda assim...
@@ -263,18 +301,18 @@ static void teste_A05_perda_de_conexao_soldando() {
          "a maquina de estados do programa deve ser encerrada, nao congelada");
   nota("depois da queda: modo=%d, progRodando=%d, progIdx=%u",
        (int)modoAtual, (int)progRodando(), (unsigned)progIndiceAtual());
-  nota("supervisionar() chama trajPararReproducao() e trajPararGravacao(),");
-  nota("mas nunca progParar(). O programa fica em fase != PARADO com o");
-  nota("modo de volta em MANUAL.");
+  nota("Os tres ramos de supervisionar() (alarme, emergencia, conexao) e a");
+  nota("parada do operador passam todos por pararTudo(), que encerra");
+  nota("programa, trajetoria, gravacao, calibracao e jog de uma vez.");
 
   const uint32_t acelDepois = J1.motor->getAcceleration();
   checar(acelDepois == J1.aceleracao, "A05c",
          "a aceleracao deve voltar ao valor configurado apos a parada");
-  nota("aceleracao configurada = %lu; durante o cordao = %lu; depois da",
+  nota("configurada = %lu; durante o cordao = %lu (prepararReta usa 4x);",
        (unsigned long)J1.aceleracao, (unsigned long)acelDurante);
-  nota("queda = %lu. Quem restaura e progParar(), que nao foi chamado.",
+  nota("depois da queda = %lu. Sem passar por progParar(), o jog manual",
        (unsigned long)acelDepois);
-  nota("O jog manual seguinte roda com aceleracao 4x mais alta.");
+  nota("seguinte rodaria com a aceleracao 4x ainda ativa.");
   (void)soldando;
 }
 
@@ -317,16 +355,16 @@ static void teste_A06_ir_ponto_sem_revalidar() {
   checar(aindaValido || !moveu, "A06",
          "'ir' para um ponto agora invalido deve ser recusado");
   nota("modo apos o comando = %d (5=CALIBRANDO, 4=POSICIONANDO)", (int)modoAtual);
-  nota("CMD_IR_PARA_PONTO em RoboCNC.ino chama moverCoordenado() direto,");
-  nota("sem passar por posturaValida(). O LEIA-ME promete validacao em");
-  nota("TODO comando de movimento.");
+  nota("CMD_IR_PARA_PONTO passa por irParaPassos(), que confere calibracao,");
+  nota("servos, a postura de destino e o interior do caminho ate ela -- e");
+  nota("nao a validacao feita quando o ponto foi gravado.");
 }
 
 // =====================================================================
 //  A07 - Deslocamento sem solda atravessa a zona proibida
 // =====================================================================
 static void teste_A07_deslocamento_atravessa_mesa() {
-  secao("A07  Trecho sem solda: o caminho curvo respeita a mesa?");
+  secao("A07  Deslocamento que atravessa zona proibida e recusado?");
   reiniciarSistema();
   prepararRoboCalibrado(170.0f);
   protEnvelope = true;
@@ -334,14 +372,13 @@ static void teste_A07_deslocamento_atravessa_mesa() {
   envYMin      = -50.0f;
   envRaioMin   = 40.0f;
 
-  // Busca exaustiva: existe algum par de posturas AMBAS validas cuja
-  // interpolacao nas juntas -- exatamente o que moverCoordenado() faz --
-  // passe por uma postura invalida?
+  // Busca um par de posturas AMBAS validas cuja interpolacao nas juntas --
+  // o caminho que moverCoordenado() realmente percorre -- passe por uma
+  // postura invalida.
   const float PASSO = 10.0f;
   float A1=0, A2=0, B1=0, B2=0, piorA=0;
   const char* motivoMeio = nullptr;
   bool achou = false;
-  long paresValidos = 0;
 
   for (float a1 = -170; a1 <= 170 && !achou; a1 += PASSO)
   for (float a2 = -170; a2 <= 170 && !achou; a2 += PASSO) {
@@ -349,7 +386,6 @@ static void teste_A07_deslocamento_atravessa_mesa() {
     for (float b1 = -170; b1 <= 170 && !achou; b1 += PASSO)
     for (float b2 = -170; b2 <= 170 && !achou; b2 += PASSO) {
       if (!posturaValida(b1, b2, nullptr)) continue;
-      paresValidos++;
       for (int k = 1; k < 40; k++) {
         const float a = (float)k / 40.0f;
         const char* m = nullptr;
@@ -360,24 +396,41 @@ static void teste_A07_deslocamento_atravessa_mesa() {
     }
   }
 
-  checar(!achou, "A07",
-         "o caminho entre dois pontos validos nao pode atravessar zona proibida");
-  nota("%ld pares de posturas validas examinados (grade de %.0f graus)",
-       paresValidos, PASSO);
-  if (achou) {
-    float xc, yc, xp, yp;
-    cinematicaDireta(A1, A2, xc, yc, xp, yp);
-    nota("ponto A: t=(%.0f, %.0f)  ponta (%.0f, %.0f) mm  -> VALIDO", A1, A2, xp, yp);
-    cinematicaDireta(B1, B2, xc, yc, xp, yp);
-    nota("ponto B: t=(%.0f, %.0f)  ponta (%.0f, %.0f) mm  -> VALIDO", B1, B2, xp, yp);
-    const float m1 = A1 + (B1-A1)*piorA, m2 = A2 + (B2-A2)*piorA;
-    cinematicaDireta(m1, m2, xc, yc, xp, yp);
-    nota("a %.0f%% do percurso: t=(%.0f, %.0f)  ponta (%.0f, %.0f) mm  -> %s",
-         piorA*100, m1, m2, xp, yp, motivoMeio ? motivoMeio : "invalido");
-    nota("progIniciar() valida as PONTAS de todo trecho e a reta inteira dos");
-    nota("trechos com solda, mas nunca o interior de um deslocamento; e");
-    nota("nada supervisiona a postura enquanto moverCoordenado() executa.");
-  }
+  if (!achou) { nota("nenhum par desses na grade -- geometria sem armadilha"); return; }
+
+  float xc, yc, xp, yp;
+  cinematicaDireta(A1, A2, xc, yc, xp, yp);
+  nota("ponto A: t=(%.0f, %.0f)  ponta (%.0f, %.0f) mm  -> VALIDO", A1, A2, xp, yp);
+  cinematicaDireta(B1, B2, xc, yc, xp, yp);
+  nota("ponto B: t=(%.0f, %.0f)  ponta (%.0f, %.0f) mm  -> VALIDO", B1, B2, xp, yp);
+  const float m1 = A1 + (B1-A1)*piorA, m2 = A2 + (B2-A2)*piorA;
+  cinematicaDireta(m1, m2, xc, yc, xp, yp);
+  nota("a %.0f%% do percurso: t=(%.0f, %.0f)  ponta (%.0f, %.0f) mm  ->  %s",
+       piorA*100, m1, m2, xp, yp, motivoMeio ? motivoMeio : "invalido");
+
+  // Programa com esses dois pontos e SEM solda entre eles: deslocamento
+  // puro, interpolado nas juntas.
+  progLimpar();
+  const char* m = nullptr;
+  progAdicionarPonto(grausParaPassos(J1, A1), grausParaPassos(J2, A2), &m);
+  progAdicionarPonto(grausParaPassos(J1, B1), grausParaPassos(J2, B2), &m);
+  progDefinirSolda(0, false);
+
+  J1.motor->setCurrentPosition(grausParaPassos(J1, A1));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, A2));
+  rodarComWeb(5);
+
+  const char* motivo = nullptr;
+  const bool aceitou = progIniciar(true, &motivo);   // ensaio, sem arco
+
+  checar(!aceitou, "A07",
+         "programa cujo deslocamento atravessa zona proibida deve ser recusado");
+  nota("progIniciar(ensaio) -> %s", aceitou ? "ACEITO" : motivo);
+  nota("progIniciar() agora valida cada trecho pelo que ele realmente");
+  nota("percorre: reta cartesiana quando ha solda, interpolacao nas juntas");
+  nota("quando e deslocamento. Validar so as pontas deixava o braco raspar");
+  nota("a mesa no meio do caminho.");
+  if (aceitou) progParar();
 }
 
 // =====================================================================
@@ -387,20 +440,55 @@ static void teste_A08_estop_rearme() {
   secao("A08  Botao de emergencia fisico segurado: da para religar servos?");
 
   if (!ESTOP_FISICO_INSTALADO) {
-    nota("ESTOP_FISICO_INSTALADO = false em config.h: o teste roda sobre a");
-    nota("logica de supervisionar() analisada estaticamente.");
-    nota("");
-    nota("  if (estop && !emergenciaAtiva) { ... servosHabilitar(false); }");
-    nota("");
-    nota("A acao so acontece na BORDA. Com o botao ainda pressionado,");
-    nota("emergenciaAtiva ja e true, entao CMD_SERVOS(1) chama");
-    nota("servosHabilitar(true) e nada volta a desligar. O intertravamento");
-    nota("do rele checa !estop, mas jogAtualizar() nao checa nada disso:");
-    nota("o braco volta a se mover com a emergencia acionada.");
-    checar(false, "A08",
-           "com o e-stop acionado, habilitar servos deve ser recusado");
+    nota("compile com -DESTOP_FISICO_INSTALADO=true para exercitar este ramo");
+    nota("(o config.h de producao mantem false ate o botao existir)");
     return;
   }
+
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  for (int i = 0; i < 3; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  nota("antes: servos=%d, braco em movimento=%d",
+       (int)servosLigados, (int)motoresEmMovimento());
+
+  // Operador soca o botao (contato NC -> LOW).
+  g_pinEntrada[PIN_ESTOP] = LOW;
+  rodarComWeb(800);
+
+  checar(!servosLigados && !motoresEmMovimento() && !soldaLigada(), "A08a",
+         "a emergencia derruba torque, movimento e arco");
+  nota("com o botao acionado: servos=%d, movimento=%d, arco=%d",
+       (int)servosLigados, (int)motoresEmMovimento(), (int)soldaLigada());
+
+  // Com o botao AINDA acionado, tenta rearmar e jogar.
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(50);
+  const bool rearmou = servosLigados;
+  const long antes = posicaoJ1();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  rodarComWeb(300);
+  const long depois = posicaoJ1();
+
+  checar(!rearmou && depois == antes, "A08b",
+         "com o botao acionado, rearmar servos e jogar devem ser recusados");
+  nota("CMD_SERVOS(1) com emergencia ativa: servos=%d | jog: %ld -> %ld passos",
+       (int)rearmou, antes, depois);
+  nota("Emergencia e condicao de NIVEL. Reagir so na borda deixava um");
+  nota("CMD_SERVOS posterior religar o torque com o botao pressionado, e");
+  nota("jogAtualizar() nao consultava estop em lugar nenhum.");
+
+  // Solta o botao: o sistema volta a aceitar rearme.
+  g_pinEntrada[PIN_ESTOP] = HIGH;
+  rodarComWeb(100);
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(50);
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(400);
+
+  checar(servosLigados && posicaoJ1() != depois, "A08c",
+         "soltando o botao, o rearme e o jog voltam a funcionar");
+  nota("apos soltar: servos=%d, jog moveu para %ld passos",
+       (int)servosLigados, posicaoJ1());
 }
 
 // =====================================================================
@@ -435,8 +523,9 @@ static void teste_A09_serial_no_loop() {
        dt ? (float)bytes / dt / 11.52f * 100.0f : 0.0f);
   nota("Quando o buffer de TX enche, Serial.print() bloqueia -- e quem");
   nota("trava e o loop() do core 1, o mesmo que roda supervisionar().");
-  nota("Origem: definirMensagem(\"Junta %%u fora da area util: voltando\")");
-  nota("em motores.cpp, chamada a cada ciclo enquanto durar a recuperacao.");
+  nota("definirMensagem() sempre atualiza a mensagem (a interface ve tudo);");
+  nota("o eco na serial e que e poupado: repeticao identica nao imprime e");
+  nota("ha um piso de 50 ms entre impressoes.");
 }
 
 // =====================================================================
@@ -496,30 +585,31 @@ static void teste_A11_cancelar_calibracao() {
   prepararRoboCalibrado();
   salvarConfiguracoes();       // grava o curso +/-90 em NVS
 
-  nota("calibracao valida em NVS: J1 de %.1f a %.1f graus, zero na posicao %ld",
-       J1.grausMin, J1.grausMax, posicaoJ1());
-
-  // O operador comeca uma nova calibracao e define o HOME 30 graus adiante.
-  enviarComando(CMD_CALIB_INICIAR); rodarComWeb(10);
+  // Leva o braco a 30 graus e anota onde ele esta na referencia valida.
   J1.motor->setCurrentPosition(grausParaPassos(J1, 30.0f));
   rodarComWeb(5);
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(10);   // zera AQUI
+  const float antes = passosParaGraus(J1, posicaoJ1());
+  nota("calibracao valida: J1 de %.1f a %.1f graus; braco em %.1f graus",
+       J1.grausMin, J1.grausMax, antes);
+
+  // O operador comeca uma nova calibracao e define o HOME AQUI...
+  enviarComando(CMD_CALIB_INICIAR); rodarComWeb(20);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(20);   // zera neste ponto
+  nota("depois do HOME da nova calibracao: braco lido como %.1f graus",
+       passosParaGraus(J1, posicaoJ1()));
 
   // ...e desiste.
-  enviarComando(CMD_CALIB_CANCELAR); rodarComWeb(20);
+  enviarComando(CMD_CALIB_CANCELAR); rodarComWeb(30);
+  const float depois = passosParaGraus(J1, posicaoJ1());
 
-  const float t1 = passosParaGraus(J1, posicaoJ1());
-  nota("apos cancelar: calibrada=%d, limites %.1f a %.1f, posicao logica %.1f",
-       (int)J1.calibrada, J1.grausMin, J1.grausMax, t1);
-  nota("O braco esta fisicamente onde estava 30 graus adiante do zero");
-  nota("antigo, mas o contador foi rezerado e nunca desfeito.");
-
-  checar(!J1.calibrada, "A11",
-         "cancelar depois de rezerar deve invalidar a calibracao restaurada");
-  nota("calibCancelar() chama carregarConfiguracoes() e recupera passosMin/");
-  nota("passosMax do NVS, que se referem ao zero ANTIGO. zerarPosicoes()");
-  nota("nao e desfeito: os limites passam a proteger a regiao errada, com");
-  nota("erro igual a distancia entre os dois zeros.");
+  checar(J1.calibrada && fabsf(depois - antes) < 0.05f, "A11",
+         "cancelar tem que devolver a origem anterior junto com os limites");
+  nota("apos cancelar: calibrada=%d, limites %.1f a %.1f, braco em %.1f graus",
+       (int)J1.calibrada, J1.grausMin, J1.grausMax, depois);
+  nota("calibCancelar() recupera passosMin/passosMax do NVS, que se referem");
+  nota("ao zero ANTIGO. Sem desfazer o zerarPosicoes() do CAL_HOME os");
+  nota("limites protegeriam a regiao errada, com erro igual a distancia");
+  nota("entre os dois zeros (%.0f graus neste cenario).", antes);
 }
 
 // =====================================================================
@@ -545,8 +635,8 @@ static void teste_A12_reproduzir_sem_servos() {
          "reproduzir com os drivers desabilitados deve ser recusado");
   nota("servosLigados=%d, reproduzindo=%d, modo=%d",
        (int)servosLigados, (int)trajReproduzindo(), (int)modoAtual);
-  nota("CMD_PROG_EXECUTAR checa servosLigados quando ha arco; a reproducao");
-  nota("de trajetoria (que tambem aciona o rele) nao checa nada.");
+  nota("trajIniciarReproducao() e progIniciar() exigem servos -- este");
+  nota("ultimo tambem no ensaio, que percorre o programa inteiro.");
   enviarComando(CMD_PARAR); rodarComWeb(20);
 }
 
@@ -637,30 +727,167 @@ static void teste_A13_troca_de_cotovelo() {
 //  A14 - Config aplicada pelo core 0 durante movimento
 // =====================================================================
 static void teste_A14_config_durante_movimento() {
-  secao("A14  /api/config altera a resolucao com o braco em movimento");
+  secao("A14  Configuracao aplicada com o braco em movimento");
   reiniciarSistema();
   prepararRoboCalibrado();
 
-  J1.motor->setCurrentPosition(grausParaPassos(J1, 45.0f));
+  // Um programa rodando, para o robo NAO estar em modo manual.
+  J1.motor->setCurrentPosition(grausParaPassos(J1, 20.0f));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, -40.0f));
   rodarComWeb(5);
-  const float antes = passosParaGraus(J1, posicaoJ1());
-  const long  passos = posicaoJ1();
+  enviarComando(CMD_PONTO_GRAVAR); rodarComWeb(10);
+  J1.motor->setCurrentPosition(grausParaPassos(J1, 35.0f));
+  rodarComWeb(5);
+  enviarComando(CMD_PONTO_GRAVAR); rodarComWeb(10);
+  enviarComando(CMD_PONTO_SOLDA, 0, 1); rodarComWeb(10);
+  enviarComando(CMD_PROG_EXECUTAR, 0); rodarComWeb(1500);
+  nota("modo durante o cordao = %d (3 = EXECUTANDO)", (int)modoAtual);
 
-  // Isto e literalmente o que handleConfig() faz, no core 0, sem fila e
-  // sem checar o modo:
-  J1.passosPorVolta = J1.passosPorVolta * 2;
-  recalcularResolucao();
+  const uint32_t ppvVivo = J1.passosPorVolta;
+  const float    ppgVivo = J1.passosPorGrau;
+  const float    t1Vivo  = passosParaGraus(J1, posicaoJ1());
 
-  const float depois = passosParaGraus(J1, posicaoJ1());
-  checar(fabsf(antes - depois) < 0.1f, "A14",
-         "mudar a resolucao nao pode teleportar a posicao logica do braco");
-  nota("mesma posicao fisica (%ld passos): %.1f graus  ->  %.1f graus",
-       passos, antes, depois);
-  nota("limites recalculados junto: %.1f..%.1f graus", J1.grausMin, J1.grausMax);
-  nota("handleConfig() roda no core 0 e escreve J1/J2 e chama");
-  nota("recalcularResolucao() direto, sem passar pela fila de comandos e");
-  nota("sem exigir modoAtual == MANUAL. Se acontecer durante um cordao, o");
-  nota("grausParaPassos() do proximo setpoint muda de escala no meio.");
+  // Isto e o que handleConfig() faz agora: valida, preenche a area de
+  // preparo e enfileira. Nada e escrito nas variaveis vivas aqui.
+  prepararConfigPendente();
+  configPendente.ppv1 = ppvVivo * 2;
+  enviarComando(CMD_APLICAR_CONFIG);
+  rodarComWeb(50);
+
+  checar(J1.passosPorVolta == ppvVivo && J1.passosPorGrau == ppgVivo, "A14a",
+         "configuracao nao pode ser aplicada com o robo fora do modo manual");
+  nota("durante o cordao: ppv=%lu (era %lu), braco em %.1f graus (era %.1f)",
+       (unsigned long)J1.passosPorVolta, (unsigned long)ppvVivo,
+       passosParaGraus(J1, posicaoJ1()), t1Vivo);
+
+  // Para o programa e tenta de novo, agora em manual.
+  enviarComando(CMD_PROG_PARAR); rodarComWeb(600);
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(50);
+
+  checar(J1.passosPorVolta == ppvVivo * 2, "A14b",
+         "em modo manual a configuracao e aplicada normalmente");
+  nota("modo=%d, ppv=%lu, resolucao %.2f -> %.2f pulsos por grau",
+       (int)modoAtual, (unsigned long)J1.passosPorVolta, ppgVivo, J1.passosPorGrau);
+  nota("Quem escreve nas variaveis vivas e chama recalcularResolucao() e o");
+  nota("core 1, dentro de CMD_APLICAR_CONFIG. O handler HTTP so valida os");
+  nota("argumentos e preenche configPendente.");
+}
+
+// =====================================================================
+//  A15 - REGRESSAO: o fluxo completo de solda continua funcionando
+// =====================================================================
+static void teste_A15_fluxo_completo() {
+  secao("A15  REGRESSAO: calibrar, ensinar, ensaiar e soldar de ponta a ponta");
+  reiniciarSistema();
+
+  // --- 1. habilitar servos ---
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
+  checar(servosLigados, "A15a", "servos habilitam");
+
+  // --- 2. calibrar as duas juntas pelo assistente ---
+  enviarComando(CMD_CALIB_INICIAR); rodarComWeb(20);
+  const bool entrou = (modoAtual == MODO_CALIBRANDO);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(20);       // HOME
+
+  const long curso = (long)(60.0f * J1.passosPorGrau);
+  J1.motor->setCurrentPosition(-curso);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J1 negativo
+  J1.motor->setCurrentPosition(+curso);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J1 positivo
+  J2.motor->setCurrentPosition(-curso);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J2 negativo
+  J2.motor->setCurrentPosition(+curso);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J2 positivo
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(50);       // concluir
+
+  checar(entrou && J1.calibrada && J2.calibrada && modoAtual == MODO_MANUAL,
+         "A15b", "o assistente de calibracao completa e salva");
+  nota("J1 %.1f..%.1f graus, J2 %.1f..%.1f graus",
+       J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
+
+  // --- 3. jog manual ---
+  const long p0 = posicaoJ1();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(400);
+  checar(posicaoJ1() > p0, "A15c", "o jog manual move a junta");
+  nota("jog: %ld -> %ld passos (%.1f graus)", p0, posicaoJ1(),
+       passosParaGraus(J1, posicaoJ1()));
+
+  // --- 4. ensinar tres pontos: um cordao e um deslocamento ---
+  progLimpar();
+  const float T1[3] = { 10, 25, 40 };
+  const float T2[3] = { -30, -30, -50 };
+  for (int i = 0; i < 3; i++) {
+    J1.motor->setCurrentPosition(grausParaPassos(J1, T1[i]));
+    J2.motor->setCurrentPosition(grausParaPassos(J2, T2[i]));
+    rodarComWeb(5);
+    enviarComando(CMD_PONTO_GRAVAR); rodarComWeb(20);
+  }
+  enviarComando(CMD_PONTO_SOLDA, 0, 1); rodarComWeb(20);   // 1->2 com arco
+  enviarComando(CMD_PONTO_SOLDA, 1, 0); rodarComWeb(20);   // 2->3 so desloca
+  checar(progQuantidade() == 3, "A15d", "os tres pontos sao gravados");
+  nota("%u pontos; trecho 1->2 com arco, 2->3 deslocamento",
+       (unsigned)progQuantidade());
+
+  // --- 5. ensaio: percurso inteiro sem abrir o arco ---
+  g_subidas[PIN_RELE_SOLDA] = 0;
+  enviarComando(CMD_PROG_EXECUTAR, 1); rodarComWeb(30);
+  const bool ensaioComecou = (modoAtual == MODO_EXECUTANDO);
+  uint32_t t = 0;
+  while (progRodando() && t < 60000) { rodarComWeb(50); t += 50; }
+
+  checar(ensaioComecou && !progRodando() && g_subidas[PIN_RELE_SOLDA] == 0,
+         "A15e", "o ensaio percorre o programa inteiro sem acionar o rele");
+  nota("ensaio %s em %.1f s; bordas de subida no rele: %d",
+       ensaioComecou ? "concluido" : "NAO INICIOU", t / 1000.0f,
+       g_subidas[PIN_RELE_SOLDA]);
+
+  // --- 6. execucao com arco ---
+  rodarComWeb(200);
+  g_subidas[PIN_RELE_SOLDA] = 0;
+  uint32_t msComArco = 0;
+  enviarComando(CMD_PROG_EXECUTAR, 0); rodarComWeb(30);
+  const bool soldaComecou = (modoAtual == MODO_EXECUTANDO);
+  t = 0;
+  while (progRodando() && t < 60000) {
+    rodarComWeb(10); t += 10;
+    if (soldaLigada()) msComArco += 10;
+  }
+
+  checar(soldaComecou && !progRodando() && g_subidas[PIN_RELE_SOLDA] == 1 &&
+         msComArco > 0 && !soldaLigada(),
+         "A15f", "a execucao com arco abre o rele no cordao e fecha no fim");
+  nota("execucao %s em %.1f s; rele acionado %d vez(es), %u ms com arco",
+       soldaComecou ? "concluida" : "NAO INICIOU", t / 1000.0f,
+       g_subidas[PIN_RELE_SOLDA], (unsigned)msComArco);
+  nota("estado final do rele: %s, modo: %d",
+       soldaLigada() ? "LIGADO" : "desligado", (int)modoAtual);
+
+  // --- 7. gravacao e reproducao de trajetoria ---
+  enviarComando(CMD_GRAVAR_INICIAR); rodarComWeb(20);
+  for (int i = 0; i < 6; i++) { enviarComando(CMD_JOG, 1, -1); rodarComWeb(60); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(300);
+  enviarComando(CMD_GRAVAR_PARAR); rodarComWeb(20);
+  const uint16_t n = trajPontos();
+
+  enviarComando(CMD_REPRODUZIR); rodarComWeb(50);
+  const bool reproduziu = trajReproduzindo();
+  t = 0;
+  while (trajReproduzindo() && t < 30000) { rodarComWeb(50); t += 50; }
+
+  checar(n >= 2 && reproduziu && !trajReproduzindo(), "A15g",
+         "gravacao e reproducao de trajetoria completam");
+  nota("%u waypoints gravados; reproducao %s em %.1f s",
+       (unsigned)n, reproduziu ? "iniciada e concluida" : "RECUSADA", t / 1000.0f);
+
+  // --- 8. de volta ao manual, pronto para o proximo ciclo ---
+  rodarComWeb(100);
+  checar(modoAtual == MODO_MANUAL && !soldaLigada() &&
+         J1.motor->getAcceleration() == J1.aceleracao,
+         "A15h", "o sistema volta ao manual com velocidade e aceleracao normais");
+  nota("modo=%d, arco=%d, aceleracao J1=%lu (configurada %lu)",
+       (int)modoAtual, (int)soldaLigada(),
+       (unsigned long)J1.motor->getAcceleration(), (unsigned long)J1.aceleracao);
 }
 
 // =====================================================================
@@ -669,6 +896,7 @@ int main() {
   printf("\n\033[1mBANCO DE TESTES - RoboCNC v6\033[0m\n");
   printf("firmware real + mocks de Arduino/FastAccelStepper/NVS/FreeRTOS\n");
 
+  if (getenv("VERBOSE")) g_serialSilencioso = false;
   teste_A01_fila_de_comandos();
   teste_A02_jog_sem_servos();
   teste_A03_faixa_morta_da_margem();
@@ -683,6 +911,7 @@ int main() {
   teste_A12_reproduzir_sem_servos();
   teste_A13_troca_de_cotovelo();
   teste_A14_config_durante_movimento();
+  teste_A15_fluxo_completo();
 
   printf("\n\033[1mRESULTADO: %d passaram, %d anomalias\033[0m\n\n", nPassa, nAnomalia);
   (void)secaoAtual;

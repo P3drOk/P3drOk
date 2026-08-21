@@ -3,8 +3,17 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p testes/saida
-g++ -std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter \
-    -I testes/mocks -I RoboCNC \
+
+FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I RoboCNC"
+
+# servidor_web.cpp roda no core 0 e depende de rede, entao fica fora do
+# banco -- mas passa por conferencia de compilacao para nao apodrecer.
+g++ $FLAGS -DESTOP_FISICO_INSTALADO=true -fsyntax-only RoboCNC/servidor_web.cpp
+
+# O banco compila com o botao de emergencia "instalado" para exercitar
+# esse ramo. O config.h de producao mantem ESTOP_FISICO_INSTALADO=false
+# ate o botao existir de verdade.
+g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     -o testes/saida/banco \
     testes/banco.cpp \
     testes/ino_wrapper.cpp \

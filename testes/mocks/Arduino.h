@@ -7,6 +7,7 @@
 #include <cmath>
 #include <string>
 #include <map>
+#include <cstdlib>
 
 #define PROGMEM
 #define HIGH 1
@@ -25,6 +26,7 @@ extern int  g_pinModo[64];
 extern int  g_pinSaida[64];
 extern int  g_pinEntrada[64];
 extern int  g_escritasRele;
+extern int  g_subidas[64];   // bordas de subida por pino
 void pinMode(uint8_t p, int m);
 void digitalWrite(uint8_t p, int v);
 int  digitalRead(uint8_t p);
@@ -57,5 +59,21 @@ struct SerialMock {
 extern SerialMock Serial;
 
 // ---- utilitarios ------------------------------------------------------
-template <typename T> T constrain(T v, T lo, T hi) { return v < lo ? lo : (v > hi ? hi : v); }
-using String = std::string;
+// No Arduino constrain e macro, entao aceita tipos mistos. Igual aqui.
+#define constrain(v, lo, hi) ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
+
+// String do Arduino: o suficiente para o codigo do projeto compilar.
+struct String : std::string {
+  String() {}
+  String(const char* s) : std::string(s ? s : "") {}
+  String(const std::string& s) : std::string(s) {}
+  String(int v)  { char b[24]; snprintf(b, sizeof(b), "%d", v);  assign(b); }
+  String(float v, int casas) {
+    char b[32]; snprintf(b, sizeof(b), "%.*f", casas, (double)v); assign(b);
+  }
+  String(double v, int casas) {
+    char b[32]; snprintf(b, sizeof(b), "%.*f", casas, v); assign(b);
+  }
+  float toFloat() const { return empty() ? 0.0f : (float)atof(c_str()); }
+  long  toInt()   const { return empty() ? 0L   : atol(c_str()); }
+};

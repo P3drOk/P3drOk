@@ -32,6 +32,11 @@ class FastAccelStepper {
   bool isRunning() const { return modo != 0; }
   int32_t getCurrentPosition() const { return pos; }
   void setCurrentPosition(int32_t p) { pos = p; alvo = p; }
+
+  // So para o banco de testes: devolve o gerador ao estado de boot.
+  void reiniciar() {
+    pos = alvo = 0; velAtual = 0; modo = 0; sentidoContinuo = 0; posFrac = 0;
+  }
   int32_t getCurrentSpeedInMilliHz() const { return (int32_t)(velAtual * 1000.0f); }
 
   // Avanca a simulacao em dt milissegundos.

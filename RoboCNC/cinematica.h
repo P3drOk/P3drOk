@@ -33,6 +33,16 @@ bool posturaValida(float t1, float t2, const char** motivo);
 // Mesma checagem, recebendo passos.
 bool posturaValidaPassos(long p1, long p2, const char** motivo);
 
+// Verifica a interpolacao NAS JUNTAS entre duas posturas - o caminho que
+// moverCoordenado() realmente percorre. Os limites de curso sao caixas no
+// espaco das juntas e nao precisariam disso, mas o envelope cartesiano
+// nao e convexo nesse espaco: da para ir de um ponto valido a outro
+// mergulhando a ponta na mesa no meio do trajeto.
+bool caminhoJuntasValido(float t1a, float t2a, float t1b, float t2b,
+                         const char** motivo);
+bool caminhoJuntasValidoPassos(long p1a, long p2a, long p1b, long p2b,
+                               const char** motivo);
+
 // Quanto a postura viola os limites, em "graus equivalentes".
 // 0 = dentro. Serve para permitir movimento de RECUPERACAO quando o
 // braco ja esta fora da regiao valida: o que importa nao e se o destino

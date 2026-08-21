@@ -5,17 +5,22 @@ módulos reais contra mocks de Arduino/FastAccelStepper/NVS/FreeRTOS e roda
 cenários de operação no PC.
 
 ```
-./testes/compilar.sh        →  2 passaram, 15 anomalias
+antes das correções   →   2 passaram, 15 anomalias
+depois                →  26 passaram,  1 anomalia   (./testes/compilar.sh)
 ```
 
 Nada aqui é opinião de estilo. Cada item tem um caminho de código e, quando
 reproduzível, um cenário no banco.
 
+**Estado:** toda a severidade 1 está corrigida, mais S2.1, S2.2, S3.1 e S4.3.
+Cada seção corrigida traz o que mudou. O que ficou de fora está listado no
+fim, em "Não corrigido".
+
 ---
 
 ## Severidade 1 — segurança
 
-### S1.1 · A parada de emergência disputa fila com o heartbeat de jog  `A01`
+### S1.1 · A parada de emergência disputa fila com o heartbeat de jog  `A01`  ✅
 
 `enviarComando()` empurra tudo na mesma fila FIFO de 24 posições. A interface
 manda um `/api/jog` a cada 100 ms por eixo. Se o core 1 atrasar um ciclo, a
@@ -31,14 +36,21 @@ servidor_web.cpp:199   static void handleParar() { ...; enviarComando(CMD_PARAR)
 estado.cpp:57          return xQueueSend(filaComandos, &c, 0) == pdTRUE;   // retorno ignorado
 ```
 
-**Correção.** Uma flag `volatile bool pedidoParada` escrita direto pelo handler
-e testada no topo do `loop()`, antes de drenar a fila. A parada não pode
-depender de haver espaço em buffer. Complementarmente: `xQueueSendToFront` para
-comandos de parada e HTTP 503 quando `enviarComando()` falhar.
+**Corrigido.** `handleParar()` chama `solicitarParada()`, que escreve
+`volatile bool pedidoParada` (`estado.cpp`). O `loop()` testa essa flag no topo,
+antes de drenar a fila. A parada não depende mais de haver espaço em buffer.
+
+`pararTudo()` também chama `limparFilaComandos()`: sem isso os heartbeats de jog
+que já estavam enfileirados eram processados logo depois da parada e o braço
+voltava a andar no mesmo ciclo — foi o que o banco pegou na primeira rodada da
+correção.
+
+Todos os outros handlers passaram a usar `enfileirar()`, que responde **HTTP 503**
+quando `enviarComando()` falha, em vez de `200 ok`.
 
 ---
 
-### S1.2 · O botão de emergência físico não impede o rearme dos servos  `A08`
+### S1.2 · O botão de emergência físico não impede o rearme dos servos  `A08`  ✅
 
 ```c
 // RoboCNC.ino:288
@@ -57,13 +69,25 @@ Hoje está latente porque `ESTOP_FISICO_INSTALADO = false`. Vira um defeito
 ativo no dia em que o botão for instalado — que é justamente o item na lista
 "o que ainda falta" do LEIA-ME.
 
-**Correção.** Emergência é condição de nível, não de evento: recusar
-`CMD_SERVOS(1)` enquanto `estop` estiver ativo, e reavaliar `servosHabilitar`
-todo ciclo enquanto `emergenciaAtiva`.
+**Corrigido.** Emergência virou condição de nível:
+
+```c
+if (estop) {
+  if (!emergenciaAtiva) { emergenciaAtiva = true; pararTudo("EMERGENCIA ..."); }
+  if (servosLigados) servosHabilitar(false);      // todo ciclo, não só na borda
+}
+```
+
+E `CMD_SERVOS(1)` é recusado enquanto `emergenciaAtiva`. O jog fica bloqueado
+pelo portão `movimentoLiberado` (S1.3), que inclui `!estop && !emergenciaAtiva`.
+
+O banco compila com `-DESTOP_FISICO_INSTALADO=true` e exercita o ciclo inteiro:
+soca o botão (torque, movimento e arco caem), tenta rearmar e jogar com ele
+pressionado (recusado), solta (rearme e jog voltam).
 
 ---
 
-### S1.3 · Jog e reprodução com os drivers desabilitados  `A02` `A12`
+### S1.3 · Jog e reprodução com os drivers desabilitados  `A02` `A12`  ✅
 
 Nem `jogAtualizar()` nem `trajIniciarReproducao()` consultam `servosLigados`.
 O FastAccelStepper gera pulsos e **incrementa o contador de posição** mesmo com
@@ -80,13 +104,30 @@ contador não acompanha.
 `CMD_PROG_EXECUTAR` já checa `servosLigados` quando há arco. A reprodução de
 trajetória, que também aciona o relé, não checa nada.
 
-**Correção.** Recusar jog, reprodução e posicionamento com os servos
-desligados; e invalidar `calibrada` (ou exigir re-referenciamento) sempre que
-o torque for removido.
+**Corrigido.** Um portão único, `bool movimentoLiberado` (`estado.h`), escrito
+por `supervisionar()` a cada ciclo:
+
+```c
+movimentoLiberado = servosLigados && !alarme && !estop &&
+                    !emergenciaAtiva && !semConexao && modoAtual != MODO_FALHA;
+```
+
+`jogAtualizar()` sai imediatamente quando ele é falso, zerando o jog e avisando.
+`trajIniciarReproducao()`, `progIniciar()` (inclusive no ensaio), `irParaPassos()`
+e `calibIniciar()` exigem `servosLigados` explicitamente.
+
+O mesmo portão passou a alimentar `soldaPermitir()`, que antes repetia a
+expressão à mão.
+
+**Ficou de fora de propósito:** invalidar a calibração ao desabilitar os servos.
+O braço pode cair por gravidade com o torque removido, e nesse caso o contador
+diverge de qualquer jeito — mas invalidar obrigaria a recalibrar toda vez que os
+servos fossem desligados. Isso só se resolve direito com sensor de home, que já
+está na lista de pendências do LEIA-ME.
 
 ---
 
-### S1.4 · Queda de conexão durante a solda congela o programa em vez de pará-lo  `A05`
+### S1.4 · Queda de conexão durante a solda congela o programa em vez de pará-lo  `A05`  ✅
 
 ```c
 // RoboCNC.ino:300 — supervisionar(), ramo semConexao
@@ -109,13 +150,17 @@ O arco fecha e os motores param (isso funciona — `A05a` passou). Mas
 
 O mesmo furo existe no ramo de alarme de driver.
 
-**Correção.** Uma função `pararTudo()` chamada pelos três ramos de
-`supervisionar()` e por `CMD_PARAR`, encerrando programa, trajetória, jog,
-arco e restaurando velocidade/aceleração.
+**Corrigido.** `pararTudo()` no `.ino` é o encerramento único — arco, jog, fila
+de comandos, programa, trajetória (gravação e reprodução), calibração, parada
+suave, e restauração de velocidade e aceleração. `MODO_FALHA` só sai por rearme
+explícito.
+
+Chamam `pararTudo()`: os três ramos de `supervisionar()` (alarme, emergência,
+conexão perdida), `CMD_PARAR` e a flag `pedidoParada`.
 
 ---
 
-### S1.5 · A faixa da margem de segurança é uma armadilha sem saída  `A03` `A04`
+### S1.5 · A faixa da margem de segurança é uma armadilha sem saída  `A03` `A04`  ✅
 
 `posturaValida()` reprova a partir de `grausMin + MARGEM_LIMITE_GRAUS`;
 `gravidadeViolacao()` só começa a contar a partir de `grausMin` cru. Na faixa
@@ -134,14 +179,18 @@ maior que `grausMax − 0,5 = −0,28`, e **nenhuma postura** passou na validaç
 Os dois eixos travaram.* Só se recupera refazendo a calibração ou desligando a
 proteção de curso.
 
-**Correção.** (a) `gravidadeViolacao()` tem que usar exatamente os mesmos
-limites de `posturaValida()`, margem incluída. (b) `ajustarCurso()` deve exigir
-curso mínimo em graus — algo como `> 10 * MARGEM_LIMITE_GRAUS` — e não
-11 passos.
+**Corrigido.** (a) `gravidadeViolacao()` passou a descontar
+`MARGEM_LIMITE_GRAUS` exatamente como `posturaValida()`. A faixa morta deixou de
+existir: no cenário do banco, a junta em −89,75° com limite −90,0° agora volta
+para dentro do curso (−2493 → −817 passos).
+
+(b) `ajustarCurso()` mede em graus contra `CURSO_MINIMO_GRAUS = 5.0f`
+(`config.h`), com a mensagem dizendo o mínimo exigido. A calibração de 0,43° do
+cenário é recusada.
 
 ---
 
-### S1.6 · "Ir para o ponto" não revalida a postura  `A06`
+### S1.6 · "Ir para o ponto" não revalida a postura  `A06`  ✅
 
 ```c
 // RoboCNC.ino:198 — CMD_IR_PARA_PONTO
@@ -158,9 +207,14 @@ esse ponto passa a ser inválido — e o "ir" executou o movimento assim mesmo.*
 
 O LEIA-ME promete "validação de postura em **todo** comando de movimento".
 
+**Corrigido.** Todo posicionamento passa por `irParaPassos()`, porta única que
+confere, nessa ordem: calibração, servos, a postura de destino e o interior do
+caminho até ela. `CMD_IR_PARA_PONTO`, `CMD_MOVER_ANGULOS` e `CMD_IR_HOME` usam
+essa porta.
+
 ---
 
-### S1.7 · O caminho de deslocamento não é validado, só as pontas  `A07`
+### S1.7 · O caminho de deslocamento não é validado, só as pontas  `A07`  ✅
 
 `progIniciar()` valida cada ponto e, nos trechos com solda, a reta inteira.
 Nos trechos **sem** solda o caminho é interpolação nas juntas, e nada verifica
@@ -180,15 +234,26 @@ Com a proteção de mesa ligada, o robô mergulha a ponta na bancada indo de um
 ponto permitido a outro. E `MODO_POSICIONANDO` não tem supervisão nenhuma
 durante a execução — o `loop()` só espera os motores pararem.
 
-**Correção.** Validar a interpolação de junta do mesmo jeito que
-`retaPercorrivel()` valida a cartesiana, ou supervisionar a postura a cada
-ciclo durante o movimento coordenado e abortar na violação.
+**Corrigido.** `caminhoJuntasValido()` em `cinematica.cpp` amostra a
+interpolação a cada `PASSO_VALIDACAO_GRAUS` (2°, teto de 360 checagens) e roda
+`posturaValida()` em cada amostra. Usam a função:
+
+- `progIniciar()` — na aproximação até o ponto 1 e em **cada trecho sem solda**
+  (os trechos com solda continuam validados por `retaPercorrivel()`).
+- `trajIniciarReproducao()` — na aproximação até o primeiro waypoint.
+- `irParaPassos()` — em qualquer posicionamento.
+
+A mensagem de recusa diz qual trecho e por quê: *"o deslocamento 1→2 passa por:
+abaixo do Y mínimo (mesa)"*.
+
+Com a proteção de envelope desligada (padrão de fábrica) nada muda no
+comportamento; com ela ligada, o programa é recusado antes de sair do lugar.
 
 ---
 
 ## Severidade 2 — arquitetura e concorrência
 
-### S2.1 · A rota de configuração viola a regra de ouro do projeto  `A14`
+### S2.1 · A rota de configuração viola a regra de ouro do projeto  `A14`  ✅
 
 O LEIA-ME e três cabeçalhos afirmam: *"nenhum handler HTTP toca em estado do
 core 1; eles apenas enfileiram Comando e leem Snapshot"*. `handleConfig()`,
@@ -214,13 +279,19 @@ movimento.
 `handleGeometria()` tem o mesmo problema com `elo1Mm`/`elo2Mm`, lidos dentro da
 cinemática direta e inversa em execução.
 
-**Correção.** Passar os parâmetros pela fila (`CMD_APLICAR_CONFIG` já existe —
-falta carregar os valores nele em vez de escrever nas globais), e recusar
-mudança de resolução/geometria com `modoAtual != MODO_MANUAL`.
+**Corrigido.** Área de preparo `ConfigPendente` (`estado.h`). Os handlers
+validam os argumentos, chamam `prepararConfigPendente()` (que copia o estado
+vivo), sobrescrevem só os campos recebidos e enfileiram `CMD_APLICAR_CONFIG`.
+Nenhum handler escreve em variável viva nem chama `recalcularResolucao()`.
+
+O core 1 aplica em `CMD_APLICAR_CONFIG`, e **só em `MODO_MANUAL`** — os handlers
+já devolvem 400 pelo snapshot como filtro rápido, e o core 1 faz a checagem
+autoritativa. Vale para `/api/config`, `/api/geometria`, `/api/protecoes` e
+`/api/config/reset`.
 
 ---
 
-### S2.2 · Cancelar a calibração no meio deixa limites deslocados  `A11`
+### S2.2 · Cancelar a calibração no meio deixa limites deslocados  `A11`  ✅
 
 `calibConfirmar()` no estado `CAL_HOME` chama `zerarPosicoes()`. Se o operador
 desistir depois disso, `calibCancelar()` faz `carregarConfiguracoes()` e
@@ -232,8 +303,11 @@ cancelado → `calibrada = true`, limites ±90° e a origem deslocada 30°. As
 proteções passam a guardar a região errada, com erro igual à distância entre os
 dois zeros.*
 
-**Correção.** Guardar a posição no momento do `zerarPosicoes()` e restaurá-la
-no cancelamento; ou marcar `calibrada = false` ao cancelar depois do HOME.
+**Corrigido.** `calibracao.cpp` guarda a posição dos dois contadores antes do
+`zerarPosicoes()` do `CAL_HOME`. Ao cancelar, restaura
+`posicaoJ1() + origemAntesDoZero1` — a posição atual expressa na referência
+antiga. No cenário do banco: braço em 30°, novo HOME zerado ali, cancelamento →
+volta a ler 30° com os limites originais de ±90°.
 
 ---
 
@@ -275,7 +349,7 @@ guardar o alvo na transição e testar chegada explicitamente.
 
 ## Severidade 3 — qualidade do cordão
 
-### S3.1 · `definirMensagem()` dentro do laço de 1 ms  `A09`
+### S3.1 · `definirMensagem()` dentro do laço de 1 ms  `A09`  ✅
 
 O jog de recuperação (`motores.cpp:179`) chama `definirMensagem()` **a cada
 ciclo** enquanto durar a recuperação, e `definirMensagem()` escreve na serial.
@@ -286,8 +360,10 @@ ciclo** enquanto durar a recuperação, e `definirMensagem()` escreve na serial.
 que roda `supervisionar()` e `jogAtualizar()`. Ou seja: uma mensagem informativa
 tem prioridade sobre a supervisão de segurança.
 
-**Correção.** Emitir só na transição de estado, ou limitar por tempo
-(`if (millis() - ultimoLog > 500)`).
+**Corrigido.** `definirMensagem()` sempre atualiza `ultimaMensagem` (a interface
+continua vendo tudo); o que passou a ser poupado é o eco na serial — repetição
+idêntica não imprime, e há piso de 50 ms entre impressões. O cenário do banco
+saiu de 130 mensagens/s para 0.
 
 ---
 
@@ -328,10 +404,10 @@ passe por eles (ver S1.4) deixa o valor 4× ativo — inclusive para o jog manua
 |---|------|------|
 | S4.1 | **API sem autenticação nenhuma** num AP aberto com senha fixa `12345678` no código. Qualquer um no alcance faz POST em `/api/prog/executar?ensaio=0` e abre o arco. | `config.h:120` |
 | S4.2 | **Um clique simples na mesa de traçado comanda movimento real** (`/api/mover_xy`), sem confirmação e sem distinguir clique de arraste. Num celular é fácil disparar sem querer. | `pagina_web.h:745` |
-| S4.3 | Após `/api/config/reset`, os campos do formulário **não são recarregados** (`if(!carregou)` roda uma vez só). O próximo "Salvar" reaplica os valores antigos por cima do padrão de fábrica. | `pagina_web.h:831` |
+| S4.3 ✅ | Após `/api/config/reset`, os campos do formulário **não eram recarregados** (`if(!carregou)` roda uma vez só) e o próximo "Salvar" reaplicava os valores antigos por cima do padrão de fábrica. **Corrigido:** o botão zera `carregou` no sucesso, e o próximo status repreenche os campos. | `pagina_web.h` |
 | S4.4 | `recalcularResolucao()` sobrescreve os padrões `±90°` de `grausMin/grausMax` por `0/0` quando a junta não está calibrada. A interface mostra "0…0°" e a zona permitida desenhada tem largura zero. | `estado.cpp:50` |
 | S4.5 | `s.mensagem` é injetada crua no JSON. Nenhuma mensagem atual tem aspas ou barra, mas basta uma para quebrar o `r.json()` do navegador e a interface anunciar "sem comunicação" com o robô inteiro funcionando. | `servidor_web.cpp:90` |
-| S4.6 | `restaurarPadroes()` não restaura `escalaVelocidadeTraj`. | `estado.cpp:169` |
+| S4.6 ✅ | `restaurarPadroes()` não restaurava `escalaVelocidadeTraj`. **Corrigido.** | `estado.cpp` |
 | S4.7 | `carregarConfiguracoes()` não valida nada vindo do NVS. Um `ppv = 0` gravado por uma versão anterior zera `passosPorGrau` e derruba toda a conversão em silêncio. | `estado.cpp:93` |
 | S4.8 | Polling HTTP com `WebServer` (uma conexão por vez): status a 220 ms + heartbeat de jog a 100 ms por eixo se serializam. É a causa provável de jog engasgado, e o próprio LEIA-ME já lista a migração para WebSocket. | — |
 
@@ -353,15 +429,60 @@ passe por eles (ver S1.4) deixa o valor 4× ativo — inclusive para o jog manua
 
 ---
 
-## Ordem sugerida de correção
+## Não corrigido (e por quê)
 
-1. **S1.1** parada fora da fila — é o que separa "para" de "deveria parar".
-2. **S1.5** margem × gravidade e curso mínimo da calibração — trava o braço hoje.
-3. **S1.4** `pararTudo()` unificado nos três ramos de `supervisionar()`.
-4. **S1.3** exigir servos habilitados para qualquer movimento.
-5. **S1.6 / S1.7** revalidar postura no "ir" e no interior do deslocamento.
-6. **S2.1** mover a configuração para a fila de comandos.
-7. **S1.2** antes de instalar o botão físico de emergência.
-8. **S3.1** tirar a serial do laço de controle.
+| # | Item | Por quê |
+|---|------|---------|
+| **S2.3** | Handlers HTTP lendo `progLista()` / `trajBuffer()` sem trava | Consequência é visual (coordenada rasgada na lista), não mecânica. A correção certa é publicar essas listas num snapshot como o de status, e é uma refatoração maior. |
+| **S2.4** | `if (motoresEmMovimento()) return;` como detector de chegada | A biblioteca sinaliza `isRunning()` de forma síncrona hoje, então não aparece. Trocar por comparação posição-alvo mexe em cinco transições de estado de uma vez; melhor fazer isolado e com o banco cobrindo cada uma. |
+| **S3.2** | Cordão perto do braço esticado deixa de ser reto (`A13`, única anomalia que resta no banco) | Não é bug de estado, é dimensionamento: precisa recusar cordão perto de `L1+L2` e calcular `velSeg` pelo maior ΔΘ por passo interpolado em vez da média. Afeta a *qualidade* do cordão, não a segurança. |
+| **S3.3** | `moverCoordenado()` não devolve a aceleração | Resolvido na prática por `pararTudo()` (S1.4), que restaura em toda saída. Falta ainda o caso de sucesso normal, que já passava por `progParar()`. |
+| **S4.1** | API sem autenticação | Decisão de produto: autenticar num AP de bancada atrapalha o operador. Se o robô for para uma rede compartilhada, aí vira obrigatório. |
+| **S4.2** | Clique na mesa de traçado comanda movimento | Precisa distinguir clique de arraste e provavelmente pedir confirmação — mudança de interação que vale desenhar com você antes. |
+| **S4.4 / S4.5 / S4.7 / S4.8** | Limites `0…0°` sem calibração, `msg` crua no JSON, NVS sem validação, polling HTTP | Cosméticos ou de robustez; nenhum quebra a máquina. |
 
-Os itens de severidade 3 e 4 podem esperar; nenhum deles quebra a máquina.
+---
+
+## Resumo das mudanças
+
+| Arquivo | O que mudou |
+|---------|-------------|
+| `config.h` | `CURSO_MINIMO_GRAUS`, `PASSO_VALIDACAO_GRAUS`; `#ifndef` nos flags de e-stop e alarme |
+| `estado.h/.cpp` | `pedidoParada` + `solicitarParada()` + `limparFilaComandos()`; portão `movimentoLiberado`; área `ConfigPendente`; `definirMensagem()` com eco de serial poupado |
+| `cinematica.h/.cpp` | `gravidadeViolacao()` com a mesma margem de `posturaValida()`; `caminhoJuntasValido()` |
+| `motores.cpp` | `jogAtualizar()` atrás do portão de movimento; `pararEmergencia()` preserva `MODO_FALHA` |
+| `trajetoria.cpp` | reprodução exige servos e valida a aproximação |
+| `programa.cpp` | execução exige servos (ensaio incluído); valida aproximação e cada deslocamento |
+| `calibracao.cpp` | exige servos; curso mínimo em graus; cancelamento restaura a origem |
+| `RoboCNC.ino` | `pararTudo()`; `irParaPassos()`; emergência por nível; `pedidoParada` no topo do `loop()`; config aplicada só em manual |
+| `servidor_web.cpp` | `handleParar()` fora da fila; `enfileirar()` com 503; config via área de preparo com `exigirManual()` |
+| `pagina_web.h` | formulário recarrega após restaurar padrões |
+| `testes/` | A07/A08/A11/A14 reescritos para verificar a recusa; **A15** novo: regressão ponta a ponta |
+
+O banco também passa a conferir a compilação de `servidor_web.cpp`, que fica
+fora da execução por depender de rede.
+
+---
+
+## Antes de subir para a máquina
+
+O banco roda no PC com steppers simulados. Ele prova a lógica de estado, não a
+eletrônica. Confira na bancada, nesta ordem:
+
+1. **Jog com servos desligados** deve ser recusado com mensagem, e a posição em
+   graus na tela não pode mudar.
+2. **Calibração completa** — o assistente tem que exigir servos ligados e
+   recusar curso menor que 5°.
+3. **Cancelar a calibração** depois do passo HOME: o ângulo mostrado tem que
+   voltar ao que era antes de começar.
+4. **Ensaio e execução com arco** de um programa de 3 pontos, para confirmar que
+   a validação nova não recusa programa legítimo. Se recusar, a mensagem diz
+   qual trecho — provavelmente é a proteção de mesa com elo mal medido.
+5. **Puxar o Wi-Fi no meio do cordão**: arco fecha, braço para, e o jog seguinte
+   tem que ter a aceleração normal (não a 4× de solda).
+6. **Ajustes durante execução** devem ser recusados com *"ajuste só com o robô
+   parado no modo manual"*.
+
+O botão físico de emergência (S1.2) só entra em serviço depois de trocar
+`ESTOP_FISICO_INSTALADO` para `true` em `config.h` — a lógica já está pronta e
+testada.

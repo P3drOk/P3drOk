@@ -49,19 +49,42 @@ static void tarefaRede(void* p) {
 }
 
 // ---------------------------------------------------------------------
-static void irParaAngulos(float t1, float t2) {
+// Porta unica de posicionamento. Valida, nesta ordem: calibracao, servos,
+// a postura de DESTINO e o INTERIOR do caminho ate ela.
+//
+// O interior importa: moverCoordenado() interpola nas juntas, e o
+// envelope cartesiano nao e convexo nesse espaco - da para ir de um ponto
+// permitido a outro raspando a ponta na mesa no meio do trajeto.
+static bool irParaPassos(long p1, long p2) {
   if (!J1.calibrada || !J2.calibrada) {
     definirMensagem("Calibre as juntas antes de usar posicionamento");
-    return;
+    return false;
   }
+  if (!servosLigados) {
+    definirMensagem("Habilite os servos antes de mover");
+    return false;
+  }
+
   const char* motivo = nullptr;
-  if (!posturaValida(t1, t2, &motivo)) {
+  if (!posturaValidaPassos(p1, p2, &motivo)) {
     definirMensagem("Movimento recusado: %s", motivo ? motivo : "postura invalida");
-    return;
+    return false;
   }
-  moverCoordenado(grausParaPassos(J1, t1), grausParaPassos(J2, t2), velAuto);
+  if (!caminhoJuntasValidoPassos(posicaoJ1(), posicaoJ2(), p1, p2, &motivo)) {
+    definirMensagem("Movimento recusado: o caminho passa por %s",
+                    motivo ? motivo : "postura invalida");
+    return false;
+  }
+
+  moverCoordenado(p1, p2, velAuto);
   modoAtual = MODO_POSICIONANDO;
-  definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
+  return true;
+}
+
+static void irParaAngulos(float t1, float t2) {
+  if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) {
+    definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -73,6 +96,39 @@ static const char* NOME_CMD[] = {
   "CALIB_INI","CALIB_CONF","CALIB_CANC"
 };
 
+// ---------------------------------------------------------------------
+// Encerramento unico. Todo caminho de parada passa por aqui: a parada do
+// operador, o alarme de driver, a emergencia e a perda de conexao.
+//
+// A versao anterior parava trajetoria e gravacao mas nunca o programa de
+// solda: a fase ficava congelada em FASE_SOLDANDO com o modo de volta em
+// MANUAL, e como e progParar() quem restaura a aceleracao, o jog seguinte
+// rodava com o valor 4x de prepararReta().
+// ---------------------------------------------------------------------
+static void pararTudo(const char* motivo) {
+  soldaDesligar();
+  jogZerar();
+
+  // Sem isto, os heartbeats de jog que ja estavam na fila sao processados
+  // logo depois da parada e o braco volta a andar no mesmo ciclo.
+  limparFilaComandos();
+
+  if (progRodando())      progParar();
+  if (trajGravando())     trajPararGravacao();
+  if (trajReproduzindo()) trajPararReproducao();
+  if (calibAtiva())       calibCancelar();
+
+  pararSuave();
+  aplicarAceleracao();
+  aplicarVelocidadeManual();
+
+  // FALHA so sai por rearme explicito, depois de o alarme sumir.
+  if (modoAtual != MODO_FALHA) modoAtual = MODO_MANUAL;
+
+  if (motivo) definirMensagem("%s", motivo);
+}
+
+// ---------------------------------------------------------------------
 static void processarComando(const Comando& c) {
   // Log de tudo que chega: se um comando some, da para ver se ele
   // chegou ao core 1 e por que foi descartado.
@@ -97,11 +153,7 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_PARAR:
-      if (progRodando())      progParar();
-      if (trajGravando())     trajPararGravacao();
-      if (trajReproduzindo()) trajPararReproducao();
-      if (calibAtiva())       calibCancelar();
-      pararEmergencia();
+      pararTudo("PARADA: movimento interrompido e solda desligada");
       break;
 
     case CMD_PRECISAO:
@@ -111,6 +163,14 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_SERVOS:
+      // Emergencia e condicao de NIVEL, nao evento: enquanto o botao
+      // estiver acionado nao existe rearme. A versao anterior so reagia
+      // na borda, entao bastava mandar CMD_SERVOS depois para religar o
+      // torque com a emergencia pressionada.
+      if (c.a != 0 && emergenciaAtiva) {
+        definirMensagem("Emergencia acionada: solte o botao antes de rearmar");
+        break;
+      }
       servosHabilitar(c.a != 0);
       if (c.a != 0 && modoAtual == MODO_FALHA && !motoresLerAlarmes()) {
         modoAtual = MODO_MANUAL;
@@ -156,8 +216,15 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_APLICAR_CONFIG:
-      // A escrita em NVS acontece aqui, no core 1, e nao dentro do
-      // handler HTTP: um unico dono para o objeto Preferences.
+      // A aplicacao acontece AQUI, no core 1, e nao dentro do handler
+      // HTTP. recalcularResolucao() altera passosPorGrau, grausMin e
+      // grausMax - campos que posturaValida() le a cada ciclo de
+      // jogAtualizar(). O handler so preenche a area de preparo.
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Ajustes so com o robo parado no modo manual");
+        break;
+      }
+      aplicarConfigPendente();
       salvarConfiguracoes();
       aplicarVelocidadeManual();
       aplicarAceleracao();
@@ -165,6 +232,10 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_RESTAURAR_PADROES:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Restauracao so com o robo parado no modo manual");
+        break;
+      }
       restaurarPadroes();
       aplicarVelocidadeManual();
       aplicarAceleracao();
@@ -198,20 +269,21 @@ static void processarComando(const Comando& c) {
     case CMD_IR_PARA_PONTO: {
       if (modoAtual != MODO_MANUAL) break;
       if (c.a < 0 || c.a >= progQuantidade()) break;
+      // O ponto foi validado quando gravado. Desde entao as protecoes
+      // podem ter sido ligadas, os elos remedidos ou a calibracao
+      // refeita: revalida destino e caminho antes de sair do lugar.
       const Ponto& p = progLista()[c.a];
-      moverCoordenado(p.p1, p.p2, velAuto);
-      modoAtual = MODO_POSICIONANDO;
-      definirMensagem("Indo para o ponto %ld", (long)(c.a + 1));
+      if (irParaPassos(p.p1, p.p2)) {
+        definirMensagem("Indo para o ponto %ld", (long)(c.a + 1));
+      }
       break;
     }
 
     case CMD_PROG_EXECUTAR: {
       if (modoAtual != MODO_MANUAL) { definirMensagem("Robo ocupado"); break; }
       const bool ensaio = (c.a != 0);
-      if (!ensaio && !servosLigados) {
-        definirMensagem("Habilite os servos antes de soldar");
-        break;
-      }
+      // progIniciar() exige servos para os dois modos: o ensaio tambem
+      // percorre o programa inteiro com o braco.
       const char* motivo = nullptr;
       if (!progIniciar(ensaio, &motivo)) {
         definirMensagem("Execucao recusada: %s", motivo ? motivo : "erro");
@@ -277,42 +349,42 @@ static void supervisionar() {
       (millis() - ultimoContatoWebMs > TIMEOUT_CONEXAO_MS);
 
   if (alarme && modoAtual != MODO_FALHA) {
-    soldaDesligar();
-    pararSuave();
-    trajPararReproducao();
+    pararTudo(nullptr);
     modoAtual = MODO_FALHA;
     definirMensagem("ALARME do driver (J1:%d J2:%d). Verifique e rearme",
                     (int)J1.alarme, (int)J2.alarme);
   }
 
-  if (estop && !emergenciaAtiva) {
-    emergenciaAtiva = true;
-    trajPararReproducao();
-    trajPararGravacao();
-    pararEmergencia();
-    servosHabilitar(false);
-    definirMensagem("EMERGENCIA acionada no botao fisico");
-  } else if (!estop && emergenciaAtiva) {
+  // Emergencia por NIVEL. A borda dispara a parada completa; enquanto o
+  // botao continuar acionado, o torque e mantido desligado a cada ciclo.
+  // Reagir so na borda deixava um CMD_SERVOS posterior religar tudo com
+  // a emergencia pressionada.
+  if (estop) {
+    if (!emergenciaAtiva) {
+      emergenciaAtiva = true;
+      pararTudo("EMERGENCIA acionada no botao fisico");
+    }
+    if (servosLigados) servosHabilitar(false);
+  } else if (emergenciaAtiva) {
     emergenciaAtiva = false;
     definirMensagem("Emergencia liberada. Rearme os servos");
   }
 
   if (semConexao && !conexaoPerdida) {
     conexaoPerdida = true;
-    jogZerar();
-    soldaDesligar();
-    if (modoAtual == MODO_REPRODUZINDO) trajPararReproducao();
-    if (modoAtual == MODO_GRAVANDO)     trajPararGravacao();
-    pararSuave();
-    if (modoAtual != MODO_FALHA) modoAtual = MODO_MANUAL;
-    definirMensagem("Conexao perdida: movimento e solda interrompidos");
+    pararTudo("Conexao perdida: movimento e solda interrompidos");
   } else if (!semConexao) {
     conexaoPerdida = false;
   }
 
-  // Intertravamento do rele: uma unica expressao decide tudo.
-  soldaPermitir(servosLigados && !alarme && !estop && !semConexao &&
-                modoAtual != MODO_FALHA && modoAtual != MODO_CALIBRANDO);
+  // Portao unico de movimento (estado.h). Escrito aqui, consultado por
+  // jogAtualizar() e por todo caminho que possa mover um motor.
+  movimentoLiberado = servosLigados && !alarme && !estop &&
+                      !emergenciaAtiva && !semConexao &&
+                      modoAtual != MODO_FALHA;
+
+  // Intertravamento do rele: o mesmo portao, mais a calibracao.
+  soldaPermitir(movimentoLiberado && modoAtual != MODO_CALIBRANDO);
   soldaAtualizar();
 
   if (PIN_LED_STATUS != 255) {
@@ -403,6 +475,14 @@ void setup() {
 // ---------------------------------------------------------------------
 void loop() {
   supervisionar();
+
+  // A parada NAO passa pela fila. A fila e compartilhada com o heartbeat
+  // de jog (100 ms por eixo) e xQueueSend descarta quando enche - uma
+  // parada de emergencia nao pode depender de haver espaco em buffer.
+  if (pedidoParada) {
+    pedidoParada = false;
+    pararTudo("PARADA: movimento interrompido e solda desligada");
+  }
 
   Comando c;
   while (xQueueReceive(filaComandos, &c, 0) == pdTRUE) {

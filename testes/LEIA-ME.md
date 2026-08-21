@@ -11,9 +11,12 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/freertos/` | fila de comandos com capacidade real e contagem de descartes |
 | `mocks/WiFi.h`, `mocks/WebServer.h` | só para o `.ino` compilar |
 
-`servidor_web.cpp` fica de fora (roda no core 0 e depende de rede); os handlers
-são analisados estaticamente e, quando o teste precisa, o cenário reproduz o
-que o handler faz.
+`servidor_web.cpp` fica de fora da execução (roda no core 0 e depende de rede),
+mas passa por conferência de compilação no mesmo script; quando um cenário
+precisa dele, reproduz o que o handler faz.
+
+O banco compila com `-DESTOP_FISICO_INSTALADO=true` para exercitar o ramo da
+emergência física. O `config.h` de produção mantém `false` até o botão existir.
 
 ## Rodar
 
@@ -34,14 +37,15 @@ no próprio `checar(...)`.
 | A04 | calibração com curso menor que a margem |
 | A05 | queda de Wi-Fi com programa de solda em execução |
 | A06 | "ir para o ponto" depois de mudar as proteções |
-| A07 | busca exaustiva por caminho de deslocamento que atravessa zona proibida |
-| A08 | rearme dos servos com o e-stop físico acionado |
+| A07 | programa cujo deslocamento atravessa zona proibida é recusado |
+| A08 | emergência por nível: rearme e jog com o botão acionado |
 | A09 | taxa de `definirMensagem()` dentro do laço de controle |
 | A10 | pior caso do buffer do JSON de `/api/status` |
-| A11 | cancelar a calibração depois de rezerar a origem |
+| A11 | cancelar a calibração restaura a origem anterior |
 | A12 | reprodução de trajetória sem servos |
 | A13 | condicionamento da cinemática inversa perto do braço esticado |
-| A14 | mudança de resolução pelo core 0 durante operação |
+| A14 | configuração aplicada só pelo core 1 e só em modo manual |
+| A15 | **regressão**: calibrar, ensinar, ensaiar, soldar e reproduzir, ponta a ponta |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

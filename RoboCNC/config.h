@@ -41,15 +41,21 @@
 
 // Nivel logico do sinal ALM quando existe falha no driver
 #define ALARME_ATIVO_EM   LOW
-// Mude para true depois de instalar o botao fisico de emergencia
+// Mude para true depois de instalar o botao fisico de emergencia.
+// (o #ifndef permite o banco de testes compilar com o botao "instalado"
+// para exercitar esse ramo sem mexer no valor de producao)
+#ifndef ESTOP_FISICO_INSTALADO
 #define ESTOP_FISICO_INSTALADO  false
+#endif
 
 // Mude para true SOMENTE depois de ligar os fios ALM dos drivers e os
 // pull-ups de 10k. Com false o firmware ignora esses pinos.
 // ATENCAO: com um pino de entrada solto, o ESP32 le ruido. Se este flag
 // ficar true sem a fiacao, o sistema entra em falha e recusa todo
 // comando - foi exatamente esse o travamento da v2.1.
+#ifndef ALARME_FISICO_INSTALADO
 #define ALARME_FISICO_INSTALADO false
+#endif
 
 // ---------------------------------------------------------------------
 // LIMITES ELETRICOS / MECANICOS
@@ -88,8 +94,22 @@ static const float FOLGA_DOBRA_PADRAO = 20.0f;
 static const float ENV_Y_MIN_PADRAO   = -150.0f;
 static const float ENV_RAIO_MIN_PADRAO = 40.0f;   // zona morta em volta da base
 
-// Margem de seguranca aplicada aos limites de curso calibrados
+// Margem de seguranca aplicada aos limites de curso calibrados.
+// gravidadeViolacao() usa EXATAMENTE esta mesma margem: se as duas contas
+// divergirem, existe uma faixa onde a postura e invalida e a gravidade e
+// zero, e o jog de recuperacao nunca libera o movimento de volta.
 static const float MARGEM_LIMITE_GRAUS = 0.5f;
+
+// Curso minimo que a calibracao aceita por junta. Precisa ser bem maior
+// que 2 x MARGEM_LIMITE_GRAUS, senao a calibracao "valida" produz um
+// intervalo util negativo e tranca o eixo.
+static const float CURSO_MINIMO_GRAUS = 5.0f;
+
+// Resolucao da validacao de um caminho interpolado nas juntas.
+// Os limites de curso sao caixas no espaco das juntas (a reta entre dois
+// pontos validos fica valida), mas o envelope cartesiano NAO e convexo
+// nesse espaco: o interior do caminho precisa ser verificado.
+static const float PASSO_VALIDACAO_GRAUS = 2.0f;
 
 // Protecoes ligadas por padrao.
 // A de curso vem da SUA calibracao, entao e confiavel: nasce ligada.

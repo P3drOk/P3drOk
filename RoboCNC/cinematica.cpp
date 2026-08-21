@@ -116,15 +116,24 @@ bool posturaValida(float t1, float t2, const char** motivo) {
 }
 
 // ---------------------------------------------------------------------
+// Precisa usar EXATAMENTE os mesmos limites de posturaValida(), margem
+// incluida. Quando as duas contas divergiam, existia uma faixa de
+// MARGEM_LIMITE_GRAUS onde a postura era invalida e a gravidade era zero:
+// posturaValida() bloqueava e o criterio de recuperacao (gAtual > 0)
+// nunca liberava, entao o braco entrava na faixa e nao saia mais.
 float gravidadeViolacao(float t1, float t2) {
   float g = 0.0f;
   const bool calibrado = J1.calibrada && J2.calibrada;
 
   if (protCurso && calibrado) {
-    if (t1 < J1.grausMin) g += J1.grausMin - t1;
-    if (t1 > J1.grausMax) g += t1 - J1.grausMax;
-    if (t2 < J2.grausMin) g += J2.grausMin - t2;
-    if (t2 > J2.grausMax) g += t2 - J2.grausMax;
+    const float min1 = J1.grausMin + MARGEM_LIMITE_GRAUS;
+    const float max1 = J1.grausMax - MARGEM_LIMITE_GRAUS;
+    const float min2 = J2.grausMin + MARGEM_LIMITE_GRAUS;
+    const float max2 = J2.grausMax - MARGEM_LIMITE_GRAUS;
+    if (t1 < min1) g += min1 - t1;
+    if (t1 > max1) g += t1 - max1;
+    if (t2 < min2) g += min2 - t2;
+    if (t2 > max2) g += t2 - max2;
   }
   if (protDobra) {
     const float excesso = fabsf(t2) - (180.0f - folgaDobra);
@@ -143,6 +152,34 @@ float gravidadeViolacao(float t1, float t2) {
 
 float gravidadeViolacaoPassos(long p1, long p2) {
   return gravidadeViolacao(passosParaGraus(J1, p1), passosParaGraus(J2, p2));
+}
+
+// ---------------------------------------------------------------------
+bool caminhoJuntasValido(float t1a, float t2a, float t1b, float t2b,
+                         const char** motivo) {
+  const float d1 = fabsf(t1b - t1a);
+  const float d2 = fabsf(t2b - t2a);
+  const float maior = (d1 > d2) ? d1 : d2;
+
+  int n = (int)(maior / PASSO_VALIDACAO_GRAUS) + 1;
+  if (n < 4)   n = 4;      // trecho curto ainda merece alguns pontos
+  if (n > 360) n = 360;    // teto de custo: ~360 checagens por trecho
+
+  for (int k = 0; k <= n; k++) {
+    const float a = (float)k / (float)n;
+    if (!posturaValida(t1a + (t1b - t1a) * a,
+                       t2a + (t2b - t2a) * a, motivo)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool caminhoJuntasValidoPassos(long p1a, long p2a, long p1b, long p2b,
+                               const char** motivo) {
+  return caminhoJuntasValido(passosParaGraus(J1, p1a), passosParaGraus(J2, p2a),
+                             passosParaGraus(J1, p1b), passosParaGraus(J2, p2b),
+                             motivo);
 }
 
 // ---------------------------------------------------------------------

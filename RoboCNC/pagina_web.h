@@ -472,6 +472,7 @@ function abrir(n){
 }
 
 /* ---------- acoes ---------- */
+let carregou=false;
 $("btParar").onclick =function(){post("/api/parar");};
 $("btServos").onclick=function(){post("/api/servos?v="+(D.servos?0:1));};
 $("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
@@ -515,7 +516,11 @@ $("pDob").onclick=function(){D.protDobra=!D.protDobra;prot();};
 $("pEnv").onclick=function(){D.protEnv=!D.protEnv;prot();};
 
 $("btReset").onclick =function(){
-  if(confirm("Restaurar todos os ajustes de fabrica?"))post("/api/config/reset");};
+  /* carregou=false faz o proximo status repreencher os campos: sem isso o
+     formulario continuava mostrando os valores antigos e o "Salvar"
+     seguinte reaplicava tudo por cima do padrao de fabrica. */
+  if(confirm("Restaurar todos os ajustes de fabrica?"))
+    post("/api/config/reset").then(function(){carregou=false;});};
 
 /* ---------- pontos ---------- */
 let pontos=[];
@@ -762,7 +767,7 @@ const PC={HOME:[1,"Leve o braco ate a posicao de referencia (o zero da maquina) 
  J2_VOLTA_POS:[5,"Aguarde: a junta 2 volta ao zero."],
  CONCLUIDO:[6,"Curso medido. Confira os limites em graus: se nao baterem com a maquina real, o erro esta na resolucao daquele eixo."]};
 
-let quedas=0,carregou=false,ultN=-1,ultCal="";
+let quedas=0,ultN=-1,ultCal="";
 function lamp(el,cls,txt){
   el.className="lp"+(cls?" "+cls:"");
   if(txt!==undefined)$("lModoT").textContent=txt;}

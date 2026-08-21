@@ -130,12 +130,29 @@ bool trajIniciarReproducao(const char** motivo) {
     if (motivo) *motivo = "calibre as duas juntas antes de reproduzir";
     return false;
   }
+  // A reproducao aciona o rele e move os dois eixos: sem servos ela so
+  // conta passos e desmancha a referencia de calibracao.
+  if (!servosLigados) {
+    if (motivo) *motivo = "habilite os servos antes de reproduzir";
+    return false;
+  }
 
   // Revalida o caminho inteiro antes de encostar em qualquer motor.
   for (uint16_t i = 0; i < nPontos; i++) {
     const char* m = nullptr;
     if (!posturaValidaPassos(buffer[i].p1, buffer[i].p2, &m)) {
       if (motivo) *motivo = m ? m : "trajetoria invalida";
+      return false;
+    }
+  }
+
+  // A aproximacao ate o primeiro ponto e interpolada nas juntas: valida
+  // o interior dela tambem, nao so o destino.
+  {
+    const char* m = nullptr;
+    if (!caminhoJuntasValidoPassos(posicaoJ1(), posicaoJ2(),
+                                   buffer[0].p1, buffer[0].p2, &m)) {
+      if (motivo) *motivo = m ? m : "o caminho ate o inicio sai da area util";
       return false;
     }
   }
