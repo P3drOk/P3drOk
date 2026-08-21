@@ -78,6 +78,31 @@
 #define CARTAO_INSTALADO  true
 #endif
 
+// ---------------------------------------------------------------------
+// CONTROLE POR BLUETOOTH (aplicativo Dabble, modo GamePad)
+// ---------------------------------------------------------------------
+// Exige a biblioteca DabbleESP32 instalada na IDE. Deixe false para
+// compilar sem nada de Bluetooth -- a interface web continua igual.
+//
+// BLE e Wi-Fi dividem o mesmo radio no ESP32. Funcionam juntos, mas:
+//   - a pilha BLE come ~60 kB de RAM;
+//   - o sketch nao cabe mais na particao padrao. Na IDE escolha
+//     Tools > Partition Scheme > "Huge APP (3MB No OTA)".
+//
+// O gamepad NAO abre arco. Executar com solda exige a confirmacao da
+// tela: botao de controle nao e lugar de comandar arco eletrico.
+#ifndef BLUETOOTH_INSTALADO
+#define BLUETOOTH_INSTALADO  true
+#endif
+
+static const char* const BT_NOME = "RoboCNC-2DOF";
+
+// Sem nenhum toque no gamepad por este tempo, o jog por Bluetooth zera.
+// E o mesmo papel do heartbeat da interface web.
+static const uint32_t BT_TIMEOUT_JOG_MS = 250;
+// Espaco minimo entre dois toques no mesmo botao.
+static const uint32_t BT_DEBOUNCE_MS    = 320;
+
 // 20 MHz e conservador e funciona com cabo de protoboard. Suba para
 // 40000000 so com fiacao curta e soldada.
 static const uint32_t SD_FREQ_HZ = 20000000;

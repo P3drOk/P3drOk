@@ -16,6 +16,7 @@
 #include "calibracao.h"
 #include "programa.h"
 #include "armazenamento.h"
+#include "controle_bt.h"
 #include "servidor_web.h"
 #include <math.h>
 
@@ -41,10 +42,13 @@ static void iniciarWiFi() {
 }
 
 // ---------------------------------------------------------------------
+// Core 0: interface web e gamepad Bluetooth. Nenhum dos dois toca em
+// motor, rele ou estado -- os dois so enfileiram Comando.
 static void tarefaRede(void* p) {
   (void)p;
   for (;;) {
     servidorAtender();
+    btAtualizar();
     vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
@@ -460,8 +464,8 @@ static void supervisionar() {
   }
 
   const bool semConexao =
-      (ultimoContatoWebMs != 0) &&
-      (millis() - ultimoContatoWebMs > TIMEOUT_CONEXAO_MS);
+      (ultimoContatoOperadorMs != 0) &&
+      (millis() - ultimoContatoOperadorMs > TIMEOUT_CONEXAO_MS);
 
   if (alarme && modoAtual != MODO_FALHA) {
     pararTudo(nullptr);
@@ -586,6 +590,9 @@ void setup() {
   // interface de rede existe. Wi-Fi primeiro, servidor depois.
   iniciarWiFi();
   servidorIniciar();
+  // BLE depois do Wi-Fi: os dois dividem o radio, e subir o AP primeiro
+  // deixa a rede pronta antes de o Bluetooth comecar a disputar.
+  btIniciar();
 
   xTaskCreatePinnedToCore(tarefaRede, "rede", 8192, nullptr, 1, nullptr, 0);
 

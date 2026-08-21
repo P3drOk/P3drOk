@@ -1,5 +1,7 @@
 #include "cinematica.h"
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 // ---------------------------------------------------------------------
 float passosParaGraus(const Junta& j, long passos) {
@@ -68,7 +70,46 @@ static float distanciaOrigemAoSegmento(float ax, float ay, float bx, float by) {
 }
 
 // ---------------------------------------------------------------------
-bool posturaValida(float t1, float t2, const char** motivo) {
+void violacaoLimpar(Violacao& v) {
+  v.causa = nullptr; v.junta = 0; v.valor = 0; v.limite = 0; v.fracao = -1.0f;
+}
+
+void violacaoTexto(const Violacao& v, char* destino, size_t tam) {
+  if (!destino || tam == 0) return;
+  if (!v.causa) { snprintf(destino, tam, "postura invalida"); return; }
+
+  char onde[40] = "";
+  if (v.fracao >= 0.0f) {
+    snprintf(onde, sizeof(onde), " a %.0f%% do trecho", v.fracao * 100.0f);
+  }
+
+  if (!strcmp(v.causa, "curso")) {
+    snprintf(destino, tam,
+             "junta %u precisa ir a %.1f graus%s, e o curso vai ate %.1f",
+             (unsigned)v.junta, v.valor, onde, v.limite);
+  } else if (!strcmp(v.causa, "dobra")) {
+    snprintf(destino, tam,
+             "cotovelo dobraria %.1f graus%s: o elo 2 bate no elo 1 acima de %.1f",
+             v.valor, onde, v.limite);
+  } else if (!strcmp(v.causa, "mesa")) {
+    snprintf(destino, tam,
+             "o braco desceria a Y=%.0f mm%s, abaixo do Y minimo de %.0f",
+             v.valor, onde, v.limite);
+  } else if (!strcmp(v.causa, "base")) {
+    snprintf(destino, tam,
+             "o elo 2 passaria a %.0f mm da base%s, dentro do raio morto de %.0f",
+             v.valor, onde, v.limite);
+  } else if (!strcmp(v.causa, "alcance")) {
+    snprintf(destino, tam, "ponto fora do alcance do braco%s", onde);
+  } else {
+    snprintf(destino, tam, "%s%s", v.causa, onde);
+  }
+}
+
+// ---------------------------------------------------------------------
+bool posturaValidaDet(float t1, float t2, Violacao& v) {
+  violacaoLimpar(v);
+
   // Sem calibracao nao existe geometria confiavel para proteger nada.
   // Nesse estado apenas o jog manual e liberado (modo de instalacao);
   // todos os modos automaticos exigem calibracao antes de rodar.
@@ -76,43 +117,50 @@ bool posturaValida(float t1, float t2, const char** motivo) {
 
   // 1) Curso de cada junta - vem da calibracao do proprio operador
   if (protCurso && calibrado) {
-    if (t1 < J1.grausMin + MARGEM_LIMITE_GRAUS ||
-        t1 > J1.grausMax - MARGEM_LIMITE_GRAUS) {
-      if (motivo) *motivo = "junta 1 no fim do curso calibrado";
-      return false;
-    }
-    if (t2 < J2.grausMin + MARGEM_LIMITE_GRAUS ||
-        t2 > J2.grausMax - MARGEM_LIMITE_GRAUS) {
-      if (motivo) *motivo = "junta 2 no fim do curso calibrado";
-      return false;
-    }
+    const float min1 = J1.grausMin + MARGEM_LIMITE_GRAUS;
+    const float max1 = J1.grausMax - MARGEM_LIMITE_GRAUS;
+    const float min2 = J2.grausMin + MARGEM_LIMITE_GRAUS;
+    const float max2 = J2.grausMax - MARGEM_LIMITE_GRAUS;
+    if (t1 < min1) { v.causa="curso"; v.junta=1; v.valor=t1; v.limite=min1; return false; }
+    if (t1 > max1) { v.causa="curso"; v.junta=1; v.valor=t1; v.limite=max1; return false; }
+    if (t2 < min2) { v.causa="curso"; v.junta=2; v.valor=t2; v.limite=min2; return false; }
+    if (t2 > max2) { v.causa="curso"; v.junta=2; v.valor=t2; v.limite=max2; return false; }
   }
 
   // 2) Auto-colisao dos elos: theta2 = 0 e braco esticado (seguro),
   //    theta2 = +/-180 e o elo 2 dobrado sobre o elo 1 (colisao).
-  if (protDobra) {
-    if (fabsf(t2) > 180.0f - folgaDobra) {
-      if (motivo) *motivo = "cotovelo dobrado demais: elo 2 bate no elo 1";
-      return false;
-    }
+  if (protDobra && fabsf(t2) > 180.0f - folgaDobra) {
+    v.causa="dobra"; v.junta=2; v.valor=fabsf(t2); v.limite=180.0f - folgaDobra;
+    return false;
   }
 
   // 3) Envelope cartesiano - depende do comprimento dos elos estar certo
   if (protEnvelope) {
     float xc, yc, xp, yp;
     cinematicaDireta(t1, t2, xc, yc, xp, yp);
-
-    if (yp < envYMin || yc < envYMin) {
-      if (motivo) *motivo = "abaixo do Y minimo (mesa)";
-      return false;
+    const float menorY = (yp < yc) ? yp : yc;
+    if (menorY < envYMin) {
+      v.causa="mesa"; v.valor=menorY; v.limite=envYMin; return false;
     }
-    if (distanciaOrigemAoSegmento(xc, yc, xp, yp) < envRaioMin) {
-      if (motivo) *motivo = "elo 2 passando por cima da base";
-      return false;
+    const float d = distanciaOrigemAoSegmento(xc, yc, xp, yp);
+    if (d < envRaioMin) {
+      v.causa="base"; v.valor=d; v.limite=envRaioMin; return false;
     }
   }
-
   return true;
+}
+
+// Casca antiga: mesma checagem, texto curto. Continua valendo para todo
+// caminho de codigo que so quer saber se pode mover.
+bool posturaValida(float t1, float t2, const char** motivo) {
+  Violacao v;
+  if (posturaValidaDet(t1, t2, v)) return true;
+  if (motivo) {
+    static char curto[96];
+    violacaoTexto(v, curto, sizeof(curto));
+    *motivo = curto;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------
@@ -172,6 +220,107 @@ bool caminhoJuntasValido(float t1a, float t2a, float t1b, float t2b,
       return false;
     }
   }
+  return true;
+}
+
+bool caminhoJuntasValidoDet(float t1a, float t2a, float t1b, float t2b,
+                            Violacao& v) {
+  violacaoLimpar(v);
+  const float d1 = fabsf(t1b - t1a);
+  const float d2 = fabsf(t2b - t2a);
+  const float maior = (d1 > d2) ? d1 : d2;
+
+  int n = (int)(maior / PASSO_VALIDACAO_GRAUS) + 1;
+  if (n < 4)   n = 4;
+  if (n > 360) n = 360;
+
+  // Varre o caminho INTEIRO e guarda a PIOR violacao, nao a primeira.
+  // Relatar a primeira engana: num cordao que estoura 0,3 grau no comeco
+  // e 45 graus no meio, o operador tenta abrir o limite em 1 grau e nao
+  // entende por que continua recusado.
+  bool achou = false;
+  float piorExcesso = 0.0f;
+  Violacao pior;
+  violacaoLimpar(pior);
+
+  for (int k = 0; k <= n; k++) {
+    const float a = (float)k / (float)n;
+    Violacao atual;
+    if (!posturaValidaDet(t1a + (t1b - t1a) * a,
+                          t2a + (t2b - t2a) * a, atual)) {
+      const float excesso = fabsf(atual.valor - atual.limite);
+      if (!achou || excesso > piorExcesso) {
+        achou = true; piorExcesso = excesso; pior = atual; pior.fracao = a;
+      }
+    }
+  }
+  if (achou) { v = pior; return false; }
+  return true;
+}
+
+// ---------------------------------------------------------------------
+// A reta cartesiana e o unico caminho em que o operador pensa ("do canto
+// da chapa ate o outro"), mas quem tem de percorrer sao as juntas. Num
+// braco 2R, aproximar a ponta da base obriga o cotovelo a dobrar: uma
+// reta entre dois pontos folgados pode exigir muito mais curso do que
+// qualquer uma das pontas. E por isso que a recusa precisa dizer ONDE.
+// ---------------------------------------------------------------------
+bool retaCartesianaValida(float x0, float y0, float x1, float y1,
+                          float refT1, float refT2, Violacao& v) {
+  violacaoLimpar(v);
+
+  const float dist = sqrtf((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+  int n = (int)(dist / PASSO_INTERP_MM) + 2;
+  if (n > 900) n = 900;          // teto de custo para cordao muito longo
+
+  bool achou = false;
+  float piorExcesso = 0.0f;
+  Violacao pior;
+  violacaoLimpar(pior);
+
+  float r1 = refT1, r2 = refT2;
+  for (int k = 0; k <= n; k++) {
+    const float a = (float)k / (float)n;
+    const float x = x0 + (x1 - x0) * a;
+    const float y = y0 + (y1 - y0) * a;
+
+    float ca1, ca2, cb1, cb2;
+    const bool okA = cinematicaInversa(x, y, true,  ca1, ca2);
+    const bool okB = cinematicaInversa(x, y, false, cb1, cb2);
+    if (!okA && !okB) {
+      // Fora de alcance nao tem meio termo: e o pior caso possivel.
+      violacaoLimpar(v); v.causa = "alcance"; v.fracao = a; return false;
+    }
+
+    Violacao va, vb;
+    const bool validaA = okA && posturaValidaDet(ca1, ca2, va);
+    const bool validaB = okB && posturaValidaDet(cb1, cb2, vb);
+
+    if (!validaA && !validaB) {
+      // Entre as duas solucoes, reporta a que chegou MAIS PERTO de
+      // servir. Entre os pontos da reta, guarda a PIOR: relatar a
+      // primeira faria o cordao parecer quase viavel quando o meio dele
+      // precisa de dezenas de graus a mais.
+      const Violacao& melhorAqui =
+          (okA && (!okB || fabsf(va.valor - va.limite) <= fabsf(vb.valor - vb.limite)))
+          ? va : vb;
+      const float excesso = fabsf(melhorAqui.valor - melhorAqui.limite);
+      if (!achou || excesso > piorExcesso) {
+        achou = true; piorExcesso = excesso; pior = melhorAqui; pior.fracao = a;
+      }
+      continue;   // segue varrendo: interessa o pior ponto do cordao
+    }
+
+    // Segue pelo ramo de cotovelo que exige menos deslocamento, igual ao
+    // que resolverXY faz na execucao.
+    if (validaA && validaB) {
+      const float custoA = fabsf(ca1 - r1) + fabsf(ca2 - r2);
+      const float custoB = fabsf(cb1 - r1) + fabsf(cb2 - r2);
+      if (custoA <= custoB) { r1 = ca1; r2 = ca2; } else { r1 = cb1; r2 = cb2; }
+    } else if (validaA) { r1 = ca1; r2 = ca2; }
+    else                { r1 = cb1; r2 = cb2; }
+  }
+  if (achou) { v = pior; return false; }
   return true;
 }
 

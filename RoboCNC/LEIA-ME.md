@@ -247,6 +247,28 @@ onde o polegar já está, alcançável de qualquer aba.
 No computador nada disso aparece: a mesa de traçado fica sempre visível e
 as abas viram um seletor no topo da coluna da direita.
 
+### Controle por Bluetooth
+
+Além da interface web, o braço se move pelo aplicativo **Dabble** no modo
+GamePad, conectando em `RoboCNC-2DOF`. Analógico e direcional fazem o jog
+das duas juntas; **X** para; triângulo alterna precisão; quadrado grava
+ponto; círculo vai ao zero; start roda o ensaio; select liga os servos.
+
+O gamepad **não abre arco** — executar com solda exige a confirmação da
+tela. E ele usa exatamente o mesmo `CMD_JOG_XY` do joystick da tela: uma
+só implementação de zona morta e velocidade proporcional no firmware,
+duas interfaces em cima dela.
+
+O módulo roda no core 0, junto com o servidor web, e como todo o resto de
+lá só enfileira `Comando`. Ligar em `config.h`:
+
+```c
+#define BLUETOOTH_INSTALADO  true    // exige a biblioteca DabbleESP32
+```
+
+Detalhes de partição e coexistência com Wi-Fi em
+[`LIGACOES.md`](../LIGACOES.md), §7.
+
 ### Joystick
 
 Um disco analógico no lugar dos botões de seta. Horizontal move a junta
@@ -269,6 +291,42 @@ por vez.
 Soltar o dedo para o braço. Tela apagando, app indo para segundo plano ou
 aba perdendo o foco também param, na hora — e mesmo que nada disso
 chegue, o heartbeat de 350 ms do firmware para o eixo sozinho.
+
+## Por que um cordão pode ser recusado
+
+Esta é a recusa mais confusa da máquina, e vale entender de uma vez.
+
+Num braço 2R, **aproximar a ponta da base obriga o cotovelo a dobrar**.
+Uma reta cartesiana entre dois pontos folgados pode exigir muito mais
+curso do que qualquer uma das pontas:
+
+```
+cordão de (288, −105) até (−53, 302) mm
+   pontas:            θ2 = 80°
+   meio do trecho:    θ2 = 135°        curso da junta vai até 90°
+```
+
+Os dois pontos estão a 80° num curso de 90°. O cordão é impossível assim
+mesmo — e a máquina está certa em recusar.
+
+O que mudou é a **frase**. Antes saía *"junta 2 no fim do curso
+calibrado"*, e o operador olhava dois pontos claramente folgados e
+concluía que o sistema estava errado. Agora sai:
+
+> cordão 1→2: junta 2 precisa ir a 132.8 graus a 41% do trecho, e o curso
+> vai até 89.5
+
+E a recusa relata a **pior** exigência do percurso, não a primeira: a
+primeira violação desse cordão é de 89,8° — relatar ela faria você abrir
+o limite em 1° e não entender por que continua recusado.
+
+Melhor ainda: **o trecho é conferido enquanto você ensina**. Ao ligar a
+chave de solda de um trecho impercorrível, ele fica vermelho na lista com
+a frase embaixo, e tracejado em vermelho na mesa de traçado. Você
+descobre na hora, não ao apertar Executar.
+
+Saídas: aproxime os pontos, reposicione a peça, ou quebre o cordão em
+trechos menores que não passem tão perto da base.
 
 ## Proteções ativas
 

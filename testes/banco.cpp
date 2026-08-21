@@ -19,6 +19,8 @@
 #include "programa.h"
 #include "calibracao.h"
 #include "armazenamento.h"
+#include "controle_bt.h"
+#include "DabbleESP32.h"
 #include "Preferences.h"
 #include "FS.h"
 #include <string>
@@ -31,6 +33,7 @@ extern uint32_t g_msgCount;
 extern uint32_t g_serialBytes;
 extern bool g_serialSilencioso;
 extern NvsMock g_nvs;
+extern DabbleMock g_dabble;
 
 // ---------------------------------------------------------------------
 static int nPassa = 0, nAnomalia = 0;
@@ -67,12 +70,13 @@ static void rodar(uint32_t ms) {
     // ciclo por milissegundo. O mock de sistema de arquivos e
     // instantaneo, entao o que se testa e a logica, nao a latencia.
     armCicloTeste();
+    btAtualizar();          // core 0: gamepad Bluetooth
   }
 }
 // Simula o navegador vivo: heartbeat HTTP a cada 200 ms.
 static void rodarComWeb(uint32_t ms) {
   for (uint32_t i = 0; i < ms; i++) {
-    if (i % 200 == 0) registrarContatoWeb();
+    if (i % 200 == 0) registrarContatoOperador();
     rodar(1);
   }
 }
@@ -82,7 +86,7 @@ static void rodarComWeb(uint32_t ms) {
 // com +/-90 graus de curso, protecoes de fabrica.
 // ---------------------------------------------------------------------
 static void prepararRoboCalibrado(float grausCurso = 90.0f) {
-  registrarContatoWeb();
+  registrarContatoOperador();
   enviarComando(CMD_SERVOS, 1);
   rodarComWeb(20);
 
@@ -100,6 +104,8 @@ static void reiniciarSistema() {
   g_nvs = NvsMock();
   g_fs  = FsMock();
   armReiniciarTeste();
+  g_dabble.soltarTudo();
+  g_dabble.conectado = false;
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -113,7 +119,7 @@ static void reiniciarSistema() {
   progLimpar();
   trajLimpar();
   // Descarta o transiente do boot.
-  registrarContatoWeb();
+  registrarContatoOperador();
   rodarComWeb(50);
 }
 
@@ -302,7 +308,7 @@ static void teste_A05_perda_de_conexao_soldando() {
        (unsigned long)J1.motor->getAcceleration());
   const uint32_t acelDurante = J1.motor->getAcceleration();
 
-  // O navegador some. Nenhum registrarContatoWeb() a partir daqui.
+  // O navegador some. Nenhum registrarContatoOperador() a partir daqui.
   rodar(4000);
 
   checar(!soldaLigada(), "A05a", "o arco deve fechar quando a conexao cai");
@@ -562,7 +568,7 @@ static void teste_A10_json_status() {
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
-    "\"msg\":\"%s\"}",
+    "\"bt\":%s,\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
     "false","false","false","false","false","false","false","false",
@@ -574,6 +580,7 @@ static void teste_A10_json_status() {
     999999UL, 999.999f, 999999UL, 999.999f,
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
     9999.9f, 9999.9f, 90.0f, -9999.9f, 9999.9f,
+    "false",
     msg);
 
   checar(n < 1024, "A10", "o JSON de status precisa caber no buffer de 1024 bytes");
@@ -1381,6 +1388,310 @@ static void teste_B09_registro_de_eventos() {
   nota("core 0: registrar nunca atrasa o laco de controle.");
 }
 
+
+// =====================================================================
+//  C - MENSAGENS DE RECUSA
+// =====================================================================
+static void teste_C01_mensagens_de_recusa() {
+  secao("C01  A recusa diz ONDE, qual junta e quanto faltou?");
+  reiniciarSistema();
+  prepararRoboCalibrado();     // curso +/-90
+
+  // Dois pontos folgados (t2 = 80 num curso de 90). A reta cartesiana
+  // entre eles passa perto da base, e um braco 2R precisa dobrar o
+  // cotovelo para alcancar perto: o MEIO do cordao exige muito mais
+  // curso do que qualquer uma das pontas.
+  progLimpar();
+  const float A1 = -60, A2 = 80, B1 = 60, B2 = 80;
+  J1.motor->setCurrentPosition(grausParaPassos(J1, A1));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, A2));
+  rodarComWeb(5);
+  const char* ma = nullptr;
+  const bool okA = progAdicionarPonto(posicaoJ1(), posicaoJ2(), &ma);
+  J1.motor->setCurrentPosition(grausParaPassos(J1, B1));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, B2));
+  rodarComWeb(5);
+  const char* mb = nullptr;
+  const bool okB = progAdicionarPonto(posicaoJ1(), posicaoJ2(), &mb);
+  progDefinirSolda(0, true);
+
+  checar(okA && okB, "C01a", "as duas pontas do cordao sao aceitas");
+  nota("ponto 1 t=(%.0f, %.0f) e ponto 2 t=(%.0f, %.0f), curso %.0f..%.0f",
+       A1, A2, B1, B2, J1.grausMin, J1.grausMax);
+
+  // A conferencia por trecho tem de reprovar, com texto util.
+  char aviso[176] = "";
+  const bool trechoOk = progConferirTrecho(0, aviso, sizeof(aviso));
+  const bool util = !trechoOk &&
+                    strstr(aviso, "cordao 1->2") &&
+                    strstr(aviso, "junta 2") &&
+                    strstr(aviso, "% do trecho") &&
+                    strstr(aviso, "curso vai ate");
+  checar(util, "C01b",
+         "a recusa nomeia o trecho, a junta, o ponto do percurso e o limite");
+  nota("\"%s\"", aviso);
+  nota("Antes a frase era so \"junta 2 no fim do curso calibrado\": o");
+  nota("operador olhava dois pontos a 80 graus num curso de 90 e concluia");
+  nota("que a maquina estava errada.");
+
+  // E tem de relatar a PIOR violacao, nao a primeira.
+  float pior = 0.0f;
+  const char* p = strstr(aviso, "ir a ");
+  if (p) pior = (float)atof(p + 5);
+  checar(pior > 120.0f, "C01c",
+         "relata a pior exigencia do percurso, nao a primeira que aparece");
+  nota("valor relatado: %.1f graus. A primeira violacao da reta e de 89.8", pior);
+  nota("graus -- relatar ela faria o operador abrir o limite em 1 grau e");
+  nota("nao entender por que continua recusado.");
+
+  // progIniciar tem de devolver a mesma frase, nunca vazia.
+  const char* motivo = nullptr;
+  const bool iniciou = progIniciar(true, &motivo);
+  checar(!iniciou && motivo && strstr(motivo, "cordao 1->2"), "C01d",
+         "progIniciar recusa com a mesma frase, nunca em silencio");
+  nota("progIniciar: %s", motivo ? motivo : "(sem motivo!)");
+  if (iniciou) progParar();
+}
+
+static void teste_C02_braco_fora_da_area() {
+  secao("C02  Braco parado fora da area util: a recusa aponta para ele?");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  progLimpar();
+  const float T1[2] = { -20, 20 }, T2[2] = { 30, 30 };
+  for (int i = 0; i < 2; i++) {
+    J1.motor->setCurrentPosition(grausParaPassos(J1, T1[i]));
+    J2.motor->setCurrentPosition(grausParaPassos(J2, T2[i]));
+    rodarComWeb(5);
+    const char* m = nullptr;
+    progAdicionarPonto(posicaoJ1(), posicaoJ2(), &m);
+  }
+  progDefinirSolda(0, true);
+
+  // O braco vai parar fora do curso util (acontece ao mudar resolucao,
+  // refazer calibracao ou perder passo).
+  J1.motor->setCurrentPosition(grausParaPassos(J1, J1.grausMax + 2.0f));
+  rodarComWeb(5);
+
+  const char* motivo = nullptr;
+  const bool iniciou = progIniciar(true, &motivo);
+  const bool aponta = !iniciou && motivo &&
+                      strstr(motivo, "braco esta parado fora") &&
+                      strstr(motivo, "jog");
+  checar(aponta, "C02",
+         "a recusa diz que o problema e a posicao atual, e o que fazer");
+  nota("braco em t1 = %.1f (curso util ate %.1f)",
+       passosParaGraus(J1, posicaoJ1()), J1.grausMax - MARGEM_LIMITE_GRAUS);
+  nota("\"%s\"", motivo ? motivo : "(sem motivo!)");
+  nota("Antes saia \"junta 1 no fim do curso calibrado\" e o operador ia");
+  nota("procurar o defeito nos pontos, que estavam todos certos.");
+  if (iniciou) progParar();
+}
+
+static void teste_C03_cordao_bom_passa() {
+  secao("C03  Cordao que cabe no curso continua passando");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Cordao curto, longe da base: nao exige dobrar o cotovelo.
+  progLimpar();
+  const float T1[2] = { 10, 22 }, T2[2] = { -25, -25 };
+  for (int i = 0; i < 2; i++) {
+    J1.motor->setCurrentPosition(grausParaPassos(J1, T1[i]));
+    J2.motor->setCurrentPosition(grausParaPassos(J2, T2[i]));
+    rodarComWeb(5);
+    const char* m = nullptr;
+    progAdicionarPonto(posicaoJ1(), posicaoJ2(), &m);
+  }
+  progDefinirSolda(0, true);
+  J1.motor->setCurrentPosition(grausParaPassos(J1, T1[0]));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, T2[0]));
+  rodarComWeb(5);
+
+  char aviso[176] = "";
+  const bool trechoOk = progConferirTrecho(0, aviso, sizeof(aviso));
+  const char* motivo = nullptr;
+  const bool iniciou = progIniciar(true, &motivo);
+
+  float x0, y0, x1, y1, xc, yc;
+  cinematicaDireta(T1[0], T2[0], xc, yc, x0, y0);
+  cinematicaDireta(T1[1], T2[1], xc, yc, x1, y1);
+  checar(trechoOk && iniciou, "C03",
+         "cordao percorrivel nao e recusado pela validacao nova");
+  nota("cordao (%.0f, %.0f) -> (%.0f, %.0f) mm, %.0f mm", x0, y0, x1, y1,
+       sqrtf((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)));
+  nota("conferencia do trecho: %s | progIniciar: %s",
+       trechoOk ? "ok" : aviso, iniciou ? "aceito" : (motivo ? motivo : "?"));
+  if (iniciou) progParar();
+}
+
+// =====================================================================
+//  D - CONTROLE POR BLUETOOTH
+// =====================================================================
+static void teste_D01_gamepad_jog() {
+  secao("D01  Gamepad Bluetooth: jog pelos dois eixos");
+  reiniciarSistema();
+  prepararRoboCalibrado(170.0f);
+  protEnvelope = false;
+
+  g_dabble.conectado = true;
+  rodarComWeb(30);
+  checar(btConectado(), "D01a", "o firmware ve o aplicativo conectado");
+
+  // direcional: velocidade cheia
+  J1.motor->setCurrentPosition(0); J2.motor->setCurrentPosition(0);
+  rodarComWeb(5);
+  const long p0 = posicaoJ1();
+  g_dabble.dir = true;
+  rodarComWeb(700);
+  const float vDir = fabsf(J1.motor->getCurrentSpeedInMilliHz() / 1000.0f);
+  g_dabble.soltarTudo();
+  rodarComWeb(600);
+
+  checar(posicaoJ1() > p0 && fabsf(vDir - (float)velNormal) < velNormal * 0.08f,
+         "D01b", "o direcional move na velocidade de jog configurada");
+  nota("direcional direita: J1 andou %ld passos, a %.0f Hz (configurado %lu)",
+       posicaoJ1() - p0, vDir, (unsigned long)velNormal);
+
+  // analogico: proporcional, e nos dois eixos
+  J1.motor->setCurrentPosition(0); J2.motor->setCurrentPosition(0);
+  rodarComWeb(5);
+  g_dabble.raio = 4; g_dabble.angulo = 45;      // meia forca na diagonal
+  rodarComWeb(900);
+  const float v1 = fabsf(J1.motor->getCurrentSpeedInMilliHz() / 1000.0f);
+  const float v2 = fabsf(J2.motor->getCurrentSpeedInMilliHz() / 1000.0f);
+  g_dabble.soltarTudo();
+  rodarComWeb(700);
+
+  const float f = (4.0f / 7.0f) * 0.7071f;      // raio 4/7 na diagonal
+  const float esperado = velNormal * ((f - JOY_ZONA_MORTA) / (1.0f - JOY_ZONA_MORTA));
+  checar(fabsf(v1 - esperado) < esperado * 0.15f &&
+         fabsf(v2 - esperado) < esperado * 0.15f, "D01c",
+         "o analogico move os dois eixos, proporcional ao raio");
+  nota("raio 4/7 a 45 graus: J1 %.0f Hz, J2 %.0f Hz (esperado ~%.0f)",
+       v1, v2, esperado);
+  nota("O gamepad usa o MESMO CMD_JOG_XY da tela: uma so implementacao de");
+  nota("zona morta e de velocidade proporcional no firmware.");
+
+  // soltar para
+  checar(fabsf(J1.motor->getCurrentSpeedInMilliHz()) < 1000 &&
+         fabsf(J2.motor->getCurrentSpeedInMilliHz()) < 1000, "D01d",
+         "soltar o analogico para os dois eixos");
+  nota("apos soltar: J1 %.0f Hz, J2 %.0f Hz",
+       fabsf(J1.motor->getCurrentSpeedInMilliHz() / 1000.0f),
+       fabsf(J2.motor->getCurrentSpeedInMilliHz() / 1000.0f));
+}
+
+static void teste_D02_gamepad_botoes() {
+  secao("D02  Gamepad: botoes e o que eles NAO podem fazer");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  g_dabble.conectado = true;
+  rodarComWeb(30);
+
+  auto toque = [&](bool& botao) {
+    botao = true;  rodarComWeb(60);
+    botao = false; rodarComWeb(BT_DEBOUNCE_MS + 60);
+  };
+
+  const bool precAntes = modoPrecisao;
+  toque(g_dabble.triangulo);
+  checar(modoPrecisao != precAntes, "D02a", "triangulo alterna o modo precisao");
+  nota("precisao: %s -> %s", precAntes ? "ligada" : "desligada",
+       modoPrecisao ? "ligada" : "desligada");
+
+  progLimpar();
+  toque(g_dabble.quadrado);
+  checar(progQuantidade() == 1, "D02b", "quadrado grava um ponto");
+  nota("%u ponto(s) no programa", (unsigned)progQuantidade());
+
+  // PARADA com o braco andando
+  g_dabble.dir = true; rodarComWeb(500);
+  const bool andava = motoresEmMovimento();
+  g_dabble.dir = false;
+  g_dabble.cruz = true; rodarComWeb(60); g_dabble.cruz = false;
+  rodarComWeb(1200);
+  checar(andava && !motoresEmMovimento(), "D02c",
+         "X para o braco, pelo caminho fora da fila de comandos");
+  nota("braco andava: %s | apos o X: %s", andava ? "sim" : "nao",
+       motoresEmMovimento() ? "AINDA ANDANDO" : "parado");
+
+  // O gamepad nao abre arco em hipotese nenhuma.
+  progLimpar();
+  const float T1[2] = { 10, 22 }, T2[2] = { -25, -25 };
+  for (int i = 0; i < 2; i++) {
+    J1.motor->setCurrentPosition(grausParaPassos(J1, T1[i]));
+    J2.motor->setCurrentPosition(grausParaPassos(J2, T2[i]));
+    rodarComWeb(5);
+    const char* m = nullptr; progAdicionarPonto(posicaoJ1(), posicaoJ2(), &m);
+  }
+  progDefinirSolda(0, true);
+  J1.motor->setCurrentPosition(grausParaPassos(J1, T1[0]));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, T2[0]));
+  rodarComWeb(5);
+
+  g_subidas[PIN_RELE_SOLDA] = 0;
+  toque(g_dabble.start);
+  rodarComWeb(400);
+  const bool comecou = progRodando();
+  const bool emEnsaio = progEmEnsaio();
+  uint32_t t = 0;
+  while (progRodando() && t < 40000) { rodarComWeb(50); t += 50; }
+
+  checar(comecou && emEnsaio && g_subidas[PIN_RELE_SOLDA] == 0, "D02d",
+         "start executa sempre o ENSAIO: gamepad nunca abre arco");
+  nota("iniciou: %s | ensaio: %s | acionamentos do rele: %d",
+       comecou ? "sim" : "nao", emEnsaio ? "sim" : "NAO", g_subidas[PIN_RELE_SOLDA]);
+  nota("Executar com arco exige a confirmacao da tela. Botao de controle");
+  nota("nao e lugar de comandar arco eletrico.");
+}
+
+static void teste_D03_bluetooth_e_o_cao_de_guarda() {
+  secao("D03  So o gamepad conectado, sem navegador nenhum");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Habilita servos e para de alimentar o heartbeat HTTP.
+  g_dabble.conectado = true;
+  rodar(30);
+
+  // 4 s sem nenhum contato HTTP: o supervisor cortaria em 2,5 s se o
+  // Bluetooth nao contasse como operador presente.
+  g_dabble.dir = true;
+  rodar(4000);
+  const bool aindaMove = motoresEmMovimento();
+  const bool aindaManual = (modoAtual == MODO_MANUAL);
+  g_dabble.soltarTudo();
+  rodar(800);
+
+  checar(aindaMove && aindaManual, "D03a",
+         "com o gamepad conectado o supervisor nao acusa conexao perdida");
+  nota("4 s sem requisicao HTTP: modo=%d, braco %s",
+       (int)modoAtual, aindaMove ? "andando" : "PARADO");
+
+  // Aplicativo cai: o jog tem de morrer.
+  g_dabble.dir = true;
+  rodar(400);
+  const bool moviaAntes = motoresEmMovimento();
+  g_dabble.conectado = false;
+  rodar(1500);
+
+  checar(moviaAntes && !motoresEmMovimento(), "D03b",
+         "aplicativo desconectando para o jog na hora");
+  nota("antes da queda: %s | depois: %s",
+       moviaAntes ? "andando" : "parado",
+       motoresEmMovimento() ? "AINDA ANDANDO" : "parado");
+  nota("btAtualizar() manda o zero na borda de desconexao, e o heartbeat");
+  nota("de %lu ms do firmware e a segunda rede.", (unsigned long)TIMEOUT_JOG_MS);
+
+  // E sem gamepad nem navegador, o supervisor faz o seu papel.
+  rodar(3000);
+  checar(!servosLigados || modoAtual == MODO_MANUAL, "D03c",
+         "sem gamepad e sem navegador, o supervisor corta o movimento");
+  nota("modo=%d, arco=%d", (int)modoAtual, (int)soldaLigada());
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1414,6 +1725,14 @@ int main() {
   teste_B07_config_backup();
   teste_B08_arquivo_durante_execucao();
   teste_B09_registro_de_eventos();
+
+  teste_C01_mensagens_de_recusa();
+  teste_C02_braco_fora_da_area();
+  teste_C03_cordao_bom_passa();
+
+  teste_D01_gamepad_jog();
+  teste_D02_gamepad_botoes();
+  teste_D03_bluetooth_e_o_cao_de_guarda();
 
   printf("\n\033[1mRESULTADO: %d passaram, %d anomalias\033[0m\n\n", nPassa, nAnomalia);
   (void)secaoAtual;

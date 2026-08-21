@@ -2,6 +2,7 @@
 #include "Preferences.h"
 #include "WiFi.h"
 #include "SD.h"
+#include "DabbleESP32.h"
 #include "freertos/queue.h"
 
 uint32_t g_millis = 0;
@@ -27,6 +28,9 @@ WiFiMock   WiFi;
 NvsMock    g_nvs;
 FsMock     g_fs;
 SDMock     SD;
+DabbleMock g_dabble;
+DabbleClass Dabble;
+GamePadMock GamePad;
 
 void pinMode(uint8_t p, int m) {
   if (p >= 64) return;

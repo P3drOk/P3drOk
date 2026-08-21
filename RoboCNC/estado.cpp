@@ -36,7 +36,7 @@ bool          movimentoLiberado = false;
 
 ConfigPendente configPendente;
 
-volatile uint32_t ultimoContatoWebMs = 0;
+volatile uint32_t ultimoContatoOperadorMs = 0;
 
 static Snapshot      snapshotAtual;
 static portMUX_TYPE  muxSnapshot = portMUX_INITIALIZER_UNLOCKED;
@@ -89,8 +89,8 @@ void limparFilaComandos() {
   while (xQueueReceive(filaComandos, &descarte, 0) == pdTRUE) { }
 }
 
-void registrarContatoWeb() {
-  ultimoContatoWebMs = millis();
+void registrarContatoOperador() {
+  ultimoContatoOperadorMs = millis();
 }
 
 // ---------------------------------------------------------------------

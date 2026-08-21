@@ -31,11 +31,14 @@ estado = {
     "ppv1": 10000, "red1": 1.0, "ppv2": 10000, "red2": 1.0,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 27.78, "ppg2": 27.78,
     "l1": 200.0, "l2": 200.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
+    "bt": False,
     "msg": "Pronto. Habilite os servos para comecar",
 }
-PONTOS = {"pts": [
+PONTOS = {"conferido": True, "pts": [
     {"t1": 10.0, "t2": -30.0, "x": 371, "y": -66, "s": 1},
-    {"t1": 25.0, "t2": -30.0, "x": 375, "y": 40,  "s": 0},
+    {"t1": 25.0, "t2": -30.0, "x": 375, "y": 40, "s": 1,
+     "av": "cordao 2->3: junta 2 precisa ir a 132.8 graus a 41% do trecho, "
+           "e o curso vai ate 89.5"},
     {"t1": 40.0, "t2": -50.0, "x": 340, "y": 111, "s": 0},
 ]}
 # caminho a mao livre: um arco de circulo, metade com solda

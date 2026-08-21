@@ -4,6 +4,7 @@
 #include "trajetoria.h"
 #include "programa.h"
 #include "armazenamento.h"
+#include "controle_bt.h"
 #include "pagina_web.h"
 
 static WebServer server(80);
@@ -45,7 +46,7 @@ static long argL(const char* nome, long padrao) {
 
 // ---------------------------------------------------------------------
 static void handleRaiz() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   Serial.println("[WEB] Servindo pagina de controle.");
   server.send_P(200, "text/html", PAGINA_HTML);
 }
@@ -59,7 +60,7 @@ static void handleNaoEncontrado() {
 }
 
 static void handleStatus() {
-  registrarContatoWeb();
+  registrarContatoOperador();
 
   Snapshot s;
   lerSnapshot(s);
@@ -85,7 +86,7 @@ static void handleStatus() {
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
-    "\"msg\":\"%s\"}",
+    "\"bt\":%s,\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
     s.precisao ? "true" : "false",
@@ -110,6 +111,7 @@ static void handleStatus() {
     (unsigned long)J2.passosPorVolta, J2.reducao,
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
+    btConectado() ? "true" : "false",
     s.mensagem);
 
   server.send(200, "application/json", json);
@@ -119,7 +121,7 @@ static void handleStatus() {
 // Caminho gravado, reamostrado para caber na resposta.
 // ---------------------------------------------------------------------
 static void handleTrajetoria() {
-  registrarContatoWeb();
+  registrarContatoOperador();
 
   Snapshot s;
   lerSnapshot(s);
@@ -158,13 +160,23 @@ static void handleTrajetoria() {
 
 // Lista de pontos do programa, ja convertida para graus e mm.
 static void handlePontos() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const uint8_t n = progQuantidade();
   const Ponto* lista = progLista();
 
+  // A conferencia de cada trecho roda cinematica inversa e le os limites
+  // das juntas. So e feita com o robo em MANUAL: fora disso os pontos nao
+  // mudam de qualquer jeito, e nao ha por que o core 0 calcular por cima
+  // de uma execucao em andamento.
+  Snapshot snap;
+  lerSnapshot(snap);
+  const bool conferir = (snap.modo == MODO_MANUAL);
+
   String out;
-  out.reserve(2048);
-  out += "{\"pts\":[";
+  out.reserve(2560);
+  out += "{\"conferido\":";
+  out += conferir ? "true" : "false";
+  out += ",\"pts\":[";
   for (uint8_t i = 0; i < n; i++) {
     const float a1 = passosParaGraus(J1, lista[i].p1);
     const float a2 = passosParaGraus(J2, lista[i].p2);
@@ -176,6 +188,12 @@ static void handlePontos() {
     out += ",\"x\":";  out += String(xp, 0);
     out += ",\"y\":";  out += String(yp, 0);
     out += ",\"s\":";  out += (int)lista[i].soldaAteProximo;
+    if (conferir && i + 1 < n) {
+      char aviso[176];
+      if (!progConferirTrecho(i, aviso, sizeof(aviso))) {
+        out += ",\"av\":\""; out += aviso; out += '"';
+      }
+    }
     out += '}';
   }
   out += "]}";
@@ -186,7 +204,7 @@ static void handlePontos() {
 // Comandos
 // ---------------------------------------------------------------------
 static void handleJog() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const long j = argL("j", 0);
   const long d = argL("d", 0);
   if (j != 1 && j != 2) { erro("junta invalida"); return; }
@@ -197,7 +215,7 @@ static void handleJog() {
 // heartbeat comparado a mandar /api/jog por eixo, o que importa num
 // WebServer que atende uma conexao por vez.
 static void handleJogXY() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const float a = argF("a", 0.0f);
   const float b = argF("b", 0.0f);
   enfileirar(CMD_JOG_XY, 0, 0,
@@ -207,33 +225,33 @@ static void handleJogXY() {
 // A PARADA nao entra na fila: escreve direto a flag que o loop() testa no
 // primeiro instante do ciclo, antes de drenar a fila de comandos.
 static void handleParar() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   solicitarParada();
   ok();
 }
 
-static void handlePrecisao()   { registrarContatoWeb(); enfileirar(CMD_PRECISAO, argL("v", -1)); }
-static void handleServos()     { registrarContatoWeb(); enfileirar(CMD_SERVOS, argL("v", 0)); }
-static void handleSolda()      { registrarContatoWeb(); enfileirar(CMD_SOLDA, argL("v", 0)); }
-static void handleTesteRele()  { registrarContatoWeb(); enfileirar(CMD_TESTE_RELE); }
-static void handlePontoGravar(){ registrarContatoWeb(); enfileirar(CMD_PONTO_GRAVAR); }
-static void handlePontoRemover(){registrarContatoWeb(); enfileirar(CMD_PONTO_REMOVER, argL("i",-1)); }
-static void handlePontoSolda() { registrarContatoWeb(); enfileirar(CMD_PONTO_SOLDA, argL("i",-1), argL("v",0)); }
-static void handleProgLimpar() { registrarContatoWeb(); enfileirar(CMD_PROG_LIMPAR); }
-static void handleProgParar()  { registrarContatoWeb(); enfileirar(CMD_PROG_PARAR); }
-static void handleIrPonto()    { registrarContatoWeb(); enfileirar(CMD_IR_PARA_PONTO, argL("i",-1)); }
-static void handleProgExec()   { registrarContatoWeb(); enfileirar(CMD_PROG_EXECUTAR, argL("ensaio",1)); }
-static void handleGravarIni()  { registrarContatoWeb(); enfileirar(CMD_GRAVAR_INICIAR); }
-static void handleGravarFim()  { registrarContatoWeb(); enfileirar(CMD_GRAVAR_PARAR); }
-static void handleReproduzir() { registrarContatoWeb(); enfileirar(CMD_REPRODUZIR); }
-static void handleTrajLimpar() { registrarContatoWeb(); enfileirar(CMD_TRAJ_LIMPAR); }
-static void handleHome()       { registrarContatoWeb(); enfileirar(CMD_IR_HOME); }
-static void handleCalibIni()   { registrarContatoWeb(); enfileirar(CMD_CALIB_INICIAR); }
-static void handleCalibConf()  { registrarContatoWeb(); enfileirar(CMD_CALIB_CONFIRMAR); }
-static void handleCalibCanc()  { registrarContatoWeb(); enfileirar(CMD_CALIB_CANCELAR); }
+static void handlePrecisao()   { registrarContatoOperador(); enfileirar(CMD_PRECISAO, argL("v", -1)); }
+static void handleServos()     { registrarContatoOperador(); enfileirar(CMD_SERVOS, argL("v", 0)); }
+static void handleSolda()      { registrarContatoOperador(); enfileirar(CMD_SOLDA, argL("v", 0)); }
+static void handleTesteRele()  { registrarContatoOperador(); enfileirar(CMD_TESTE_RELE); }
+static void handlePontoGravar(){ registrarContatoOperador(); enfileirar(CMD_PONTO_GRAVAR); }
+static void handlePontoRemover(){registrarContatoOperador(); enfileirar(CMD_PONTO_REMOVER, argL("i",-1)); }
+static void handlePontoSolda() { registrarContatoOperador(); enfileirar(CMD_PONTO_SOLDA, argL("i",-1), argL("v",0)); }
+static void handleProgLimpar() { registrarContatoOperador(); enfileirar(CMD_PROG_LIMPAR); }
+static void handleProgParar()  { registrarContatoOperador(); enfileirar(CMD_PROG_PARAR); }
+static void handleIrPonto()    { registrarContatoOperador(); enfileirar(CMD_IR_PARA_PONTO, argL("i",-1)); }
+static void handleProgExec()   { registrarContatoOperador(); enfileirar(CMD_PROG_EXECUTAR, argL("ensaio",1)); }
+static void handleGravarIni()  { registrarContatoOperador(); enfileirar(CMD_GRAVAR_INICIAR); }
+static void handleGravarFim()  { registrarContatoOperador(); enfileirar(CMD_GRAVAR_PARAR); }
+static void handleReproduzir() { registrarContatoOperador(); enfileirar(CMD_REPRODUZIR); }
+static void handleTrajLimpar() { registrarContatoOperador(); enfileirar(CMD_TRAJ_LIMPAR); }
+static void handleHome()       { registrarContatoOperador(); enfileirar(CMD_IR_HOME); }
+static void handleCalibIni()   { registrarContatoOperador(); enfileirar(CMD_CALIB_INICIAR); }
+static void handleCalibConf()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CONFIRMAR); }
+static void handleCalibCanc()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CANCELAR); }
 
 static void handleMover() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   Snapshot s;
   lerSnapshot(s);
   const float t1 = argF("t1", s.t1);
@@ -244,7 +262,7 @@ static void handleMover() {
 }
 
 static void handleMoverXY() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   if (!server.hasArg("x") || !server.hasArg("y")) { erro("faltam x e y"); return; }
 
   Snapshot s;
@@ -285,7 +303,7 @@ static bool exigirManual() {
 }
 
 static void handleConfig() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   if (!exigirManual()) return;
 
   const long vn = argL("velN",  velNormal);
@@ -326,7 +344,7 @@ static void handleConfig() {
 }
 
 static void handleGeometria() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   if (!exigirManual()) return;
 
   const float l1 = argF("l1", elo1Mm);
@@ -350,7 +368,7 @@ static void handleGeometria() {
 }
 
 static void handleProtecoes() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   if (!exigirManual()) return;
 
   prepararConfigPendente();
@@ -362,7 +380,7 @@ static void handleProtecoes() {
 }
 
 static void handleReset() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   if (!exigirManual()) return;
   enfileirar(CMD_RESTAURAR_PADROES);
 }
@@ -380,7 +398,7 @@ static const char* NOMES_ARM[] = {
 };
 
 static void handleSdEstado() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   char json[320];
   const uint8_t e = (uint8_t)armEstado();
   snprintf(json, sizeof(json),
@@ -396,7 +414,7 @@ static void handleSdEstado() {
 }
 
 static void handleSdLista() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const ArmTipo t = armTipoDe(server.arg("tipo").c_str());
   if (t == TIPO_INVALIDO) { erro("tipo invalido"); return; }
 
@@ -425,13 +443,13 @@ static void handleSdLista() {
 }
 
 static void handleSdMontar() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   if (!armSolicitar(TAR_MONTAR, "")) { erro("cartao ocupado"); return; }
   ok();
 }
 
 static void handleSdApagar() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const String tipo = server.arg("tipo");
   const String nome = server.arg("nome");
   if (armTipoDe(tipo.c_str()) == TIPO_INVALIDO) { erro("tipo invalido"); return; }
@@ -447,7 +465,7 @@ static void handleSdApagar() {
 // core 1 depois de ler e validar o arquivo. Trajetoria e a excecao: o
 // core 1 precisa emprestar o buffer antes.
 static void handleSdSalvar() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const String tipo = server.arg("tipo");
   const String nome = server.arg("nome");
   if (!armNomeValido(nome.c_str())) {
@@ -463,7 +481,7 @@ static void handleSdSalvar() {
 }
 
 static void handleSdCarregar() {
-  registrarContatoWeb();
+  registrarContatoOperador();
   const String tipo = server.arg("tipo");
   const String nome = server.arg("nome");
   if (!armNomeValido(nome.c_str())) { erro("nome invalido"); return; }

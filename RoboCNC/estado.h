@@ -111,10 +111,15 @@ void limparFilaComandos();
 extern bool movimentoLiberado;
 
 // ---------------------------------------------------------------------
-// Heartbeat de conexao (alimentado pelos handlers HTTP)
+// Heartbeat do operador.
+//
+// Alimentado pelos handlers HTTP e, quando existe, pelo gamepad
+// Bluetooth. Sem contato por TIMEOUT_CONEXAO_MS o supervisor corta
+// movimento e arco -- entao quem controla so pelo gamepad precisa
+// alimentar isto tambem, senao o robo para sozinho em 2,5 s.
 // ---------------------------------------------------------------------
-extern volatile uint32_t ultimoContatoWebMs;
-void registrarContatoWeb();
+extern volatile uint32_t ultimoContatoOperadorMs;
+void registrarContatoOperador();
 
 // ---------------------------------------------------------------------
 // Snapshot publicado pelo loop e lido pela web

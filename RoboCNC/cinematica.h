@@ -26,9 +26,31 @@ bool cinematicaInversa(float x, float y, bool cotoveloCima,
 bool resolverXY(float x, float y, float t1Atual, float t2Atual,
                 float& t1, float& t2, const char** motivo);
 
+// ---------------------------------------------------------------------
+// Detalhe de uma recusa.
+//
+// "junta 2 no fim do curso calibrado" nao ajuda ninguem quando os dois
+// pontos do cordao estao a 80 graus num curso de 90: o que estoura e o
+// MEIO da reta, que num braco 2R precisa dobrar o cotovelo para alcancar
+// perto da base. A mensagem tem que dizer onde, qual junta, quanto foi
+// pedido e qual e o limite.
+// ---------------------------------------------------------------------
+struct Violacao {
+  const char* causa;   // "curso", "dobra", "mesa", "base", "alcance", nullptr
+  uint8_t junta;       // 0 = nao se aplica, 1 ou 2
+  float   valor;       // grau (curso/dobra) ou mm (mesa/base) que foi exigido
+  float   limite;      // o limite que ele passou, na mesma unidade
+  float   fracao;      // 0..1: onde no caminho. -1 quando e postura unica
+};
+
+void violacaoLimpar(Violacao& v);
+// Escreve a frase que o operador le. Sempre termina com o que fazer.
+void violacaoTexto(const Violacao& v, char* destino, size_t tam);
+
 // Verificacao unica de postura: curso de cada junta, dobra minima do
 // cotovelo (auto-colisao entre os elos) e envelope cartesiano.
 bool posturaValida(float t1, float t2, const char** motivo);
+bool posturaValidaDet(float t1, float t2, Violacao& v);
 
 // Mesma checagem, recebendo passos.
 bool posturaValidaPassos(long p1, long p2, const char** motivo);
@@ -42,6 +64,14 @@ bool caminhoJuntasValido(float t1a, float t2a, float t1b, float t2b,
                          const char** motivo);
 bool caminhoJuntasValidoPassos(long p1a, long p2a, long p1b, long p2b,
                                const char** motivo);
+bool caminhoJuntasValidoDet(float t1a, float t2a, float t1b, float t2b,
+                            Violacao& v);
+
+// Percorre a RETA CARTESIANA entre duas pontas, resolvendo cinematica
+// inversa em cada passo de PASSO_INTERP_MM -- o mesmo caminho que o
+// firmware executa num trecho com solda. Preenche onde e por que falhou.
+bool retaCartesianaValida(float x0, float y0, float x1, float y1,
+                          float refT1, float refT2, Violacao& v);
 
 // Quanto a postura viola os limites, em "graus equivalentes".
 // 0 = dentro. Serve para permitir movimento de RECUPERACAO quando o

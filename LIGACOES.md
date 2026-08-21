@@ -200,7 +200,49 @@ jog fica bloqueado até soltar.
 
 ---
 
-## 7. LED de status
+## 7. Controle por Bluetooth (aplicativo Dabble)
+
+Não tem fiação: o Bluetooth é o rádio interno do ESP32. O que tem é
+consequência disso.
+
+**Biblioteca.** `DabbleESP32`, instalável pelo gerenciador de bibliotecas
+da IDE. Sem ela, ponha `BLUETOOTH_INSTALADO false` em `config.h` e o
+firmware compila sem nada de Bluetooth.
+
+**Particionamento.** BLE + Wi-Fi + servidor web não cabem na partição
+padrão. Na IDE:
+
+> Tools → Partition Scheme → **Huge APP (3MB No OTA/1MB SPIFFS)**
+
+Sem isso o upload falha com *"Sketch too big"*.
+
+**Rádio compartilhado.** BLE e Wi-Fi dividem a mesma antena. Funcionam
+juntos — é o caso de uso normal do ESP32 — mas com o gamepad conectado a
+interface web fica um pouco mais lenta. A pilha BLE também come ~60 kB de
+RAM.
+
+**Conectar.** Aplicativo Dabble → módulo **GamePad** → conectar em
+`RoboCNC-2DOF`.
+
+| Controle | O que faz |
+|----------|-----------|
+| analógico / direcional | jog das duas juntas, proporcional ao quanto você empurra |
+| **X** (cross) | **PARADA** — mesmo caminho do botão PARAR da tela, fora da fila de comandos |
+| triângulo | liga/desliga o modo precisão |
+| quadrado | grava ponto na posição atual |
+| círculo | vai para o zero da máquina |
+| start | executa o **ensaio** (sem arco) |
+| select | habilita/desabilita os servos |
+
+**O gamepad não abre arco.** Executar com solda exige a confirmação da
+tela. Botão de controle não é lugar de comandar arco elétrico — e por
+isso `start` roda sempre o ensaio, nunca a execução com solda.
+
+O gamepad conectado conta como operador presente: sem isso o supervisor
+cortaria o movimento em 2,5 s por "conexão perdida" para quem usa só o
+Bluetooth, sem navegador aberto.
+
+## 8. LED de status
 
 `PIN_LED_STATUS` vem em `255`, que significa **desligado**. Isso é
 necessário enquanto o relé estiver no GPIO 2, senão os dois brigam pelo
@@ -214,7 +256,7 @@ Depois de mover o relé para o 26, você pode apontar o LED para o 2:
 
 ---
 
-## 8. Aterramento
+## 9. Aterramento
 
 A regra que evita queimar a eletrônica inteira:
 
@@ -230,7 +272,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 
 ---
 
-## 9. Ordem de energização na primeira vez
+## 10. Ordem de energização na primeira vez
 
 1. Só o ESP32, sem drivers e sem solda. Confira no monitor serial
    (115200) que o Wi-Fi subiu:
@@ -253,7 +295,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 
 ---
 
-## 10. Se algo não funciona
+## 11. Se algo não funciona
 
 | Sintoma | Onde olhar |
 |---------|------------|
@@ -265,3 +307,6 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Jog engasga | Wi-Fi fraco. O firmware para o eixo sem heartbeat por 350 ms — é proposital. |
 | Jog recusado, nada se move | Servos desabilitados. A interface diz o motivo abaixo do joystick. |
 | Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais. |
+| *"Sketch too big"* ao gravar | Partição padrão com o Bluetooth ligado. Use **Huge APP** (§7). |
+| Recusa dizendo que uma junta precisa ir além do curso | Leia a frase inteira: se ela diz *"a N% do trecho"*, o problema é o **meio do cordão**, não as pontas. Reta cartesiana perto da base obriga o cotovelo a dobrar. Aproxime os pontos ou reposicione a peça. |
+| Gamepad não aparece no Dabble | `BLUETOOTH_INSTALADO` em false, ou partição sem espaço. Confira o log serial em 115200. |

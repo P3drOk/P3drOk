@@ -564,3 +564,102 @@ a máquina sem servos nem calibração. **38 verificações.**
 E `testes/conferir_ligacoes.py` reprova se `LIGACOES.md` divergir dos
 pinos de `config.h` — documento de fiação que mente é pior que documento
 nenhum.
+
+---
+
+# Rodada 3 — a recusa que parecia erro, e o Bluetooth
+
+## R5 · "ponto no fim do curso" mesmo com os pontos folgados  ✅
+
+Reproduzido no banco antes de mexer em qualquer linha. **A máquina estava
+certa** — a mensagem é que não dizia nada.
+
+Num braço 2R, aproximar a ponta da base obriga o cotovelo a dobrar. A
+reta cartesiana entre dois pontos folgados pode exigir muito mais curso
+do que as pontas:
+
+```
+cordão (288, −105) → (−53, 302) mm
+   pontas          θ2 =  80°
+   41% do trecho   θ2 = 133°      curso da junta: 90°
+```
+
+A frase antiga era *"junta 2 no fim do curso calibrado"*. O operador
+olhava dois pontos a 80° num curso de 90° e concluía que o sistema estava
+quebrado.
+
+**Corrigido em quatro camadas:**
+
+1. **`struct Violacao`** em `cinematica.cpp` carrega causa, junta, valor
+   exigido, limite e a fração do percurso. `violacaoTexto()` monta a
+   frase. `posturaValida(motivo)` continua existindo como casca.
+2. **A pior violação, não a primeira.** `retaCartesianaValida()` e
+   `caminhoJuntasValidoDet()` varrem o percurso inteiro e guardam o pior
+   excesso. Relatar a primeira (89,8° neste cordão) faria abrir o limite
+   em 1° e continuar recusado.
+3. **Contexto em `progIniciar()`:** prefixo dizendo se é um ponto, um
+   cordão, um deslocamento, a aproximação, ou **a posição atual do
+   braço** — este último era o pior: braço parado fora da área útil
+   reprovava o programa com uma mensagem sobre junta, e o operador ia
+   procurar defeito nos pontos.
+4. **Conferência enquanto ensina.** `progConferirTrecho()` é exposto em
+   `/api/pontos`; um trecho impercorrível fica vermelho na lista com a
+   frase embaixo e tracejado em vermelho na mesa. Descobrir isso só ao
+   apertar Executar é tarde.
+
+Antes / depois, do próprio banco:
+
+```
+antes    junta 2 no fim do curso calibrado
+depois   cordao 1->2: junta 2 precisa ir a 132.8 graus a 41% do trecho,
+         e o curso vai ate 89.5
+```
+
+E, para o braço fora da área:
+
+```
+o braco esta parado fora da area util (junta 1 precisa ir a 92.0 graus,
+e o curso vai ate 89.5). Traga-o de volta com o jog
+```
+
+**Um erro no diagnóstico, vale registrar:** a primeira rodada mostrou
+`progIniciar` recusando "sem motivo". Era bug do *diagnóstico* — a ordem
+de avaliação dos argumentos do `printf` lia o ponteiro de motivo antes de
+chamar a função. O firmware sempre escreveu o motivo.
+
+## R6 · Controle por Bluetooth  ✅
+
+`controle_bt.h/.cpp`, aplicativo Dabble no modo GamePad. Roda no core 0
+junto com o servidor web e, como tudo de lá, **só enfileira `Comando`** —
+não toca em motor, relé nem estado.
+
+Usa o mesmo `CMD_JOG_XY` do joystick da tela: uma só implementação de
+zona morta e velocidade proporcional no firmware, duas interfaces em
+cima.
+
+Três decisões de segurança:
+
+- **X é parada**, pelo caminho fora da fila (`solicitarParada()`), igual
+  ao botão PARAR da tela.
+- **`start` roda sempre o ensaio.** O gamepad nunca abre arco — executar
+  com solda exige a confirmação da tela.
+- **Gamepad conectado conta como operador presente.** Sem isso, quem
+  usasse só o Bluetooth veria o supervisor cortar o movimento em 2,5 s
+  por "conexão perdida". O heartbeat passou a se chamar
+  `registrarContatoOperador()`, com duas fontes.
+
+Desconexão do aplicativo manda o zero na borda; o heartbeat de 350 ms do
+firmware é a segunda rede.
+
+## Cobertura
+
+| banco | antes | agora |
+|-------|-------|-------|
+| firmware | 45 / 1 | **62 / 1** |
+| interface | 38 / 0 | **39 / 0** |
+
+Novos: C01–C03 (mensagens de recusa, braço fora da área, cordão bom
+continua passando) e D01–D03 (jog pelo gamepad, botões e o que eles não
+podem fazer, Bluetooth como único operador).
+
+A anomalia que resta continua sendo a A13, severidade 3.

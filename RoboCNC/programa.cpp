@@ -56,9 +56,13 @@ bool progAdicionarPonto(long p1, long p2, const char** motivo) {
     if (motivo) *motivo = "limite de pontos do programa atingido";
     return false;
   }
-  const char* m = nullptr;
-  if (!posturaValidaPassos(p1, p2, &m)) {
-    if (motivo) *motivo = m ? m : "postura invalida";
+  Violacao v;
+  if (!posturaValidaDet(passosParaGraus(J1, p1), passosParaGraus(J2, p2), v)) {
+    static char aviso[128];
+    char det[112];
+    violacaoTexto(v, det, sizeof(det));
+    snprintf(aviso, sizeof(aviso), "%s", det);
+    if (motivo) *motivo = aviso;
     return false;
   }
   pontos[nPontos].p1 = (int32_t)p1;
@@ -84,11 +88,14 @@ bool progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo) {
   }
   // Valida tudo ANTES de escrever: nada de programa carregado pela metade.
   for (uint8_t i = 0; i < n; i++) {
-    const char* m = nullptr;
-    if (!posturaValidaPassos(origem[i].p1, origem[i].p2, &m)) {
-      static char aviso[96];
+    Violacao v;
+    if (!posturaValidaDet(passosParaGraus(J1, origem[i].p1),
+                          passosParaGraus(J2, origem[i].p2), v)) {
+      static char aviso[144];
+      char det[112];
+      violacaoTexto(v, det, sizeof(det));
       snprintf(aviso, sizeof(aviso), "ponto %u do arquivo: %s",
-               (unsigned)(i + 1), m ? m : "postura invalida");
+               (unsigned)(i + 1), det);
       if (motivo) *motivo = aviso;
       return false;
     }
@@ -124,34 +131,47 @@ void progLimpar() {
 // Sem isso o robo descobriria um ponto inalcancavel no meio do cordao,
 // com o arco ja aberto.
 // ---------------------------------------------------------------------
-static bool retaPercorrivel(uint8_t i, const char** motivo) {
+static bool retaPercorrivelDet(uint8_t i, Violacao& v) {
   float x0, y0, x1, y1;
-  pontoParaXY(pontos[i], x0, y0);
+  pontoParaXY(pontos[i],     x0, y0);
   pontoParaXY(pontos[i + 1], x1, y1);
+  return retaCartesianaValida(x0, y0, x1, y1,
+                              passosParaGraus(J1, pontos[i].p1),
+                              passosParaGraus(J2, pontos[i].p2), v);
+}
 
-  const float dist = sqrtf((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
-  const uint16_t n = (uint16_t)(dist / PASSO_INTERP_MM) + 2;
+// ---------------------------------------------------------------------
+bool progConferirTrecho(uint8_t i, char* aviso, size_t tam) {
+  if (aviso && tam) aviso[0] = '\0';
+  if (i + 1 >= nPontos) return true;
 
-  float r1 = passosParaGraus(J1, pontos[i].p1);
-  float r2 = passosParaGraus(J2, pontos[i].p2);
+  Violacao v;
+  const bool ok = pontos[i].soldaAteProximo
+                ? retaPercorrivelDet(i, v)
+                : caminhoJuntasValidoDet(passosParaGraus(J1, pontos[i].p1),
+                                         passosParaGraus(J2, pontos[i].p2),
+                                         passosParaGraus(J1, pontos[i + 1].p1),
+                                         passosParaGraus(J2, pontos[i + 1].p2), v);
+  if (ok) return true;
 
-  for (uint16_t k = 0; k <= n; k++) {
-    const float a = (float)k / (float)n;
-    const float x = x0 + (x1 - x0) * a;
-    const float y = y0 + (y1 - y0) * a;
-    float t1, t2;
-    const char* m = nullptr;
-    if (!resolverXY(x, y, r1, r2, t1, t2, &m)) {
-      if (motivo) *motivo = m ? m : "a reta do cordao sai da area util";
-      return false;
-    }
-    r1 = t1; r2 = t2;
+  if (aviso && tam) {
+    char det[112];
+    violacaoTexto(v, det, sizeof(det));
+    snprintf(aviso, tam, "%s %u->%u: %s",
+             pontos[i].soldaAteProximo ? "cordao" : "deslocamento",
+             (unsigned)(i + 1), (unsigned)(i + 2), det);
   }
-  return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------
 bool progIniciar(bool modoEnsaio, const char** motivo) {
+  // Todas as recusas passam por aqui: uma frase que diz o ponto ou o
+  // trecho, a junta, o valor exigido e o limite. Recusa generica faz o
+  // operador olhar dois pontos folgados e concluir que a maquina errou.
+  static char aviso[208];
+  aviso[0] = '\0';
+
   if (nPontos < 2) {
     if (motivo) *motivo = "grave pelo menos 2 pontos";
     return false;
@@ -165,43 +185,48 @@ bool progIniciar(bool modoEnsaio, const char** motivo) {
     if (motivo) *motivo = "habilite os servos antes de executar";
     return false;
   }
-  for (uint8_t i = 0; i < nPontos; i++) {
-    const char* m = nullptr;
-    if (!posturaValidaPassos(pontos[i].p1, pontos[i].p2, &m)) {
-      if (motivo) *motivo = m ? m : "o programa contem ponto invalido";
-      return false;
-    }
+
+  Violacao v;
+  char det[112];
+
+  // A posicao ATUAL entra na conta: o braco parado fora da area util
+  // reprovava o programa com uma mensagem que falava de junta, e o
+  // operador ia procurar o defeito nos pontos.
+  if (!posturaValidaDet(passosParaGraus(J1, posicaoJ1()),
+                        passosParaGraus(J2, posicaoJ2()), v)) {
+    violacaoTexto(v, det, sizeof(det));
+    snprintf(aviso, sizeof(aviso),
+             "o braco esta parado fora da area util (%s). Traga-o de volta com o jog", det);
+    if (motivo) *motivo = aviso;
+    return false;
   }
 
-  // Aproximacao ate o primeiro ponto: interpolada nas juntas.
-  {
-    const char* m = nullptr;
-    if (!caminhoJuntasValidoPassos(posicaoJ1(), posicaoJ2(),
-                                   pontos[0].p1, pontos[0].p2, &m)) {
-      static char aviso[96];
-      snprintf(aviso, sizeof(aviso),
-               "o caminho ate o ponto 1 passa por: %s", m ? m : "postura invalida");
+  for (uint8_t i = 0; i < nPontos; i++) {
+    if (!posturaValidaDet(passosParaGraus(J1, pontos[i].p1),
+                          passosParaGraus(J2, pontos[i].p2), v)) {
+      violacaoTexto(v, det, sizeof(det));
+      snprintf(aviso, sizeof(aviso), "ponto %u: %s", (unsigned)(i + 1), det);
       if (motivo) *motivo = aviso;
       return false;
     }
   }
 
+  // Aproximacao ate o primeiro ponto: interpolada nas juntas.
+  if (!caminhoJuntasValidoDet(passosParaGraus(J1, posicaoJ1()),
+                              passosParaGraus(J2, posicaoJ2()),
+                              passosParaGraus(J1, pontos[0].p1),
+                              passosParaGraus(J2, pontos[0].p2), v)) {
+    violacaoTexto(v, det, sizeof(det));
+    snprintf(aviso, sizeof(aviso),
+             "no caminho da posicao atual ate o ponto 1: %s", det);
+    if (motivo) *motivo = aviso;
+    return false;
+  }
+
   // Cada trecho pelo que ele realmente percorre: reta cartesiana quando
-  // ha solda, interpolacao nas juntas quando e so deslocamento. Validar
-  // so as pontas do deslocamento deixava o braco atravessar a zona
-  // proibida no meio do caminho.
+  // ha solda, interpolacao nas juntas quando e so deslocamento.
   for (uint8_t i = 0; i + 1 < nPontos; i++) {
-    if (pontos[i].soldaAteProximo) {
-      if (!retaPercorrivel(i, motivo)) return false;
-      continue;
-    }
-    const char* m = nullptr;
-    if (!caminhoJuntasValidoPassos(pontos[i].p1, pontos[i].p2,
-                                   pontos[i + 1].p1, pontos[i + 1].p2, &m)) {
-      static char aviso[96];
-      snprintf(aviso, sizeof(aviso),
-               "o deslocamento %u->%u passa por: %s",
-               (unsigned)(i + 1), (unsigned)(i + 2), m ? m : "postura invalida");
+    if (!progConferirTrecho(i, aviso, sizeof(aviso))) {
       if (motivo) *motivo = aviso;
       return false;
     }
@@ -263,7 +288,9 @@ static void atualizarReta() {
   if (!resolverXY(x, y, refT1, refT2, t1, t2, &m)) {
     soldaDesligar();
     progParar();
-    definirMensagem("Cordao abortado no meio: %s", m ? m : "ponto invalido");
+    definirMensagem("Cordao %u->%u abortado a %.0f%% do trecho: %s",
+                    (unsigned)(idx + 1), (unsigned)(idx + 2), a * 100.0f,
+                    m ? m : "ponto invalido");
     return;
   }
   refT1 = t1; refT2 = t2;

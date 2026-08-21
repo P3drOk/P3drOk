@@ -278,6 +278,21 @@ function checar(ok, texto, extra) {
   checar(mudos.length === 0, 'botao desabilitado explica o motivo na tela',
          mudos.length ? 'sem motivo: ' + mudos.join(', ') : 'todos os bloqueios sao explicados');
 
+  // Trecho que o robo nao consegue percorrer tem de aparecer NA LISTA,
+  // enquanto o operador ensina -- nao so ao apertar Executar.
+  await t.locator('#abas button[data-aba="prog"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => document.querySelectorAll('#pnProg .et').forEach((x, i) => x.classList.toggle('aberta', i === 0)));
+  await t.waitForTimeout(250);
+  const avisos = await t.evaluate(() => {
+    const a = [...document.querySelectorAll('#lista .avTr')].map(e => e.textContent.trim());
+    return { n: a.length, txt: a[0] || '', sb: document.getElementById('sb2').textContent };
+  });
+  checar(avisos.n === 1 && /junta 2/.test(avisos.txt) && /trecho\(s\) com problema/.test(avisos.sb),
+         'trecho impercorrivel aparece na lista assim que o ponto e ensinado',
+         avisos.txt || 'nenhum aviso na lista');
+  await t.screenshot({ path: SAIDA + '/celular-5-trecho-ruim.png' });
+
   // Controles da lista de pontos.
   await t.locator('#abas button[data-aba="prog"]').click();
   await t.waitForTimeout(250);

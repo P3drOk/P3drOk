@@ -205,6 +205,9 @@ h4:first-child{margin-top:0}
  border-bottom:1px solid var(--linha);font-family:var(--mono);font-size:9.5px;
  letter-spacing:.05em;color:var(--letra2)}
 .tr.q{color:var(--quente);font-weight:600}
+.tr.ruim{background:rgba(185,28,28,.10)}
+.avTr{background:rgba(185,28,28,.10);border-bottom:1px solid var(--linha);
+ padding:2px 12px 9px 39px;font-size:11px;line-height:1.5;color:var(--brasa)}
 .ch{width:40px;height:22px;border-radius:2px;background:var(--mesa);position:relative;
  cursor:pointer;flex:0 0 auto;border:1px solid var(--linha)}
 .ch i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:1px;
@@ -404,6 +407,7 @@ h4:first-child{margin-top:0}
       <div class="lp" id="lArco"><i class="olho"></i><span>arco</span></div>
       <div class="lp" id="lRede"><i class="olho"></i><span>rede</span></div>
       <div class="lp" id="lSd"><i class="olho"></i><span>cartao</span></div>
+      <div class="lp" id="lBt"><i class="olho"></i><span>bt</span></div>
     </div>
     <button class="estop" id="btParar">PARAR</button>
   </header>
@@ -463,6 +467,7 @@ h4:first-child{margin-top:0}
             <div class="joyMotivo" id="joyMotivo"></div>
             <div class="nt">Quanto mais longe do centro, mais rapido. O circulo
             tracejado e a zona morta. Soltando o dedo, o braco para.</div>
+            <div class="nt" id="ntBt"></div>
             <button class="b mini" id="btPrec">Precisao: desligada</button>
 
             <h4>Passo a passo</h4>
@@ -849,10 +854,13 @@ function pintarLista(){
        '<button class="mb x" data-del="'+i+'">apagar</button></div>';
     if(i<pontos.length-1){
       const d=Math.round(Math.hypot(pontos[i+1].x-p.x,pontos[i+1].y-p.y));
-      h+='<div class="tr'+(p.s?" q":"")+'">'+
+      h+='<div class="tr'+(p.s?" q":"")+(p.av?" ruim":"")+'">'+
          '<div class="ch'+(p.s?" on":"")+'" data-sw="'+i+'"><i></i></div>'+
          '<span>'+(i+1)+'&rarr;'+(i+2)+' · '+d+' mm · '+
-         (p.s?"CORDAO EM RETA":"apenas desloca")+'</span></div>';}
+         (p.s?"CORDAO EM RETA":"apenas desloca")+'</span></div>';
+      /* O trecho e conferido enquanto o operador ensina: descobrir que o
+         cordao nao passa so na hora de apertar Executar e tarde. */
+      if(p.av)h+='<div class="avTr">'+p.av+'</div>';}
   });
   cx.innerHTML=h+'</div>';
   cx.querySelectorAll("[data-sw]").forEach(function(e){e.onclick=function(){
@@ -989,6 +997,15 @@ function pintar(){
   ct.lineCap="round";
   for(let i=0;i<pontos.length-1;i++){
     const A=pontos[i],B=pontos[i+1];
+    if(A.av){
+      /* Trecho que o robo nao consegue percorrer: vermelho tracejado, para
+         nao se confundir com o cordao que vai sair. */
+      const a=P(A.x,A.y),b=P(B.x,B.y);
+      ct.strokeStyle=C.brasa;ct.lineWidth=2.5;ct.setLineDash([7,5]);
+      ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.stroke();
+      ct.setLineDash([]);
+      continue;
+    }
     if(A.s){
       const a=P(A.x,A.y),b=P(B.x,B.y);
       ct.save();ct.shadowColor=C.quente;ct.shadowBlur=13;
@@ -1128,6 +1145,7 @@ function aplicar(d){
   lamp($("lServo"),d.servos?"on":"");
   lamp($("lArco"),d.solda?"hot":"");
   lamp($("lRede"),"on");
+  lamp($("lBt"),d.bt?"on":"");
 
   $("hT1").textContent=d.t1.toFixed(1)+"°";
   $("hT2").textContent=d.t2.toFixed(1)+"°";
@@ -1152,8 +1170,10 @@ function aplicar(d){
     :(d.servos?"falta calibrar":"servos desligados");
 
   const nq=pontos.filter(function(p,i){return i<pontos.length-1&&p.s;}).length;
-  $("e2").classList.toggle("feita",d.progN>=2);
-  $("sb2").textContent=d.progN===0?"nenhum ponto":(d.progN+" pontos · "+nq+" cordao(oes)");
+  const nRuim=pontos.filter(function(p,i){return i<pontos.length-1&&p.av;}).length;
+  $("e2").classList.toggle("feita",d.progN>=2&&!nRuim);
+  $("sb2").textContent=d.progN===0?"nenhum ponto":
+    (d.progN+" pontos · "+nq+" cordao(oes)"+(nRuim?" · "+nRuim+" trecho(s) com problema":""));
   acao("Gravar", d.modo==="FALHA" ? "sistema em falha: rearme os servos primeiro"
        : d.modo!=="MANUAL" ? "grave pontos com o robo parado: "+(RM[d.modo]||d.modo) : "");
   $("btPrec").textContent="Precisao: "+(d.precisao?"ligada":"desligada");
@@ -1231,6 +1251,13 @@ function aplicar(d){
   const bloqJog=porQueNaoMove(d);
   joy.classList.toggle("bloq",!!bloqJog);
   $("joyMotivo").textContent=bloqJog;
+  $("ntBt").innerHTML=d.bt
+    ? "<b>Gamepad Bluetooth conectado.</b> Direcional e analogico movem as "+
+      "juntas, <b>X</b> para, triangulo alterna precisao, quadrado grava "+
+      "ponto, circulo vai ao zero, start roda o ensaio, select liga os "+
+      "servos. O gamepad nunca abre arco."
+    : "Da para mover tambem pelo aplicativo <b>Dabble</b>, modo GamePad, "+
+      "conectando em <b>RoboCNC-2DOF</b> por Bluetooth.";
   $("sbMover").textContent=bloqJog||
     (d.precisao?"precisao · joystick":"joystick das duas juntas");
   acao("Home", porQueNaoMove(d));

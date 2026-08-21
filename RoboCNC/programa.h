@@ -31,6 +31,16 @@ void    progLimpar();
 uint8_t      progQuantidade();
 const Ponto* progLista();
 
+// ---------------------------------------------------------------------
+// Conferencia de um trecho, para a interface avisar ENQUANTO o operador
+// ensina, em vez de o problema so aparecer ao apertar Executar.
+//
+// Devolve false e preenche 'aviso' quando o trecho i -> i+1 nao e
+// percorrivel: reta cartesiana se houver solda, interpolacao nas juntas
+// se for deslocamento.
+// ---------------------------------------------------------------------
+bool progConferirTrecho(uint8_t i, char* aviso, size_t tam);
+
 // ensaio = true executa o percurso inteiro com o arco desligado.
 bool    progIniciar(bool ensaio, const char** motivo);
 void    progAtualizar();
