@@ -261,6 +261,10 @@ medicao se o curso for perto de zero.
 
 ## O cartão de memória
 
+> Pode o sistema ser instalado no cartão para ampliar a memória? Não — e
+> o porquê, mais o que fazer no lugar, está em
+> [`CARTAO_SD.md`](../CARTAO_SD.md).
+
 Quatro pastas, cada uma com um propósito:
 
 | pasta   | conteúdo                                                        |
