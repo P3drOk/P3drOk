@@ -101,7 +101,7 @@ void calibApagar() {
 // ---------------------------------------------------------------------
 static void voltarParaZero(Junta& j) {
   if (!j.motor) return;
-  j.motor->setSpeedInHz(velAuto);
+  j.motor->setSpeedInHz(grausPorSegParaHz(j, velAuto));
   j.motor->moveTo(0);
 }
 

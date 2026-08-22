@@ -89,7 +89,7 @@ static void handleStatus() {
     "\"trajN\":%u,\"trajMs\":%lu,\"trajPct\":%u,\"escala\":%u,"
     "\"progN\":%u,\"progIdx\":%u,\"progPct\":%u,\"ensaio\":%s,\"velCordao\":%.1f,"
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
-    "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"acel1\":%lu,\"acel2\":%lu,"
+    "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -113,8 +113,7 @@ static void handleStatus() {
     velCordaoMmS, velCordaoMmS,
     protCurso ? "true" : "false", protDobra ? "true" : "false",
     protEnvelope ? "true" : "false",
-    (unsigned long)velNormal, (unsigned long)velPrecisao, (unsigned long)velAuto,
-    (unsigned long)J1.aceleracao, (unsigned long)J2.aceleracao,
+    velNormal, velPrecisao, velAuto, J1.aceleracao, J2.aceleracao,
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
@@ -320,13 +319,14 @@ static void handleConfig() {
   registrarContatoOperador();
   if (!exigirManual()) return;
 
-  const long vn = argL("velN",  velNormal);
-  const long vp = argL("velP",  velPrecisao);
-  const long va = argL("velA",  velAuto);
+  // Tudo em graus/s agora. Ver a nota em config.h.
+  const float vn = argF("velN",  velNormal);
+  const float vp = argF("velP",  velPrecisao);
+  const float va = argF("velA",  velAuto);
   const float vs = argF("velCordao", velCordaoMmS);
   const float vc = argF("velC", velCordaoMmS);
-  const long a1 = argL("acel1", J1.aceleracao);
-  const long a2 = argL("acel2", J2.aceleracao);
+  const float a1 = argF("acel1", J1.aceleracao);
+  const float a2 = argF("acel2", J2.aceleracao);
   const long  pv1 = argL("ppv1", J1.passosPorVolta);
   const float rd1 = argF("red1", J1.reducao);
   const long  pv2 = argL("ppv2", J2.passosPorVolta);
@@ -338,18 +338,20 @@ static void handleConfig() {
   if (vn <= 0 || vp <= 0 || va <= 0 || vs <= 0 || a1 <= 0 || a2 <= 0 || pv1 <= 0 || rd1 <= 0 || pv2 <= 0 || rd2 <= 0) {
     erro("valor invalido"); return;
   }
-  if ((uint32_t)vn > FREQ_PULSO_MAX_HZ || (uint32_t)vp > FREQ_PULSO_MAX_HZ ||
-      (uint32_t)va > FREQ_PULSO_MAX_HZ) {
-    erro("velocidade acima do limite do driver"); return;
+  // Teto em graus/s: acima disso o pulso passaria do que o driver aceita
+  // na junta de maior reducao. 720 graus/s ja e o dobro de qualquer coisa
+  // sensata num braco de solda.
+  if (vn > 720.0f || vp > 720.0f || va > 720.0f || a1 > 5000.0f || a2 > 5000.0f) {
+    erro("velocidade ou rampa fora de faixa"); return;
   }
 
   prepararConfigPendente();
-  configPendente.velNormal    = (uint32_t)vn;
-  configPendente.velPrecisao  = (uint32_t)vp;
-  configPendente.velAuto      = (uint32_t)va;
+  configPendente.velNormal    = vn;
+  configPendente.velPrecisao  = vp;
+  configPendente.velAuto      = va;
   configPendente.velCordaoMmS = (vc > 0.05f) ? vc : vs;
-  configPendente.acel1        = (uint32_t)a1;
-  configPendente.acel2        = (uint32_t)a2;
+  configPendente.acel1        = a1;
+  configPendente.acel2        = a2;
   configPendente.ppv1         = (uint32_t)pv1;
   configPendente.red1         = rd1;
   configPendente.ppv2         = (uint32_t)pv2;

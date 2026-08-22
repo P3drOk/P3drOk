@@ -44,7 +44,7 @@ struct Junta {
   // correcao de resolucao.
   float grausHome     = 0.0f;
 
-  uint32_t aceleracao = ACEL_PADRAO;
+  float    aceleracao = ACEL_PADRAO;   // graus/s2
   bool     alarme     = false;
 
   // Sentido do eixo. Se a fiacao do DIR estiver invertida em relacao ao
@@ -63,10 +63,12 @@ extern Junta J2;
 // ---------------------------------------------------------------------
 // Parametros de configuracao (persistidos em NVS)
 // ---------------------------------------------------------------------
-extern uint32_t velNormal;
-extern uint32_t velPrecisao;
-extern uint32_t velAuto;
-extern float    velCordaoMmS;
+// Em graus por segundo. Ver a nota em config.h: Hz nao servia porque
+// significa velocidades diferentes em juntas com engrenagens diferentes.
+extern float velNormal;
+extern float velPrecisao;
+extern float velAuto;
+extern float velCordaoMmS;   // mm/s: o cordao ja e especificado assim
 
 extern float elo1Mm;
 extern float elo2Mm;
@@ -179,9 +181,9 @@ void definirMensagem(const char* fmt, ...);
 // para as variaveis vivas num ponto seguro do ciclo.
 // ---------------------------------------------------------------------
 struct ConfigPendente {
-  uint32_t velNormal, velPrecisao, velAuto;
-  float    velCordaoMmS;
-  uint32_t acel1, acel2;
+  float    velNormal, velPrecisao, velAuto;   // graus/s
+  float    velCordaoMmS;                      // mm/s
+  float    acel1, acel2;                      // graus/s2
   uint32_t ppv1, ppv2;
   float    red1, red2;
   bool     inv1, inv2;

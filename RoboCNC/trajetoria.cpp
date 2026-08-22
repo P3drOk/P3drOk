@@ -205,8 +205,8 @@ void trajAtualizarReproducao() {
     t0Reproducao = millis();
     // Aceleracao alta durante o seguimento: a suavidade vem da
     // interpolacao no tempo, nao da rampa de cada segmento.
-    if (J1.motor) J1.motor->setAcceleration(J1.aceleracao * 4);
-    if (J2.motor) J2.motor->setAcceleration(J2.aceleracao * 4);
+    if (J1.motor) J1.motor->setAcceleration(grausPorSegParaHz(J1, J1.aceleracao * 4.0f));
+    if (J2.motor) J2.motor->setAcceleration(grausPorSegParaHz(J2, J2.aceleracao * 4.0f));
     return;
   }
 

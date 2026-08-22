@@ -19,6 +19,10 @@ void aplicarAceleracao();
 // Reaplica o sentido de cada eixo. Chamar depois de mudar inverterDir.
 void aplicarSentido();
 
+// Converte graus/s naquilo que o gerador de pulso entende, com o
+// passosPorGrau daquela junta e o teto do driver.
+uint32_t grausPorSegParaHz(const Junta& j, float grausPorS);
+
 bool motoresEmMovimento();
 float velocidadeJ1Hz();
 float velocidadeJ2Hz();
@@ -46,7 +50,9 @@ void jogZerar();
 // Move as duas juntas de forma que ELAS CHEGUEM JUNTAS: a velocidade e a
 // aceleracao de cada eixo sao escaladas pela razao dos deslocamentos.
 // E isso que faz o caminho ser previsivel em vez de um "L".
-void moverCoordenado(long alvo1, long alvo2, uint32_t velJunta);
+// 'grausPorS' e a velocidade ANGULAR do eixo que tem mais caminho a
+// percorrer; o outro e escalado para os dois chegarem juntos.
+void moverCoordenado(long alvo1, long alvo2, float grausPorS);
 
 // Seguimento de setpoint, usado na reproducao de trajetoria: reemite o
 // alvo a cada ciclo sem esperar a parada, o que da movimento continuo.

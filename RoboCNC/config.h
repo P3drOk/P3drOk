@@ -115,15 +115,26 @@ static const uint32_t FREQ_PULSO_MAX_HZ = 180000;
 static const uint32_t PASSOS_POR_VOLTA_PADRAO = 10000;  // engrenagem eletronica do T3D
 static const float    REDUCAO_PADRAO          = 1.0f;   // reducao mecanica da junta
 
-static const uint32_t VEL_NORMAL_PADRAO   = 3000;
-static const uint32_t VEL_PRECISAO_PADRAO = 500;
-static const uint32_t VEL_AUTO_PADRAO     = 1200;
-static const uint32_t VEL_SOLDA_PADRAO    = 600;    // legado (Hz)
+// VELOCIDADES EM GRAUS POR SEGUNDO, nao em Hz.
+//
+// Hz significa coisas diferentes em cada junta. Com reducao 16,5 na
+// junta 1 e 4 na junta 2, os mesmos 3000 Hz davam 6,5 graus/s numa e 27
+// na outra -- a junta 2 andava quatro vezes mais rapido que a junta 1, e
+// nao havia ajuste que igualasse as duas sem recalcular a mao.
+//
+// Em graus por segundo o comportamento da maquina para de depender da
+// engrenagem de cada eixo. Cada junta converte para Hz com o seu proprio
+// passosPorGrau, e FREQ_PULSO_MAX_HZ continua sendo o teto do driver.
+static const float VEL_NORMAL_PADRAO   = 20.0f;   // graus/s
+static const float VEL_PRECISAO_PADRAO =  2.0f;   // graus/s
+static const float VEL_AUTO_PADRAO     = 12.0f;   // graus/s
 // Velocidade do cordao em mm/s: e assim que se especifica solda, nao em
 // pulsos. O firmware converte para pulsos resolvendo a cinematica.
 static const float    VEL_CORDAO_PADRAO   = 5.0f;
 static const float    PASSO_INTERP_MM     = 1.5f;  // resolucao da reta
-static const uint32_t ACEL_PADRAO         = 8000;
+// Rampa tambem em graus por segundo ao quadrado, pelo mesmo motivo:
+// 8000 passos/s2 eram 17 graus/s2 numa junta e 72 na outra.
+static const float ACEL_PADRAO         = 60.0f;   // graus/s2
 
 // ---------------------------------------------------------------------
 // GEOMETRIA E ANTI-COLISAO

@@ -6,10 +6,10 @@
 Junta J1;
 Junta J2;
 
-uint32_t velNormal      = VEL_NORMAL_PADRAO;
-uint32_t velPrecisao    = VEL_PRECISAO_PADRAO;
-uint32_t velAuto        = VEL_AUTO_PADRAO;
-float    velCordaoMmS   = VEL_CORDAO_PADRAO;
+float velNormal      = VEL_NORMAL_PADRAO;
+float velPrecisao    = VEL_PRECISAO_PADRAO;
+float velAuto        = VEL_AUTO_PADRAO;
+float velCordaoMmS   = VEL_CORDAO_PADRAO;
 
 float elo1Mm     = ELO1_PADRAO_MM;
 float elo2Mm     = ELO2_PADRAO_MM;
@@ -195,9 +195,11 @@ void aplicarConfigPendente() {
 void carregarConfiguracoes() {
   prefs.begin("robo2dof", false);
 
-  velNormal      = prefs.getUInt ("velN",        VEL_NORMAL_PADRAO);
-  velPrecisao    = prefs.getUInt ("velP",        VEL_PRECISAO_PADRAO);
-  velAuto        = prefs.getUInt ("velA",        VEL_AUTO_PADRAO);
+  // Chaves NOVAS: as antigas guardavam Hz, e reler 3000 como 3000 graus/s
+  // seria absurdo. Quem atualiza recebe os padroes em graus/s.
+  velNormal      = prefs.getFloat("velNg",       VEL_NORMAL_PADRAO);
+  velPrecisao    = prefs.getFloat("velPg",       VEL_PRECISAO_PADRAO);
+  velAuto        = prefs.getFloat("velAg",       VEL_AUTO_PADRAO);
   velCordaoMmS   = prefs.getFloat("velCmm",      VEL_CORDAO_PADRAO);
   protCurso      = prefs.getBool ("pCur", PROT_CURSO_PADRAO);
   protDobra      = prefs.getBool ("pDob", PROT_DOBRA_PADRAO);
@@ -211,8 +213,8 @@ void carregarConfiguracoes() {
   J2.passosPorVolta = prefs.getUInt ("ppv2", ppvAntigo);
   J2.reducao        = prefs.getFloat("red2", redAntiga);
 
-  J1.aceleracao  = prefs.getUInt ("acel1", ACEL_PADRAO);
-  J2.aceleracao  = prefs.getUInt ("acel2", ACEL_PADRAO);
+  J1.aceleracao  = prefs.getFloat("acel1g", ACEL_PADRAO);
+  J2.aceleracao  = prefs.getFloat("acel2g", ACEL_PADRAO);
   J1.inverterDir = prefs.getBool ("inv1", false);
   J2.inverterDir = prefs.getBool ("inv2", false);
 
@@ -250,9 +252,9 @@ uint32_t proximaSessao() {
 void salvarConfiguracoes() {
   prefs.begin("robo2dof", false);
 
-  prefs.putUInt ("velN",        velNormal);
-  prefs.putUInt ("velP",        velPrecisao);
-  prefs.putUInt ("velA",        velAuto);
+  prefs.putFloat("velNg",       velNormal);
+  prefs.putFloat("velPg",       velPrecisao);
+  prefs.putFloat("velAg",       velAuto);
   prefs.putFloat("velCmm",      velCordaoMmS);
   prefs.putBool ("pCur", protCurso);
   prefs.putBool ("pDob", protDobra);
@@ -261,8 +263,8 @@ void salvarConfiguracoes() {
   prefs.putFloat("red1", J1.reducao);
   prefs.putUInt ("ppv2", J2.passosPorVolta);
   prefs.putFloat("red2", J2.reducao);
-  prefs.putUInt ("acel1",       J1.aceleracao);
-  prefs.putUInt ("acel2",       J2.aceleracao);
+  prefs.putFloat("acel1g",      J1.aceleracao);
+  prefs.putFloat("acel2g",      J2.aceleracao);
   prefs.putBool ("inv1", J1.inverterDir);
   prefs.putBool ("inv2", J2.inverterDir);
 

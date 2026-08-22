@@ -283,6 +283,49 @@ Soltar o dedo para o braço. Tela apagando, app indo para segundo plano ou
 aba perdendo o foco também param, na hora — e mesmo que nada disso
 chegue, o heartbeat de 350 ms do firmware para o eixo sozinho.
 
+## Velocidades em graus por segundo
+
+**Hz significa coisas diferentes em cada junta.** Com redução 16,5 na
+junta 1 e 4 na junta 2 — que é uma configuração normal — os mesmos
+3000 Hz davam:
+
+```
+J1   458 pulsos/grau   3000 Hz  =   6,5 °/s
+J2   111 pulsos/grau   3000 Hz  =  27,0 °/s      quatro vezes mais rápido
+```
+
+Por isso um braço andava muito mais rápido que o outro, e não havia
+ajuste que igualasse os dois sem refazer a conta à mão.
+
+Velocidades e rampas passaram a ser especificadas em **°/s** e **°/s²**.
+Cada junta converte para Hz com o seu próprio `passosPorGrau`, e
+`FREQ_PULSO_MAX_HZ` continua sendo o teto do driver. O movimento
+coordenado também mudou: quem manda no tempo é a junta com mais **graus**
+a percorrer, não com mais passos.
+
+O painel de ajustes mostra quantos Hz cada junta vai pedir ao driver na
+velocidade de jog — é ali que se vê se algum eixo está perto do teto do
+T3D.
+
+Os valores antigos ficaram em chaves de NVS separadas, então atualizar o
+firmware traz os padrões novos em vez de reinterpretar 3000 Hz como
+3000 °/s.
+
+### Se o braço estiver perdendo passos
+
+Nesta ordem:
+
+1. **Rampa.** É a causa mais comum. A rampa desigual entre as juntas era
+   parte do problema (17 °/s² numa, 72 na outra); agora as duas são
+   iguais, mas se ainda perder, baixe `Ajustes → Rampa`.
+2. **Buffer de 5 V.** O ESP32 sai em 3,3 V e a entrada do T3D espera 5 V.
+   Sem o `74HCT14`/`74HCT245` o driver simplesmente perde pulso. Veja
+   [`LIGACOES.md`](../LIGACOES.md) §3.1 — e note que tem de ser da família
+   **HCT**, não HC.
+3. **Fios ALM.** Ligue-os e mude `ALARME_FISICO_INSTALADO` para `true`:
+   um servo drive que perde referência **avisa**, e o firmware leva o
+   sistema para FALHA em vez de continuar soldando torto.
+
 ## Modo de instalação
 
 Sem calibração válida o robô fica em **modo de instalação**: o jog é
@@ -369,9 +412,15 @@ sobrevive a uma correção de resolução.
 ### O que você vê depois
 
 Com as juntas calibradas, a mesa de traçado desenha a **área que o braço
-alcança de verdade** — o contorno azul, que é a imagem do retângulo de
-limites das juntas pela cinemática direta. O círculo tracejado continua
-sendo o alcance mecânico dos elos, que é maior. Nos botões de jog, cada
+alcança de verdade** — o contorno azul. O círculo tracejado continua
+sendo o alcance mecânico dos elos, que é maior.
+
+Ela é desenhada em coordenadas polares, e não traçando a borda do
+retângulo de limites: a cinemática direta é 2-para-1 (cotovelo para cima
+e para baixo dão o mesmo ponto), então aquela borda se cruza sozinha e o
+preenchimento saía com buracos — um "yin-yang" que não tinha nada a ver
+com a área real. Em polares a conta é direta: cada valor de θ2 dá **um**
+raio, e θ1 varre um arco nesse raio. Nos botões de jog, cada
 junta ganha uma barra mostrando onde ela está dentro do curso, com as
 pontas em vermelho marcando a margem de segurança.
 

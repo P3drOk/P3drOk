@@ -267,8 +267,8 @@ static void prepararReta() {
   velSeg1 = (uint32_t)((uint64_t)d1 * 1000 / tSegTotal) * 3 + 200;
   velSeg2 = (uint32_t)((uint64_t)d2 * 1000 / tSegTotal) * 3 + 200;
 
-  if (J1.motor) J1.motor->setAcceleration(J1.aceleracao * 4);
-  if (J2.motor) J2.motor->setAcceleration(J2.aceleracao * 4);
+  if (J1.motor) J1.motor->setAcceleration(grausPorSegParaHz(J1, J1.aceleracao * 4.0f));
+  if (J2.motor) J2.motor->setAcceleration(grausPorSegParaHz(J2, J2.aceleracao * 4.0f));
 }
 
 // ---------------------------------------------------------------------

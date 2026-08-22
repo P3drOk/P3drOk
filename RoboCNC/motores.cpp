@@ -8,6 +8,10 @@ static FastAccelStepperEngine engine = FastAccelStepperEngine();
 static int8_t   jogDir[2]     = {0, 0};
 static uint32_t jogUltimoMs[2] = {0, 0};
 static float    jogFracao[2]  = {1.0f, 1.0f};
+// Ultimo valor realmente programado no gerador de pulso, para nao
+// reprogramar a rampa a cada ciclo de 1 ms.
+static uint32_t jogHzAplicado[2]      = {0, 0};
+static int8_t   jogSentidoAplicado[2] = {0, 0};
 
 // ---------------------------------------------------------------------
 static uint32_t limitarFreq(uint32_t v) {
@@ -71,15 +75,23 @@ bool motoresLerAlarmes() {
 }
 
 // ---------------------------------------------------------------------
+uint32_t grausPorSegParaHz(const Junta& j, float grausPorS) {
+  if (grausPorS <= 0.0f || j.passosPorGrau <= 0.0f) return 1;
+  return limitarFreq((uint32_t)(grausPorS * j.passosPorGrau));
+}
+
+// Cada junta recebe a MESMA velocidade angular, convertida com o seu
+// proprio passosPorGrau. Antes as duas recebiam o mesmo Hz, e a de menor
+// reducao andava varias vezes mais rapido.
 void aplicarVelocidadeManual() {
-  const uint32_t v = limitarFreq(modoPrecisao ? velPrecisao : velNormal);
-  if (J1.motor) J1.motor->setSpeedInHz(v);
-  if (J2.motor) J2.motor->setSpeedInHz(v);
+  const float g = modoPrecisao ? velPrecisao : velNormal;
+  if (J1.motor) J1.motor->setSpeedInHz(grausPorSegParaHz(J1, g));
+  if (J2.motor) J2.motor->setSpeedInHz(grausPorSegParaHz(J2, g));
 }
 
 void aplicarAceleracao() {
-  if (J1.motor) J1.motor->setAcceleration(J1.aceleracao);
-  if (J2.motor) J2.motor->setAcceleration(J2.aceleracao);
+  if (J1.motor) J1.motor->setAcceleration(grausPorSegParaHz(J1, J1.aceleracao));
+  if (J2.motor) J2.motor->setAcceleration(grausPorSegParaHz(J2, J2.aceleracao));
 }
 
 // O segundo parametro do FastAccelStepper diz se o nivel ALTO no DIR faz
@@ -126,6 +138,8 @@ void jogDefinir(uint8_t junta, int8_t direcao, float fracao) {
 void jogZerar() {
   jogDir[0] = jogDir[1] = 0;
   jogFracao[0] = jogFracao[1] = 1.0f;
+  jogHzAplicado[0] = jogHzAplicado[1] = 0;
+  jogSentidoAplicado[0] = jogSentidoAplicado[1] = 0;
   if (J1.motor) J1.motor->stopMove();
   if (J2.motor) J2.motor->stopMove();
 }
@@ -140,8 +154,11 @@ void jogZerar() {
 static long distanciaFreada(const Junta& j) {
   if (!j.motor) return 0;
   const int32_t mHz = j.motor->getCurrentSpeedInMilliHz();
-  const float v = fabsf((float)mHz) / 1000.0f;
-  const float a = (float)(j.aceleracao > 0 ? j.aceleracao : ACEL_PADRAO);
+  const float v = fabsf((float)mHz) / 1000.0f;              // passos/s
+  // A rampa e em graus/s2; a freada se calcula em passos.
+  const float aGraus = (j.aceleracao > 0.0f) ? j.aceleracao : ACEL_PADRAO;
+  const float a = aGraus * ((j.passosPorGrau > 0.0f) ? j.passosPorGrau : 1.0f);
+  if (a <= 0.0f) return 4;
   return (long)(v * v / (2.0f * a)) + 4;
 }
 
@@ -171,18 +188,30 @@ void jogAtualizar() {
     }
 
     if (jogDir[i] == 0) {
-      j.motor->stopMove();
+      if (jogSentidoAplicado[i] != 0) {
+        jogSentidoAplicado[i] = 0;
+        jogHzAplicado[i]      = 0;
+        j.motor->stopMove();
+      }
       continue;
     }
 
-    // Velocidade proporcional a intensidade do joystick. A base continua
-    // sendo a velocidade configurada (normal ou precisao), entao o teto
-    // nao muda: o disco so escolhe qual fracao dela usar.
+    // Velocidade proporcional a intensidade do joystick, em GRAUS/s: as
+    // duas juntas andam igual, independente da engrenagem de cada uma.
+    //
+    // So reprograma quando o valor muda de fato. Chamar setSpeedInHz e
+    // runForward a cada milissegundo obriga o gerador a refazer a rampa
+    // o tempo todo, o que suja o trem de pulsos.
     {
-      const uint32_t base = modoPrecisao ? velPrecisao : velNormal;
+      const float base = modoPrecisao ? velPrecisao : velNormal;
       float f = jogFracao[i];
       if (f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
-      j.motor->setSpeedInHz(limitarFreq((uint32_t)(base * f)));
+      const uint32_t hz = grausPorSegParaHz(j, base * f);
+      if (hz != jogHzAplicado[i]) {
+        jogHzAplicado[i] = hz;
+        j.motor->setSpeedInHz(hz);
+        jogSentidoAplicado[i] = 0;    // forca reemitir o sentido
+      }
     }
 
     // Antecipa a postura no fim da freada e para antes de violar.
@@ -213,31 +242,42 @@ void jogAtualizar() {
       definirMensagem("Junta %u fora da area util: voltando", (unsigned)(i + 1));
     }
 
-    if (jogDir[i] > 0) j.motor->runForward();
-    else               j.motor->runBackward();
+    if (jogSentidoAplicado[i] != jogDir[i]) {
+      jogSentidoAplicado[i] = jogDir[i];
+      if (jogDir[i] > 0) j.motor->runForward();
+      else               j.motor->runBackward();
+    }
   }
 }
 
 // ---------------------------------------------------------------------
 // MOVIMENTO COORDENADO
 // ---------------------------------------------------------------------
-void moverCoordenado(long alvo1, long alvo2, uint32_t velJunta) {
+void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
   if (!J1.motor || !J2.motor) return;
 
   const long d1 = labs(alvo1 - posicaoJ1());
   const long d2 = labs(alvo2 - posicaoJ2());
-  const long dmax = (d1 > d2) ? d1 : d2;
-  if (dmax == 0) return;
+  if (d1 == 0 && d2 == 0) return;
 
-  const uint32_t vBase = limitarFreq(velJunta);
+  // Quem manda no tempo do movimento e a junta que tem mais GRAUS a
+  // percorrer, nao mais passos: com engrenagens diferentes, mais passos
+  // pode ser menos angulo.
+  const float g1 = (J1.passosPorGrau > 0.0f) ? d1 / J1.passosPorGrau : 0.0f;
+  const float g2 = (J2.passosPorGrau > 0.0f) ? d2 / J2.passosPorGrau : 0.0f;
+  const float gmax = (g1 > g2) ? g1 : g2;
+  if (gmax <= 0.0f) return;
 
-  const uint32_t v1 = limitarFreq((uint32_t)((uint64_t)vBase * d1 / dmax));
-  const uint32_t v2 = limitarFreq((uint32_t)((uint64_t)vBase * d2 / dmax));
+  const float vel = (grausPorS > 0.01f) ? grausPorS : 1.0f;
+  const float segundos = gmax / vel;          // as duas chegam junto
+
+  const uint32_t v1 = limitarFreq((uint32_t)(d1 / segundos) + 1);
+  const uint32_t v2 = limitarFreq((uint32_t)(d2 / segundos) + 1);
 
   // Aceleracao escalada na mesma proporcao: as duas rampas comecam e
   // terminam juntas, entao o caminho fica reto no espaco das juntas.
-  uint32_t a1 = (uint32_t)((uint64_t)J1.aceleracao * d1 / dmax);
-  uint32_t a2 = (uint32_t)((uint64_t)J2.aceleracao * d2 / dmax);
+  uint32_t a1 = grausPorSegParaHz(J1, J1.aceleracao * (g1 / gmax));
+  uint32_t a2 = grausPorSegParaHz(J2, J2.aceleracao * (g2 / gmax));
   if (a1 < 100) a1 = 100;
   if (a2 < 100) a2 = 100;
 

@@ -96,6 +96,41 @@ static void prepararRoboCalibrado(float grausCurso = 90.0f) {
   rodarComWeb(10);
 }
 
+// Percorre o assistente inteiro, colocando os limites onde o teste
+// mandar. 'cursoReal' e o que o operador mediu com transferidor
+// (0 = nao aferir); 'home1/home2' e o angulo declarado na referencia.
+static bool rodarAssistente(long passosNeg, long passosPos,
+                            float home1, float home2,
+                            float cursoReal1, float cursoReal2) {
+  // Esperar por tempo fixo nao serve: entre uma etapa e a outra o eixo
+  // volta ao zero, e quanto maior o curso mais isso demora. Espera-se a
+  // ETAPA mudar.
+  auto ateEtapa = [&](EstadoCalib alvo) {
+    uint32_t t = 0;
+    while (estadoCalib != alvo && t < 20000) { rodarComWeb(20); t += 20; }
+    return estadoCalib == alvo;
+  };
+
+  enviarComando(CMD_CALIB_INICIAR);
+  ateEtapa(CAL_HOME);
+  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, home1, home2);
+  ateEtapa(CAL_J1_NEG);
+
+  J1.motor->setCurrentPosition(passosNeg);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J1_POS);
+  J1.motor->setCurrentPosition(passosPos);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_NEG);
+  J2.motor->setCurrentPosition(passosNeg);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_POS);
+  J2.motor->setCurrentPosition(passosPos);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_CONCLUIDO);
+
+  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, cursoReal1, cursoReal2);
+  const bool fim = ateEtapa(CAL_INATIVO);
+  rodarComWeb(60);
+  return fim;
+}
+
 static void reiniciarSistema() {
   g_nvs = NvsMock();
   g_fs  = FsMock();
@@ -315,10 +350,11 @@ static void teste_A05_perda_de_conexao_soldando() {
   nota("programa, trajetoria, gravacao, calibracao e jog de uma vez.");
 
   const uint32_t acelDepois = J1.motor->getAcceleration();
-  checar(acelDepois == J1.aceleracao, "A05c",
+  const uint32_t acelEsperada = grausPorSegParaHz(J1, J1.aceleracao);
+  checar(acelDepois == acelEsperada, "A05c",
          "a aceleracao deve voltar ao valor configurado apos a parada");
-  nota("configurada = %lu; durante o cordao = %lu (prepararReta usa 4x);",
-       (unsigned long)J1.aceleracao, (unsigned long)acelDurante);
+  nota("configurada %.0f graus/s2 = %lu passos/s2; durante o cordao = %lu (4x);",
+       J1.aceleracao, (unsigned long)acelEsperada, (unsigned long)acelDurante);
   nota("depois da queda = %lu. Sem passar por progParar(), o jog manual",
        (unsigned long)acelDepois);
   nota("seguinte rodaria com a aceleracao 4x ainda ativa.");
@@ -794,20 +830,8 @@ static void teste_A15_fluxo_completo() {
   checar(servosLigados, "A15a", "servos habilitam");
 
   // --- 2. calibrar as duas juntas pelo assistente ---
-  enviarComando(CMD_CALIB_INICIAR); rodarComWeb(20);
-  const bool entrou = (modoAtual == MODO_CALIBRANDO);
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(20);       // HOME
-
   const long curso = (long)(60.0f * J1.passosPorGrau);
-  J1.motor->setCurrentPosition(-curso);
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J1 negativo
-  J1.motor->setCurrentPosition(+curso);
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J1 positivo
-  J2.motor->setCurrentPosition(-curso);
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J2 negativo
-  J2.motor->setCurrentPosition(+curso);
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(2000);     // J2 positivo
-  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(50);       // concluir
+  const bool entrou = rodarAssistente(-curso, +curso, 0, 0, 0, 0);
 
   checar(entrou && J1.calibrada && J2.calibrada && modoAtual == MODO_MANUAL,
          "A15b", "o assistente de calibracao completa e salva");
@@ -892,11 +916,11 @@ static void teste_A15_fluxo_completo() {
   // --- 8. de volta ao manual, pronto para o proximo ciclo ---
   rodarComWeb(100);
   checar(modoAtual == MODO_MANUAL && !soldaLigada() &&
-         J1.motor->getAcceleration() == J1.aceleracao,
+         J1.motor->getAcceleration() == grausPorSegParaHz(J1, J1.aceleracao),
          "A15h", "o sistema volta ao manual com velocidade e aceleracao normais");
-  nota("modo=%d, arco=%d, aceleracao J1=%lu (configurada %lu)",
+  nota("modo=%d, arco=%d, rampa J1 = %lu passos/s2 (configurada %.0f graus/s2)",
        (int)modoAtual, (int)soldaLigada(),
-       (unsigned long)J1.motor->getAcceleration(), (unsigned long)J1.aceleracao);
+       (unsigned long)J1.motor->getAcceleration(), J1.aceleracao);
 }
 
 
@@ -915,10 +939,13 @@ static void teste_A16_joystick() {
 
   // Fracao esperada: a zona morta e descontada e o resto e reescalado,
   // para o movimento comecar do zero na borda dela em vez de dar um salto.
-  auto esperado = [](float f) {
+  // Esperado em Hz: a fracao do joystick vira graus/s, e cada junta
+  // converte com o seu proprio passosPorGrau.
+  auto esperado = [](const Junta& j, float f) {
     const float m = fabsf(f);
     if (m < JOY_ZONA_MORTA) return 0.0f;
-    return velNormal * ((m - JOY_ZONA_MORTA) / (1.0f - JOY_ZONA_MORTA));
+    const float g = velNormal * ((m - JOY_ZONA_MORTA) / (1.0f - JOY_ZONA_MORTA));
+    return g * j.passosPorGrau;
   };
   auto manter = [&](float a, float b, uint32_t ms) {
     for (uint32_t t = 0; t < ms; t += 50) {
@@ -942,7 +969,7 @@ static void teste_A16_joystick() {
   // --- meia forca num eixo so ---
   manter(0.5f, 0.0f, 900);
   const float v50 = velJ1(), v50b = velJ2();
-  const float alvo50 = esperado(0.5f);
+  const float alvo50 = esperado(J1, 0.5f);
   manter(0, 0, 500);
 
   checar(fabsf(v50 - alvo50) < alvo50 * 0.08f && v50b < 1.0f, "A16b",
@@ -959,24 +986,28 @@ static void teste_A16_joystick() {
   const float v100 = velJ1();
   manter(0, 0, 500);
 
-  checar(fabsf(v100 - (float)velNormal) < velNormal * 0.05f, "A16c",
+  const float alvo100 = velNormal * J1.passosPorGrau;
+  checar(fabsf(v100 - alvo100) < alvo100 * 0.05f, "A16c",
          "na borda o eixo anda na velocidade de jog configurada, nao acima");
-  nota("comando 1,00: J1 a %.0f Hz (jog normal configurado = %lu Hz)",
-       v100, (unsigned long)velNormal);
+  nota("comando 1,00: J1 a %.0f Hz = %.1f graus/s (configurado %.1f graus/s)",
+       v100, v100 / J1.passosPorGrau, velNormal);
 
   // --- diagonal: os dois eixos, cada um na sua fracao ---
   J1.motor->setCurrentPosition(0); J2.motor->setCurrentPosition(0);
   rodarComWeb(5);
   manter(0.9f, 0.35f, 1000);
   const float va = velJ1(), vb = velJ2();
-  const float ea = esperado(0.9f), eb = esperado(0.35f);
+  const float ea = esperado(J1, 0.9f), eb = esperado(J2, 0.35f);
   manter(0, 0, 600);
 
   checar(fabsf(va - ea) < ea * 0.08f && fabsf(vb - eb) < eb * 0.12f &&
          va > vb * 2.0f, "A16d",
          "na diagonal os dois eixos andam juntos, cada um na sua fracao");
-  nota("comando 0,90 / 0,35: J1 a %.0f Hz (esperado %.0f), J2 a %.0f Hz (esperado %.0f)",
+  nota("comando 0,90 / 0,35: J1 %.0f Hz (esperado %.0f), J2 %.0f Hz (esperado %.0f)",
        va, ea, vb, eb);
+  nota("em graus/s: J1 %.1f, J2 %.1f -- a proporcao e a do dedo, nao a da",
+       va / J1.passosPorGrau, vb / J2.passosPorGrau);
+  nota("engrenagem de cada eixo.");
   nota("Um comando so para os dois eixos: metade das requisicoes HTTP que");
   nota("mandar /api/jog por eixo, num WebServer que atende uma por vez.");
 
@@ -1524,40 +1555,6 @@ static void teste_C03_cordao_bom_passa() {
 //  E - O SOFTWARE CONCORDA COM O BRACO DE VERDADE?
 // =====================================================================
 
-// Percorre o assistente inteiro, colocando os limites onde o teste
-// mandar. 'cursoReal' e o que o operador mediu com transferidor
-// (0 = nao aferir); 'home1/home2' e o angulo declarado na referencia.
-static void rodarAssistente(long passosNeg, long passosPos,
-                            float home1, float home2,
-                            float cursoReal1, float cursoReal2) {
-  // Esperar por tempo fixo nao serve: entre uma etapa e a outra o eixo
-  // volta ao zero, e quanto maior o curso mais isso demora. Espera-se a
-  // ETAPA mudar.
-  auto ateEtapa = [&](EstadoCalib alvo) {
-    uint32_t t = 0;
-    while (estadoCalib != alvo && t < 20000) { rodarComWeb(20); t += 20; }
-    return estadoCalib == alvo;
-  };
-
-  enviarComando(CMD_CALIB_INICIAR);
-  ateEtapa(CAL_HOME);
-  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, home1, home2);
-  ateEtapa(CAL_J1_NEG);
-
-  J1.motor->setCurrentPosition(passosNeg);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J1_POS);
-  J1.motor->setCurrentPosition(passosPos);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_NEG);
-  J2.motor->setCurrentPosition(passosNeg);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_POS);
-  J2.motor->setCurrentPosition(passosPos);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_CONCLUIDO);
-
-  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, cursoReal1, cursoReal2);
-  ateEtapa(CAL_INATIVO);
-  rodarComWeb(60);
-}
-
 // ---------------------------------------------------------------------
 static void teste_E01_aferir_resolucao() {
   secao("E01  Resolucao digitada errada: o curso medido corrige?");
@@ -1847,6 +1844,90 @@ static void teste_F03_sentido_do_eixo() {
   nota("apos restaurar: inverterDir=%d", (int)J1.inverterDir);
 }
 
+
+// =====================================================================
+//  G - AS DUAS JUNTAS ANDAM NA MESMA VELOCIDADE?
+// =====================================================================
+static void teste_G01_velocidade_igual_entre_juntas() {
+  secao("G01  Engrenagens diferentes, mesma velocidade angular");
+  reiniciarSistema();
+  prepararRoboCalibrado(170.0f);
+  protEnvelope = false;
+
+  // A maquina do operador: reducao 16,5 na junta 1 e 4 na junta 2, com
+  // 10000 pulsos por volta nas duas. Sao 4,1 vezes de diferenca em
+  // pulsos por grau.
+  prepararConfigPendente();
+  configPendente.ppv1 = 10000; configPendente.red1 = 16.5f;
+  configPendente.ppv2 = 10000; configPendente.red2 = 4.0f;
+  configPendente.velNormal = 20.0f;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(60);
+  J1.passosMin = grausParaPassos(J1, -170.0f); J1.passosMax = grausParaPassos(J1, 170.0f);
+  J2.passosMin = grausParaPassos(J2, -170.0f); J2.passosMax = grausParaPassos(J2, 170.0f);
+  recalcularResolucao();
+  nota("J1 %.1f pulsos/grau, J2 %.1f -- razao de %.1f vezes",
+       J1.passosPorGrau, J2.passosPorGrau, J1.passosPorGrau / J2.passosPorGrau);
+
+  // Joystick no talo nos dois eixos.
+  J1.motor->setCurrentPosition(grausParaPassos(J1, -150.0f));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, -150.0f));
+  rodarComWeb(10);
+  const long p1 = posicaoJ1(), p2 = posicaoJ2();
+  const uint32_t t0 = g_millis;
+  for (uint32_t t = 0; t < 2000; t += 50) {
+    enviarComando(CMD_JOG_XY, 0, 0, 1.0f, 1.0f);
+    rodarComWeb(50);
+  }
+  const float dt = (g_millis - t0) / 1000.0f;
+  const float g1 = (passosParaGraus(J1, posicaoJ1()) - passosParaGraus(J1, p1)) / dt;
+  const float g2 = (passosParaGraus(J2, posicaoJ2()) - passosParaGraus(J2, p2)) / dt;
+  enviarComando(CMD_JOG_XY, 0, 0, 0, 0); rodarComWeb(600);
+
+  checar(fabsf(g1 - g2) < velNormal * 0.10f, "G01a",
+         "as duas juntas percorrem o mesmo angulo por segundo");
+  nota("em %.1f s: J1 andou %.1f °/s, J2 andou %.1f °/s (configurado %.1f)",
+       dt, g1, g2, velNormal);
+  nota("Em Hz, os mesmos 3000 pulsos/s dariam 6,5 °/s na junta 1 e 27 na");
+  nota("junta 2 -- era exatamente a queixa de um braco mais rapido que o outro.");
+
+  // Em pulsos elas continuam bem diferentes, e tem de ser.
+  const float hz1 = fabsf(J1.motor->getCurrentSpeedInMilliHz() / 1000.0f);
+  const float hz2 = fabsf(J2.motor->getCurrentSpeedInMilliHz() / 1000.0f);
+  nota("(paradas agora: %.0f e %.0f Hz)", hz1, hz2);
+
+  // Movimento coordenado: as duas tem de CHEGAR juntas.
+  J1.motor->setCurrentPosition(0); J2.motor->setCurrentPosition(0);
+  rodarComWeb(10);
+  moverCoordenado(grausParaPassos(J1, 60.0f), grausParaPassos(J2, 20.0f), velAuto);
+  uint32_t tj1 = 0, tj2 = 0, t = 0;
+  while ((J1.motor->isRunning() || J2.motor->isRunning()) && t < 20000) {
+    rodarComWeb(10); t += 10;
+    if (J1.motor->isRunning()) tj1 = t;
+    if (J2.motor->isRunning()) tj2 = t;
+  }
+  checar(tj1 > 0 && labs((long)tj1 - (long)tj2) < 200, "G01b",
+         "num movimento coordenado as duas juntas chegam juntas");
+  nota("60 graus na junta 1 e 20 na junta 2 a %.1f °/s: J1 parou em %u ms,",
+       velAuto, (unsigned)tj1);
+  nota("J2 em %u ms (diferenca de %ld ms)", (unsigned)tj2,
+       labs((long)tj1 - (long)tj2));
+  nota("Quem manda no tempo e a junta com mais GRAUS a percorrer -- antes");
+  nota("era a com mais passos, que com engrenagens diferentes e outra coisa.");
+
+  // Rampa tambem angular.
+  const uint32_t a1 = J1.motor->getAcceleration(), a2 = J2.motor->getAcceleration();
+  aplicarAceleracao();
+  const float ga1 = J1.motor->getAcceleration() / J1.passosPorGrau;
+  const float ga2 = J2.motor->getAcceleration() / J2.passosPorGrau;
+  checar(fabsf(ga1 - ga2) < 1.0f, "G01c",
+         "a rampa tambem e a mesma nas duas, em graus por segundo ao quadrado");
+  nota("rampa: J1 %.0f °/s² (%lu passos/s²), J2 %.0f °/s² (%lu passos/s²)",
+       ga1, (unsigned long)J1.motor->getAcceleration(),
+       ga2, (unsigned long)J2.motor->getAcceleration());
+  nota("Rampa desigual e causa classica de perda de passo no eixo mais leve.");
+  (void)a1; (void)a2;
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1892,6 +1973,8 @@ int main() {
   teste_F01_jog_livre_sem_calibracao();
   teste_F02_apagar_calibracao();
   teste_F03_sentido_do_eixo();
+
+  teste_G01_velocidade_igual_entre_juntas();
 
 
 

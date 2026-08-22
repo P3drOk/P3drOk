@@ -677,14 +677,24 @@ h4:first-child{margin-top:0}
             <div class="res" id="resumoRes">--</div>
             <div class="nt">Pulsos por volta e a engrenagem eletronica do T3D. Reducao e a relacao mecanica daquele eixo: <b>50</b> para um redutor 50:1. Os dois eixos sao independentes.</div>
             <h4>Velocidades</h4>
-            <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="1"><span class="un">Hz</span></div>
-            <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="1"><span class="un">Hz</span></div>
-            <div class="cp"><label>Deslocamento</label><input type="number" id="inVa" min="1"><span class="un">Hz</span></div>
+            <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
+            <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="0.1" step="0.1"><span class="un">°/s</span></div>
+            <div class="cp"><label>Deslocamento</label><input type="number" id="inVa" min="0.1" step="0.5"><span class="un">°/s</span></div>
+            <div class="nt">Em <b>graus por segundo</b>, nao em pulsos. Hz significa
+            velocidades diferentes em cada junta: com reducao 16,5 numa e 4 na
+            outra, os mesmos 3000 Hz davam 6,5 °/s numa e 27 na outra &mdash; uma
+            andava quatro vezes mais rapido que a outra. Em graus por segundo as
+            duas acompanham.</div>
             <div class="cp"><label>Cordao</label><input type="number" id="inVc2" min="0.5" step="0.5"><span class="un">mm/s</span></div>
             <div class="nt">O joystick usa a velocidade de jog como teto: no centro do disco o eixo fica parado, na borda ele anda nessa velocidade.</div>
+            <div class="res" id="resumoVel">--</div>
             <h4>Rampa</h4>
-            <div class="cp"><label>Junta 1</label><input type="number" id="inA1" min="100" step="100"></div>
-            <div class="cp"><label>Junta 2</label><input type="number" id="inA2" min="100" step="100"></div>
+            <div class="cp"><label>Junta 1</label><input type="number" id="inA1" min="1" step="5"><span class="un">°/s²</span></div>
+            <div class="cp"><label>Junta 2</label><input type="number" id="inA2" min="1" step="5"><span class="un">°/s²</span></div>
+            <div class="nt">Tambem em graus, pelo mesmo motivo. Rampa alta demais
+            e a causa mais comum de <b>perda de passo</b>: o driver recebe o pulso
+            e o motor nao acompanha. Se o braco estiver perdendo posicao, baixe
+            aqui antes de mexer em qualquer outra coisa.</div>
             <button class="b pri" id="btSalvar">Salvar ajustes</button>
             <h4>Area util</h4>
             <div class="cp"><label>Folga de dobra</label><input type="number" id="inDb" min="0" max="90"><span class="un">°</span></div>
@@ -1021,43 +1031,70 @@ function pintar(){
   ct.setLineDash([4,6]);ct.stroke();ct.setLineDash([]);
 
   /* Area que o braco alcanca DE VERDADE com o curso calibrado.
-     A borda e a imagem do retangulo de limites das juntas pela
-     cinematica direta: percorrer os quatro lados desse retangulo desenha
-     o contorno fechado da regiao. Sem isto o operador so via o circulo
-     de alcance mecanico e ensinava pontos que a maquina depois recusava. */
+
+     Nao da para desenhar isto tracando a borda do retangulo de limites
+     das juntas e preenchendo: a cinematica direta e 2-para-1 (cotovelo
+     para cima e para baixo dao o mesmo ponto), entao essa borda se
+     cruza sozinha e o preenchimento sai com buracos -- um "yin-yang"
+     que nao tem nada a ver com a area real.
+
+     Em coordenadas polares a conta e direta. Para um braco 2R:
+
+        raio     r(t2) = |L1 + L2.e^(i.t2)|      -- so depende de t2
+        direcao  fi    = t1 + atan2(L2.sen t2, L1 + L2.cos t2)
+
+     Ou seja: cada valor de t2 da UM raio, e t1 varre um arco nesse
+     raio. Desenhando um arco por amostra de t2, com espessura igual ao
+     passo radial, a regiao sai preenchida certa, sem winding nenhum. */
   if(D.cal1&&D.cal2&&D.protCurso&&D.j1max>D.j1min&&D.j2max>D.j2min){
     const m=0.5;                       /* MARGEM_LIMITE_GRAUS */
     const a0=D.j1min+m,a1=D.j1max-m,b0=D.j2min+m,b1=D.j2max-m;
     if(a1>a0&&b1>b0){
-      const N=36;
-      ct.beginPath();
-      let primeiro=true;
-      const anda=function(fa,fb){
+      const N=180,g=Math.PI/180;
+      const raio=function(t2){return Math.hypot(L1+L2*Math.cos(t2*g),L2*Math.sin(t2*g));};
+      ct.save();
+      ct.strokeStyle="rgba("+C.grade+",.12)";
+      /* Perto de t2 = 0 o raio quase nao muda: dezenas de arcos cairiam
+         no mesmo pixel e o alfa se somaria num aro escuro. So desenha
+         quando o raio andou o suficiente para valer um traco novo. */
+      let ultimoR=-999;
+      for(let k=0;k<N;k++){
+        const t2a=b0+(b1-b0)*k/N, t2b=b0+(b1-b0)*(k+1)/N, t2=(t2a+t2b)/2;
+        const Ra=raio(t2a)*esc, Rb=raio(t2b)*esc, R=(Ra+Rb)/2;
+        if(R<0.5)continue;
+        if(Math.abs(R-ultimoR)<0.9)continue;
+        ultimoR=R;
+        /* Espessura LOCAL: perto de t2=0 o raio quase nao muda e a faixa
+           e fina; nas pontas ele varia rapido e a faixa engorda. Usar a
+           mesma espessura em toda a varredura empilhava dezenas de arcos
+           na borda externa e deixava um aro escuro grosso. */
+        ct.lineWidth=Math.max(1.2,Math.abs(Rb-Ra)+1);
+        const psi=Math.atan2(L2*Math.sin(t2*g),L1+L2*Math.cos(t2*g));
+        ct.beginPath();ct.arc(ox,oy,R,-(a1*g+psi),-(a0*g+psi));ct.stroke();
+      }
+      ct.restore();
+
+      /* Contorno: as duas bordas de t1 (raios) e as duas de t2 (arcos). */
+      ct.save();
+      ct.strokeStyle=C.arco;ct.lineWidth=1.5;ct.globalAlpha=.8;
+      const borda=function(t1fixo){
+        ct.beginPath();
         for(let k=0;k<=N;k++){
-          const u=k/N,q=ponta(fa(u),fb(u),L1,L2),t=P(q[0],q[1]);
-          if(primeiro){ct.moveTo(t[0],t[1]);primeiro=false;}else ct.lineTo(t[0],t[1]);
+          const t2=b0+(b1-b0)*k/N,q=ponta(t1fixo,t2,L1,L2),t=P(q[0],q[1]);
+          if(k)ct.lineTo(t[0],t[1]);else ct.moveTo(t[0],t[1]);
         }
+        ct.stroke();
       };
-      anda(function(u){return a0+(a1-a0)*u;},function(){return b0;});
-      anda(function(){return a1;},        function(u){return b0+(b1-b0)*u;});
-      anda(function(u){return a1+(a0-a1)*u;},function(){return b1;});
-      anda(function(){return a0;},        function(u){return b1+(b0-b1)*u;});
-      ct.closePath();
-      ct.fillStyle="rgba("+C.grade+",.10)";ct.fill();
-      ct.strokeStyle=C.arco;ct.lineWidth=1.5;ct.globalAlpha=.75;
-      ct.stroke();ct.globalAlpha=1;
+      borda(a0);borda(a1);
+      [b0,b1].forEach(function(t2){
+        const R=raio(t2)*esc;
+        if(R<0.5)return;
+        const psi=Math.atan2(L2*Math.sin(t2*g),L1+L2*Math.cos(t2*g));
+        ct.beginPath();ct.arc(ox,oy,R,-(a1*g+psi),-(a0*g+psi));ct.stroke();
+      });
+      ct.restore();
     }
   }
-
-  /* As zonas proibidas so aparecem quando a protecao correspondente
-     esta ligada. Desenhar limite que nao e aplicado engana o operador. */
-  if(D.protEnv&&D.envY!==undefined){
-    const yl=P(0,D.envY)[1];
-    ct.fillStyle="rgba(185,28,28,.09)";ct.fillRect(0,yl,w,h-yl);
-    ct.strokeStyle="rgba(185,28,28,.5)";
-    ct.beginPath();ct.moveTo(0,yl);ct.lineTo(w,yl);ct.stroke();}
-  if(D.protEnv&&D.envR){ct.beginPath();ct.arc(ox,oy,D.envR*esc,0,TAU);
-    ct.fillStyle="rgba(185,28,28,.13)";ct.fill();}
 
   /* Caminho gravado a mao livre, por baixo dos pontos do programa:
      laranja onde o arco estava aberto, cinza onde era so deslocamento. */
@@ -1318,6 +1355,12 @@ function aplicar(d){
   $("resumoRes").textContent=
     "J1 · "+d.ppg1.toFixed(2)+" pulsos por grau"+
     "\nJ2 · "+d.ppg2.toFixed(2)+" pulsos por grau";
+  /* O que cada junta vai pedir ao driver na velocidade de jog: e aqui
+     que se ve se algum eixo esta perto do teto do T3D. */
+  $("resumoVel").textContent=
+    "no jog normal ("+d.velN.toFixed(1)+" °/s) o driver recebe"+
+    "\nJ1 · "+Math.round(d.velN*d.ppg1)+" Hz"+
+    "\nJ2 · "+Math.round(d.velN*d.ppg2)+" Hz";
 
   if(!carregou){
     carregou=true;
