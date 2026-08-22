@@ -407,7 +407,6 @@ h4:first-child{margin-top:0}
       <div class="lp" id="lArco"><i class="olho"></i><span>arco</span></div>
       <div class="lp" id="lRede"><i class="olho"></i><span>rede</span></div>
       <div class="lp" id="lSd"><i class="olho"></i><span>cartao</span></div>
-      <div class="lp" id="lBt"><i class="olho"></i><span>bt</span></div>
     </div>
     <button class="estop" id="btParar">PARAR</button>
   </header>
@@ -467,7 +466,6 @@ h4:first-child{margin-top:0}
             <div class="joyMotivo" id="joyMotivo"></div>
             <div class="nt">Quanto mais longe do centro, mais rapido. O circulo
             tracejado e a zona morta. Soltando o dedo, o braco para.</div>
-            <div class="nt" id="ntBt"></div>
             <button class="b mini" id="btPrec">Precisao: desligada</button>
 
             <h4>Passo a passo</h4>
@@ -1145,7 +1143,6 @@ function aplicar(d){
   lamp($("lServo"),d.servos?"on":"");
   lamp($("lArco"),d.solda?"hot":"");
   lamp($("lRede"),"on");
-  lamp($("lBt"),d.bt?"on":"");
 
   $("hT1").textContent=d.t1.toFixed(1)+"°";
   $("hT2").textContent=d.t2.toFixed(1)+"°";
@@ -1251,13 +1248,6 @@ function aplicar(d){
   const bloqJog=porQueNaoMove(d);
   joy.classList.toggle("bloq",!!bloqJog);
   $("joyMotivo").textContent=bloqJog;
-  $("ntBt").innerHTML=d.bt
-    ? "<b>Gamepad Bluetooth conectado.</b> Direcional e analogico movem as "+
-      "juntas, <b>X</b> para, triangulo alterna precisao, quadrado grava "+
-      "ponto, circulo vai ao zero, start roda o ensaio, select liga os "+
-      "servos. O gamepad nunca abre arco."
-    : "Da para mover tambem pelo aplicativo <b>Dabble</b>, modo GamePad, "+
-      "conectando em <b>RoboCNC-2DOF</b> por Bluetooth.";
   $("sbMover").textContent=bloqJog||
     (d.precisao?"precisao · joystick":"joystick das duas juntas");
   acao("Home", porQueNaoMove(d));

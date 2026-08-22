@@ -5,8 +5,10 @@
 # particao certa faz parte do projeto e nao depende de ninguem lembrar
 # de um menu.
 #
-# Por que 3 MB de app: Wi-Fi + servidor web + BLE (Dabble) nao cabem nos
-# 1,25 MB do esquema padrao. O sketch fica em ~1,7 MB.
+# Por que 3 MB de app: o esquema padrao do ESP32 reserva so 1,25 MB para
+# o programa, e Wi-Fi mais servidor web ja ocupam boa parte disso. Nao
+# usamos OTA nem SPIFFS, entao dar o espaco todo ao app nao custa nada e
+# evita esbarrar no teto quando o firmware crescer.
 #
 # O 'nvs' esta no mesmo lugar e do mesmo tamanho do esquema padrao
 # (0x9000, 0x5000), entao a CALIBRACAO JA SALVA CONTINUA VALENDO depois

@@ -627,7 +627,12 @@ e o curso vai ate 89.5). Traga-o de volta com o jog
 de avaliação dos argumentos do `printf` lia o ponteiro de motivo antes de
 chamar a função. O firmware sempre escreveu o motivo.
 
-## R6 · Controle por Bluetooth  ✅
+## R6 · Controle por Bluetooth  ⬅ removido depois
+
+> **Removido a pedido, para reduzir o tamanho do sketch.** A pilha BLE era
+> de longe o maior pedaço do firmware. O texto abaixo fica como registro
+> do que existiu e de como estava resolvido; `git revert` traz de volta.
+
 
 `controle_bt.h/.cpp`, aplicativo Dabble no modo GamePad. Roda no core 0
 junto com o servidor web e, como tudo de lá, **só enfileira `Comando`** —

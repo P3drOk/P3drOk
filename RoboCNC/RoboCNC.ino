@@ -16,7 +16,6 @@
 #include "calibracao.h"
 #include "programa.h"
 #include "armazenamento.h"
-#include "controle_bt.h"
 #include "servidor_web.h"
 #include <math.h>
 
@@ -42,13 +41,12 @@ static void iniciarWiFi() {
 }
 
 // ---------------------------------------------------------------------
-// Core 0: interface web e gamepad Bluetooth. Nenhum dos dois toca em
-// motor, rele ou estado -- os dois so enfileiram Comando.
+// Core 0: servidor web. Nao toca em motor, rele ou estado -- so
+// enfileira Comando.
 static void tarefaRede(void* p) {
   (void)p;
   for (;;) {
     servidorAtender();
-    btAtualizar();
     vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
@@ -590,9 +588,6 @@ void setup() {
   // interface de rede existe. Wi-Fi primeiro, servidor depois.
   iniciarWiFi();
   servidorIniciar();
-  // BLE depois do Wi-Fi: os dois dividem o radio, e subir o AP primeiro
-  // deixa a rede pronta antes de o Bluetooth comecar a disputar.
-  btIniciar();
 
   xTaskCreatePinnedToCore(tarefaRede, "rede", 8192, nullptr, 1, nullptr, 0);
 
@@ -600,10 +595,9 @@ void setup() {
   // so entao cria a propria tarefa no core 0.
   armIniciar();
 
-  // Ocupacao do flash no boot. O sketch nao cabe na particao padrao do
-  // ESP32 (1,25 MB) com Wi-Fi + servidor + BLE; a pasta do sketch traz um
-  // partitions.csv com 3 MB de app. Se alguem gravar com a particao
-  // errada, isto aparece antes de o problema virar "trava do nada".
+  // Ocupacao do flash no boot. A pasta do sketch traz um partitions.csv
+  // com 3 MB de app; se alguem gravar com a particao errada, isto
+  // aparece antes de o problema virar "trava do nada".
   {
     const uint32_t usado = ESP.getSketchSize();
     const uint32_t livre = ESP.getFreeSketchSpace();
@@ -613,8 +607,7 @@ void setup() {
                   total ? (unsigned)((uint64_t)usado * 100 / total) : 0u);
     if (livre < 64UL * 1024UL) {
       Serial.println("[FLASH] ATENCAO: menos de 64 kB livres na particao de app.");
-      Serial.println("[FLASH] Use Tools > Partition Scheme > Huge APP (3MB No OTA),");
-      Serial.println("[FLASH] ou deixe BLUETOOTH_INSTALADO false em config.h.");
+      Serial.println("[FLASH] Use Tools > Partition Scheme > Huge APP (3MB No OTA).");
     }
     Serial.printf("[RAM]   %u kB livres\n", (unsigned)(ESP.getFreeHeap() / 1024));
   }

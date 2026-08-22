@@ -17,8 +17,7 @@ Sketch too big
 ```
 
 não é o código: é o **mapa de memória do flash**. O esquema padrão do
-ESP32 reserva só 1,25 MB para o programa, e Wi-Fi + servidor web + BLE
-ocupam ~1,7 MB.
+ESP32 reserva só 1,25 MB para o programa.
 
 A pasta do sketch traz um **`partitions.csv`** com 3 MB de app. O núcleo
 Arduino-ESP32 usa esse arquivo quando ele está junto do `.ino`, então na
@@ -27,23 +26,14 @@ maioria das instalações basta gravar. Se a IDE continuar dizendo
 
 > **Tools → Partition Scheme → Huge APP (3MB No OTA/1MB SPIFFS)**
 
-Depois disso o mesmo sketch ocupa **55% da partição**, com 1,4 MB de
-sobra.
-
 **A calibração salva não se perde.** O `partitions.csv` mantém o `nvs` no
 mesmo endereço e tamanho do esquema padrão (`0x9000`, `0x5000`).
 
-### Se você não puder trocar a partição
-
-Desligue o Bluetooth em `config.h`:
-
-```c
-#define BLUETOOTH_INSTALADO  false
-```
-
-A pilha BLE é de longe o maior pedaço do sketch. Sem ela sobra a interface
-web inteira, que é o caminho principal de qualquer jeito. A própria IDE
-mostra o novo tamanho ao compilar.
+O firmware sem Bluetooth é bem menor que os 1,7 MB que estouravam, e é
+provável que caiba na partição padrão. O `partitions.csv` fica assim
+mesmo: ele não custa nada (não usamos OTA nem SPIFFS) e evita a mesma
+surpresa se o sketch crescer. Quem manda é o número que a própria IDE
+imprime ao compilar.
 
 ### Por que a página é servida comprimida
 
@@ -257,45 +247,7 @@ jog fica bloqueado até soltar.
 
 ---
 
-## 7. Controle por Bluetooth (aplicativo Dabble)
-
-Não tem fiação: o Bluetooth é o rádio interno do ESP32. O que tem é
-consequência disso.
-
-**Biblioteca.** `DabbleESP32`, instalável pelo gerenciador de bibliotecas
-da IDE. Sem ela, ponha `BLUETOOTH_INSTALADO false` em `config.h` e o
-firmware compila sem nada de Bluetooth.
-
-**Particionamento — leia a §0.** BLE + Wi-Fi + servidor web não cabem na
-partição padrão.
-
-**Rádio compartilhado.** BLE e Wi-Fi dividem a mesma antena. Funcionam
-juntos — é o caso de uso normal do ESP32 — mas com o gamepad conectado a
-interface web fica um pouco mais lenta. A pilha BLE também come ~60 kB de
-RAM.
-
-**Conectar.** Aplicativo Dabble → módulo **GamePad** → conectar em
-`RoboCNC-2DOF`.
-
-| Controle | O que faz |
-|----------|-----------|
-| analógico / direcional | jog das duas juntas, proporcional ao quanto você empurra |
-| **X** (cross) | **PARADA** — mesmo caminho do botão PARAR da tela, fora da fila de comandos |
-| triângulo | liga/desliga o modo precisão |
-| quadrado | grava ponto na posição atual |
-| círculo | vai para o zero da máquina |
-| start | executa o **ensaio** (sem arco) |
-| select | habilita/desabilita os servos |
-
-**O gamepad não abre arco.** Executar com solda exige a confirmação da
-tela. Botão de controle não é lugar de comandar arco elétrico — e por
-isso `start` roda sempre o ensaio, nunca a execução com solda.
-
-O gamepad conectado conta como operador presente: sem isso o supervisor
-cortaria o movimento em 2,5 s por "conexão perdida" para quem usa só o
-Bluetooth, sem navegador aberto.
-
-## 8. LED de status
+## 7. LED de status
 
 `PIN_LED_STATUS` vem em `255`, que significa **desligado**. Isso é
 necessário enquanto o relé estiver no GPIO 2, senão os dois brigam pelo
@@ -309,7 +261,7 @@ Depois de mover o relé para o 26, você pode apontar o LED para o 2:
 
 ---
 
-## 9. Aterramento
+## 8. Aterramento
 
 A regra que evita queimar a eletrônica inteira:
 
@@ -325,7 +277,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 
 ---
 
-## 10. Ordem de energização na primeira vez
+## 9. Ordem de energização na primeira vez
 
 1. Só o ESP32, sem drivers e sem solda. Confira no monitor serial
    (115200) que o Wi-Fi subiu:
@@ -348,7 +300,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 
 ---
 
-## 11. Se algo não funciona
+## 10. Se algo não funciona
 
 | Sintoma | Onde olhar |
 |---------|------------|
@@ -362,4 +314,3 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais. |
 | *"Sketch too big"*, `Maximum is 1310720` | Partição padrão. Veja a **§0** — `partitions.csv` ou o menu Huge APP. |
 | Recusa dizendo que uma junta precisa ir além do curso | Leia a frase inteira: se ela diz *"a N% do trecho"*, o problema é o **meio do cordão**, não as pontas. Reta cartesiana perto da base obriga o cotovelo a dobrar. Aproxime os pontos ou reposicione a peça. |
-| Gamepad não aparece no Dabble | `BLUETOOTH_INSTALADO` em false, ou partição sem espaço. Confira o log serial em 115200. |

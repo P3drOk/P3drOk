@@ -50,7 +50,6 @@ estado = {
     "ppv1": 10000, "red1": 1.0, "ppv2": 10000, "red2": 1.0,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 27.78, "ppg2": 27.78,
     "l1": 200.0, "l2": 200.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
-    "bt": False,
     "msg": "Pronto. Habilite os servos para comecar",
 }
 PONTOS = {"conferido": True, "pts": [

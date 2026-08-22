@@ -4,7 +4,6 @@
 #include "trajetoria.h"
 #include "programa.h"
 #include "armazenamento.h"
-#include "controle_bt.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -94,7 +93,7 @@ static void handleStatus() {
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
-    "\"bt\":%s,\"msg\":\"%s\"}",
+    "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
     s.precisao ? "true" : "false",
@@ -119,7 +118,6 @@ static void handleStatus() {
     (unsigned long)J2.passosPorVolta, J2.reducao,
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
-    btConectado() ? "true" : "false",
     s.mensagem);
 
   server.send(200, "application/json", json);

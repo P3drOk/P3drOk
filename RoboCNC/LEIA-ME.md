@@ -124,13 +124,10 @@ percursos organicos, mas nao e o caminho principal da interface.
 
 ## Gravando no ESP32
 
-O sketch ocupa ~1,7 MB e **não cabe na partição padrão** (1,25 MB). A
-pasta traz um `partitions.csv` com 3 MB de app; se a sua IDE ignorá-lo,
+A pasta traz um `partitions.csv` com 3 MB de app, para o sketch não
+esbarrar nos 1,25 MB do esquema padrão do ESP32. Se a sua IDE ignorá-lo,
 escolha `Tools → Partition Scheme → Huge APP (3MB No OTA)`. A calibração
 salva sobrevive à troca — o `nvs` fica no mesmo lugar.
-
-Sem poder trocar a partição, `BLUETOOTH_INSTALADO false` em `config.h`
-tira a pilha BLE, que é o maior pedaço do sketch.
 
 Detalhes em [`LIGACOES.md`](../LIGACOES.md), §0.
 
@@ -262,28 +259,6 @@ onde o polegar já está, alcançável de qualquer aba.
 
 No computador nada disso aparece: a mesa de traçado fica sempre visível e
 as abas viram um seletor no topo da coluna da direita.
-
-### Controle por Bluetooth
-
-Além da interface web, o braço se move pelo aplicativo **Dabble** no modo
-GamePad, conectando em `RoboCNC-2DOF`. Analógico e direcional fazem o jog
-das duas juntas; **X** para; triângulo alterna precisão; quadrado grava
-ponto; círculo vai ao zero; start roda o ensaio; select liga os servos.
-
-O gamepad **não abre arco** — executar com solda exige a confirmação da
-tela. E ele usa exatamente o mesmo `CMD_JOG_XY` do joystick da tela: uma
-só implementação de zona morta e velocidade proporcional no firmware,
-duas interfaces em cima dela.
-
-O módulo roda no core 0, junto com o servidor web, e como todo o resto de
-lá só enfileira `Comando`. Ligar em `config.h`:
-
-```c
-#define BLUETOOTH_INSTALADO  true    // exige a biblioteca DabbleESP32
-```
-
-Detalhes de partição e coexistência com Wi-Fi em
-[`LIGACOES.md`](../LIGACOES.md), §7.
 
 ### Joystick
 
