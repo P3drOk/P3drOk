@@ -213,7 +213,14 @@ static const uint32_t TIMEOUT_CONEXAO_MS  = 2500;   // sem contato HTTP -> parad
 static const uint32_t TIMEOUT_ARCO_MS     = 60000;  // arco continuo maximo
 static const uint32_t PERIODO_AMOSTRA_MS  = 25;     // taxa de gravacao (40 Hz)
 static const uint16_t MAX_WAYPOINTS       = 1500;   // ~37 s de trajetoria continua
-static const uint8_t  MAX_PONTOS          = 40;     // pontos do programa de solda
+// Pontos do programa de solda.
+//
+// Eram 40, que basta para cordao ensinado a mao mas nao para um contorno
+// importado de DXF: um retangulo com cantos arredondados ja passa disso.
+// Cada Ponto ocupa 12 bytes com alinhamento, e ha duas listas (o programa
+// vivo e a area de troca do cartao): 120 pontos custam 2,9 kB de RAM num
+// ESP32 que fecha o boot com mais de 200 kB livres.
+static const uint8_t  MAX_PONTOS          = 120;
 static const uint32_t DWELL_ABRE_ARCO_MS  = 400;    // espera o arco estabilizar
 static const uint32_t DWELL_FECHA_ARCO_MS = 250;    // fecha a cratera no fim
 

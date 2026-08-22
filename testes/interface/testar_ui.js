@@ -155,6 +155,43 @@ function checar(ok, texto, extra) {
   const titulo = await p.locator('#sdTit').textContent();
   checar(nArq === 2, 'a aba Arquivos lista os programas do cartao', nArq + ' arquivo(s); "' + titulo + '"');
 
+  // "Nao consegui salvar o desenho no cartao": o botao respondia 200 e a
+  // recusa ia so para a tira de mensagem. Agora ele diz o que falta.
+  await p.locator('#sdNome').fill('peca teste');
+  await p.waitForTimeout(300);
+  const salvarOk = await p.evaluate(() => ({
+    dis: document.getElementById('btSdSalvar').disabled,
+    oque: document.getElementById('sdOque').textContent.trim(),
+  }));
+  checar(!salvarOk.dis && /3 pontos/.test(salvarOk.oque),
+         'Arquivos: com programa na maquina, Salvar libera e diz o que vai gravar',
+         salvarOk.oque);
+
+  await p.request.post(BASE + '/teste/estado', { data: { progN: 0 } });
+  await p.waitForTimeout(600);
+  const semProg = await p.evaluate(() => ({
+    dis: document.getElementById('btSdSalvar').disabled,
+    motivo: document.getElementById('qSdSalvar').textContent.trim(),
+    oque: document.getElementById('sdOque').textContent.trim(),
+  }));
+  checar(semProg.dis && semProg.motivo.length > 0,
+         'Arquivos: sem programa na maquina, Salvar trava dizendo o porque',
+         semProg.motivo);
+  checar(/Desenhe na mesa|importe um DXF/.test(semProg.oque),
+         'Arquivos: e diz de onde vem um programa', semProg.oque);
+
+  await p.locator('#sdNome').fill('nome/invalido');
+  await p.waitForTimeout(300);
+  await p.request.post(BASE + '/teste/estado', { data: { progN: 3 } });
+  await p.waitForTimeout(600);
+  const nomeRuim = await p.evaluate(() =>
+    document.getElementById('qSdSalvar').textContent.trim());
+  checar(/letras/.test(nomeRuim),
+         'Arquivos: nome com caractere proibido e barrado antes de ir ao robo',
+         nomeRuim);
+  await p.locator('#sdNome').fill('');
+  await p.waitForTimeout(200);
+
   chamadas.length = 0;
   await p.locator('#sdLista [data-car]').first().click();
   await p.waitForTimeout(200);
@@ -259,6 +296,11 @@ function checar(ok, texto, extra) {
   const PANES = { mover: '#pnMover', prog: '#pnProg', arq: '#pnArq', ajuste: '#pnAjuste' };
   const mortos = [], mudos = [];
   let clicados = 0;
+  // Abrir o seletor de arquivo E a acao do botao de importar DXF: ele nao
+  // chama rota nenhuma. Sem isto o Chromium fica esperando o dialogo e a
+  // varredura marca o botao como morto.
+  let abriuArquivo = 0;
+  t.on('filechooser', fc => { abriuArquivo++; fc.setFiles([]).catch(() => {}); });
   for (const [aba, sel] of Object.entries(PANES)) {
     await t.locator('#abas button[data-aba="' + aba + '"]').click();
     await t.waitForTimeout(250);
@@ -286,8 +328,11 @@ function checar(ok, texto, extra) {
         await t.waitForTimeout(230);
         clicados++;
         const uteis = rotas.filter(x => !RUIDO.includes(x));
-        // btSdSalvar sem nome no campo e recusa local proposital.
-        if (!uteis.length && a.id !== 'btSdSalvar') mortos.push(a.id + ' (nao chamou nada)');
+        // btSdSalvar sem nome no campo e recusa local proposital;
+        // btDxfAbrir abre o seletor de arquivo, que nao e uma rota.
+        const local = (a.id === 'btSdSalvar') ||
+                      (a.id === 'btDxfAbrir' && abriuArquivo > 0);
+        if (!uteis.length && !local) mortos.push(a.id + ' (nao chamou nada)');
       }
     }
   }
@@ -406,7 +451,7 @@ function checar(ok, texto, extra) {
   rotas = [];
   await t.locator('#zDes').click();
   await t.waitForTimeout(200);
-  const barraVis = await t.locator('.barraDes').isVisible();
+  const barraVis = await t.locator('#barraDes').isVisible();
   checar(barraVis, 'o botao DES abre o modo de desenho sobre a mesa');
 
   // Risca um arco com o dedo, bem no meio da area util. Curva de proposito:
@@ -442,8 +487,81 @@ function checar(ok, texto, extra) {
   checar(/^-?[\d.]+,-?[\d.]+(;-?[\d.]+,-?[\d.]+)+$/.test(corpoDes),
          'o corpo vai em milimetros de chapa, "x,y;x,y"',
          corpoDes.slice(0, 60) + (corpoDes.length > 60 ? '...' : ''));
-  const saiu = await t.locator('.barraDes').isVisible();
+  const saiu = await t.locator('#barraDes').isVisible();
   checar(!saiu, 'enviado o desenho, a mesa volta ao modo normal');
+
+  // Importar DXF: ler o arquivo, posicionar na mesa e virar programa.
+  // Curso folgado para o caso de aplicar ser exercitado de verdade; o
+  // caso apertado ja e coberto pela propria conta de alcance.
+  await t.request.post(BASE + '/teste/estado',
+    { data: { j1min: -150, j1max: 150, j2min: -150, j2max: 150, protEnv: false } });
+  await t.waitForTimeout(400);
+  await t.locator('#abas button[data-aba="prog"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => document.querySelectorAll('#pnProg .et')
+    .forEach(x => x.classList.toggle('aberta', x.id === 'eDxf')));
+  await t.waitForTimeout(150);
+  checar(await t.locator('#btDxfPos').isDisabled(),
+         'DXF: sem arquivo, "Posicionar na mesa" fica travado com motivo');
+
+  await t.setInputFiles('#dxfArq', 'testes/interface/amostras/peca.dxf');
+  await t.waitForTimeout(400);
+  const info = (await t.locator('#dxfInfo').textContent()).replace(/\n/g, ' | ');
+  checar(/LWPOLYLINE/.test(info) && /CIRCLE/.test(info) && /contorno/.test(info),
+         'DXF: o arquivo e lido e resumido para o operador', info);
+  checar(/2 entidade\(s\) ignorada\(s\)/.test(info),
+         'DXF: TEXT e DIMENSION sao contados como ignorados, nao viram trajeto');
+  // As duas LINE que se encostam tem de virar UM contorno, nao dois.
+  const nCont = parseInt((info.match(/(\d+) contorno/) || [0, 0])[1], 10);
+  checar(nCont === 4,
+         'DXF: linhas que se encostam sao emendadas num contorno so',
+         nCont + ' contornos (poli, circulo, arco e as duas linhas emendadas)');
+
+  await t.locator('#btDxfPos').click();
+  await t.waitForTimeout(400);
+  checar(await t.locator('#barraPos').isVisible(),
+         'DXF: "Posicionar" leva para a mesa com a barra de posicionamento');
+  const cnt0 = await t.locator('#pCnt').textContent();
+  checar(/pontos/.test(cnt0), 'DXF: a barra conta os pontos e o que cai fora', cnt0);
+
+  // Arrastar, girar e espelhar tem de mexer no desenho sem erro.
+  const cvp = await t.locator('#cv').boundingBox();
+  await t.mouse.move(cvp.x + cvp.width * 0.5, cvp.y + cvp.height * 0.4);
+  await t.mouse.down();
+  await t.mouse.move(cvp.x + cvp.width * 0.56, cvp.y + cvp.height * 0.44, { steps: 6 });
+  await t.mouse.up();
+  await t.waitForTimeout(200);
+  await t.locator('#pGirarP').click(); await t.waitForTimeout(120);
+  await t.locator('#pEsp').click();    await t.waitForTimeout(120);
+  await t.locator('#pCentro').click(); await t.waitForTimeout(200);
+  const cnt1 = await t.locator('#pCnt').textContent();
+  checar(/pontos/.test(cnt1), 'DXF: arrastar, girar, espelhar e centralizar respondem', cnt1);
+
+  rotas = [];
+  ultimoCorpo = '';
+  const podeAplicar = !(await t.locator('#pAplicar').isDisabled());
+  if (podeAplicar) {
+    await t.locator('#pAplicar').click();
+    await t.waitForTimeout(400);
+    checar(rotas.some(x => x.split('?')[0] === '/api/prog/desenho'),
+           'DXF: aplicar manda o desenho pela mesma rota do traco a dedo');
+    checar(/^-?[\d.]+,-?[\d.]+,[01](;-?[\d.]+,-?[\d.]+,[01])+$/.test(ultimoCorpo),
+           'DXF: cada ponto leva o proprio estado de arco (x,y,solda)',
+           ultimoCorpo.slice(0, 56) + '...');
+    // Ultimo ponto de cada contorno tem de fechar o arco.
+    const fim = ultimoCorpo.split(';').pop();
+    checar(/,0$/.test(fim), 'DXF: o ultimo ponto nao deixa o arco aberto', fim);
+  } else {
+    checar(true, 'DXF: com pontos fora do alcance, aplicar fica travado',
+           await t.locator('#pCnt').textContent());
+    await t.locator('#pCancel').click();
+  }
+  await t.waitForTimeout(200);
+  checar(!(await t.locator('#barraPos').isVisible()),
+         'DXF: terminado o posicionamento, a mesa volta ao normal');
+  await t.request.post(BASE + '/teste/estado',
+    { data: { j1min: -95, j1max: 95, j2min: -120, j2max: 30 } });
+  await t.waitForTimeout(400);
 
   // Zerar a maquina na posicao e aferir a reducao (as tres etapas).
   await t.locator('#abas button[data-aba="mover"]').click();

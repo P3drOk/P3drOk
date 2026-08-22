@@ -781,3 +781,91 @@ três etapas da aferição.
 
 A anomalia que resta continua sendo a A13, severidade 3, documentada em
 *Não corrigido (e por quê)*.
+
+---
+
+# Rodada 5 — DXF, e o braço que fugia no ziguezague
+
+## R12 · O cotovelo virava no meio do cordão  `A13` `I01`–`I03`  ✅
+
+Esta era a **A13**, a única anomalia que o banco carregava desde a
+primeira rodada, classificada severidade 3 e adiada. Ela apareceu na
+máquina: com vários pontos em ziguezague, o braço largou a reta e fez uma
+volta.
+
+`resolverXY()` escolhe entre os dois ramos do cotovelo pelo critério "o
+que exige menos movimento agora", e `atualizarReta()` o chamava a cada
+1,5 mm. Perto do braço esticado os ramos praticamente coincidem: um
+arredondamento troca a escolha, e a troca é uma descontinuidade de até
+2 × |θ2|.
+
+Com os elos do operador (450 e 400 mm) e curso de ±120°, o banco acha a
+reta (−360, −770) → (−240, −770): 20,7° de θ2 num passo de 1,5 mm, com
+troca de ramo. Com o ramo travado, 4,4° e nenhuma troca.
+
+- `resolverXYRamo()` resolve num ramo fixo; `prepararReta()` trava o ramo
+  e o mantém até o fim do trecho.
+- `retaCartesianaValida()` trava o mesmo ramo. Antes ela reescolhia igual
+  à execução — as duas erravam juntas e a validação aprovava.
+- Recusa nova **"derivada"**: passo de 1,5 mm que exija mais de
+  `SALTO_MAX_GRAUS` é recusado antes de o arco abrir.
+- `prepararReta()` dimensiona a velocidade de seguimento pelo **pior**
+  passo (`retaMaiorSalto`), não pela média.
+
+**Lição:** a A13 estava certa e a classificação estava errada. O relatório
+dela já dizia, na primeira rodada, exatamente o que fazer — "travar o ramo
+do cotovelo no início do trecho em vez de reescolher a cada passo". Uma
+anomalia reproduzível adiada por severidade continua sendo um defeito
+esperando o dia de aparecer na peça.
+
+## R13 · Cache de velocidade privado ficava velho  `I03`  ✅
+
+Defeito que **eu** introduzi na rodada 4. O `static ultima1/ultima2`
+dentro de `seguirSetpoint()` não sabia dos `setSpeedInHz()` feitos por
+`moverCoordenado()` e `aplicarVelocidadeManual()`: um deslocamento no meio
+deixava a lembrança velha, e o trecho seguinte podia rodar na velocidade
+do deslocamento sem reprogramar nada. Agora há um único `velProgramada[2]`
+por onde passa toda escrita de velocidade, zerado em `motoresIniciar()`.
+
+## R14 · Importar DXF  `H05j`–`H05l`  ✅
+
+O arquivo é lido **no navegador**; o ESP32 recebe a lista de pontos
+pronta, pela mesma rota `POST /api/prog/desenho` do traço a dedo — mesma
+validação, mesma área de troca, mesmo `CMD_ARQ_APLICAR_PROG`.
+
+- Entidades: LINE, LWPOLYLINE (com bulge), POLYLINE, ARC, CIRCLE. Texto,
+  cotas e hachuras são contados e ignorados.
+- Contornos com pontas encostadas são emendados (um retângulo sai do CAD
+  como quatro LINE soltas), e depois ordenados pelo mais próximo.
+- Posicionamento na mesa: arrastar, girar, espelhar, escalar, centralizar.
+  A barra conta em tempo real os pontos fora do alcance e trava o aplicar
+  enquanto houver algum.
+- `/api/prog/desenho` passou a aceitar um terceiro campo por ponto
+  (`x,y,solda`): vários contornos viram vários cordões com deslocamento
+  entre eles.
+- `MAX_PONTOS` de 40 para **120**. Um retângulo com cantos arredondados já
+  passava de 40. Custo: 2,9 kB de RAM em duas listas. O limite passou a
+  sair no `/api/status`, então a página não simplifica para um número que
+  o firmware não tem mais.
+
+## R15 · "Não consegui salvar o desenho no cartão"  ✅
+
+O botão respondia **200 sempre**: `handleSdSalvar` só enfileira, e a
+recusa de verdade ("nada para salvar", "salve com o robô em manual",
+"cartão ausente") aparecia apenas na tira de mensagem, que rola.
+
+É a mesma família do defeito da rodada 2 — botão que parece funcionar e
+não faz nada. Agora a aba Arquivos diz, ao vivo, **o que** vai ser gravado
+("vai gravar o programa que está na máquina: 11 pontos" / "não há programa
+na máquina. Desenhe na mesa, importe um DXF ou grave pontos na aba
+Mover") e **por que** não pode agora (cartão ausente, robô fora de manual,
+nome vazio ou com caractere proibido).
+
+## Cobertura
+
+| banco | rodada 4 | agora |
+|-------|----------|-------|
+| firmware | 104 / 1 | **120 / 0** |
+| interface | 59 / 0 | **74 / 0** |
+
+Primeira rodada sem nenhuma anomalia aberta.

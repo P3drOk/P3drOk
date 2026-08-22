@@ -146,6 +146,51 @@ mesma área de troca usada para carregar arquivo do cartão.
 A caixa `cordão` decide se os trechos saem marcados para abrir arco. O
 último ponto nunca abre: depois dele não há trecho.
 
+### Importar DXF
+
+`Programa → Importar desenho DXF`. Desenhe a peça no CAD, salve como DXF
+e traga o arquivo. São aproveitadas as entidades que viram trajeto:
+**LINE**, **LWPOLYLINE** (com *bulge*, ou seja, cantos em arco),
+**POLYLINE** clássica, **ARC** e **CIRCLE**. Texto, cotas e hachuras são
+contados e ignorados — eles não são caminho.
+
+**O arquivo é lido no celular, não no ESP32.** Um DXF de 300 kB não cabe
+na RAM dele, e um leitor de DXF em C ocuparia flash que a máquina precisa
+para o resto. O robô recebe só a lista de pontos pronta, pela mesma rota
+`POST /api/prog/desenho` do traço a dedo — portanto pela mesma validação.
+
+Depois de ler, o importador:
+
+1. **Emenda** contornos cujas pontas se encostam (0,15 mm). Um retângulo
+   sai do CAD como quatro `LINE` soltas; sem emendar, viraria quatro
+   cordões com deslocamento no meio.
+2. **Ordena** os contornos pelo mais próximo do fim do anterior, para
+   reduzir deslocamento morto.
+3. **Achata** arcos e círculos em cordas com flecha máxima de 0,15 mm.
+
+### Posicionar sobre a mesa
+
+O CAD não sabe onde fica a base do braço, então o desenho entra como um
+objeto que você posiciona: arrastar com o dedo sobre a mesa de traçado,
+girar de 15° em 15°, espelhar, aumentar e diminuir, ou centralizar na
+área útil.
+
+A barra recalcula a cada quadro **quantos pontos caem fora do alcance**,
+e eles aparecem em vermelho no desenho. Enquanto houver um ponto fora, o
+botão de aplicar fica travado. A conta no navegador espelha
+`posturaValidaDet()` do firmware (curso, dobra e envelope) — mas quem
+decide continua sendo o robô: isto existe para você não posicionar às
+cegas.
+
+Cada ponto vai com o **seu próprio** estado de arco (`x,y,solda`), então
+vários contornos viram vários cordões com deslocamento entre eles. O
+último ponto de cada contorno nunca abre arco.
+
+O programa guarda **120 pontos** (era 40, que não chega para um contorno
+importado). O importador simplifica cada contorno com Douglas-Peucker,
+apertando a tolerância até o total caber — e o limite vem do
+`/api/status`, não fica escrito na página.
+
 ## Gravando no ESP32
 
 A pasta traz um `partitions.csv` com 3 MB de app, para o sketch não
@@ -500,6 +545,43 @@ com a área real. Em polares a conta é direta: cada valor de θ2 dá **um**
 raio, e θ1 varre um arco nesse raio. Nos botões de jog, cada
 junta ganha uma barra mostrando onde ela está dentro do curso, com as
 pontas em vermelho marcando a margem de segurança.
+
+## O cotovelo não vira no meio do cordão
+
+Um braço 2R alcança quase todo ponto de **duas** maneiras: cotovelo para
+um lado e para o outro. `resolverXY()` escolhe entre elas pelo critério
+"a que exige menos movimento agora", e isso está certo para um comando
+avulso de "vá até este ponto".
+
+Dentro de um cordão, não. A reta é percorrida em passos de 1,5 mm, e
+reescolher o ramo a cada passo é um convite ao desastre: perto do braço
+esticado as duas soluções praticamente coincidem, um arredondamento troca
+a escolha, e a troca é uma descontinuidade de até 2 × |θ2| no espaço das
+juntas. Na chapa isso é o braço largar a reta e dar uma volta até a
+postura espelhada.
+
+Com os elos de 450 e 400 mm e curso de ±120°, o banco de testes acha a
+reta de (−360, −770) a (−240, −770): **20,7° de θ2 num único passo de
+1,5 mm**, com troca de ramo. Foi isso que apareceu na máquina como "o
+braço fugiu da posição e fez uma circunferência" num ziguezague.
+
+O ramo passou a ser **travado no início de cada trecho** (`ramoSeg` em
+`prepararReta()`, `resolverXYRamo()` em `cinematica.cpp`). Se o ramo
+travado deixar de servir no meio, o cordão **aborta com mensagem** — cair
+no outro ramo daria a volta com o arco aberto. A validação prévia trava o
+mesmo ramo: antes ela reescolhia igual à execução, as duas erravam junto,
+e o cordão passava.
+
+Duas consequências:
+
+- **Recusa nova, "derivada".** Um passo de 1,5 mm que exija mais de 4° de
+  qualquer junta é recusado *antes* de o arco abrir. Perto de
+  |r| = L1 + L2 a cinemática inversa é mal condicionada — isso é
+  geometria do braço, não defeito. O defeito era descobrir com o arco
+  aberto.
+- **A velocidade de seguimento** passou a ser dimensionada pelo **pior**
+  passo da reta, não pela média. Com a média o motor ficava para trás
+  exatamente onde a cinemática amplifica, e a ponta cortava caminho.
 
 ## Por que um cordão pode ser recusado
 

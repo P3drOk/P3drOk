@@ -124,10 +124,14 @@ button,input{font:inherit;color:inherit}
 .barraDes{position:absolute;left:12px;right:12px;bottom:12px;display:none;
  align-items:center;gap:8px;flex-wrap:wrap;background:var(--painel);opacity:.97;
  border:1px solid var(--linha);border-radius:5px;padding:8px 10px}
-body[data-des="1"] .barraDes{display:flex}
+body[data-des="1"] #barraDes{display:flex}
 .barraDes .cnt{flex:1;min-width:120px;font-family:var(--mono);font-size:9.5px;
  letter-spacing:.06em;color:var(--letra2);text-transform:uppercase}
 .barraDes .b{margin:0;width:auto;flex:0 0 auto;white-space:nowrap}
+body[data-pos="1"] #barraPos{display:flex}
+body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
+.barraDes .cnt.ruim{color:var(--brasa)}
+.barraDes .cnt.bom{color:var(--pronto)}
 
 .regua{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--linha);
  background:var(--painel)}
@@ -449,11 +453,23 @@ h4:first-child{margin-top:0}
           <button class="zb pq" id="zDes" title="Desenhar o caminho com o dedo">DES</button>
           <button class="zb pq" id="zTema" title="Alternar tema">TEMA</button>
         </div>
-        <div class="barraDes">
+        <div class="barraDes" id="barraDes">
           <span class="cnt" id="dCnt">risque com o dedo sobre a mesa</span>
           <button class="b mini" id="dSolda">cordao: nao</button>
           <button class="b mini" id="dLimpar">Refazer</button>
           <button class="b pri mini" id="dEnviar">Virar programa</button>
+        </div>
+        <div class="barraDes" id="barraPos">
+          <span class="cnt" id="pCnt">arraste o desenho para posicionar</span>
+          <button class="b mini" id="pGirarM">&#8630;</button>
+          <button class="b mini" id="pGirarP">&#8631;</button>
+          <button class="b mini" id="pMenor">&minus;</button>
+          <button class="b mini" id="pMaior">+</button>
+          <button class="b mini" id="pEsp">espelhar</button>
+          <button class="b mini" id="pSolda">cordao: sim</button>
+          <button class="b mini" id="pCentro">centralizar</button>
+          <button class="b mini x" id="pCancel">Cancelar</button>
+          <button class="b pri mini" id="pAplicar">Virar programa</button>
         </div>
       </div>
       <div class="regua">
@@ -574,6 +590,35 @@ h4:first-child{margin-top:0}
           </div>
         </div>
 
+        <div class="et" id="eDxf">
+          <div class="cab"><div class="mk">&#9707;</div>
+            <div class="tx"><div class="tt">Importar desenho DXF</div>
+            <span class="sb" id="sbDxf">nenhum arquivo</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">Desenhe a peca no CAD, salve como <b>DXF</b> e traga
+            o arquivo para ca. Ele e lido aqui no proprio aparelho &mdash; o robo
+            recebe so a lista de pontos ja pronta, entao arquivo grande nao
+            entope o ESP32.</div>
+            <div class="nt">Sao aproveitadas as entidades que viram caminho:
+            <b>LINE</b>, <b>LWPOLYLINE</b>, <b>POLYLINE</b>, <b>ARC</b> e
+            <b>CIRCLE</b>. Texto, cotas e hachuras sao ignorados. Contornos
+            separados viram cordoes separados, com deslocamento entre eles.</div>
+            <input type="file" id="dxfArq" accept=".dxf,text/plain" hidden>
+            <button class="b pri" id="btDxfAbrir">Escolher arquivo DXF</button>
+            <div class="res" id="dxfInfo">--</div>
+            <div class="cp"><label>1 unidade do arquivo vale</label>
+              <input type="number" id="dxfEsc" value="1" min="0.001" step="0.1"><span class="un">mm</span></div>
+            <div class="nt">Deixe em 1 se o CAD estava em milimetros. Use 25,4
+            para arquivo em polegadas.</div>
+            <button class="b" id="btDxfPos">Posicionar na mesa</button>
+            <div class="pq2" id="qDxfPos"></div>
+            <div class="nt">Na mesa de tracado voce arrasta o desenho com o dedo,
+            gira, espelha e redimensiona. A barra mostra em tempo real quantos
+            pontos caem <b>fora</b> da area que o braco alcanca &mdash; posicione
+            ate zerar e so entao aplique.</div>
+          </div>
+        </div>
+
         <div class="et" id="eTraj">
           <div class="cab"><div class="mk">&#9209;</div>
             <div class="tx"><div class="tt">Trajetoria a mao livre</div>
@@ -625,10 +670,12 @@ h4:first-child{margin-top:0}
               <button data-t="traj">Trajetorias</button>
               <button data-t="cfg">Ajustes</button>
             </div>
+            <div class="res" id="sdOque">--</div>
             <div class="linhaNome">
               <input id="sdNome" maxlength="24" placeholder="nome do arquivo" autocomplete="off">
               <button class="b mini" id="btSdSalvar" style="width:auto;margin:0">Salvar</button>
             </div>
+            <div class="pq2" id="qSdSalvar"></div>
             <div class="nt" id="sdDica">Salva o programa de pontos que esta na
             maquina agora. Letras, numeros, espaco, hifen e sublinhado.</div>
             <div id="sdLista"></div>
@@ -1299,6 +1346,28 @@ function pintar(){
     ct.globalAlpha=1;
   }
 
+  /* desenho importado, enquanto o operador o posiciona */
+  if(posOn&&dxfCaminhos){
+    const r=posPontos();
+    ct.save();
+    r.forEach(function(c){
+      /* o contorno inteiro em azul; so os pontos fora do alcance em
+         vermelho, para o operador ver ONDE precisa mexer */
+      ct.strokeStyle=C.arco;ct.lineWidth=2;ct.globalAlpha=.9;
+      ct.beginPath();
+      c.forEach(function(p,i){const a=P(p[0],p[1]);
+        if(i)ct.lineTo(a[0],a[1]);else ct.moveTo(a[0],a[1]);});
+      ct.stroke();ct.globalAlpha=1;
+      c.forEach(function(p){
+        const dentro=alcancavel(p[0],p[1]);
+        const a=P(p[0],p[1]);
+        ct.fillStyle=dentro?C.arco:C.brasa;
+        ct.beginPath();ct.arc(a[0],a[1],dentro?2:4,0,TAU);ct.fill();
+      });
+    });
+    ct.restore();
+  }
+
   /* traco a mao livre em andamento e os pontos que ele vai virar */
   if(desOn&&tracado.length>1){
     ct.strokeStyle=C.arco;ct.lineWidth=2;ct.globalAlpha=.8;
@@ -1327,8 +1396,9 @@ function mmDe(e){
   return [(e.clientX-r.left-ox)/esc,(oy-(e.clientY-r.top))/esc];
 }
 cv.addEventListener("click",function(e){
-  /* No modo desenho o toque e traco, nao ordem de ir ate la. */
-  if(desOn)return;
+  /* No modo desenho o toque e traco; no modo posicionar e arraste.
+     Nem um nem outro manda o braco para o ponto tocado. */
+  if(desOn||posOn)return;
   const q=mmDe(e);
   post("/api/mover_xy?x="+q[0].toFixed(1)+"&y="+q[1].toFixed(1));
 });
@@ -1340,7 +1410,10 @@ cv.addEventListener("click",function(e){
    firmware. Dali em diante e um programa como qualquer outro: da para
    ensaiar, repetir, editar ponto a ponto e salvar no cartao.
    ===================================================================== */
-const MAX_DES=40;              /* MAX_PONTOS do firmware */
+/* MAX_PONTOS do firmware. Chega no /api/status: deixar o numero fixo
+   aqui fazia a pagina simplificar para um limite que o robo nao tem
+   mais. Ate a primeira resposta vale o valor conservador. */
+let MAX_PTS=40;
 const AMOSTRA_MM=2;            /* o dedo gera eventos demais para guardar todos */
 let desOn=false,desenhando=false,tracado=[],resumo=[],desSolda=false;
 
@@ -1367,8 +1440,8 @@ function simplificar(p,tol){
    pelo fim perderia o resto do desenho sem avisar. */
 function enxugar(p){
   let tol=1.5,r=simplificar(p,tol);
-  for(let k=0;k<30&&r.length>MAX_DES;k++){tol*=1.5;r=simplificar(p,tol);}
-  return r.length>MAX_DES?r.slice(0,MAX_DES):r;
+  for(let k=0;k<30&&r.length>MAX_PTS;k++){tol*=1.5;r=simplificar(p,tol);}
+  return r.length>MAX_PTS?r.slice(0,MAX_PTS):r;
 }
 function desContar(){
   resumo=tracado.length>1?enxugar(tracado):tracado.slice();
@@ -1393,13 +1466,21 @@ $("dSolda").onclick=function(){
   $("dSolda").textContent="cordao: "+(desSolda?"sim":"nao");
   $("dSolda").classList.toggle("quente",desSolda);
 };
+let arrastando=false,arrasteDe=null;
 cv.addEventListener("pointerdown",function(e){
-  if(!desOn)return;
+  if(!desOn&&!posOn)return;
   e.preventDefault();
   try{cv.setPointerCapture(e.pointerId);}catch(x){}
+  if(posOn){arrastando=true;arrasteDe=mmDe(e);return;}
   desenhando=true;tracado=[mmDe(e)];desContar();
 });
 cv.addEventListener("pointermove",function(e){
+  if(posOn){
+    if(!arrastando)return;
+    const q=mmDe(e);
+    T.tx+=q[0]-arrasteDe[0];T.ty+=q[1]-arrasteDe[1];
+    arrasteDe=q;posContar();return;
+  }
   if(!desOn||!desenhando)return;
   const q=mmDe(e),u=tracado[tracado.length-1];
   if(u&&Math.hypot(q[0]-u[0],q[1]-u[1])<AMOSTRA_MM)return;
@@ -1407,7 +1488,7 @@ cv.addEventListener("pointermove",function(e){
 });
 /* Sem pointerleave: sair do disco arrastando nao pode cortar o traco. */
 ["pointerup","pointercancel","lostpointercapture"].forEach(function(v){
-  cv.addEventListener(v,function(){desenhando=false;});
+  cv.addEventListener(v,function(){desenhando=false;arrastando=false;});
 });
 $("dEnviar").onclick=function(){
   if(resumo.length<2){erro="risque um traco maior";return;}
@@ -1421,6 +1502,365 @@ $("dEnviar").onclick=function(){
    .catch(function(e){erro=e.message||"o robo nao respondeu";});
 };
 desModo(false);
+
+/* =====================================================================
+   Importar DXF.
+
+   O arquivo e lido AQUI, no aparelho. O ESP32 recebe so a lista de
+   pontos pronta: um DXF de 300 kB nao cabe na RAM dele, e um leitor de
+   DXF em C ocuparia flash que o robo precisa para o resto.
+
+   DXF ASCII e uma lista de pares (codigo, valor), um por linha. So a
+   secao ENTITIES interessa, e dela so o que vira trajeto.
+   ===================================================================== */
+const DXF_SAG_MM=0.15;   /* flecha maxima ao aproximar arco por cordas */
+const DXF_SOLDA_MM=0.15; /* dois pontos a menos que isto sao o mesmo ponto */
+
+function dxfPares(txt){
+  const L=txt.split(/\r\n|\r|\n/), P=[];
+  for(let i=0;i+1<L.length;i+=2){
+    const c=parseInt(L[i],10);
+    if(!isNaN(c))P.push([c,L[i+1].trim()]);
+  }
+  return P;
+}
+
+/* Aproxima um arco por cordas com flecha <= DXF_SAG_MM. */
+function dxfArco(cx,cy,r,a0,a1,saida){
+  let d=a1-a0;
+  while(d<=0)d+=Math.PI*2;
+  const passo=r>DXF_SAG_MM ? 2*Math.acos(1-DXF_SAG_MM/r) : Math.PI/4;
+  const n=Math.max(2,Math.ceil(d/Math.max(passo,1e-3)));
+  for(let k=0;k<=n;k++){
+    const a=a0+d*k/n;
+    saida.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);
+  }
+}
+
+/* Bulge de LWPOLYLINE: b = tan(theta/4) do arco entre dois vertices. */
+function dxfBulge(p0,p1,b,saida){
+  const th=4*Math.atan(b);
+  const dx=p1[0]-p0[0],dy=p1[1]-p0[1],c=Math.hypot(dx,dy);
+  if(c<1e-9||Math.abs(th)<1e-9){saida.push(p1);return;}
+  const r=c/(2*Math.sin(Math.abs(th)/2));
+  const h=Math.sqrt(Math.max(0,r*r-c*c/4))*(Math.abs(th)>Math.PI?-1:1)*(th>0?1:-1);
+  const mx=(p0[0]+p1[0])/2,my=(p0[1]+p1[1])/2;
+  const cx=mx-h*dy/c, cy=my+h*dx/c;
+  const a0=Math.atan2(p0[1]-cy,p0[0]-cx), a1=Math.atan2(p1[1]-cy,p1[0]-cx);
+  const tmp=[];
+  if(th>0)dxfArco(cx,cy,r,a0,a1,tmp);
+  else     {dxfArco(cx,cy,r,a1,a0,tmp);tmp.reverse();}
+  for(let i=1;i<tmp.length;i++)saida.push(tmp[i]);
+}
+
+/* Devolve {caminhos:[[[x,y],...],...], contagem:{...}} em unidades do arquivo. */
+function dxfEntidades(P){
+  const caminhos=[], cont={LINE:0,LWPOLYLINE:0,POLYLINE:0,ARC:0,CIRCLE:0,ignorados:0};
+  let i=0;
+  /* pula tudo ate ENTITIES; se o arquivo nao tiver a secao, varre inteiro */
+  for(let k=0;k<P.length;k++)
+    if(P[k][0]===2&&P[k][1]==="ENTITIES"){i=k+1;break;}
+
+  function juntar(){                       /* le os pares ate o proximo codigo 0 */
+    const e={};
+    while(i<P.length&&P[i][0]!==0){
+      const c=P[i][0],v=P[i][1];
+      (e[c]=e[c]||[]).push(v);
+      i++;
+    }
+    return e;
+  }
+  const num=function(e,c,p){const a=e[c];return a&&a.length?parseFloat(a[0]):p;};
+
+  while(i<P.length){
+    if(P[i][0]!==0){i++;continue;}
+    const tipo=P[i][1];i++;
+    if(tipo==="ENDSEC"||tipo==="EOF")break;
+    const e=juntar();
+
+    if(tipo==="LINE"){
+      caminhos.push([[num(e,10,0),num(e,20,0)],[num(e,11,0),num(e,21,0)]]);
+      cont.LINE++;
+    }else if(tipo==="CIRCLE"){
+      const c=[];dxfArco(num(e,10,0),num(e,20,0),num(e,40,0),0,Math.PI*2,c);
+      caminhos.push(c);cont.CIRCLE++;
+    }else if(tipo==="ARC"){
+      const c=[];
+      dxfArco(num(e,10,0),num(e,20,0),num(e,40,0),
+              num(e,50,0)*Math.PI/180,num(e,51,0)*Math.PI/180,c);
+      caminhos.push(c);cont.ARC++;
+    }else if(tipo==="LWPOLYLINE"){
+      const xs=e[10]||[],ys=e[20]||[],bs=e[42]||[];
+      /* O bulge vem intercalado; sem indice confiavel, so se aplica
+         quando ha um por vertice. Sem isso, corda reta -- que e o pior
+         caso aceitavel, nunca um arco no lugar errado. */
+      const usarB=bs.length===xs.length;
+      const v=[];
+      for(let k=0;k<Math.min(xs.length,ys.length);k++)
+        v.push([parseFloat(xs[k]),parseFloat(ys[k])]);
+      if(v.length>1){
+        const fech=(parseInt((e[70]&&e[70][0])||"0",10)&1)===1;
+        const c=[v[0]];
+        for(let k=1;k<v.length;k++){
+          const b=usarB?parseFloat(bs[k-1]):0;
+          if(b)dxfBulge(v[k-1],v[k],b,c);else c.push(v[k]);
+        }
+        if(fech){
+          const b=usarB?parseFloat(bs[v.length-1]):0;
+          if(b)dxfBulge(v[v.length-1],v[0],b,c);else c.push(v[0]);
+        }
+        caminhos.push(c);cont.LWPOLYLINE++;
+      }
+    }else if(tipo==="POLYLINE"){
+      /* Estilo antigo: os vertices vem como entidades VERTEX ate SEQEND. */
+      const c=[];
+      while(i<P.length){
+        if(P[i][0]!==0){i++;continue;}
+        const t2=P[i][1];i++;
+        if(t2==="SEQEND")break;
+        const v=juntar();
+        if(t2==="VERTEX")c.push([num(v,10,0),num(v,20,0)]);
+      }
+      if(c.length>1){caminhos.push(c);cont.POLYLINE++;}
+    }else if(tipo!=="SEQEND"){
+      cont.ignorados++;
+    }
+  }
+  return {caminhos:caminhos,cont:cont};
+}
+
+/* Emenda caminhos cujas pontas se encostam: um contorno de CAD chega
+   picado em dezenas de LINE soltas, e sem emendar cada uma viraria um
+   cordao separado com deslocamento no meio. */
+function dxfEmendar(cs){
+  const perto=function(a,b){return Math.hypot(a[0]-b[0],a[1]-b[1])<=DXF_SOLDA_MM;};
+  const rest=cs.slice(), saida=[];
+  while(rest.length){
+    let c=rest.shift();
+    let mexeu=true;
+    while(mexeu){
+      mexeu=false;
+      for(let k=0;k<rest.length;k++){
+        const o=rest[k];
+        const a=c[0],z=c[c.length-1],oa=o[0],oz=o[o.length-1];
+        if(perto(z,oa)){c=c.concat(o.slice(1));}
+        else if(perto(z,oz)){c=c.concat(o.slice(0,-1).reverse());}
+        else if(perto(a,oz)){c=o.slice(0,-1).concat(c);}
+        else if(perto(a,oa)){c=o.slice(1).reverse().concat(c);}
+        else continue;
+        rest.splice(k,1);mexeu=true;break;
+      }
+    }
+    saida.push(c);
+  }
+  return saida;
+}
+
+/* Ordem de execucao: sempre o contorno cuja ponta esta mais perto de
+   onde o anterior terminou. Reduz o deslocamento morto entre cordoes. */
+function dxfOrdenar(cs){
+  if(cs.length<2)return cs;
+  const rest=cs.slice(), saida=[rest.shift()];
+  while(rest.length){
+    const fim=saida[saida.length-1][saida[saida.length-1].length-1];
+    let melhor=0,dm=Infinity,inv=false;
+    rest.forEach(function(c,k){
+      const d0=Math.hypot(c[0][0]-fim[0],c[0][1]-fim[1]);
+      const d1=Math.hypot(c[c.length-1][0]-fim[0],c[c.length-1][1]-fim[1]);
+      if(d0<dm){dm=d0;melhor=k;inv=false;}
+      if(d1<dm){dm=d1;melhor=k;inv=true;}
+    });
+    const c=rest.splice(melhor,1)[0];
+    saida.push(inv?c.slice().reverse():c);
+  }
+  return saida;
+}
+
+/* =====================================================================
+   Posicionar o desenho importado sobre a mesa.
+
+   O CAD nao sabe onde fica a base do braco. Aqui o desenho e um objeto
+   que se arrasta, gira, espelha e redimensiona em cima da area util, com
+   a conta de alcance refeita a cada quadro: o operador ve os pontos que
+   caem fora ficarem vermelhos e mexe ate zerar, em vez de descobrir na
+   recusa.
+   ===================================================================== */
+let dxfCaminhos=null;       /* unidades do arquivo, como veio */
+let posOn=false, posSolda=true;
+const T={tx:0,ty:0,ang:0,esc:1,esp:1};   /* esp = -1 espelha em X */
+
+function ikNav(x,y,cima){
+  const L1=D.l1||200,L2=D.l2||200;
+  let c2=(x*x+y*y-L1*L1-L2*L2)/(2*L1*L2);
+  if(c2>1){if(c2>1.0005)return null;c2=1;}
+  if(c2<-1){if(c2<-1.0005)return null;c2=-1;}
+  let a=Math.acos(c2);if(!cima)a=-a;
+  return [(Math.atan2(y,x)-Math.atan2(L2*Math.sin(a),L1+L2*Math.cos(a)))*180/Math.PI,
+          a*180/Math.PI];
+}
+/* Espelha posturaValidaDet() do firmware. O robo continua sendo a
+   autoridade: isto e so para o operador nao posicionar as cegas. */
+function alcancavel(x,y){
+  if(!(D.cal1&&D.cal2))return true;         /* modo de instalacao */
+  const L1=D.l1||200,L2=D.l2||200,m=0.5;
+  for(let k=0;k<2;k++){
+    const q=ikNav(x,y,k===0);
+    if(!q)continue;
+    const t1=q[0],t2=q[1];
+    if(D.protCurso&&(t1<D.j1min+m||t1>D.j1max-m||t2<D.j2min+m||t2>D.j2max-m))continue;
+    if(D.protDobra&&Math.abs(t2)>180-(D.dobra||0))continue;
+    if(D.protEnv){
+      const g=Math.PI/180, xc=L1*Math.cos(t1*g), yc=L1*Math.sin(t1*g);
+      if(Math.min(y,yc)<D.envY)continue;
+      /* distancia da base ao segmento cotovelo-ponta */
+      const dx=x-xc,dy=y-yc,L2q=dx*dx+dy*dy;
+      let u=L2q>1e-6?(-xc*dx-yc*dy)/L2q:0;
+      u=Math.max(0,Math.min(1,u));
+      if(Math.hypot(xc+dx*u,yc+dy*u)<D.envR)continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+function posAplicarT(p){
+  const c=Math.cos(T.ang),s=Math.sin(T.ang);
+  const x=p[0]*T.esc*T.esp, y=p[1]*T.esc;
+  return [T.tx+x*c-y*s, T.ty+x*s+y*c];
+}
+function posTransformado(){
+  return dxfCaminhos.map(function(c){return c.map(posAplicarT);});
+}
+function posCaixa(cs){
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  cs.forEach(function(c){c.forEach(function(p){
+    if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];
+    if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];});});
+  return [x0,y0,x1,y1];
+}
+
+/* Simplifica cada contorno separadamente e aperta a tolerancia ate o
+   total caber no programa. Cortar pelo fim perderia contorno inteiro. */
+function posPontos(){
+  const cs=posTransformado();
+  let tol=0.3,r=cs.map(function(c){return simplificar(c,tol);});
+  const total=function(a){return a.reduce(function(n,c){return n+c.length;},0);};
+  for(let k=0;k<40&&total(r)>MAX_PTS;k++){
+    tol*=1.4;r=cs.map(function(c){return simplificar(c,tol);});
+  }
+  return r;
+}
+
+function posContar(){
+  if(!posOn||!dxfCaminhos)return;
+  const r=posPontos();
+  let n=0,fora=0;
+  r.forEach(function(c){c.forEach(function(p){n++;if(!alcancavel(p[0],p[1]))fora++;});});
+  const el=$("pCnt");
+  const cabe=n<=MAX_PTS;
+  el.className="cnt"+(fora||!cabe?" ruim":" bom");
+  el.textContent = fora ? (fora+" de "+n+" pontos fora do alcance")
+                 : !cabe ? (n+" pontos: o programa guarda "+MAX_PTS)
+                 : (n+" pontos, todos dentro · "+Math.round(T.esc*100)+"% · "+
+                    Math.round(T.ang*180/Math.PI)+"°");
+  $("pAplicar").disabled = !!fora || !cabe || n<2;
+  return r;
+}
+
+function posCentralizar(){
+  if(!dxfCaminhos)return;
+  const cs=posTransformado();
+  const b=posCaixa(cs);
+  /* Alvo: o centro do arco util, na frente da base. */
+  const L1=D.l1||200,L2=D.l2||200;
+  T.tx += (L1+L2)*0.55 - (b[0]+b[2])/2;
+  T.ty += 0 - (b[1]+b[3])/2;
+  posContar();
+}
+
+function posModo(v){
+  posOn=v&&!!dxfCaminhos;
+  document.body.dataset.pos=posOn?"1":"0";
+  if(posOn){desModo(false);irAba("mesa");}
+  posContar();
+}
+
+$("btDxfAbrir").onclick=function(){$("dxfArq").click();};
+$("dxfArq").onchange=function(){
+  const f=$("dxfArq").files&&$("dxfArq").files[0];
+  if(!f)return;
+  const fr=new FileReader();
+  fr.onload=function(){
+    let r;
+    try{ r=dxfEntidades(dxfPares(String(fr.result))); }
+    catch(e){ $("dxfInfo").textContent="nao consegui ler este arquivo";
+              erro="DXF ilegivel";return; }
+    const esc=parseFloat($("dxfEsc").value)||1;
+    let cs=dxfOrdenar(dxfEmendar(r.caminhos))
+            .map(function(c){return c.map(function(p){return [p[0]*esc,p[1]*esc];});})
+            .filter(function(c){return c.length>1;});
+    if(!cs.length){
+      dxfCaminhos=null;
+      $("dxfInfo").textContent="nenhuma linha, polilinha, arco ou circulo neste arquivo";
+      $("sbDxf").textContent="sem geometria";
+      acao("DxfPos","este arquivo nao tem geometria de trajeto");
+      return;
+    }
+    dxfCaminhos=cs;
+    const b=posCaixa(cs);
+    let n=0;cs.forEach(function(c){n+=c.length;});
+    $("dxfInfo").textContent=
+      f.name+"\n"+cs.length+" contorno(s), "+n+" pontos brutos"+
+      "\n"+Math.round(b[2]-b[0])+" x "+Math.round(b[3]-b[1])+" mm"+
+      "\n"+r.cont.LINE+" LINE · "+r.cont.LWPOLYLINE+" LWPOLYLINE · "+
+      r.cont.POLYLINE+" POLYLINE · "+r.cont.ARC+" ARC · "+
+      r.cont.CIRCLE+" CIRCLE"+
+      (r.cont.ignorados?("\n"+r.cont.ignorados+" entidade(s) ignorada(s)"):"");
+    $("sbDxf").textContent=cs.length+" contorno(s)";
+    /* Recomeca a transformacao e joga o desenho na frente do braco. */
+    T.tx=0;T.ty=0;T.ang=0;T.esc=1;T.esp=1;
+    posCentralizar();
+    acao("DxfPos","");
+  };
+  fr.onerror=function(){erro="nao consegui abrir o arquivo";};
+  fr.readAsText(f);
+};
+$("btDxfPos").onclick=function(){posModo(true);};
+acao("DxfPos","escolha um arquivo DXF primeiro");
+$("pSolda").classList.add("quente");
+$("pCancel").onclick =function(){posModo(false);};
+$("pGirarM").onclick =function(){T.ang-=Math.PI/12;posContar();};
+$("pGirarP").onclick =function(){T.ang+=Math.PI/12;posContar();};
+$("pMaior").onclick  =function(){T.esc*=1.1;posContar();};
+$("pMenor").onclick  =function(){T.esc/=1.1;posContar();};
+$("pEsp").onclick    =function(){T.esp=-T.esp;posContar();};
+$("pSolda").onclick  =function(){
+  posSolda=!posSolda;
+  $("pSolda").textContent="cordao: "+(posSolda?"sim":"nao");
+  $("pSolda").classList.toggle("quente",posSolda);
+};
+$("pCentro").onclick =posCentralizar;
+$("pAplicar").onclick=function(){
+  const r=posContar();
+  if(!r)return;
+  /* Terceiro campo por ponto: cordao ao longo de cada contorno,
+     deslocamento na emenda de um para o outro. */
+  const partes=[];
+  r.forEach(function(c,ic){
+    c.forEach(function(p,ip){
+      const ultimoDoContorno=(ip===c.length-1);
+      const s=(ultimoDoContorno||!posSolda)?0:1;
+      partes.push(p[0].toFixed(1)+","+p[1].toFixed(1)+","+s);
+    });
+    void ic;
+  });
+  fetch("/api/prog/desenho",{method:"POST",
+        headers:{"Content-Type":"text/plain"},body:partes.join(";")})
+   .then(function(x){
+     if(!x.ok)return x.text().then(function(t){throw new Error(t);});
+     erro="";posModo(false);return lerPontos();})
+   .catch(function(e){erro=e.message||"o robo nao respondeu";});
+};
 
 /* ---------- status ---------- */
 const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
@@ -1654,6 +2094,8 @@ function aplicar(d){
   }else{
     $("joyMotivo").style.color="";
   }
+  if(d.maxPts>1&&d.maxPts!==MAX_PTS){MAX_PTS=d.maxPts;posContar();}
+  if(abaAtual==="arq")sdEstadoSalvar();
   acao("Home", porQueNaoMove(d,true));
   /* Zerar reescreve a contagem de pulsos: so com o robo parado. Nao exige
      calibracao -- e justamente o que se usa no modo de instalacao. */
@@ -1821,6 +2263,7 @@ document.querySelectorAll("#segTipo button").forEach(function(b){
     document.querySelectorAll("#segTipo button").forEach(function(x){
       x.classList.toggle("on",x===b);});
     $("sdDica").textContent=DICA[sdTipo];
+    sdEstadoSalvar();
     sdSeq=-1;sdAtualizar(true);
   };
 });
@@ -1831,6 +2274,36 @@ $("btSdSalvar").onclick=function(){
   post("/api/sd/salvar?tipo="+sdTipo+"&nome="+encodeURIComponent(n))
    .then(function(){sdSeq=-1;});
 };
+$("sdNome").oninput=function(){sdEstadoSalvar();};
+
+/* O que "Salvar" vai gravar, e por que ele nao pode agora.
+   Antes o botao respondia 200 sempre: o firmware enfileirava o pedido e
+   a recusa ("nada para salvar", "cartao ausente") aparecia so na tira de
+   mensagem, que rola. O operador apertava e concluia que nao funcionava. */
+function sdEstadoSalvar(){
+  const nome=$("sdNome").value.trim();
+  const quanto = sdTipo==="prog" ? (D.progN||0)
+               : sdTipo==="traj" ? (D.trajN||0) : 1;
+  const oque = sdTipo==="prog"
+      ? (quanto>=2 ? "vai gravar o programa que esta na maquina: "+quanto+" pontos"
+                   : "nao ha programa na maquina. Desenhe na mesa, importe um DXF ou grave pontos na aba Mover")
+    : sdTipo==="traj"
+      ? (quanto>=2 ? "vai gravar a trajetoria na memoria: "+quanto+" amostras"
+                   : "nao ha trajetoria gravada. Use \"Trajetoria a mao livre\" na aba Programa")
+      : "vai gravar uma copia dos ajustes atuais da maquina";
+  $("sdOque").textContent=oque;
+
+  acao("SdSalvar",
+      sdEstado==="DESLIGADO" ? "o cartao nao foi iniciado"
+    : sdEstado==="SEM_CARTAO" ? "nenhum cartao no slot"
+    : sdEstado==="OCUPADO" ? "o cartao esta ocupado, aguarde"
+    : (D.modo&&D.modo!=="MANUAL") ? "salve com o robo parado no modo manual"
+    : (sdTipo==="prog"&&quanto<2) ? "nao ha programa na maquina para salvar"
+    : (sdTipo==="traj"&&quanto<2) ? "nao ha trajetoria gravada para salvar"
+    : !nome ? "de um nome ao arquivo"
+    : /[^A-Za-z0-9 _-]/.test(nome) ? "use so letras, numeros, espaco, hifen e sublinhado"
+    : "");
+}
 
 function sdPintar(){
   const cx=$("sdLista");
@@ -1856,6 +2329,7 @@ function sdPintar(){
 function sdAtualizar(forcar){
   return fetch("/api/sd").then(function(r){return r.json();}).then(function(d){
     sdEstado=d.estado;
+    sdEstadoSalvar();
     const b=$("sdBar");
     b.className="sdBar"+(d.ocupado?" bz":(d.estado==="PRONTO"?" ok":
       (d.estado==="ERRO"?" er":"")));

@@ -2255,6 +2255,29 @@ static void teste_H05_desenho_vira_programa() {
          "traco de um ponto so e recusado");
   checar(webPost("/api/prog/desenho", "isto nao e um traco") == 400, "H05i",
          "corpo mal formado e recusado em vez de virar pontos aleatorios");
+
+  // Terceiro campo por ponto: e assim que um DXF com varios contornos
+  // vira cordao em cada contorno e deslocamento entre eles.
+  float dx, dy, ex, ey;
+  pontoDe(20.0f, 30.0f, dx, dy);
+  pontoDe(30.0f, 30.0f, ex, ey);
+  char porPonto[200];
+  snprintf(porPonto, sizeof(porPonto), "%.1f,%.1f,1;%.1f,%.1f,0;%.1f,%.1f,1;%.1f,%.1f,0",
+           (double)ax, (double)ay, (double)dx, (double)dy,
+           (double)ex, (double)ey, (double)bx, (double)by);
+  const int cod4 = webPost("/api/prog/desenho?solda=0", porPonto);
+  rodarComWeb(200);
+  nota("por ponto: HTTP %d, %u pontos -- \"%s\"", cod4,
+       (unsigned)progQuantidade(), cod4 == 200 ? ultimaMensagem : webCorpo());
+  checar(cod4 == 200 && progQuantidade() == 4, "H05j",
+         "cada ponto pode trazer o proprio estado de arco");
+  checar(progQuantidade() == 4 &&
+         progLista()[0].soldaAteProximo == 1 &&
+         progLista()[1].soldaAteProximo == 0 &&
+         progLista()[2].soldaAteProximo == 1, "H05k",
+         "os trechos saem exatamente como o desenho pediu, nao todos iguais");
+  checar(progQuantidade() == 4 && progLista()[3].soldaAteProximo == 0, "H05l",
+         "o ultimo ponto continua sem arco mesmo se o campo vier 1");
 }
 
 static void teste_H06_rotas_da_interface() {

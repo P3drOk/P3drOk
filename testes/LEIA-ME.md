@@ -76,6 +76,9 @@ no próprio `checar(...)`.
 | H04 | aferir a redução mecânica pelo movimento real |
 | H05 | desenhar na mesa vira programa de pontos |
 | H06 | rota inexistente responde 404 em vez de sumir em silêncio |
+| I01 | ziguezague de 11 vértices seguido milímetro a milímetro |
+| I02 | ziguezague raspando o limite do alcance |
+| I03 | a velocidade programada não fica velha entre trechos |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

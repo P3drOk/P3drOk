@@ -108,6 +108,7 @@ static void handleStatus() {
     "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,\"afer1\":%ld,\"afer2\":%ld,"
+    "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"msg\":\"%s\"}",
@@ -134,6 +135,7 @@ static void handleStatus() {
     (unsigned long)J2.passosPorVolta, J2.reducao,
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
     (unsigned)suavidadePartida, aferirPassosDesde(1), aferirPassosDesde(2),
+    (unsigned)MAX_PONTOS,
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
     s.mensagem);
@@ -482,8 +484,8 @@ static void handleProgDesenho() {
   // braco esta agora. E o mesmo criterio de progAdicionarPonto.
   float refT1 = s.t1, refT2 = s.t2;
 
-  // Estatico de proposito: 40 pontos na pilha da tarefa do servidor sao
-  // desnecessarios, e so existe uma tarefa de HTTP.
+  // Estatico de proposito: a lista inteira na pilha da tarefa do servidor
+  // e desnecessaria, e so existe uma tarefa de HTTP.
   static Ponto pts[MAX_PONTOS];
   uint8_t n = 0;
 
@@ -503,6 +505,20 @@ static void handleProgDesenho() {
     if (fim == p) { erro("desenho mal formado"); return; }
     p = fim;
 
+    // Terceiro campo opcional: o arco no trecho que comeca neste ponto.
+    // Um DXF traz varios contornos soltos -- solda ao longo de cada um,
+    // deslocamento de um para o outro. Sem o campo, vale o ?solda= da
+    // URL, que e o caso do traco a dedo.
+    bool soldaAqui = solda;
+    while (*p == ' ') p++;
+    if (*p == ',') {
+      p++;
+      const long f = strtol(p, &fim, 10);
+      if (fim == p) { erro("desenho mal formado"); return; }
+      p = fim;
+      soldaAqui = (f != 0);
+    }
+
     float t1, t2;
     const char* motivo = nullptr;
     if (!resolverXY(x, y, refT1, refT2, t1, t2, &motivo)) {
@@ -514,7 +530,7 @@ static void handleProgDesenho() {
     }
     pts[n].p1 = (int32_t)grausParaPassos(J1, t1);
     pts[n].p2 = (int32_t)grausParaPassos(J2, t2);
-    pts[n].soldaAteProximo = solda ? 1 : 0;
+    pts[n].soldaAteProximo = soldaAqui ? 1 : 0;
     refT1 = t1; refT2 = t2;
     n++;
   }
