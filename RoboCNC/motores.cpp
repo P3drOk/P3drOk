@@ -92,6 +92,18 @@ void aplicarVelocidadeManual() {
 void aplicarAceleracao() {
   if (J1.motor) J1.motor->setAcceleration(grausPorSegParaHz(J1, J1.aceleracao));
   if (J2.motor) J2.motor->setAcceleration(grausPorSegParaHz(J2, J2.aceleracao));
+  aplicarSuavidade();
+}
+
+// Sobe a aceleracao gradualmente nos primeiros passos em vez de aplicar
+// o valor cheio de uma vez. E o degrau de torque da partida que se sente
+// como tranco; alongar esse degrau tira o solavanco sem deixar o
+// movimento mais lento.
+void aplicarSuavidade() {
+#if RAMPA_SUAVE_DISPONIVEL
+  if (J1.motor) J1.motor->setLinearAcceleration(suavidadePartida);
+  if (J2.motor) J2.motor->setLinearAcceleration(suavidadePartida);
+#endif
 }
 
 // O segundo parametro do FastAccelStepper diz se o nivel ALTO no DIR faz
@@ -291,8 +303,13 @@ void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
 
 void seguirSetpoint(long alvo1, long alvo2, uint32_t vel1, uint32_t vel2) {
   if (!J1.motor || !J2.motor) return;
-  J1.motor->setSpeedInHz(limitarFreq(vel1));
-  J2.motor->setSpeedInHz(limitarFreq(vel2));
+  // Durante um trecho a velocidade de seguimento nao muda; reprogramar a
+  // cada ciclo obriga o gerador a refazer a rampa mil vezes por segundo,
+  // o que aparece como aspereza no movimento.
+  static uint32_t ultima1 = 0, ultima2 = 0;
+  const uint32_t v1 = limitarFreq(vel1), v2 = limitarFreq(vel2);
+  if (v1 != ultima1) { ultima1 = v1; J1.motor->setSpeedInHz(v1); }
+  if (v2 != ultima2) { ultima2 = v2; J2.motor->setSpeedInHz(v2); }
   J1.motor->moveTo(alvo1);
   J2.motor->moveTo(alvo2);
 }

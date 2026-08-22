@@ -136,6 +136,22 @@ static const float    PASSO_INTERP_MM     = 1.5f;  // resolucao da reta
 // 8000 passos/s2 eram 17 graus/s2 numa junta e 72 na outra.
 static const float ACEL_PADRAO         = 60.0f;   // graus/s2
 
+// SUAVIDADE DA PARTIDA (limite de jerk).
+//
+// Uma rampa trapezoidal muda a aceleracao de zero para o valor cheio de
+// um ciclo para o outro. Isso e um degrau de torque, e e o "tranco" que
+// se sente no comeco do movimento. O FastAccelStepper sabe subir a
+// aceleracao gradualmente ao longo dos primeiros passos: e o que tira o
+// solavanco sem deixar o movimento lento.
+//
+// 0 desliga (rampa reta). O maximo util fica em torno de 200.
+// Se a sua versao da biblioteca nao tiver setLinearAcceleration, ponha
+// RAMPA_SUAVE_DISPONIVEL como false.
+#ifndef RAMPA_SUAVE_DISPONIVEL
+#define RAMPA_SUAVE_DISPONIVEL true
+#endif
+static const uint8_t SUAVIDADE_PADRAO = 120;
+
 // ---------------------------------------------------------------------
 // GEOMETRIA E ANTI-COLISAO
 // ---------------------------------------------------------------------
@@ -265,6 +281,9 @@ enum TipoComando : uint8_t {
   CMD_CALIB_CONFIRMAR,
   CMD_CALIB_CANCELAR,
   CMD_CALIB_APAGAR,     // esquece a calibracao gravada e volta ao modo de instalacao
+  CMD_REFERENCIAR,      // o braco esta na posicao de referencia: sincroniza a contagem
+  CMD_AFERIR_MARCAR,    // a = junta: marca a contagem atual como inicio da medida
+  CMD_AFERIR_APLICAR,   // a = junta, f1 = graus realmente percorridos
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

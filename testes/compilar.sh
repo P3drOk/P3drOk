@@ -6,12 +6,12 @@ mkdir -p testes/saida
 
 FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I RoboCNC -DROBOCNC_TESTE"
 
-# servidor_web.cpp roda no core 0 e depende de rede, entao fica fora do
-# banco -- mas passa por conferencia de compilacao para nao apodrecer.
-g++ $FLAGS -DESTOP_FISICO_INSTALADO=true -fsyntax-only RoboCNC/servidor_web.cpp
-
 # Documento de fiacao que mente e pior que documento nenhum.
 python3 testes/conferir_ligacoes.py
+
+# Botao que chama rota inexistente e 404 silencioso: nada acontece e nada
+# aparece. Confere as duas pontas antes de compilar.
+python3 testes/conferir_rotas.py
 
 # A pagina servida e a comprimida: se ela ficar velha, o robo entrega uma
 # interface diferente da que esta no repositorio.
@@ -32,5 +32,6 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     RoboCNC/trajetoria.cpp \
     RoboCNC/programa.cpp \
     RoboCNC/calibracao.cpp \
-    RoboCNC/armazenamento.cpp
+    RoboCNC/armazenamento.cpp \
+    RoboCNC/servidor_web.cpp
 exec testes/saida/banco

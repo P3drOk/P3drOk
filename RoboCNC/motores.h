@@ -18,6 +18,8 @@ void aplicarVelocidadeManual();
 void aplicarAceleracao();
 // Reaplica o sentido de cada eixo. Chamar depois de mudar inverterDir.
 void aplicarSentido();
+// Aplica a suavidade de partida (limite de jerk) nos dois eixos.
+void aplicarSuavidade();
 
 // Converte graus/s naquilo que o gerador de pulso entende, com o
 // passosPorGrau daquela junta e o teto do driver.

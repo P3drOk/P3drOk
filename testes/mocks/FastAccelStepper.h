@@ -23,6 +23,8 @@ class FastAccelStepper {
   void setSpeedInHz(uint32_t v)   { velHz = v ? v : 1; }
   void setAcceleration(uint32_t a){ acel = a ? a : 1; }
   uint32_t getAcceleration() const { return acel; }
+  uint8_t  suavidade = 0;
+  void setLinearAcceleration(uint8_t n) { suavidade = n; }
 
   void moveTo(int32_t p) {
     alvo = p;

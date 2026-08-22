@@ -22,6 +22,7 @@ bool protDobra    = PROT_DOBRA_PADRAO;
 bool protEnvelope = PROT_ENVELOPE_PADRAO;
 
 uint16_t escalaVelocidadeTraj = 100;
+uint8_t  suavidadePartida     = SUAVIDADE_PADRAO;
 
 Modo        modoAtual     = MODO_MANUAL;
 EstadoCalib estadoCalib   = CAL_INATIVO;
@@ -152,6 +153,7 @@ void prepararConfigPendente() {
   configPendente.inv1         = J1.inverterDir;
   configPendente.inv2         = J2.inverterDir;
   configPendente.escalaTraj   = escalaVelocidadeTraj;
+  configPendente.suavidade    = suavidadePartida;
   configPendente.elo1         = elo1Mm;
   configPendente.elo2         = elo2Mm;
   configPendente.folgaDobra   = folgaDobra;
@@ -176,6 +178,7 @@ void aplicarConfigPendente() {
   J1.inverterDir    = configPendente.inv1;
   J2.inverterDir    = configPendente.inv2;
   escalaVelocidadeTraj = configPendente.escalaTraj;
+  suavidadePartida     = configPendente.suavidade;
   elo1Mm            = configPendente.elo1;
   elo2Mm            = configPendente.elo2;
   folgaDobra        = configPendente.folgaDobra;
@@ -217,6 +220,7 @@ void carregarConfiguracoes() {
   J2.aceleracao  = prefs.getFloat("acel2g", ACEL_PADRAO);
   J1.inverterDir = prefs.getBool ("inv1", false);
   J2.inverterDir = prefs.getBool ("inv2", false);
+  suavidadePartida = (uint8_t)prefs.getUInt("suav", SUAVIDADE_PADRAO);
 
   elo1Mm     = prefs.getFloat("l1",      ELO1_PADRAO_MM);
   elo2Mm     = prefs.getFloat("l2",      ELO2_PADRAO_MM);
@@ -267,6 +271,7 @@ void salvarConfiguracoes() {
   prefs.putFloat("acel2g",      J2.aceleracao);
   prefs.putBool ("inv1", J1.inverterDir);
   prefs.putBool ("inv2", J2.inverterDir);
+  prefs.putUInt ("suav", suavidadePartida);
 
   prefs.putFloat("l1",    elo1Mm);
   prefs.putFloat("l2",    elo2Mm);
@@ -304,6 +309,7 @@ void restaurarPadroes() {
   J2.aceleracao  = ACEL_PADRAO;
   J1.inverterDir = false;
   J2.inverterDir = false;
+  suavidadePartida = SUAVIDADE_PADRAO;
   elo1Mm         = ELO1_PADRAO_MM;
   elo2Mm         = ELO2_PADRAO_MM;
   folgaDobra     = FOLGA_DOBRA_PADRAO;

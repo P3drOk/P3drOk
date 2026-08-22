@@ -4,6 +4,7 @@
 #include "trajetoria.h"
 #include "programa.h"
 #include "armazenamento.h"
+#include "calibracao.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -42,6 +43,21 @@ static float argF(const char* nome, float padrao) {
 static long argL(const char* nome, long padrao) {
   return server.hasArg(nome) ? server.arg(nome).toInt() : padrao;
 }
+
+// Pedidos que reescrevem parametro da maquina so valem com o robo
+// parado. O core 1 confere de novo na hora de aplicar -- aqui a
+// conferencia existe para o operador ver a recusa na tela em vez de
+// apertar o botao e nada acontecer.
+static bool exigirManual() {
+  Snapshot s;
+  lerSnapshot(s);
+  if (s.modo != MODO_MANUAL) {
+    erro("ajuste so com o robo parado no modo manual");
+    return false;
+  }
+  return true;
+}
+
 
 // ---------------------------------------------------------------------
 // A pagina vai comprimida. Alem de economizar ~53 kB de flash, ela
@@ -91,7 +107,7 @@ static void handleStatus() {
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
     "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
-    "\"inv1\":%s,\"inv2\":%s,"
+    "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,\"afer1\":%ld,\"afer2\":%ld,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"msg\":\"%s\"}",
@@ -117,6 +133,7 @@ static void handleStatus() {
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
+    (unsigned)suavidadePartida, aferirPassosDesde(1), aferirPassosDesde(2),
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
     s.mensagem);
@@ -262,6 +279,32 @@ static void handleCalibConf() {
 }
 static void handleCalibCanc()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CANCELAR); }
 static void handleCalibApagar(){ registrarContatoOperador(); enfileirar(CMD_CALIB_APAGAR); }
+static void handleReferenciar(){
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  enfileirar(CMD_REFERENCIAR);
+}
+static void handleAferirMarcar(){
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long j = argL("j", 0);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+  enfileirar(CMD_AFERIR_MARCAR, j);
+}
+static void handleAferirAplicar(){
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long  j = argL("j", 0);
+  const float g = argF("g", 0.0f);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+  // Graus medidos precisam ser um angulo de verdade: dividir pulsos por
+  // um numero perto de zero manda a resolucao para o infinito.
+  if (!(g > 0.5f) || g > 3600.0f) {
+    erro("digite quantos graus o eixo girou de verdade");
+    return;
+  }
+  enfileirar(CMD_AFERIR_APLICAR, j, 0, g);
+}
 
 static void handleMover() {
   registrarContatoOperador();
@@ -305,16 +348,6 @@ static void handleMoverXY() {
 //
 // A versao anterior escrevia direto daqui, do core 0: recalcularResolucao()
 // altera passosPorGrau, grausMin e grausMax enquanto jogAtualizar() os le.
-static bool exigirManual() {
-  Snapshot s;
-  lerSnapshot(s);
-  if (s.modo != MODO_MANUAL) {
-    erro("ajuste so com o robo parado no modo manual");
-    return false;
-  }
-  return true;
-}
-
 static void handleConfig() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -323,8 +356,13 @@ static void handleConfig() {
   const float vn = argF("velN",  velNormal);
   const float vp = argF("velP",  velPrecisao);
   const float va = argF("velA",  velAuto);
-  const float vs = argF("velCordao", velCordaoMmS);
-  const float vc = argF("velC", velCordaoMmS);
+  // "velC" e o nome antigo do mesmo parametro. Aceitar os dois e certo;
+  // errado era dar prioridade ao antigo com o valor VIVO como padrao --
+  // como a interface so manda "velCordao", o antigo sempre vencia com o
+  // valor que ja estava, e a velocidade do cordao nunca mudava.
+  float vs = velCordaoMmS;
+  if      (server.hasArg("velCordao")) vs = argF("velCordao", vs);
+  else if (server.hasArg("velC"))      vs = argF("velC", vs);
   const float a1 = argF("acel1", J1.aceleracao);
   const float a2 = argF("acel2", J2.aceleracao);
   const long  pv1 = argL("ppv1", J1.passosPorVolta);
@@ -332,6 +370,7 @@ static void handleConfig() {
   const long  pv2 = argL("ppv2", J2.passosPorVolta);
   const float rd2 = argF("red2", J2.reducao);
   const long es = argL("escala", escalaVelocidadeTraj);
+  const long sv = argL("suav", suavidadePartida);
   const long iv1 = argL("inv1", J1.inverterDir ? 1 : 0);
   const long iv2 = argL("inv2", J2.inverterDir ? 1 : 0);
 
@@ -349,7 +388,7 @@ static void handleConfig() {
   configPendente.velNormal    = vn;
   configPendente.velPrecisao  = vp;
   configPendente.velAuto      = va;
-  configPendente.velCordaoMmS = (vc > 0.05f) ? vc : vs;
+  configPendente.velCordaoMmS = vs;
   configPendente.acel1        = a1;
   configPendente.acel2        = a2;
   configPendente.ppv1         = (uint32_t)pv1;
@@ -357,6 +396,7 @@ static void handleConfig() {
   configPendente.ppv2         = (uint32_t)pv2;
   configPendente.red2         = rd2;
   configPendente.escalaTraj   = (uint16_t)constrain(es, 10, 200);
+  configPendente.suavidade    = (uint8_t)constrain(sv, 0, 255);
   configPendente.inv1         = (iv1 != 0);
   configPendente.inv2         = (iv2 != 0);
 
@@ -403,6 +443,97 @@ static void handleReset() {
   registrarContatoOperador();
   if (!exigirManual()) return;
   enfileirar(CMD_RESTAURAR_PADROES);
+}
+
+// ---------------------------------------------------------------------
+// DESENHO NA MESA
+//
+// A interface manda um traco feito com o dedo sobre o desenho do braco,
+// em milimetros de chapa: "x,y;x,y;...". Aqui ele vira o programa de
+// pontos, e dali em diante e um programa como qualquer outro -- da para
+// ensaiar, soldar, editar ponto a ponto e salvar no cartao.
+//
+// A cinematica inversa e calculo puro e pode rodar aqui no core 0, mas o
+// programa vivo continua sendo escrito so pelo core 1. Por isso o
+// caminho e exatamente o mesmo do carregamento de arquivo: preenche a
+// area de troca e enfileira CMD_ARQ_APLICAR_PROG, que valida todos os
+// pontos antes de trocar. Um traco que passe fora da area util nao apaga
+// o programa que ja estava na maquina.
+//
+// A area de troca tambem e usada pela tarefa do cartao. Quem a preenche
+// e sempre a tarefa do servidor (aqui ou em armSolicitar), e a tarefa do
+// cartao so a le enquanto estiver OCUPADA -- recusar com armOcupado()
+// fecha a janela.
+static void handleProgDesenho() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  if (armOcupado()) { erro("cartao ocupado: repita em um instante"); return; }
+
+  const String corpo = server.hasArg("plain") ? server.arg("plain")
+                                              : server.arg("p");
+  if (corpo.length() == 0) { erro("desenho vazio"); return; }
+
+  const bool solda = argL("solda", 0) != 0;
+
+  Snapshot s;
+  lerSnapshot(s);
+  // O cotovelo nao pode trocar de lado no meio do traco: cada ponto e
+  // resolvido a partir do anterior, e o primeiro a partir de onde o
+  // braco esta agora. E o mesmo criterio de progAdicionarPonto.
+  float refT1 = s.t1, refT2 = s.t2;
+
+  // Estatico de proposito: 40 pontos na pilha da tarefa do servidor sao
+  // desnecessarios, e so existe uma tarefa de HTTP.
+  static Ponto pts[MAX_PONTOS];
+  uint8_t n = 0;
+
+  const char* p = corpo.c_str();
+  char* fim = nullptr;
+  while (n < MAX_PONTOS) {
+    while (*p == ';' || *p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++;
+    if (!*p) break;
+
+    const float x = strtof(p, &fim);
+    if (fim == p) { erro("desenho mal formado"); return; }
+    p = fim;
+    while (*p == ' ') p++;
+    if (*p != ',') { erro("desenho mal formado"); return; }
+    p++;
+    const float y = strtof(p, &fim);
+    if (fim == p) { erro("desenho mal formado"); return; }
+    p = fim;
+
+    float t1, t2;
+    const char* motivo = nullptr;
+    if (!resolverXY(x, y, refT1, refT2, t1, t2, &motivo)) {
+      char m[112];
+      snprintf(m, sizeof(m), "ponto %u do desenho (%.0f, %.0f mm): %s",
+               (unsigned)(n + 1), x, y, motivo ? motivo : "fora de alcance");
+      erro(m);
+      return;
+    }
+    pts[n].p1 = (int32_t)grausParaPassos(J1, t1);
+    pts[n].p2 = (int32_t)grausParaPassos(J2, t2);
+    pts[n].soldaAteProximo = solda ? 1 : 0;
+    refT1 = t1; refT2 = t2;
+    n++;
+  }
+
+  while (*p == ';' || *p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++;
+  if (*p) {
+    char m[80];
+    snprintf(m, sizeof(m), "desenho longo demais: o maximo e %u pontos",
+             (unsigned)MAX_PONTOS);
+    erro(m);
+    return;
+  }
+  if (n < 2) { erro("desenho curto demais: risque um traco maior"); return; }
+  // Depois do ultimo ponto nao ha trecho: deixar o arco marcado ali
+  // acenderia o rele sem nada para percorrer.
+  pts[n - 1].soldaAteProximo = 0;
+
+  armStagingDefinir(pts, n);
+  enfileirarNomeado(CMD_ARQ_APLICAR_PROG, "desenho");
 }
 
 // ---------------------------------------------------------------------
@@ -569,6 +700,7 @@ void servidorIniciar() {
   server.on("/api/ponto/ir",      HTTP_POST, handleIrPonto);
   server.on("/api/prog/limpar",   HTTP_POST, handleProgLimpar);
   server.on("/api/prog/executar", HTTP_POST, handleProgExec);
+  server.on("/api/prog/desenho",  HTTP_POST, handleProgDesenho);
   server.on("/api/prog/parar",    HTTP_POST, handleProgParar);
   server.on("/api/home",          HTTP_POST, handleHome);
 
@@ -599,6 +731,9 @@ void servidorIniciar() {
   server.on("/api/calib/confirmar", HTTP_POST, handleCalibConf);
   server.on("/api/calib/cancelar",  HTTP_POST, handleCalibCanc);
   server.on("/api/calib/apagar",    HTTP_POST, handleCalibApagar);
+  server.on("/api/referenciar",     HTTP_POST, handleReferenciar);
+  server.on("/api/aferir/marcar",   HTTP_POST, handleAferirMarcar);
+  server.on("/api/aferir/aplicar",  HTTP_POST, handleAferirAplicar);
 
   server.onNotFound(handleNaoEncontrado);
   server.begin();

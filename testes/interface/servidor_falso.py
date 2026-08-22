@@ -49,6 +49,7 @@ estado = {
     "velN": 20.0, "velP": 2.0, "velA": 12.0, "acel1": 60.0, "acel2": 60.0,
     "ppv1": 10000, "red1": 16.5, "ppv2": 10000, "red2": 4.0,
     "inv1": False, "inv2": True,
+    "suav": 120, "afer1": 0, "afer2": 0,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 458.33, "ppg2": 111.11,
     "l1": 450.0, "l2": 400.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
     "msg": "Pronto. Habilite os servos para comecar",
@@ -129,11 +130,14 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         caminho, q = self._rota()
+        # O corpo precisa ser drenado sempre: deixar bytes no socket
+        # atrapalha a proxima requisicao da mesma conexao.
+        tam = int(self.headers.get("Content-Length", 0) or 0)
+        corpo = self.rfile.read(tam) if tam else b""
         # Gancho so do banco de testes: permite encenar outros estados da
         # maquina (sem calibracao, servos desligados, executando...).
         if caminho == "/teste/estado":
-            tam = int(self.headers.get("Content-Length", 0))
-            estado.update(json.loads(self.rfile.read(tam) or b"{}"))
+            estado.update(json.loads(corpo or b"{}"))
             return self._envia("ok", "text/plain")
         return self._envia("ok", "text/plain")
 

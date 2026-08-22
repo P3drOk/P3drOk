@@ -96,7 +96,8 @@ static const char* NOME_CMD[] = {
   "TRAJ_LIMPAR","SOLDA","TESTE_RELE","PONTO_GRAVAR","PONTO_REMOVER",
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
-  "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR","JOG_XY",
+  "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
+  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -360,6 +361,25 @@ static void processarComando(const Comando& c) {
 
     case CMD_CALIB_CANCELAR:
       if (modoAtual == MODO_CALIBRANDO) calibCancelar();
+      break;
+
+    case CMD_REFERENCIAR:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Referencie com o robo parado no modo manual");
+        break;
+      }
+      calibReferenciar();
+      logEvento("referenciado na posicao atual");
+      break;
+
+    case CMD_AFERIR_MARCAR:
+      if (modoAtual == MODO_MANUAL) aferirMarcar((uint8_t)c.a);
+      else definirMensagem("Afira com o robo parado no modo manual");
+      break;
+
+    case CMD_AFERIR_APLICAR:
+      if (modoAtual == MODO_MANUAL) aferirAplicar((uint8_t)c.a, c.f1);
+      else definirMensagem("Afira com o robo parado no modo manual");
       break;
 
     case CMD_CALIB_APAGAR:

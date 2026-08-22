@@ -3,6 +3,7 @@
 #include "WiFi.h"
 #include "SD.h"
 #include "freertos/queue.h"
+#include "WebServer.h"
 
 uint32_t g_millis = 0;
 int g_pinModo[64]    = {0};
@@ -41,7 +42,17 @@ void digitalWrite(uint8_t p, int v) {
 }
 int digitalRead(uint8_t p) { return p < 64 ? g_pinEntrada[p] : 1; }
 
-// O servidor web nao entra no banco de testes (roda no core 0 e depende
-// de rede). Ficam os stubs para o .ino compilar.
-void servidorIniciar() {}
-void servidorAtender() {}
+
+// ---------------------------------------------------------------------
+// Servidor web: o banco fala com os handlers de verdade.
+WebServer* WebServer::atual = nullptr;
+
+int webPost(const std::string& alvo, const char* corpo) {
+  return WebServer::atual ? WebServer::atual->pedir(HTTP_POST, alvo, corpo) : 0;
+}
+int webGet(const std::string& alvo) {
+  return WebServer::atual ? WebServer::atual->pedir(HTTP_GET, alvo) : 0;
+}
+const char* webCorpo() {
+  return WebServer::atual ? WebServer::atual->respCorpo.c_str() : "";
+}

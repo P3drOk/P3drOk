@@ -213,7 +213,14 @@ function checar(ok, texto, extra) {
   t.on('console', m => { if (m.type() === 'error') errosT.push(m.text()); });
   let rotas = [];
   const RUIDO = ['/api/status', '/api/sd', '/api/sd/lista', '/api/pontos', '/api/trajetoria'];
-  t.on('request', r => { const u = new URL(r.url()); if (u.pathname.startsWith('/api')) rotas.push(u.pathname + u.search); });
+  let ultimoCorpo = '';
+  t.on('request', r => {
+    const u = new URL(r.url());
+    if (!u.pathname.startsWith('/api')) return;
+    rotas.push(u.pathname + u.search);
+    const c = r.postData();
+    if (c) ultimoCorpo = c;
+  });
   t.on('dialog', d => d.accept());
   await t.goto(BASE, { waitUntil: 'domcontentloaded' });
   await t.waitForTimeout(700);
@@ -394,6 +401,97 @@ function checar(ok, texto, extra) {
   await t.locator('#zAuto').click(); await t.waitForTimeout(150);
   checar(true, 'botoes de zoom e enquadramento respondem sem erro');
   void v1;
+
+  // Desenhar o caminho com o dedo sobre a mesa.
+  rotas = [];
+  await t.locator('#zDes').click();
+  await t.waitForTimeout(200);
+  const barraVis = await t.locator('.barraDes').isVisible();
+  checar(barraVis, 'o botao DES abre o modo de desenho sobre a mesa');
+
+  // Risca um arco com o dedo, bem no meio da area util. Curva de proposito:
+  // numa reta o simplificador devolveria dois pontos e o teste nao provaria
+  // que ele preserva a forma.
+  const cvd = await t.locator('#cv').boundingBox();
+  const dcx = cvd.x + cvd.width * 0.5, dcy = cvd.y + cvd.height * 0.56;
+  const dR = Math.min(cvd.width, cvd.height) * 0.22;
+  await t.mouse.move(dcx + dR, dcy);
+  await t.mouse.down();
+  for (let i = 1; i <= 40; i++) {
+    const a = (-Math.PI / 3) * (i / 40);
+    await t.mouse.move(dcx + dR * Math.cos(a), dcy + dR * Math.sin(a));
+  }
+  await t.mouse.up();
+  await t.waitForTimeout(200);
+  const contagem = await t.locator('#dCnt').textContent();
+  const nPts = parseInt((contagem.match(/(\d+) pontos/) || [0, 0])[1], 10);
+  checar(/\d+ amostras/.test(contagem) && nPts >= 3 && nPts <= 40,
+         'o traco a mao livre e simplificado, sem virar uma reta nem estourar os 40 pontos',
+         contagem);
+
+  // No modo desenho o toque nao pode comandar a ponta.
+  checar(!rotas.some(x => x.split('?')[0] === '/api/mover_xy'),
+         'desenhando, o toque na mesa nao manda o braco para la');
+
+  rotas = [];
+  await t.locator('#dEnviar').click();
+  await t.waitForTimeout(350);
+  const des = rotas.find(x => x.split('?')[0] === '/api/prog/desenho');
+  checar(!!des, 'o traco e enviado para virar programa', des || 'nada enviado');
+  const corpoDes = ultimoCorpo;
+  checar(/^-?[\d.]+,-?[\d.]+(;-?[\d.]+,-?[\d.]+)+$/.test(corpoDes),
+         'o corpo vai em milimetros de chapa, "x,y;x,y"',
+         corpoDes.slice(0, 60) + (corpoDes.length > 60 ? '...' : ''));
+  const saiu = await t.locator('.barraDes').isVisible();
+  checar(!saiu, 'enviado o desenho, a mesa volta ao modo normal');
+
+  // Zerar a maquina na posicao e aferir a reducao (as tres etapas).
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(250);
+  rotas = [];   /* o aceite do confirm() ja esta armado la em cima */
+  await t.locator('#btRefer').click();
+  await t.waitForTimeout(300);
+  checar(rotas.some(x => x.split('?')[0] === '/api/referenciar'),
+         '"Zerar a maquina aqui" pede confirmacao e chama /api/referenciar');
+
+  await t.locator('#abas button[data-aba="ajuste"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => document.querySelectorAll('#pnAjuste .et')
+    .forEach(x => x.classList.toggle('aberta', x.id === 'e5')));
+  await t.waitForTimeout(200);
+  rotas = [];
+  await t.locator('#btAfMarcar').click();
+  await t.waitForTimeout(250);
+  checar(rotas.some(x => x === '/api/aferir/marcar?j=1'),
+         'aferir: "Marcar o inicio" manda a junta escolhida');
+  const semMarca = await t.locator('#btAfAplicar').isDisabled();
+  checar(semMarca, 'aferir: sem marca e sem angulo o botao de gravar fica travado');
+
+  // O robo passa a contar pulsos desde a marca.
+  await t.request.post(BASE + '/teste/estado', { data: { afer1: 9500 } });
+  await t.waitForTimeout(500);
+  const semAngulo = await t.evaluate(() => ({
+    dis: document.getElementById('btAfAplicar').disabled,
+    motivo: document.getElementById('qAfAplicar').textContent.trim(),
+    conta: document.getElementById('afConta').textContent.trim(),
+  }));
+  checar(semAngulo.dis && /graus/.test(semAngulo.motivo),
+         'aferir: com marca mas sem angulo, o botao explica o que falta',
+         semAngulo.motivo);
+  checar(/9500 pulsos/.test(semAngulo.conta),
+         'aferir: os pulsos contados desde a marca aparecem na tela',
+         semAngulo.conta.replace(/\n/g, ' / '));
+
+  rotas = [];
+  await t.locator('#afG').fill('54.5');
+  await t.waitForTimeout(150);
+  checar(!(await t.locator('#btAfAplicar').isDisabled()),
+         'aferir: digitado o angulo, o botao de gravar libera');
+  await t.locator('#btAfAplicar').click();
+  await t.waitForTimeout(300);
+  checar(rotas.some(x => x === '/api/aferir/aplicar?j=1&g=54.5'),
+         'aferir: o pedido leva a junta e os graus medidos');
+  await t.request.post(BASE + '/teste/estado', { data: { afer1: 0 } });
 
   // Botoes de seta do jog.
   rotas = [];

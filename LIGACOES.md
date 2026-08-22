@@ -315,5 +315,8 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Braço trava durante a **calibração** | Já corrigido: sem calibração válida o jog é livre (modo de instalação). Se ainda travar, veja se os servos estão habilitados — a interface diz o motivo abaixo do joystick. |
 | Braço vai para um lado, desenho vai para o outro | Sinal do eixo trocado. `Ajustes → Sentido dos eixos`, chave da junta. Calibração não conserta: o erro é de sinal, não de escala. |
 | Ângulo na tela não bate com o transferidor | Resolução digitada errada. Refaça a calibração e informe o **curso real medido** na última etapa. |
+| Ângulo na tela não bate com o transferidor, e a calibração não resolve | Redução mecânica diferente do catálogo. `Ajustes → Aferir a redução no braço`: marque, gire, meça e grave. |
+| Desenho na tela deslocado do braço depois de perder passo | Leve o braço à posição de referência e use `Mover → Zerar a máquina aqui`. |
+| Partida com **tranco**, e o eixo leve perde passo no arranque | `Ajustes → Rampa → Suavidade da partida`. Zero é rampa reta (aceleração entra de uma vez); 100 a 150 costuma resolver. Se persistir, baixe a rampa. |
 | *"Sketch too big"*, `Maximum is 1310720` | Partição padrão. Veja a **§0** — `partitions.csv` ou o menu Huge APP. |
 | Recusa dizendo que uma junta precisa ir além do curso | Leia a frase inteira: se ela diz *"a N% do trecho"*, o problema é o **meio do cordão**, não as pontas. Reta cartesiana perto da base obriga o cotovelo a dobrar. Aproxime os pontos ou reposicione a peça. |

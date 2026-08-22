@@ -73,6 +73,73 @@ void calibCancelar() {
   definirMensagem("Calibracao cancelada");
 }
 
+// Marcas da afericao avulsa. Vivem no core 1, como todo o resto daqui.
+static long  marcaPassos[2] = {0, 0};
+static bool  marcaFeita[2]  = {false, false};
+
+void aferirMarcar(uint8_t junta) {
+  if (junta != 1 && junta != 2) return;
+  const uint8_t i = junta - 1;
+  marcaPassos[i] = (junta == 1) ? posicaoJ1() : posicaoJ2();
+  marcaFeita[i]  = true;
+  definirMensagem("Junta %u marcada. Mova o eixo, meca com transferidor e informe os graus",
+                  (unsigned)junta);
+}
+
+long aferirPassosDesde(uint8_t junta) {
+  if (junta != 1 && junta != 2) return 0;
+  const uint8_t i = junta - 1;
+  if (!marcaFeita[i]) return 0;
+  return ((junta == 1) ? posicaoJ1() : posicaoJ2()) - marcaPassos[i];
+}
+
+bool aferirAplicar(uint8_t junta, float grausReais) {
+  if (junta != 1 && junta != 2) return false;
+  const uint8_t i = junta - 1;
+  Junta& j = (junta == 1) ? J1 : J2;
+
+  if (!marcaFeita[i]) {
+    definirMensagem("Marque o inicio antes de aferir a junta %u", (unsigned)junta);
+    return false;
+  }
+  const long pulsos = labs(aferirPassosDesde(junta));
+  const float g = fabsf(grausReais);
+  if (g < 1.0f || pulsos < 10) {
+    definirMensagem("Medida curta demais na junta %u: %ld pulsos em %.2f graus",
+                    (unsigned)junta, pulsos, g);
+    return false;
+  }
+
+  const float antes = j.passosPorGrau;
+  const float ppg   = (float)pulsos / g;
+  j.passosPorGrau = ppg;
+  if (j.passosPorVolta > 0) j.reducao = ppg * 360.0f / (float)j.passosPorVolta;
+
+  // Os limites em graus vem de passosMin/Max divididos pela resolucao:
+  // com ela corrigida, eles se ajustam sozinhos.
+  recalcularResolucao();
+  salvarConfiguracoes();
+  aplicarVelocidadeManual();
+  aplicarAceleracao();
+  marcaFeita[i] = false;
+
+  Serial.printf("[AFERIR] Junta %u: %ld pulsos em %.2f graus -> %.3f pulsos/grau "
+                "(era %.3f), reducao %.4f\n",
+                (unsigned)junta, pulsos, g, ppg, antes, j.reducao);
+  definirMensagem("Junta %u aferida: %.2f pulsos por grau, reducao %.3f : 1",
+                  (unsigned)junta, ppg, j.reducao);
+  return true;
+}
+
+// ---------------------------------------------------------------------
+void calibReferenciar() {
+  pararSuave();
+  jogZerar();
+  zerarPosicoes();     // a contagem volta a zero, que le grausHome
+  definirMensagem("Referenciado: junta 1 em %.1f, junta 2 em %.1f graus",
+                  passosParaGraus(J1, 0), passosParaGraus(J2, 0));
+}
+
 void calibApagar() {
   pararSuave();
   jogZerar();

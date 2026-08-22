@@ -119,6 +119,15 @@ button,input{font:inherit;color:inherit}
  backdrop-filter:blur(4px)}
 .zb:hover{color:var(--letra);border-color:var(--linha2)}
 .zb.pq{font-family:var(--mono);font-size:8.5px;letter-spacing:.04em}
+.zb.on{background:var(--arco);border-color:var(--arco);color:#fff}
+.tela canvas.des{cursor:crosshair;touch-action:none}
+.barraDes{position:absolute;left:12px;right:12px;bottom:12px;display:none;
+ align-items:center;gap:8px;flex-wrap:wrap;background:var(--painel);opacity:.97;
+ border:1px solid var(--linha);border-radius:5px;padding:8px 10px}
+body[data-des="1"] .barraDes{display:flex}
+.barraDes .cnt{flex:1;min-width:120px;font-family:var(--mono);font-size:9.5px;
+ letter-spacing:.06em;color:var(--letra2);text-transform:uppercase}
+.barraDes .b{margin:0;width:auto;flex:0 0 auto;white-space:nowrap}
 
 .regua{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--linha);
  background:var(--painel)}
@@ -233,6 +242,8 @@ h4:first-child{margin-top:0}
 .cp input{width:88px;max-width:38%;flex:0 0 auto;background:var(--fundo);border:1px solid var(--linha);border-radius:2px;
  padding:8px 9px;text-align:right;font-family:var(--mono);font-size:12px}
 .cp input:focus{outline:none;border-color:var(--arco)}
+.cp select{flex:0 0 auto;background:var(--fundo);border:1px solid var(--linha);
+ border-radius:2px;padding:8px 9px;font-family:var(--mono);font-size:12px;color:var(--letra)}
 .cp .un{font-family:var(--mono);font-size:9px;color:var(--letra3);width:34px}
 .nt{font-size:11.5px;color:var(--letra2);margin:0 0 10px;line-height:1.55}
 /* Motivo de um botao estar fora de acao. Nada de botao morto e mudo. */
@@ -435,7 +446,14 @@ h4:first-child{margin-top:0}
           <button class="zb" id="zMais" title="Aproximar">+</button>
           <button class="zb" id="zMenos" title="Afastar">&minus;</button>
           <button class="zb pq" id="zAuto" title="Enquadrar o braco">FIT</button>
+          <button class="zb pq" id="zDes" title="Desenhar o caminho com o dedo">DES</button>
           <button class="zb pq" id="zTema" title="Alternar tema">TEMA</button>
+        </div>
+        <div class="barraDes">
+          <span class="cnt" id="dCnt">risque com o dedo sobre a mesa</span>
+          <button class="b mini" id="dSolda">cordao: nao</button>
+          <button class="b mini" id="dLimpar">Refazer</button>
+          <button class="b pri mini" id="dEnviar">Virar programa</button>
         </div>
       </div>
       <div class="regua">
@@ -502,6 +520,16 @@ h4:first-child{margin-top:0}
             <div class="pq2" id="qGravar"></div>
             <button class="b mini" id="btHome">Ir para o zero da maquina</button>
             <div class="pq2" id="qHome"></div>
+            <button class="b mini x" id="btRefer">Zerar a maquina aqui</button>
+            <div class="pq2" id="qRefer"></div>
+            <div class="nt"><b>Zerar aqui</b> faz o que a maquina faz ao ligar:
+            declara que a posicao atual e a de referencia e zera a contagem de
+            pulsos. Use quando o braco perdeu passo e o desenho na tela ficou
+            deslocado do braco de verdade &mdash; leve o braco de volta a posicao
+            de referencia e zere.<br><br>Os limites de curso sao contados a
+            partir da referencia: zerar em outro lugar desloca a area util
+            inteira. Se nao souber se o braco esta na referencia, calibre em vez
+            de zerar.</div>
             <div class="nt">Tocar na mesa de tracado tambem leva a ponta ate o
             ponto tocado.</div>
           </div>
@@ -554,6 +582,11 @@ h4:first-child{margin-top:0}
             <div class="nt">Grava o caminho inteiro enquanto voce move o braco, com o
             estado do arco em cada instante. Serve para percurso organico; para
             cordao reto use os pontos acima, que saem em reta de verdade.</div>
+            <div class="nt"><b>Sem mover o braco:</b> na mesa de tracado, o botao
+            <b>DES</b> deixa voce riscar o caminho com o dedo em cima do desenho.
+            O traco vira programa de pontos na hora &mdash; da para ensaiar,
+            repetir, corrigir ponto a ponto e salvar no cartao como qualquer
+            outro.</div>
             <button class="b" id="btGravIni">Iniciar gravacao</button>
             <div class="pq2" id="qGravIni"></div>
             <button class="b" id="btGravFim">Encerrar gravacao</button>
@@ -675,6 +708,25 @@ h4:first-child{margin-top:0}
             crescente no sentido <b>anti-horario</b>, com a junta 1 em zero
             apontando para a <b>direita</b>.</div>
             <div class="res" id="resumoRes">--</div>
+            <h4>Aferir a reducao no braco</h4>
+            <div class="nt">Quando a reducao real nao bate com a de catalogo
+            (correia, folga, engrenagem trocada), medir sai mais barato que
+            calcular: marque o inicio, gire o eixo com o jog o quanto der, meca
+            com transferidor quantos graus ele andou de <b>verdade</b> e digite.
+            O sistema divide os pulsos contados por esses graus e reescreve a
+            reducao daquele eixo sozinho. Quanto maior o angulo medido, melhor:
+            um erro de meio grau em 90° pesa dez vezes menos que em 9°.</div>
+            <div class="cp"><label>Junta</label>
+              <select id="afJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
+            <button class="b mini" id="btAfMarcar">1 &middot; Marcar o inicio aqui</button>
+            <div class="pq2" id="qAfMarcar"></div>
+            <div class="res" id="afConta">--</div>
+            <div class="cp"><label>2 &middot; Girou de verdade</label><input type="number" id="afG" min="0.1" step="0.5"><span class="un">°</span></div>
+            <button class="b pri mini" id="btAfAplicar">3 &middot; Gravar a reducao medida</button>
+            <div class="pq2" id="qAfAplicar"></div>
+            <div class="nt">Aferir muda so a resolucao daquele eixo. Os limites de
+            curso ja gravados continuam valendo em graus, entao vale conferir a
+            calibracao depois.</div>
             <div class="nt">Pulsos por volta e a engrenagem eletronica do T3D. Reducao e a relacao mecanica daquele eixo: <b>50</b> para um redutor 50:1. Os dois eixos sao independentes.</div>
             <h4>Velocidades</h4>
             <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
@@ -695,6 +747,12 @@ h4:first-child{margin-top:0}
             e a causa mais comum de <b>perda de passo</b>: o driver recebe o pulso
             e o motor nao acompanha. Se o braco estiver perdendo posicao, baixe
             aqui antes de mexer em qualquer outra coisa.</div>
+            <div class="cp"><label>Suavidade da partida</label><input type="number" id="inSuav" min="0" max="255" step="10"></div>
+            <div class="nt">Rampa em <b>S</b>. Com zero a aceleracao entra de uma vez
+            e a partida da o <b>tranco</b> que voce sente; quanto maior o numero,
+            mais devagar a propria aceleracao cresce e mais macia fica a saida.
+            De 100 a 150 costuma ficar bom. Numero muito alto atrasa a chegada na
+            velocidade cheia, o que so incomoda em movimento curto.</div>
             <button class="b pri" id="btSalvar">Salvar ajustes</button>
             <h4>Area util</h4>
             <div class="cp"><label>Folga de dobra</label><input type="number" id="inDb" min="0" max="90"><span class="un">°</span></div>
@@ -869,7 +927,8 @@ function salvar(vc){
   return post("/api/config?velN="+$("inVn").value+"&velP="+$("inVp").value+
     "&velA="+$("inVa").value+"&velCordao="+vc+"&acel1="+$("inA1").value+
     "&acel2="+$("inA2").value+"&ppv1="+$("inPv1").value+"&red1="+$("inRd1").value+
-    "&ppv2="+$("inPv2").value+"&red2="+$("inRd2").value);
+    "&ppv2="+$("inPv2").value+"&red2="+$("inRd2").value+
+    "&suav="+$("inSuav").value);
 }
 $("btSalvar").onclick=function(){salvar($("inVc2").value);};
 $("inVc").onchange   =function(){salvar($("inVc").value);$("inVc2").value=$("inVc").value;};
@@ -880,6 +939,45 @@ function prot(){
 $("pCur").onclick=function(){D.protCurso=!D.protCurso;prot();};
 $("pDob").onclick=function(){D.protDobra=!D.protDobra;prot();};
 $("pEnv").onclick=function(){D.protEnv=!D.protEnv;prot();};
+
+/* ---------- zerar aqui e aferir a reducao ---------- */
+/* Os pulsos contados desde a marca aparecem em tempo real: sem isso o
+   operador nao tem como saber se a marca pegou. E o botao de gravar so
+   liga quando ha marca E graus digitados -- apertar e nao acontecer nada
+   e o mesmo defeito de sempre, com outro nome. */
+function afEstado(){
+  const aj=+$("afJ").value, ap=(aj===2?D.afer2:D.afer1)||0;
+  const ppg=(aj===2?D.ppg2:D.ppg1)||1;
+  const g=parseFloat($("afG").value);
+  acao("AfAplicar", !D.modo ? "sem contato com o robo"
+      : ap===0 ? "marque o inicio e gire o eixo primeiro"
+      : !(g>0) ? "digite quantos graus o eixo girou de verdade"
+      : porQueNaoMove(D,false));
+  $("afConta").textContent = ap===0
+    ? "sem marca: aperte \"Marcar o inicio aqui\", gire o eixo com o jog e volte"
+    : ap+" pulsos desde a marca"+
+      "\nque hoje o sistema le como "+(ap/ppg).toFixed(2)+"°";
+}
+$("afG").oninput=afEstado;
+afEstado();
+
+$("btRefer").onclick=function(){
+  if(confirm("Declarar que o braco esta AGORA na posicao de referencia?\n\n"+
+             "Os limites de curso sao contados a partir dela. Se o braco nao "+
+             "estiver mesmo na referencia, a area util inteira sai do lugar."))
+    post("/api/referenciar");
+};
+$("afJ").onchange=function(){$("afG").value="";afEstado();};
+$("btAfMarcar").onclick=function(){
+  $("afG").value="";afEstado();
+  post("/api/aferir/marcar?j="+$("afJ").value);
+};
+$("btAfAplicar").onclick=function(){
+  const g=parseFloat($("afG").value);
+  if(!(g>0)){erro="digite quantos graus o eixo girou de verdade";return;}
+  post("/api/aferir/aplicar?j="+$("afJ").value+"&g="+g)
+   .then(function(){carregou=false;});   /* repreenche reducao e resolucao */
+};
 
 $("btReset").onclick =function(){
   /* carregou=false faz o proximo status repreencher os campos: sem isso o
@@ -1201,6 +1299,18 @@ function pintar(){
     ct.globalAlpha=1;
   }
 
+  /* traco a mao livre em andamento e os pontos que ele vai virar */
+  if(desOn&&tracado.length>1){
+    ct.strokeStyle=C.arco;ct.lineWidth=2;ct.globalAlpha=.8;
+    ct.beginPath();
+    tracado.forEach(function(q,i){const a=P(q[0],q[1]);
+      if(i)ct.lineTo(a[0],a[1]);else ct.moveTo(a[0],a[1]);});
+    ct.stroke();ct.globalAlpha=1;
+    ct.fillStyle=desSolda?C.quente:C.arco;
+    resumo.forEach(function(q){const a=P(q[0],q[1]);
+      ct.beginPath();ct.arc(a[0],a[1],3.5,0,TAU);ct.fill();});
+  }
+
   /* barra de escala: a prova visual de que o desenho esta em mm reais */
   const larg=passo*esc;
   const bx=w-larg-18, by=h-18;
@@ -1212,11 +1322,105 @@ function pintar(){
   ct.font="10px ui-monospace,Menlo,monospace";ct.textAlign="center";
   ct.fillText(passo+" mm",bx+larg/2,by-9);
 }
-cv.addEventListener("click",function(e){
+function mmDe(e){
   const r=cv.getBoundingClientRect();
-  const x=(e.clientX-r.left-ox)/esc,y=(oy-(e.clientY-r.top))/esc;
-  post("/api/mover_xy?x="+x.toFixed(1)+"&y="+y.toFixed(1));
+  return [(e.clientX-r.left-ox)/esc,(oy-(e.clientY-r.top))/esc];
+}
+cv.addEventListener("click",function(e){
+  /* No modo desenho o toque e traco, nao ordem de ir ate la. */
+  if(desOn)return;
+  const q=mmDe(e);
+  post("/api/mover_xy?x="+q[0].toFixed(1)+"&y="+q[1].toFixed(1));
 });
+
+/* =====================================================================
+   Desenhar sobre a mesa.
+   O dedo risca o caminho em cima do desenho do braco; o traco e
+   simplificado aqui (Douglas-Peucker) e vira o programa de pontos no
+   firmware. Dali em diante e um programa como qualquer outro: da para
+   ensaiar, repetir, editar ponto a ponto e salvar no cartao.
+   ===================================================================== */
+const MAX_DES=40;              /* MAX_PONTOS do firmware */
+const AMOSTRA_MM=2;            /* o dedo gera eventos demais para guardar todos */
+let desOn=false,desenhando=false,tracado=[],resumo=[],desSolda=false;
+
+function distReta(p,a,b){
+  const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
+  if(L<1e-6)return Math.hypot(p[0]-a[0],p[1]-a[1]);
+  return Math.abs(dy*(p[0]-a[0])-dx*(p[1]-a[1]))/L;
+}
+function dp(p,ini,fim,tol,marca){
+  let pior=0,idx=-1;
+  for(let i=ini+1;i<fim;i++){
+    const d=distReta(p[i],p[ini],p[fim]);
+    if(d>pior){pior=d;idx=i;}}
+  if(idx>0&&pior>tol){marca[idx]=1;dp(p,ini,idx,tol,marca);dp(p,idx,fim,tol,marca);}
+}
+function simplificar(p,tol){
+  if(p.length<3)return p.slice();
+  const marca=new Array(p.length).fill(0);
+  marca[0]=1;marca[p.length-1]=1;
+  dp(p,0,p.length-1,tol,marca);
+  return p.filter(function(_,i){return marca[i];});
+}
+/* Aperta a tolerancia ate o traco caber nos 40 pontos do programa. Cortar
+   pelo fim perderia o resto do desenho sem avisar. */
+function enxugar(p){
+  let tol=1.5,r=simplificar(p,tol);
+  for(let k=0;k<30&&r.length>MAX_DES;k++){tol*=1.5;r=simplificar(p,tol);}
+  return r.length>MAX_DES?r.slice(0,MAX_DES):r;
+}
+function desContar(){
+  resumo=tracado.length>1?enxugar(tracado):tracado.slice();
+  $("dCnt").textContent = tracado.length<2
+    ? "risque com o dedo sobre a mesa"
+    : tracado.length+" amostras \u2192 "+resumo.length+" pontos";
+  $("dEnviar").disabled = resumo.length<2;
+  $("dLimpar").disabled = !tracado.length;
+}
+function desModo(v){
+  desOn=v;desenhando=false;
+  document.body.dataset.des=v?"1":"0";
+  cv.classList.toggle("des",v);
+  $("zDes").classList.toggle("on",v);
+  if(!v){tracado=[];resumo=[];}
+  desContar();
+}
+$("zDes").onclick=function(){desModo(!desOn);};
+$("dLimpar").onclick=function(){tracado=[];desContar();};
+$("dSolda").onclick=function(){
+  desSolda=!desSolda;
+  $("dSolda").textContent="cordao: "+(desSolda?"sim":"nao");
+  $("dSolda").classList.toggle("quente",desSolda);
+};
+cv.addEventListener("pointerdown",function(e){
+  if(!desOn)return;
+  e.preventDefault();
+  try{cv.setPointerCapture(e.pointerId);}catch(x){}
+  desenhando=true;tracado=[mmDe(e)];desContar();
+});
+cv.addEventListener("pointermove",function(e){
+  if(!desOn||!desenhando)return;
+  const q=mmDe(e),u=tracado[tracado.length-1];
+  if(u&&Math.hypot(q[0]-u[0],q[1]-u[1])<AMOSTRA_MM)return;
+  tracado.push(q);desContar();
+});
+/* Sem pointerleave: sair do disco arrastando nao pode cortar o traco. */
+["pointerup","pointercancel","lostpointercapture"].forEach(function(v){
+  cv.addEventListener(v,function(){desenhando=false;});
+});
+$("dEnviar").onclick=function(){
+  if(resumo.length<2){erro="risque um traco maior";return;}
+  const corpo=resumo.map(function(q){
+    return q[0].toFixed(1)+","+q[1].toFixed(1);}).join(";");
+  fetch("/api/prog/desenho?solda="+(desSolda?1:0),
+        {method:"POST",headers:{"Content-Type":"text/plain"},body:corpo})
+   .then(function(r){
+     if(!r.ok)return r.text().then(function(t){throw new Error(t);});
+     erro="";desModo(false);return lerPontos();})
+   .catch(function(e){erro=e.message||"o robo nao respondeu";});
+};
+desModo(false);
 
 /* ---------- status ---------- */
 const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
@@ -1367,6 +1571,7 @@ function aplicar(d){
     $("inVn").value=d.velN;$("inVp").value=d.velP;$("inVa").value=d.velA;
     $("inVc").value=d.velCordao;$("inVc2").value=d.velCordao;
     $("inA1").value=d.acel1;$("inA2").value=d.acel2;
+    $("inSuav").value=d.suav;
     $("inPv1").value=d.ppv1;$("inRd1").value=d.red1;
     $("inPv2").value=d.ppv2;$("inRd2").value=d.red2;
     $("inL1").value=d.l1;$("inL2").value=d.l2;$("inDb").value=d.dobra;
@@ -1450,6 +1655,12 @@ function aplicar(d){
     $("joyMotivo").style.color="";
   }
   acao("Home", porQueNaoMove(d,true));
+  /* Zerar reescreve a contagem de pulsos: so com o robo parado. Nao exige
+     calibracao -- e justamente o que se usa no modo de instalacao. */
+  acao("Refer", porQueNaoMove(d,false));
+
+  acao("AfMarcar", porQueNaoMove(d,false));
+  afEstado();
 
   if(d.trajN!==ultTrajN){ultTrajN=d.trajN;
     if(d.modo!=="GRAVANDO")lerTraj();else traj=[];}

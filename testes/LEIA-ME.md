@@ -10,11 +10,14 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/Preferences.h` | NVS em RAM |
 | `mocks/freertos/` | fila de comandos com capacidade real e contagem de descartes |
 | `mocks/SD.h`, `mocks/FS.h`, `mocks/SPI.h` | sistema de arquivos em memória, com cartão ausente e escrita falhando |
-| `mocks/WiFi.h`, `mocks/WebServer.h` | só para o `.ino` compilar |
+| `mocks/WiFi.h` | só para o `.ino` compilar |
+| `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler |
 
-`servidor_web.cpp` fica de fora da execução (roda no core 0 e depende de rede),
-mas passa por conferência de compilação no mesmo script; quando um cenário
-precisa dele, reproduz o que o handler faz.
+`servidor_web.cpp` **entra** no banco. Os dois defeitos que o operador sentiu na
+mão — botão que não fazia nada e velocidade de cordão que não salvava — moravam
+ali, e nenhum teste de motor os pegaria. O que continua faltando de propósito no
+mock é socket, concorrência e HTTP de verdade: o banco chama o handler na mesma
+thread.
 
 O banco compila com `-DESTOP_FISICO_INSTALADO=true` para exercitar o ramo da
 emergência física. O `config.h` de produção mantém `false` até o botão existir.
@@ -57,6 +60,22 @@ no próprio `checar(...)`.
 | B07 | backup e restauração de ajustes, com validação de faixa |
 | B08 | carregar arquivo não troca o programa em execução |
 | B09 | eventos de segurança chegam ao arquivo de log |
+| C01 | a recusa diz onde, qual junta e quanto faltou |
+| C02 | braço parado fora da área útil: a recusa aponta para ele |
+| C03 | cordão que cabe no curso continua passando |
+| E01 | resolução digitada errada é corrigida pelo curso medido |
+| E02 | referência gravada fora do zero: o desenho acompanha |
+| E03 | quem não preencher nada mantém o comportamento anterior |
+| F01 | sem calibração o jog fica livre (era o que impedia calibrar) |
+| F02 | apagar a calibração gravada volta ao modo de instalação |
+| F03 | braço indo para um lado e o desenho para o outro |
+| G01 | engrenagens diferentes, mesma velocidade angular |
+| H01 | a velocidade de cordão salva quando muda na tela |
+| H02 | suavidade da partida chega nos geradores de pulso |
+| H03 | zerar a máquina na posição atual |
+| H04 | aferir a redução mecânica pelo movimento real |
+| H05 | desenhar na mesa vira programa de pontos |
+| H06 | rota inexistente responde 404 em vez de sumir em silêncio |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 
@@ -119,6 +138,18 @@ python3 testes/conferir_ligacoes.py     # roda junto com compilar.sh
 Reprova se `LIGACOES.md` divergir dos pinos de `RoboCNC/config.h`.
 Documento de fiação que mente é pior que documento nenhum: o operador
 liga o fio no pino errado.
+
+## Conferência das rotas
+
+```sh
+python3 testes/conferir_rotas.py        # roda junto com compilar.sh
+```
+
+Compara as rotas que `pagina_web.h` chama com as que `servidor_web.cpp`
+registra. Rota chamada e não registrada é 404 silencioso — o operador
+aperta o botão e nada acontece, sem nenhuma mensagem. Foi exatamente esse
+o defeito de "gravar ponto não faz nada". Rota registrada e nunca chamada
+sai só como aviso.
 
 ## Como o simulador anda
 

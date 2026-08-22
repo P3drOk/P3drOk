@@ -122,6 +122,30 @@ Robo de solda industrial ensina por pontos justamente por isso. A
 gravacao continua continua existindo no firmware (`trajetoria.cpp`) para
 percursos organicos, mas nao e o caminho principal da interface.
 
+### Desenhar o caminho com o dedo
+
+Na mesa de traçado, o botão **DES** liga o modo de desenho: você risca o
+caminho com o dedo em cima do desenho do braço e o traço vira **programa
+de pontos**. Dali em diante ele é um programa como qualquer outro — dá
+para ensaiar, executar com arco, corrigir ponto a ponto e salvar no
+cartão.
+
+O traço bruto tem centenas de amostras; o navegador o simplifica com
+**Douglas-Peucker** antes de mandar, apertando a tolerância até caber nos
+40 pontos do programa. A barra mostra as duas contas em tempo real
+(`41 amostras → 9 pontos`), então dá para ver o que vai ser enviado.
+
+O corpo do `POST /api/prog/desenho` é uma lista `x,y;x,y;…` em
+**milímetros de chapa**, e o firmware roda cinemática inversa em cada
+ponto, sempre partindo do anterior — assim o cotovelo não troca de lado
+no meio do traço. Se algum ponto não for alcançável, o pedido inteiro é
+recusado **dizendo qual** (`ponto 7 do desenho (320, 480 mm): …`) e o
+programa que já estava na máquina não é tocado: a validação passa pela
+mesma área de troca usada para carregar arquivo do cartão.
+
+A caixa `cordão` decide se os trechos saem marcados para abrir arco. O
+último ponto nunca abre: depois dele não há trecho.
+
 ## Gravando no ESP32
 
 A pasta traz um `partitions.csv` com 3 MB de app, para o sketch não
@@ -311,6 +335,24 @@ Os valores antigos ficaram em chaves de NVS separadas, então atualizar o
 firmware traz os padrões novos em vez de reinterpretar 3000 Hz como
 3000 °/s.
 
+### Tranco na partida — rampa em S
+
+Aceleração constante quer dizer que a aceleração **aparece de uma vez**
+no instante da partida. A derivada dela (o *jerk*) é infinita ali, e é
+exatamente isso que se sente como tranco — e que faz o eixo mais leve
+perder passo justamente no arranque.
+
+`Ajustes → Rampa → Suavidade da partida` liga a rampa em **S** do
+FastAccelStepper (`setLinearAcceleration`): em vez de saltar para a
+aceleração cheia, ela cresce linearmente. Zero devolve a rampa reta de
+antes; 100 a 150 costuma ficar bom. Número muito alto atrasa a chegada na
+velocidade cheia, o que só incomoda em movimento curto.
+
+O acompanhamento do setpoint também parou de reprogramar a velocidade a
+cada ciclo de 1 ms: `seguirSetpoint()` só chama `setSpeedInHz()` quando o
+valor muda de verdade. Reprogramar a cada ciclo reiniciava o cálculo da
+rampa o tempo todo, o que aparecia como trepidação no cordão.
+
 ### Se o braço estiver perdendo passos
 
 Nesta ordem:
@@ -408,6 +450,41 @@ Por isso a etapa de referência pergunta em quantos graus cada junta está
 naquela postura. Deixe `0 e 0` se ela for a postura canônica; senão,
 informe os ângulos reais. O offset fica guardado em graus, então ele
 sobrevive a uma correção de resolução.
+
+### Zerar a máquina na posição atual
+
+`Mover → Zerar a máquina aqui` faz o que a máquina faz ao ligar: declara
+que a postura atual é a de referência e zera a contagem de pulsos dos
+dois eixos. É o conserto para "o braço perdeu passo e o desenho na tela
+ficou deslocado do braço de verdade" — leve o braço de volta à
+referência e zere.
+
+Ele **não** substitui a calibração: os limites de curso são contados a
+partir da referência, então zerar em outro lugar desloca a área útil
+inteira. Se não souber se o braço está na referência, calibre.
+
+O pedido só é aceito com o robô parado em manual, e quem reescreve a
+contagem é o core 1 — reescrever posição debaixo do gerador de pulso em
+movimento é o jeito mais rápido de mandar o braço para o batente.
+
+### Aferir a redução sem calcular
+
+`Ajustes → Aferir a redução no braço` mede a redução em vez de calculá-la
+no papel, que é o que salva quando correia, folga ou engrenagem trocada
+fazem a mecânica não bater com o catálogo:
+
+1. **Marcar o início aqui** — guarda a contagem atual daquele eixo.
+2. Gire o eixo com o jog o quanto der. A tela mostra os pulsos contados
+   e quantos graus o sistema *acha* que isso é.
+3. Meça com transferidor quantos graus ele girou **de verdade**, digite
+   e grave.
+
+O firmware faz `passosPorGrau = pulsos contados / graus medidos` e
+reescreve a redução mecânica a partir disso. Quanto maior o ângulo
+medido, melhor: meio grau de erro em 90° pesa dez vezes menos que em 9°.
+
+É a mesma conta da etapa final do assistente de calibração, só que
+avulsa — dá para aferir um eixo sem refazer a medição de curso inteira.
 
 ### O que você vê depois
 

@@ -668,3 +668,116 @@ continua passando) e D01–D03 (jog pelo gamepad, botões e o que eles não
 podem fazer, Bluetooth como único operador).
 
 A anomalia que resta continua sendo a A13, severidade 3.
+
+---
+
+# Rodada 4 — o que o operador pediu depois de usar a máquina
+
+Cinco queixas de uso real, todas reproduzidas antes de mexer no código.
+
+## R7 · A velocidade de cordão não salvava  `H01`  ✅
+
+**Reproduzido.** Mudar o valor na tela, salvar, e ele voltava ao anterior.
+
+O defeito estava em `handleConfig`, não na interface. `velC` é o nome
+antigo do mesmo parâmetro; o handler aceitava os dois, mas dava
+prioridade ao **antigo** e usava o valor **vivo** como padrão dele:
+
+```c
+const float vs = argF("velC", argF("velCordao", velCordaoMmS));  // errado
+```
+
+Como a página só manda `velCordao`, o `velC` ausente sempre vencia com o
+valor que já estava lá. A leitura passou a olhar qual dos dois nomes
+realmente veio:
+
+```c
+float vs = velCordaoMmS;
+if      (server.hasArg("velCordao")) vs = argF("velCordao", vs);
+else if (server.hasArg("velC"))      vs = argF("velC", vs);
+```
+
+Esse defeito viveu numa camada que o banco **compilava e nunca
+executava**. Ver *Cobertura*, abaixo.
+
+## R8 · Tranco na partida  `H02`  ✅
+
+Aceleração constante faz a aceleração aparecer de uma vez no instante da
+partida — jerk infinito, que é o que se sente como tranco e o que faz o
+eixo leve perder passo no arranque.
+
+- `suavidadePartida` (0–255, padrão 120, NVS `suav`) liga a rampa em **S**
+  do FastAccelStepper via `setLinearAcceleration()`, aplicada às duas
+  juntas junto com a rampa.
+- `seguirSetpoint()` parou de chamar `setSpeedInHz()` a cada ciclo de
+  1 ms. Reprogramar a velocidade reinicia o cálculo da rampa; agora só
+  reprograma quando o valor muda de verdade.
+
+## R9 · Zerar a máquina na posição atual  `H03`  ✅
+
+`calibReferenciar()` + `CMD_REFERENCIAR` + `POST /api/referenciar`: para
+suave, zera o jog e zera a contagem dos dois eixos, como no boot. É o
+conserto para o desenho na tela ficar deslocado do braço depois de perder
+passo.
+
+Só em modo manual, conferido nas duas pontas — no handler (para o
+operador ver a recusa) e no core 1 (porque o modo pode mudar entre uma
+coisa e outra). Reescrever a contagem debaixo do gerador de pulso em
+movimento manda o braço para o batente.
+
+## R10 · Aferir a redução sem calcular  `H04`  ✅
+
+Marcar → girar → medir com transferidor → gravar.
+`passosPorGrau = pulsos contados / graus medidos`, e a redução mecânica é
+reescrita a partir disso. É a mesma conta da última etapa do assistente,
+agora avulsa: dá para aferir um eixo sem refazer a medição de curso.
+
+Recusas na porta: junta inexistente, ângulo ≤ 0,5° ou > 3600° (dividir
+por quase nada manda a resolução para o infinito) e falta de marca.
+
+## R11 · Desenhar o caminho com o dedo  `H05`  ✅
+
+O botão **DES** na mesa de traçado grava uma polilinha por cima do
+desenho do braço. O navegador simplifica com Douglas-Peucker, apertando a
+tolerância até caber nos 40 pontos do programa, e manda
+`x,y;x,y;…` em milímetros para `POST /api/prog/desenho`.
+
+O firmware resolve a cinemática inversa de cada ponto **a partir do
+anterior** (o cotovelo não troca de lado no meio do traço) e reaproveita
+o caminho de carregamento de arquivo: preenche a área de troca e
+enfileira `CMD_ARQ_APLICAR_PROG`, que valida tudo antes de trocar. Traço
+que passe fora da área útil é recusado dizendo **qual ponto**, e o
+programa que estava na máquina não é tocado.
+
+## O banco passou a executar a camada HTTP
+
+Dois dos defeitos mais caros deste projeto — "gravar ponto não faz nada"
+(rodada 2) e a velocidade de cordão que não salvava (R7) — moravam em
+`servidor_web.cpp`, que o banco **compilava e nunca rodava**. Nenhum
+teste de motor pegaria qualquer um dos dois.
+
+- `mocks/WebServer.h` deixou de ser esqueleto: registra as rotas de
+  verdade e despacha um pedido direto no handler (`webPost`, `webGet`).
+- `servidor_web.cpp` entra no link do banco.
+- `testes/conferir_rotas.py` compara as rotas que a página chama com as
+  que o firmware registra. Rota chamada e não registrada é 404
+  silencioso — exatamente o botão mudo.
+
+Um efeito colateral apareceu na hora: `reiniciarSistema()` não zerava
+`modoAtual`. No ESP32 o boot reinicializa as globais; no banco elas
+sobrevivem ao `setup()`, então um cenário que terminava gravando fazia o
+seguinte recusar todo ajuste por um motivo que não era o do teste.
+
+## Cobertura
+
+| banco | rodada 3 | agora |
+|-------|----------|-------|
+| firmware | 62 / 1 | **104 / 1** |
+| interface | 39 / 0 | **59 / 0** |
+
+Novos no firmware: E01–E03, F01–F03, G01 (rodadas anteriores) e H01–H06
+(camada HTTP). Novos na interface: modo de desenho, zerar na posição e as
+três etapas da aferição.
+
+A anomalia que resta continua sendo a A13, severidade 3, documentada em
+*Não corrigido (e por quê)*.

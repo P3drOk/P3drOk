@@ -81,6 +81,9 @@ extern bool protDobra;
 extern bool protEnvelope;
 
 extern uint16_t escalaVelocidadeTraj;  // 10..200 (%)
+// Passos ao longo dos quais a aceleracao sobe de zero ate o valor cheio.
+// E o que tira o tranco da partida. 0 = rampa trapezoidal pura.
+extern uint8_t  suavidadePartida;
 
 // ---------------------------------------------------------------------
 // Estado volatil
@@ -188,6 +191,7 @@ struct ConfigPendente {
   float    red1, red2;
   bool     inv1, inv2;
   uint16_t escalaTraj;
+  uint8_t  suavidade;
   float    elo1, elo2, folgaDobra, envY, envRaio;
   bool     protCurso, protDobra, protEnvelope;
 };

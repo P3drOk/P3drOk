@@ -19,6 +19,7 @@
 #include "programa.h"
 #include "calibracao.h"
 #include "armazenamento.h"
+#include "WebServer.h"
 #include "Preferences.h"
 #include "FS.h"
 #include <string>
@@ -147,6 +148,13 @@ static void reiniciarSistema() {
   // sobrevivem a um setup() e vazariam pontos de um cenario para o outro.
   progLimpar();
   trajLimpar();
+  // No ESP32 o boot reinicializa as variaveis globais; aqui elas
+  // sobrevivem ao setup(). Um cenario que termina gravando deixava o
+  // seguinte fora do modo manual, e todo pedido de ajuste era recusado
+  // por um motivo que nao era o do teste.
+  modoAtual = MODO_MANUAL;
+  solicitarParada();
+  limparFilaComandos();
   // Descarta o transiente do boot.
   registrarContatoOperador();
   rodarComWeb(50);
@@ -1929,6 +1937,270 @@ static void teste_G01_velocidade_igual_entre_juntas() {
 }
 
 // =====================================================================
+//  H - Camada HTTP.
+//
+//  Ate agora servidor_web.cpp so era compilado, nunca executado. Os dois
+//  defeitos que o operador sentiu na mao ("gravar ponto nao faz nada", "a
+//  velocidade de cordao nao salva") moravam exatamente ali. O mock de
+//  WebServer despacha a rota de verdade, no mesmo processo.
+// =====================================================================
+static void teste_H01_velocidade_de_cordao() {
+  secao("H01  A velocidade de cordao salva quando muda na tela?");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  const float antes = velCordaoMmS;
+  // Exatamente o que a interface manda ao apertar "Salvar ajustes".
+  const int cod = webPost("/api/config?velN=20&velP=2&velA=12&velCordao=7.5"
+                          "&acel1=60&acel2=60&ppv1=4000&red1=16.5"
+                          "&ppv2=4000&red2=4&suav=120");
+  rodarComWeb(120);
+  nota("antes %.1f mm/s, pedido 7.5, agora %.1f (HTTP %d)",
+       (double)antes, (double)velCordaoMmS, cod);
+  checar(cod == 200 && fabsf(velCordaoMmS - 7.5f) < 0.01f, "H01a",
+         "POST /api/config?velCordao=7.5 muda a velocidade do cordao");
+
+  // Fica gravada: religar nao pode devolver o valor velho.
+  const float gravado = (g_nvs.f.count("velCmm") ? g_nvs.f["velCmm"] : -1.0f);
+  nota("no NVS: %.1f mm/s", (double)gravado);
+  checar(fabsf(gravado - 7.5f) < 0.01f, "H01b",
+         "o valor vai para a memoria nao volatil");
+
+  // O nome antigo continua funcionando para quem tiver a pagina em cache.
+  webPost("/api/config?velC=4.25");
+  rodarComWeb(120);
+  checar(fabsf(velCordaoMmS - 4.25f) < 0.01f, "H01c",
+         "o nome antigo velC ainda e aceito");
+
+  // E o pedido sem o parametro nenhum nao pode zerar o que estava.
+  webPost("/api/config?velN=20");
+  rodarComWeb(120);
+  checar(fabsf(velCordaoMmS - 4.25f) < 0.01f, "H01d",
+         "pedido sem velCordao preserva o valor atual");
+}
+
+static void teste_H02_suavidade_da_partida() {
+  secao("H02  Suavidade da partida chega nos geradores de pulso?");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  const int cod = webPost("/api/config?suav=90");
+  rodarComWeb(120);
+  nota("suavidade %u; setLinearAcceleration J1=%u J2=%u",
+       (unsigned)suavidadePartida,
+       (unsigned)J1.motor->suavidade,
+       (unsigned)J2.motor->suavidade);
+  checar(cod == 200 && suavidadePartida == 90, "H02a",
+         "POST /api/config?suav=90 grava a suavidade");
+  checar(J1.motor->suavidade == 90 &&
+         J2.motor->suavidade == 90, "H02b",
+         "as duas juntas recebem a rampa em S");
+  checar(g_nvs.u.count("suav") && g_nvs.u["suav"] == 90, "H02c",
+         "a suavidade sobrevive ao desligamento");
+
+  // Zero e valido: quem quiser a rampa antiga, reta, poe zero.
+  webPost("/api/config?suav=0");
+  rodarComWeb(120);
+  checar(suavidadePartida == 0 && J1.motor->suavidade == 0,
+         "H02d", "zero desliga a rampa em S sem recusar o pedido");
+}
+
+static void teste_H03_zerar_na_posicao() {
+  secao("H03  Zerar a maquina na posicao atual");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Braco deslocado do zero, como fica depois de perder passo.
+  J1.motor->setCurrentPosition(1234);
+  J2.motor->setCurrentPosition(-567);
+  rodarComWeb(20);
+  nota("antes: J1 %ld passos (%.1f°), J2 %ld passos (%.1f°)",
+       posicaoJ1(), (double)passosParaGraus(J1, posicaoJ1()),
+       posicaoJ2(), (double)passosParaGraus(J2, posicaoJ2()));
+
+  const int cod = webPost("/api/referenciar");
+  rodarComWeb(200);
+  nota("depois: J1 %ld passos, J2 %ld passos -- \"%s\"",
+       posicaoJ1(), posicaoJ2(), ultimaMensagem);
+  checar(cod == 200 && posicaoJ1() == 0 && posicaoJ2() == 0, "H03a",
+         "POST /api/referenciar zera a contagem dos dois eixos");
+  checar(modoAtual == MODO_MANUAL, "H03b",
+         "o robo continua em manual, sem entrar em assistente");
+
+  // Fora do manual nao: reescrever a contagem debaixo do gerador de pulso
+  // e o jeito mais rapido de mandar o braco para o batente.
+  enviarComando(CMD_GRAVAR_INICIAR);
+  rodarComWeb(40);
+  const int cod2 = webPost("/api/referenciar");
+  nota("em modo %d: HTTP %d -- \"%s\"", (int)modoAtual, cod2, webCorpo());
+  checar(modoAtual != MODO_MANUAL && cod2 == 400, "H03c",
+         "recusado, com motivo, quando o robo nao esta em manual");
+}
+
+static void teste_H04_aferir_reducao() {
+  secao("H04  Aferir a reducao mecanica pelo movimento real");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // O operador declarou 20:1, mas a maquina tem 16,5:1. O sintoma e o
+  // braco andar menos do que a tela mostra.
+  webPost("/api/config?ppv1=4000&red1=20");
+  rodarComWeb(120);
+  const float ppgAntes = J1.passosPorGrau;
+  const float ppg2Antes = J2.passosPorGrau;
+
+  checar(webPost("/api/aferir/marcar?j=1") == 200, "H04a",
+         "POST /api/aferir/marcar aceita a junta 1");
+  rodarComWeb(120);
+
+  // Gira o eixo: 45 graus pela conta ERRADA de 20:1.
+  const long pulsos = (long)(45.0f * ppgAntes);
+  J1.motor->setCurrentPosition(posicaoJ1() + pulsos);
+  rodarComWeb(20);
+  nota("contados %ld pulsos desde a marca", aferirPassosDesde(1));
+  checar(aferirPassosDesde(1) == pulsos, "H04b",
+         "os pulsos desde a marca aparecem para a interface");
+
+  // Transferidor no eixo: ele andou 54,5 graus de verdade.
+  const int cod = webPost("/api/aferir/aplicar?j=1&g=54.5");
+  rodarComWeb(200);
+  const float esperado = (float)pulsos / 54.5f;
+  nota("reducao %.2f -> %.2f (%.1f -> %.1f pulsos/grau) -- \"%s\"",
+       20.0, (double)J1.reducao, (double)ppgAntes, (double)J1.passosPorGrau,
+       ultimaMensagem);
+  checar(cod == 200 && fabsf(J1.passosPorGrau - esperado) < 0.5f, "H04c",
+         "a resolucao passa a ser pulsos contados / graus medidos");
+  checar(fabsf(J1.reducao - 16.5f) < 0.2f, "H04d",
+         "a reducao mecanica exibida vira a real (16,5:1)");
+  checar(fabsf(J2.passosPorGrau - ppg2Antes) < 0.01f, "H04e",
+         "a outra junta nao e tocada");
+
+  // Sem marca nao ha o que aferir.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  const float ppg2 = J2.passosPorGrau;
+  webPost("/api/aferir/aplicar?j=2&g=30");
+  rodarComWeb(120);
+  nota("sem marcar antes: \"%s\"", ultimaMensagem);
+  checar(strstr(ultimaMensagem, "arque") != nullptr &&
+         fabsf(J2.passosPorGrau - ppg2) < 0.01f, "H04f",
+         "sem marca o sistema diz o que faltou em vez de gravar lixo");
+
+  // Angulo perto de zero mandaria a resolucao para o infinito.
+  const int codG = webPost("/api/aferir/aplicar?j=1&g=0");
+  nota("g=0: HTTP %d -- \"%s\"", codG, webCorpo());
+  checar(codG == 400 &&
+         webPost("/api/aferir/aplicar?j=1&g=-40") == 400 &&
+         webPost("/api/aferir/aplicar?j=9&g=40")  == 400, "H04g",
+         "angulo invalido e junta inexistente sao recusados na porta");
+}
+
+static void teste_H05_desenho_vira_programa() {
+  secao("H05  Desenhar na mesa vira programa de pontos");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  const float alc = elo1Mm + elo2Mm;
+  // Os pontos do traco saem da cinematica DIRETA de posturas validas: um
+  // XY escolhido no olho pode cair fora do curso de +/-90 graus e o teste
+  // reprovaria por causa do teste, nao do firmware.
+  auto pontoDe = [&](float t1, float t2, float& x, float& y) {
+    float xc, yc; cinematicaDireta(t1, t2, xc, yc, x, y);
+  };
+  float ax, ay, bx, by, cx2, cy2;
+  pontoDe(20.0f, 30.0f, ax, ay);
+  pontoDe(28.0f, 30.0f, bx, by);
+  pontoDe(36.0f, 30.0f, cx2, cy2);
+  char traco[256];
+  snprintf(traco, sizeof(traco), "%.1f,%.1f;%.1f,%.1f;%.1f,%.1f",
+           (double)ax, (double)ay, (double)bx, (double)by,
+           (double)cx2, (double)cy2);
+  nota("traco pedido: (%.0f,%.0f) (%.0f,%.0f) (%.0f,%.0f)",
+       (double)ax, (double)ay, (double)bx, (double)by,
+       (double)cx2, (double)cy2);
+
+  const int cod = webPost("/api/prog/desenho?solda=1", traco);
+  rodarComWeb(200);
+  nota("HTTP %d, %u pontos -- \"%s\"", cod, (unsigned)progQuantidade(),
+       ultimaMensagem);
+  checar(cod == 200 && progQuantidade() == 3, "H05a",
+         "o traco vira pontos do programa");
+  checar(progQuantidade() == 3 && progLista()[0].soldaAteProximo == 1 &&
+         progLista()[1].soldaAteProximo == 1, "H05b",
+         "com solda=1 os trechos saem marcados como cordao");
+  checar(progQuantidade() == 3 && progLista()[2].soldaAteProximo == 0,
+         "H05c", "o ultimo ponto nao abre arco: depois dele nao ha trecho");
+
+  // A ponta cai onde o dedo passou.
+  if (progQuantidade() == 3) {
+    const float t1 = passosParaGraus(J1, progLista()[1].p1);
+    const float t2 = passosParaGraus(J2, progLista()[1].p2);
+    float xc, yc, x, y; cinematicaDireta(t1, t2, xc, yc, x, y);
+    nota("ponto 2 pedido em (%.1f, %.1f), gravado em (%.1f, %.1f)",
+         (double)bx, (double)by, (double)x, (double)y);
+    checar(fabsf(x - bx) < 1.0f && fabsf(y - by) < 1.0f, "H05d",
+           "o ponto gravado cai onde o dedo passou, em milimetros de chapa");
+  } else {
+    checar(false, "H05d", "o ponto gravado cai onde o dedo passou");
+  }
+
+  // Traco fora de alcance: recusa dizendo QUAL ponto, e o programa que ja
+  // estava na maquina nao pode ser apagado por isso.
+  const uint8_t antes = progQuantidade();
+  char longe[128];
+  snprintf(longe, sizeof(longe), "%.1f,%.1f;0,%.0f",
+           (double)ax, (double)ay, (double)(alc * 3.0f));
+  const int cod2 = webPost("/api/prog/desenho", longe);
+  rodarComWeb(120);
+  nota("fora de alcance: HTTP %d -- \"%s\"", cod2, webCorpo());
+  checar(cod2 == 400 && strstr(webCorpo(), "ponto 2") != nullptr, "H05e",
+         "traco fora de alcance e recusado apontando o ponto");
+  checar(progQuantidade() == antes, "H05f",
+         "o programa que estava na maquina continua intacto");
+
+  // Traco maior que o programa comporta.
+  std::string grande;
+  for (int i = 0; i < MAX_PONTOS + 3; i++) {
+    float x, y; pontoDe(20.0f + i * 0.4f, 30.0f, x, y);
+    char b[40];
+    snprintf(b, sizeof(b), "%s%.1f,%.1f", i ? ";" : "", (double)x, (double)y);
+    grande += b;
+  }
+  const int cod3 = webPost("/api/prog/desenho", grande.c_str());
+  rodarComWeb(120);
+  nota("%d pontos: HTTP %d -- \"%s\"", MAX_PONTOS + 3, cod3, webCorpo());
+  checar(cod3 == 400, "H05g",
+         "traco com mais pontos do que o programa comporta e recusado");
+
+  // Um traco de um ponto so nao e caminho nenhum.
+  char um[40];
+  snprintf(um, sizeof(um), "%.1f,%.1f", (double)ax, (double)ay);
+  checar(webPost("/api/prog/desenho", um) == 400, "H05h",
+         "traco de um ponto so e recusado");
+  checar(webPost("/api/prog/desenho", "isto nao e um traco") == 400, "H05i",
+         "corpo mal formado e recusado em vez de virar pontos aleatorios");
+}
+
+static void teste_H06_rotas_da_interface() {
+  secao("H06  Toda rota existe? (botao mudo e o defeito mais caro)");
+  reiniciarSistema();
+
+  // Rota inexistente tem de responder 404, senao um erro de digitacao na
+  // pagina vira "o botao nao faz nada" sem nenhum sinal.
+  const int cod = webPost("/api/nao/existe");
+  nota("POST /api/nao/existe -> HTTP %d", cod);
+  checar(cod == 404, "H06a", "rota desconhecida responde 404");
+
+  // GET numa rota que so aceita POST tambem nao pode passar em silencio.
+  checar(webGet("/api/parar") == 404, "H06b",
+         "metodo errado nao cai num handler qualquer");
+
+  // A conferencia rota-a-rota contra a pagina fica em conferir_rotas.py,
+  // que le pagina_web.h: aqui so se garante o comportamento do 404.
+  nota("a lista completa e conferida por testes/conferir_rotas.py");
+}
+
+// =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
   printf("\n\033[1mBANCO DE TESTES - RoboCNC v6\033[0m\n");
@@ -1975,6 +2247,13 @@ int main() {
   teste_F03_sentido_do_eixo();
 
   teste_G01_velocidade_igual_entre_juntas();
+
+  teste_H01_velocidade_de_cordao();
+  teste_H02_suavidade_da_partida();
+  teste_H03_zerar_na_posicao();
+  teste_H04_aferir_reducao();
+  teste_H05_desenho_vira_programa();
+  teste_H06_rotas_da_interface();
 
 
 
