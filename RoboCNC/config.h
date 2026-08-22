@@ -253,6 +253,7 @@ enum TipoComando : uint8_t {
   CMD_CALIB_INICIAR,
   CMD_CALIB_CONFIRMAR,
   CMD_CALIB_CANCELAR,
+  CMD_CALIB_APAGAR,     // esquece a calibracao gravada e volta ao modo de instalacao
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

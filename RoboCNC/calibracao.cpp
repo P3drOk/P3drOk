@@ -73,6 +73,31 @@ void calibCancelar() {
   definirMensagem("Calibracao cancelada");
 }
 
+void calibApagar() {
+  pararSuave();
+  jogZerar();
+  soldaDesligar();
+
+  Junta* js[2] = { &J1, &J2 };
+  for (uint8_t i = 0; i < 2; i++) {
+    js[i]->calibrada = false;
+    js[i]->passosMin = 0;
+    js[i]->passosMax = 0;
+    js[i]->grausHome = 0.0f;
+  }
+  origemFoiDeslocada = false;
+  estadoCalib = CAL_INATIVO;
+  if (modoAtual == MODO_CALIBRANDO) modoAtual = MODO_MANUAL;
+
+  recalcularResolucao();
+  salvarConfiguracoes();
+  aplicarVelocidadeManual();
+  aplicarAceleracao();
+
+  Serial.println("[CAL] Calibracao apagada do NVS.");
+  definirMensagem("Calibracao apagada. O jog esta livre; calibre antes de executar programa");
+}
+
 // ---------------------------------------------------------------------
 static void voltarParaZero(Junta& j) {
   if (!j.motor) return;

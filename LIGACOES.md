@@ -311,6 +311,9 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Cartão não monta | 5 V em vez de 3V3; falta o capacitor de 10 µF; fio longo demais para 20 MHz. |
 | Jog engasga | Wi-Fi fraco. O firmware para o eixo sem heartbeat por 350 ms — é proposital. |
 | Jog recusado, nada se move | Servos desabilitados. A interface diz o motivo abaixo do joystick. |
-| Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais. |
+| Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais, ou use *Apagar calibração gravada*. |
+| Braço trava durante a **calibração** | Já corrigido: sem calibração válida o jog é livre (modo de instalação). Se ainda travar, veja se os servos estão habilitados — a interface diz o motivo abaixo do joystick. |
+| Braço vai para um lado, desenho vai para o outro | Sinal do eixo trocado. `Ajustes → Sentido dos eixos`, chave da junta. Calibração não conserta: o erro é de sinal, não de escala. |
+| Ângulo na tela não bate com o transferidor | Resolução digitada errada. Refaça a calibração e informe o **curso real medido** na última etapa. |
 | *"Sketch too big"*, `Maximum is 1310720` | Partição padrão. Veja a **§0** — `partitions.csv` ou o menu Huge APP. |
 | Recusa dizendo que uma junta precisa ir além do curso | Leia a frase inteira: se ela diz *"a N% do trecho"*, o problema é o **meio do cordão**, não as pontas. Reta cartesiana perto da base obriga o cotovelo a dobrar. Aproxime os pontos ou reposicione a peça. |

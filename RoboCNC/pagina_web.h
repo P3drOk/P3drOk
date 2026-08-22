@@ -210,6 +210,7 @@ h4:first-child{margin-top:0}
  color:var(--letra2);text-transform:uppercase}
 .mb:hover{border-color:var(--letra2);color:var(--letra)}
 .mb.x{color:var(--brasa);border-color:var(--linha)}
+.b.x{color:var(--brasa);border-color:var(--brasa)}
 .tr{display:flex;align-items:center;gap:9px;padding:8px 10px 8px 39px;background:var(--painel);
  border-bottom:1px solid var(--linha);font-family:var(--mono);font-size:9.5px;
  letter-spacing:.05em;color:var(--letra2)}
@@ -639,6 +640,12 @@ h4:first-child{margin-top:0}
             <h4>Curso das juntas</h4>
             <div class="nt">A calibracao mede ate onde cada junta pode ir. Sem ela o robo nao executa programa.</div>
             <button class="b" id="btCalib">Abrir assistente de calibracao</button>
+            <div class="tr"><span id="calEstado">--</span></div>
+            <button class="b mini x" id="btCalApagar">Apagar calibracao gravada</button>
+            <div class="nt">Apagar volta o robo ao <b>modo de instalacao</b>: o jog
+            fica livre, sem limite de curso, e programa e trajetoria ficam
+            recusados ate calibrar de novo. A resolucao dos eixos nao e
+            apagada &mdash; ela descreve a mecanica, nao a medicao.</div>
             <h4>Bancada</h4>
             <button class="b mini" id="btTeste">Pulsar rele por 2 segundos</button>
           </div>
@@ -656,6 +663,17 @@ h4:first-child{margin-top:0}
             <h4>Resolucao da junta 2</h4>
             <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv2" min="1"></div>
             <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd2" min="0.01" step="0.01"><span class="un">: 1</span></div>
+            <h4>Sentido dos eixos</h4>
+            <div class="tr"><div class="ch" id="sInv1"><i></i></div>
+              <span>inverter a junta 1</span></div>
+            <div class="tr"><div class="ch" id="sInv2"><i></i></div>
+              <span>inverter a junta 2</span></div>
+            <div class="nt">Se o braco vai para um lado e o desenho na tela vai
+            para o outro, o sinal do eixo esta trocado &mdash; nenhuma calibracao
+            conserta isso, porque o erro nao e de escala, e de sinal. Marque aqui
+            em vez de trocar fio no driver.<br><br>A cinematica espera angulo
+            crescente no sentido <b>anti-horario</b>, com a junta 1 em zero
+            apontando para a <b>direita</b>.</div>
             <div class="res" id="resumoRes">--</div>
             <div class="nt">Pulsos por volta e a engrenagem eletronica do T3D. Reducao e a relacao mecanica daquele eixo: <b>50</b> para um redutor 50:1. Os dois eixos sao independentes.</div>
             <h4>Velocidades</h4>
@@ -798,6 +816,17 @@ $("btServos").onclick=function(){post("/api/servos?v="+(D.servos?0:1));};
 $("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
 $("btTeste").onclick =function(){post("/api/teste/rele");};
 $("btCalib").onclick =function(){post("/api/calib/iniciar");};
+$("btCalApagar").onclick=function(){
+  if(confirm("Apagar a calibracao gravada?\n\nO robo volta ao modo de instalacao: "+
+             "jog livre e sem limite de curso, programa e trajetoria recusados "+
+             "ate calibrar de novo."))
+    post("/api/calib/apagar");
+};
+$("sInv1").onclick=function(){D.inv1=!D.inv1;salvarSentido();};
+$("sInv2").onclick=function(){D.inv2=!D.inv2;salvarSentido();};
+function salvarSentido(){
+  return post("/api/config?inv1="+(D.inv1?1:0)+"&inv2="+(D.inv2?1:0));
+}
 $("cOk").onclick=function(){
   /* Os dois campos so sao enviados nas etapas em que eles significam
      alguma coisa; vazio vira 0, que o firmware entende como "nao mexer". */
@@ -1176,10 +1205,15 @@ function acao(id,motivo){
 }
 /* Motivo comum a tudo que move o braco, na ordem em que o operador
    precisa resolver. */
-function porQueNaoMove(d){
+/* Motivo comum a tudo que move o braco, na ordem em que o operador
+   precisa resolver. O jog NAO exige calibracao -- sem ela o robo esta em
+   modo de instalacao, que existe justamente para o operador conseguir
+   levar o braco ate os limites. */
+function porQueNaoMove(d,exigeCalib){
   if(d.modo==="FALHA")            return "sistema em falha: rearme os servos primeiro";
   if(!d.servos)                   return "habilite os servos (aba Ajustes, etapa 1)";
-  if(!d.cal1||!d.cal2)            return "calibre as juntas (aba Ajustes, etapa 1)";
+  if(exigeCalib&&(!d.cal1||!d.cal2))
+    return "calibre as juntas (aba Ajustes, etapa 1)";
   if(d.modo!=="MANUAL")           return "robo ocupado: "+(RM[d.modo]||d.modo);
   return "";
 }
@@ -1253,19 +1287,29 @@ function aplicar(d){
   acao("Ensaio", (rodando&&d.ensaio) ? ""
        : (rodando&&!d.ensaio) ? "execucao com arco em andamento"
        : (d.progN<2) ? "grave pelo menos 2 pontos na aba Mover"
-       : porQueNaoMove(d));
+       : porQueNaoMove(d,true));
   $("e3").classList.toggle("feita",d.progN>=2&&!rodando);
   $("btSoldar").textContent=(rodando&&!d.ensaio)?"PARAR":"Executar com arco";
   $("btSoldar").className="b "+((rodando&&!d.ensaio)?"rod":"quente");
   acao("Soldar", (rodando&&!d.ensaio) ? ""
        : (rodando&&d.ensaio) ? "ensaio em andamento"
        : (d.progN<2) ? "grave pelo menos 2 pontos na aba Mover"
-       : porQueNaoMove(d));
+       : porQueNaoMove(d,true));
   $("pg").style.width=(rodando?d.progPct:0)+"%";
 
   const passo=!pronto?1:(d.progN<2?2:(rodando&&!d.ensaio?4:3));
   document.querySelectorAll(".et").forEach(function(x){
     x.classList.toggle("agora",+x.dataset.e===passo);});
+
+  $("sInv1").className="ch"+(d.inv1?" on":"");
+  $("sInv2").className="ch"+(d.inv2?" on":"");
+
+  const temCal=d.cal1&&d.cal2;
+  $("calEstado").textContent=temCal
+    ? ("calibrado · J1 "+d.j1min.toFixed(0)+"…"+d.j1max.toFixed(0)+"° · J2 "+
+       d.j2min.toFixed(0)+"…"+d.j2max.toFixed(0)+"°")
+    : "sem calibracao · modo de instalacao, jog livre";
+  $("btCalApagar").disabled=(d.modo!=="MANUAL"&&d.modo!=="CALIBRANDO")||!temCal;
 
   $("pCur").className="ch"+(d.protCurso?" on":"");
   $("pDob").className="ch"+(d.protDobra?" on":"");
@@ -1337,23 +1381,32 @@ function aplicar(d){
 
   $("sbTraj").textContent=d.trajN<2?"nenhuma gravada":
     (d.trajN+" pontos · "+(d.trajMs/1000).toFixed(1)+" s");
-  acao("GravIni", d.modo==="GRAVANDO" ? "ja esta gravando" : porQueNaoMove(d));
+  acao("GravIni", d.modo==="GRAVANDO" ? "ja esta gravando" : porQueNaoMove(d,false));
   acao("GravFim", d.modo==="GRAVANDO" ? "" : "nao ha gravacao em andamento");
-  acao("Repro", (d.trajN<2) ? "nenhuma trajetoria gravada" : porQueNaoMove(d));
+  acao("Repro", (d.trajN<2) ? "nenhuma trajetoria gravada" : porQueNaoMove(d,true));
   $("btArco").textContent=d.solda?"FECHAR ARCO":"Abrir arco";
   $("btArco").className="b "+(d.solda?"rod":"quente");
   acao("Arco", d.solda ? ""
        : (d.modo!=="MANUAL"&&d.modo!=="GRAVANDO") ? "arco manual so no modo manual ou gravando"
        : !d.servos ? "habilite os servos (aba Ajustes, etapa 1)" : "");
-  acao("Mover", porQueNaoMove(d));
+  acao("Mover", porQueNaoMove(d,true));
   acao("TrajLimpar", (d.trajN<2) ? "nao ha trajetoria para apagar"
        : (d.modo!=="MANUAL") ? "so com o robo parado no modo manual" : "");
   const bloqJog=porQueNaoMove(d);
+  const instalacao=d.servos&&!(d.cal1&&d.cal2)&&d.modo!=="FALHA";
   joy.classList.toggle("bloq",!!bloqJog);
   $("joyMotivo").textContent=bloqJog;
-  $("sbMover").textContent=bloqJog||
-    (d.precisao?"precisao · joystick":"joystick das duas juntas");
-  acao("Home", porQueNaoMove(d));
+  $("sbMover").textContent=bloqJog||(instalacao?"modo de instalacao · jog livre":
+    (d.precisao?"precisao · joystick":"joystick das duas juntas"));
+  if(!bloqJog&&instalacao){
+    $("joyMotivo").textContent=
+      "Modo de instalacao: sem calibracao nao ha limite de curso. "+
+      "Quem protege sao os batentes da maquina.";
+    $("joyMotivo").style.color="var(--letra2)";
+  }else{
+    $("joyMotivo").style.color="";
+  }
+  acao("Home", porQueNaoMove(d,true));
 
   if(d.trajN!==ultTrajN){ultTrajN=d.trajN;
     if(d.modo!=="GRAVANDO")lerTraj();else traj=[];}

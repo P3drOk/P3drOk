@@ -16,7 +16,10 @@ class FastAccelStepper {
   float    velAtual = 0.0f;  // Hz com sinal
   uint8_t  pinoDir = 0;
 
-  void setDirectionPin(uint8_t p) { pinoDir = p; }
+  bool dirSobe = true;
+  void setDirectionPin(uint8_t p, bool contaSubindo = true, uint16_t = 0) {
+    pinoDir = p; dirSobe = contaSubindo;
+  }
   void setSpeedInHz(uint32_t v)   { velHz = v ? v : 1; }
   void setAcceleration(uint32_t a){ acel = a ? a : 1; }
   uint32_t getAcceleration() const { return acel; }

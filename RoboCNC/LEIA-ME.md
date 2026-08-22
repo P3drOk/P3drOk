@@ -283,6 +283,28 @@ Soltar o dedo para o braço. Tela apagando, app indo para segundo plano ou
 aba perdendo o foco também param, na hora — e mesmo que nada disso
 chegue, o heartbeat de 350 ms do firmware para o eixo sozinho.
 
+## Modo de instalação
+
+Sem calibração válida o robô fica em **modo de instalação**: o jog é
+livre, sem limite de curso nenhum, e os modos automáticos ficam
+recusados.
+
+Isso não é descuido, é o único jeito de a coisa funcionar. Sem
+referência, "graus" é pulso dividido por um número digitado, mais um
+offset que pode ser o da calibração anterior. Aplicar a proteção de dobra
+ou a de envelope sobre esse ângulo trava justamente o assistente que
+existe para estabelecer a referência — e era exatamente o que acontecia:
+com a resolução errada, um movimento pequeno lia |θ2| > 160° e o jog era
+recusado antes de o operador chegar em qualquer limite.
+
+No modo de instalação quem protege são os batentes da máquina e o
+operador. Mova devagar. A interface avisa embaixo do joystick.
+
+`Ajustes → Preparar → Apagar calibração gravada` devolve o robô a esse
+estado quando você quer começar do zero sem herdar nada da medição
+anterior. A **resolução não é apagada** junto — ela descreve a mecânica,
+não a medição.
+
 ## Como o firmware sabe em quantos graus a junta está
 
 Ele **conta pulsos**. Não há encoder na malha: o `FastAccelStepper` conta
@@ -319,6 +341,18 @@ girou 100. Informados os 100, a resolução foi de 27,78 para 55,56
 pulsos/grau e a redução virou 2,0 — sozinha.
 
 Deixando o campo com o valor que o assistente já sugeriu, nada muda.
+
+### O sentido — para que lado a junta cresce
+
+Se o braço vai para um lado e o desenho na tela vai para o outro, o sinal
+do eixo está trocado. **Nenhuma calibração conserta isso**, porque o erro
+não é de escala, é de sinal: a aferição só corrigiria a proporção, e o
+braço continuaria espelhado.
+
+`Ajustes → Sentido dos eixos` tem uma chave por junta. A cinemática
+espera ângulo crescente no sentido **anti-horário**, com a junta 1 em zero
+apontando para a **direita**. Marcar a chave inverte o `DIR` no gerador de
+pulso — não precisa trocar fio no driver.
 
 ### A origem — onde fica o zero
 

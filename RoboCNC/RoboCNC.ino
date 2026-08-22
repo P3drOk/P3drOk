@@ -96,7 +96,7 @@ static const char* NOME_CMD[] = {
   "TRAJ_LIMPAR","SOLDA","TESTE_RELE","PONTO_GRAVAR","PONTO_REMOVER",
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
-  "CALIB_INI","CALIB_CONF","CALIB_CANC","JOG_XY",
+  "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -252,6 +252,7 @@ static void processarComando(const Comando& c) {
       salvarConfiguracoes();
       aplicarVelocidadeManual();
       aplicarAceleracao();
+      aplicarSentido();
       definirMensagem("Ajustes salvos");
       break;
 
@@ -263,6 +264,7 @@ static void processarComando(const Comando& c) {
       restaurarPadroes();
       aplicarVelocidadeManual();
       aplicarAceleracao();
+      aplicarSentido();
       definirMensagem("Ajustes de fabrica restaurados");
       break;
 
@@ -358,6 +360,17 @@ static void processarComando(const Comando& c) {
 
     case CMD_CALIB_CANCELAR:
       if (modoAtual == MODO_CALIBRANDO) calibCancelar();
+      break;
+
+    case CMD_CALIB_APAGAR:
+      // Vale tambem no meio do assistente: e a saida de quem quer comecar
+      // do zero sem herdar nada da medicao anterior.
+      if (modoAtual == MODO_MANUAL || modoAtual == MODO_CALIBRANDO) {
+        calibApagar();
+        logEvento("calibracao apagada pelo operador");
+      } else {
+        definirMensagem("Apague a calibracao com o robo parado");
+      }
       break;
 
     // -----------------------------------------------------------------

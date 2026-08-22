@@ -114,13 +114,24 @@ void violacaoTexto(const Violacao& v, char* destino, size_t tam) {
 bool posturaValidaDet(float t1, float t2, Violacao& v) {
   violacaoLimpar(v);
 
-  // Sem calibracao nao existe geometria confiavel para proteger nada.
-  // Nesse estado apenas o jog manual e liberado (modo de instalacao);
-  // todos os modos automaticos exigem calibracao antes de rodar.
+  // MODO DE INSTALACAO.
+  //
+  // Sem calibracao valida nao existe geometria confiavel para proteger
+  // nada: "graus" ainda e pulsos divididos por um numero digitado, mais
+  // um offset que pode ser o da calibracao antiga. Aplicar a protecao de
+  // dobra ou a de envelope sobre esse angulo trava o braco justamente
+  // durante o assistente que existe para estabelecer a referencia -- e
+  // era exatamente isso que acontecia: com a resolucao errada, um
+  // movimento pequeno lia |theta2| > 160 e o jog era recusado.
+  //
+  // Sem referencia, quem protege sao os batentes da maquina e o
+  // operador. Os modos automaticos continuam exigindo calibracao, entao
+  // nada roda sozinho neste estado.
   const bool calibrado = J1.calibrada && J2.calibrada;
+  if (!calibrado) return true;
 
   // 1) Curso de cada junta - vem da calibracao do proprio operador
-  if (protCurso && calibrado) {
+  if (protCurso) {
     const float min1 = J1.grausMin + MARGEM_LIMITE_GRAUS;
     const float max1 = J1.grausMax - MARGEM_LIMITE_GRAUS;
     const float min2 = J2.grausMin + MARGEM_LIMITE_GRAUS;
@@ -175,9 +186,10 @@ bool posturaValida(float t1, float t2, const char** motivo) {
 // nunca liberava, entao o braco entrava na faixa e nao saia mais.
 float gravidadeViolacao(float t1, float t2) {
   float g = 0.0f;
-  const bool calibrado = J1.calibrada && J2.calibrada;
+  // Mesmo criterio de posturaValidaDet: sem calibracao nada e violacao.
+  if (!(J1.calibrada && J2.calibrada)) return 0.0f;
 
-  if (protCurso && calibrado) {
+  if (protCurso) {
     const float min1 = J1.grausMin + MARGEM_LIMITE_GRAUS;
     const float max1 = J1.grausMax - MARGEM_LIMITE_GRAUS;
     const float min2 = J2.grausMin + MARGEM_LIMITE_GRAUS;

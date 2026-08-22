@@ -149,6 +149,8 @@ void prepararConfigPendente() {
   configPendente.ppv2         = J2.passosPorVolta;
   configPendente.red1         = J1.reducao;
   configPendente.red2         = J2.reducao;
+  configPendente.inv1         = J1.inverterDir;
+  configPendente.inv2         = J2.inverterDir;
   configPendente.escalaTraj   = escalaVelocidadeTraj;
   configPendente.elo1         = elo1Mm;
   configPendente.elo2         = elo2Mm;
@@ -171,6 +173,8 @@ void aplicarConfigPendente() {
   J2.passosPorVolta = configPendente.ppv2;
   J1.reducao        = configPendente.red1;
   J2.reducao        = configPendente.red2;
+  J1.inverterDir    = configPendente.inv1;
+  J2.inverterDir    = configPendente.inv2;
   escalaVelocidadeTraj = configPendente.escalaTraj;
   elo1Mm            = configPendente.elo1;
   elo2Mm            = configPendente.elo2;
@@ -209,6 +213,8 @@ void carregarConfiguracoes() {
 
   J1.aceleracao  = prefs.getUInt ("acel1", ACEL_PADRAO);
   J2.aceleracao  = prefs.getUInt ("acel2", ACEL_PADRAO);
+  J1.inverterDir = prefs.getBool ("inv1", false);
+  J2.inverterDir = prefs.getBool ("inv2", false);
 
   elo1Mm     = prefs.getFloat("l1",      ELO1_PADRAO_MM);
   elo2Mm     = prefs.getFloat("l2",      ELO2_PADRAO_MM);
@@ -257,6 +263,8 @@ void salvarConfiguracoes() {
   prefs.putFloat("red2", J2.reducao);
   prefs.putUInt ("acel1",       J1.aceleracao);
   prefs.putUInt ("acel2",       J2.aceleracao);
+  prefs.putBool ("inv1", J1.inverterDir);
+  prefs.putBool ("inv2", J2.inverterDir);
 
   prefs.putFloat("l1",    elo1Mm);
   prefs.putFloat("l2",    elo2Mm);
@@ -292,6 +300,8 @@ void restaurarPadroes() {
   J2.reducao        = REDUCAO_PADRAO;
   J1.aceleracao  = ACEL_PADRAO;
   J2.aceleracao  = ACEL_PADRAO;
+  J1.inverterDir = false;
+  J2.inverterDir = false;
   elo1Mm         = ELO1_PADRAO_MM;
   elo2Mm         = ELO2_PADRAO_MM;
   folgaDobra     = FOLGA_DOBRA_PADRAO;

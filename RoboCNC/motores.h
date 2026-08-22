@@ -16,6 +16,8 @@ bool motoresLerAlarmes();
 
 void aplicarVelocidadeManual();
 void aplicarAceleracao();
+// Reaplica o sentido de cada eixo. Chamar depois de mudar inverterDir.
+void aplicarSentido();
 
 bool motoresEmMovimento();
 float velocidadeJ1Hz();

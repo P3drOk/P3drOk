@@ -28,6 +28,13 @@ void calibIniciar();
 // Nas demais etapas os numeros sao ignorados.
 void calibConfirmar(float f1 = 0.0f, float f2 = 0.0f);
 void calibCancelar();
+
+// Esquece a calibracao gravada nas duas juntas: limites, referencia e a
+// marca de "calibrada". O robo volta ao modo de instalacao, com o jog
+// livre e os modos automaticos recusados ate calibrar de novo.
+// A resolucao (pulsos por volta e reducao) NAO e apagada: ela descreve a
+// mecanica, nao a medicao.
+void calibApagar();
 void calibAtualizar();   // chamar a cada ciclo do loop
 
 bool calibAtiva();

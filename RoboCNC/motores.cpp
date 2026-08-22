@@ -39,8 +39,7 @@ bool motoresIniciar() {
     return false;
   }
 
-  J1.motor->setDirectionPin(J1.pinoDir);
-  J2.motor->setDirectionPin(J2.pinoDir);
+  aplicarSentido();
   aplicarVelocidadeManual();
   aplicarAceleracao();
   return true;
@@ -81,6 +80,14 @@ void aplicarVelocidadeManual() {
 void aplicarAceleracao() {
   if (J1.motor) J1.motor->setAcceleration(J1.aceleracao);
   if (J2.motor) J2.motor->setAcceleration(J2.aceleracao);
+}
+
+// O segundo parametro do FastAccelStepper diz se o nivel ALTO no DIR faz
+// a contagem SUBIR. Invertendo aqui, o contador e o braco passam a andar
+// para o mesmo lado sem precisar trocar fio no driver.
+void aplicarSentido() {
+  if (J1.motor) J1.motor->setDirectionPin(J1.pinoDir, !J1.inverterDir);
+  if (J2.motor) J2.motor->setDirectionPin(J2.pinoDir, !J2.inverterDir);
 }
 
 bool motoresEmMovimento() {

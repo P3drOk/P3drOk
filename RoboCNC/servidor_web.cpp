@@ -91,6 +91,7 @@ static void handleStatus() {
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
     "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
+    "\"inv1\":%s,\"inv2\":%s,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"msg\":\"%s\"}",
@@ -116,6 +117,7 @@ static void handleStatus() {
     (unsigned long)J1.aceleracao, (unsigned long)J2.aceleracao,
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
+    J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
     s.mensagem);
@@ -260,6 +262,7 @@ static void handleCalibConf() {
   enfileirar(CMD_CALIB_CONFIRMAR, 0, 0, argF("g1", 0.0f), argF("g2", 0.0f));
 }
 static void handleCalibCanc()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CANCELAR); }
+static void handleCalibApagar(){ registrarContatoOperador(); enfileirar(CMD_CALIB_APAGAR); }
 
 static void handleMover() {
   registrarContatoOperador();
@@ -329,6 +332,8 @@ static void handleConfig() {
   const long  pv2 = argL("ppv2", J2.passosPorVolta);
   const float rd2 = argF("red2", J2.reducao);
   const long es = argL("escala", escalaVelocidadeTraj);
+  const long iv1 = argL("inv1", J1.inverterDir ? 1 : 0);
+  const long iv2 = argL("inv2", J2.inverterDir ? 1 : 0);
 
   if (vn <= 0 || vp <= 0 || va <= 0 || vs <= 0 || a1 <= 0 || a2 <= 0 || pv1 <= 0 || rd1 <= 0 || pv2 <= 0 || rd2 <= 0) {
     erro("valor invalido"); return;
@@ -350,6 +355,8 @@ static void handleConfig() {
   configPendente.ppv2         = (uint32_t)pv2;
   configPendente.red2         = rd2;
   configPendente.escalaTraj   = (uint16_t)constrain(es, 10, 200);
+  configPendente.inv1         = (iv1 != 0);
+  configPendente.inv2         = (iv2 != 0);
 
   enfileirar(CMD_APLICAR_CONFIG);
 }
@@ -589,6 +596,7 @@ void servidorIniciar() {
   server.on("/api/calib/iniciar",   HTTP_POST, handleCalibIni);
   server.on("/api/calib/confirmar", HTTP_POST, handleCalibConf);
   server.on("/api/calib/cancelar",  HTTP_POST, handleCalibCanc);
+  server.on("/api/calib/apagar",    HTTP_POST, handleCalibApagar);
 
   server.onNotFound(handleNaoEncontrado);
   server.begin();

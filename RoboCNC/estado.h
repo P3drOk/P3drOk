@@ -46,6 +46,15 @@ struct Junta {
 
   uint32_t aceleracao = ACEL_PADRAO;
   bool     alarme     = false;
+
+  // Sentido do eixo. Se a fiacao do DIR estiver invertida em relacao ao
+  // que a cinematica espera, o braco vai para um lado e o desenho para o
+  // outro -- e nenhuma calibracao conserta isso, porque o erro nao e de
+  // escala, e de sinal. Marque aqui em vez de trocar fio.
+  //
+  // A cinematica espera angulo CRESCENTE no sentido anti-horario, com
+  // theta1 = 0 apontando para +X (direita).
+  bool     inverterDir = false;
 };
 
 extern Junta J1;
@@ -175,6 +184,7 @@ struct ConfigPendente {
   uint32_t acel1, acel2;
   uint32_t ppv1, ppv2;
   float    red1, red2;
+  bool     inv1, inv2;
   uint16_t escalaTraj;
   float    elo1, elo2, folgaDobra, envY, envRaio;
   bool     protCurso, protDobra, protEnvelope;

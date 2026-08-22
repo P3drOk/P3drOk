@@ -48,6 +48,7 @@ estado = {
     "protCurso": True, "protDobra": True, "protEnv": False,
     "velN": 3000, "velP": 500, "velA": 1200, "acel1": 8000, "acel2": 8000,
     "ppv1": 10000, "red1": 1.0, "ppv2": 10000, "red2": 1.0,
+    "inv1": False, "inv2": False,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 27.78, "ppg2": 27.78,
     "l1": 200.0, "l2": 200.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
     "msg": "Pronto. Habilite os servos para comecar",

@@ -1691,6 +1691,162 @@ static void teste_E03_sem_informar_nada() {
        CURSO_MINIMO_GRAUS, J1.passosPorGrau);
 }
 
+
+// =====================================================================
+//  F - MODO DE INSTALACAO, APAGAR CALIBRACAO E SENTIDO DOS EIXOS
+// =====================================================================
+static void teste_F01_jog_livre_sem_calibracao() {
+  secao("F01  Sem calibracao o jog trava? (era o que impedia calibrar)");
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
+
+  // Situacao real: a resolucao digitada esta MUITO menor que a de
+  // verdade, entao poucos pulsos ja leem um angulo enorme. Com a
+  // protecao de dobra ativa sobre esse angulo, o jog era recusado antes
+  // de o operador conseguir chegar em qualquer limite.
+  prepararConfigPendente();
+  configPendente.ppv1 = 200; configPendente.red1 = 1.0f;   // 0,56 pulso/grau
+  configPendente.ppv2 = 200; configPendente.red2 = 1.0f;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(40);
+  nota("resolucao digitada: %.2f pulsos por grau (protecao de dobra em %.0f)",
+       J1.passosPorGrau, 180.0f - folgaDobra);
+
+  J1.motor->setCurrentPosition(0);
+  J2.motor->setCurrentPosition(grausParaPassos(J2, 170.0f));  // "dobrado"
+  rodarComWeb(10);
+  nota("junta 2 lida em %.0f graus -- alem do limite de dobra",
+       passosParaGraus(J2, posicaoJ2()));
+
+  const bool valida = posturaValida(passosParaGraus(J1, posicaoJ1()),
+                                    passosParaGraus(J2, posicaoJ2()), nullptr);
+  const long antes = posicaoJ1();
+  for (int i = 0; i < 8; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(70); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(500);
+
+  checar(valida && posicaoJ1() != antes, "F01a",
+         "sem calibracao o jog e livre: e assim que se chega aos limites");
+  nota("postura considerada valida: %s | jog andou %ld passos",
+       valida ? "sim" : "NAO", posicaoJ1() - antes);
+  nota("Sem referencia, \"graus\" e pulso dividido por um numero digitado.");
+  nota("Aplicar dobra ou envelope sobre isso travava justamente o");
+  nota("assistente que existe para estabelecer a referencia.");
+
+  // O assistente tem de rodar inteiro nessas condicoes.
+  const long meio = (long)(60.0f * J1.passosPorGrau);
+  rodarAssistente(-meio, +meio, 0, 0, 0, 0);
+  checar(J1.calibrada && J2.calibrada, "F01b",
+         "o assistente de calibracao completa mesmo com resolucao torta");
+  nota("calibrado: J1 %.1f..%.1f, J2 %.1f..%.1f graus",
+       J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
+
+  // E depois de calibrado as protecoes voltam a valer.
+  const bool protegeDepois = !posturaValida(0.0f, 170.0f, nullptr);
+  checar(protegeDepois, "F01c",
+         "com a calibracao pronta as protecoes voltam a agir");
+  nota("postura (0, 170) apos calibrar: %s",
+       protegeDepois ? "recusada" : "ACEITA");
+}
+
+// ---------------------------------------------------------------------
+static void teste_F02_apagar_calibracao() {
+  secao("F02  Apagar a calibracao gravada");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  J1.grausHome = 30.0f; J2.grausHome = -15.0f;
+  recalcularResolucao();
+  salvarConfiguracoes();
+  const float ppgAntes = J1.passosPorGrau;
+  const float redAntes = J1.reducao;
+  nota("antes: calibrada=%d, curso J1 %.1f..%.1f, referencia em %.0f graus",
+       (int)J1.calibrada, J1.grausMin, J1.grausMax, J1.grausHome);
+
+  enviarComando(CMD_CALIB_APAGAR); rodarComWeb(60);
+
+  checar(!J1.calibrada && !J2.calibrada &&
+         J1.passosMin == 0 && J1.passosMax == 0 &&
+         fabsf(J1.grausHome) < 0.001f, "F02a",
+         "apagar limpa limites, referencia e a marca de calibrada");
+  nota("depois: calibrada=%d, limites %ld..%ld, referencia %.1f",
+       (int)J1.calibrada, J1.passosMin, J1.passosMax, J1.grausHome);
+  nota("mensagem: %s", ultimaMensagem);
+
+  // A resolucao descreve a mecanica, nao a medicao: nao se apaga junto.
+  checar(fabsf(J1.passosPorGrau - ppgAntes) < 0.001f &&
+         fabsf(J1.reducao - redAntes) < 0.001f, "F02b",
+         "a resolucao dos eixos sobrevive: ela e da mecanica, nao da medicao");
+  nota("resolucao segue em %.3f pulsos/grau, reducao %.3f",
+       J1.passosPorGrau, J1.reducao);
+
+  // Tem de ficar apagada depois de religar.
+  carregarConfiguracoes();
+  checar(!J1.calibrada && !J2.calibrada, "F02c",
+         "apagada tambem no NVS: nao volta no proximo boot");
+  nota("apos recarregar o NVS: calibrada=%d", (int)J1.calibrada);
+
+  // E o robo volta ao modo de instalacao, com jog livre.
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
+  const long antes = posicaoJ1();
+  for (int i = 0; i < 6; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(70); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(400);
+  // Com dois pontos gravados, a recusa tem de ser pela calibracao --
+  // e nao por falta de pontos.
+  progLimpar();
+  for (int i = 0; i < 2; i++) {
+    J1.motor->setCurrentPosition(grausParaPassos(J1, 10.0f + 15.0f * i));
+    rodarComWeb(5);
+    const char* mp = nullptr;
+    progAdicionarPonto(posicaoJ1(), posicaoJ2(), &mp);
+  }
+  const char* m = nullptr;
+  const bool progRecusado = !progIniciar(true, &m);
+  checar(posicaoJ1() != antes && progRecusado && m && strstr(m, "calibre"),
+         "F02d", "modo de instalacao: jog livre, mas programa recusado");
+  nota("jog andou %ld passos | %u pontos gravados", posicaoJ1() - antes,
+       (unsigned)progQuantidade());
+  nota("programa: %s", m ? m : "ACEITO");
+}
+
+// ---------------------------------------------------------------------
+static void teste_F03_sentido_do_eixo() {
+  secao("F03  Braco indo para um lado e o desenho para o outro");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  const bool padrao = J1.motor->dirSobe;
+  checar(padrao && !J1.inverterDir, "F03a",
+         "de fabrica o eixo conta subindo com o DIR em nivel alto");
+  nota("inverterDir=%d, contagem sobe com DIR alto: %s",
+       (int)J1.inverterDir, padrao ? "sim" : "nao");
+
+  // Fiacao do DIR trocada: marca-se na tela em vez de trocar fio.
+  prepararConfigPendente();
+  configPendente.inv1 = true;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(60);
+
+  checar(J1.inverterDir && !J1.motor->dirSobe && !J2.inverterDir, "F03b",
+         "marcado, o sentido e reaplicado no gerador de pulso da junta certa");
+  nota("J1: inverterDir=%d, conta subindo com DIR alto: %s",
+       (int)J1.inverterDir, J1.motor->dirSobe ? "sim" : "nao");
+  nota("J2 intacta: inverterDir=%d", (int)J2.inverterDir);
+  nota("Nenhuma calibracao conserta sinal trocado: o erro nao e de escala.");
+
+  // Persistir e reaplicar no boot.
+  salvarConfiguracoes();
+  J1.inverterDir = false;
+  carregarConfiguracoes();
+  aplicarSentido();
+  checar(J1.inverterDir && !J1.motor->dirSobe, "F03c",
+         "o sentido sobrevive ao NVS e e reaplicado ao ligar");
+  nota("apos recarregar: inverterDir=%d, dirSobe=%s",
+       (int)J1.inverterDir, J1.motor->dirSobe ? "sim" : "nao");
+
+  // Restaurar padroes desfaz.
+  enviarComando(CMD_RESTAURAR_PADROES); rodarComWeb(60);
+  checar(!J1.inverterDir && J1.motor->dirSobe, "F03d",
+         "restaurar padroes devolve o sentido normal");
+  nota("apos restaurar: inverterDir=%d", (int)J1.inverterDir);
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1732,6 +1888,10 @@ int main() {
   teste_E01_aferir_resolucao();
   teste_E02_angulo_da_referencia();
   teste_E03_sem_informar_nada();
+
+  teste_F01_jog_livre_sem_calibracao();
+  teste_F02_apagar_calibracao();
+  teste_F03_sentido_do_eixo();
 
 
 
