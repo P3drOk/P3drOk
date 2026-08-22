@@ -5,6 +5,10 @@
 set -e
 cd "$(dirname "$0")/../.."
 mkdir -p testes/saida/ui
+
+# A pagina servida e a comprimida; conferir antes evita testar uma versao
+# que o robo nao entrega.
+python3 testes/gerar_pagina_gz.py --conferir
 PORTA=${PORTA:-8099}
 
 python3 testes/interface/servidor_falso.py RoboCNC/pagina_web.h "$PORTA" >/tmp/robocnc-ui.log 2>&1 &

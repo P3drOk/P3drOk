@@ -17,6 +17,8 @@ class WebServer {
   void send(int, const char*, const String&) {}
   void send(int, const char*, const char*) {}
   void send_P(int, const char*, const char*) {}
+  void send_P(int, const char*, const char*, size_t) {}
+  void sendHeader(const char*, const char*, bool = false) {}
   bool hasArg(const char*) { return false; }
   String arg(const char*) { return String(); }
   String uri() { return String(); }

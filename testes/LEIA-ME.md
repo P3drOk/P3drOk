@@ -95,6 +95,21 @@ Deixa as capturas em `testes/saida/ui/`.
 O servidor lê `pagina_web.h` ao subir, então ele **precisa** subir junto
 do teste — um servidor deixado de pé serve a página antiga em memória.
 
+## Página comprimida
+
+```sh
+python3 testes/gerar_pagina_gz.py            # regenera
+python3 testes/gerar_pagina_gz.py --conferir # roda junto com compilar.sh
+```
+
+O firmware serve `pagina_web_gz.h`, não o HTML cru. A conferência compara
+o sha256 do HTML de `pagina_web.h` com o registrado no gerado: se você
+editar a interface e esquecer de regenerar, os dois bancos reprovam antes
+de o robô servir uma versão diferente da do repositório.
+
+O servidor falso também entrega os bytes comprimidos com
+`Content-Encoding: gzip` — o mesmo caminho do ESP32, não o HTML cru.
+
 ## Conferência da fiação
 
 ```sh

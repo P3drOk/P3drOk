@@ -600,6 +600,25 @@ void setup() {
   // so entao cria a propria tarefa no core 0.
   armIniciar();
 
+  // Ocupacao do flash no boot. O sketch nao cabe na particao padrao do
+  // ESP32 (1,25 MB) com Wi-Fi + servidor + BLE; a pasta do sketch traz um
+  // partitions.csv com 3 MB de app. Se alguem gravar com a particao
+  // errada, isto aparece antes de o problema virar "trava do nada".
+  {
+    const uint32_t usado = ESP.getSketchSize();
+    const uint32_t livre = ESP.getFreeSketchSpace();
+    const uint32_t total = usado + livre;
+    Serial.printf("[FLASH] sketch %u kB de %u kB de particao (%u%% usado)\n",
+                  (unsigned)(usado / 1024), (unsigned)(total / 1024),
+                  total ? (unsigned)((uint64_t)usado * 100 / total) : 0u);
+    if (livre < 64UL * 1024UL) {
+      Serial.println("[FLASH] ATENCAO: menos de 64 kB livres na particao de app.");
+      Serial.println("[FLASH] Use Tools > Partition Scheme > Huge APP (3MB No OTA),");
+      Serial.println("[FLASH] ou deixe BLUETOOTH_INSTALADO false em config.h.");
+    }
+    Serial.printf("[RAM]   %u kB livres\n", (unsigned)(ESP.getFreeHeap() / 1024));
+  }
+
   definirMensagem("Pronto. Habilite os servos para comecar");
   logEvento("sistema iniciado");
 }

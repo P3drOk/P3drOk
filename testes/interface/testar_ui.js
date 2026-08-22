@@ -37,6 +37,17 @@ function checar(ok, texto, extra) {
   checar(erros.length === 0, 'a pagina carrega sem erro de JavaScript',
          erros.length ? erros.slice(0, 3).join(' | ') : 'nenhum erro no console');
 
+  // A pagina chega comprimida, como o ESP32 manda. O navegador tem de
+  // descomprimir sozinho -- se nao descomprimisse, nada acima teria
+  // funcionado, mas vale conferir o cabecalho e o tamanho na rede.
+  const resp = await p.request.get(BASE + '/');
+  const cab = resp.headers();
+  const bytesRede = parseInt(cab['content-length'] || '0', 10);
+  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 40000,
+         'a pagina e servida comprimida, como o firmware faz',
+         'Content-Encoding: ' + cab['content-encoding'] + ', ' + bytesRede +
+         ' bytes na rede');
+
   // Barra de abas presente e com as cinco abas
   const nAbas = await p.locator('#abas button').count();
   checar(nAbas === 5, 'barra de abas inferior com 5 abas', nAbas + ' abas encontradas');

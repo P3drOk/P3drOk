@@ -122,6 +122,22 @@ Robo de solda industrial ensina por pontos justamente por isso. A
 gravacao continua continua existindo no firmware (`trajetoria.cpp`) para
 percursos organicos, mas nao e o caminho principal da interface.
 
+## Gravando no ESP32
+
+O sketch ocupa ~1,7 MB e **não cabe na partição padrão** (1,25 MB). A
+pasta traz um `partitions.csv` com 3 MB de app; se a sua IDE ignorá-lo,
+escolha `Tools → Partition Scheme → Huge APP (3MB No OTA)`. A calibração
+salva sobrevive à troca — o `nvs` fica no mesmo lugar.
+
+Sem poder trocar a partição, `BLUETOOTH_INSTALADO false` em `config.h`
+tira a pilha BLE, que é o maior pedaço do sketch.
+
+Detalhes em [`LIGACOES.md`](../LIGACOES.md), §0.
+
+A interface é servida comprimida (75 kB → 21,8 kB). Você edita
+`pagina_web.h`; depois rode `python3 testes/gerar_pagina_gz.py`. O banco
+reprova se o gerado ficar velho.
+
 ## Primeira partida
 
 1. `Ajustes → Resolução`: informe pulsos por volta (engrenagem eletrônica

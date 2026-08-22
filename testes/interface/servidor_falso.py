@@ -11,10 +11,29 @@ from urllib.parse import urlparse, parse_qs
 RAIZ = sys.argv[1] if len(sys.argv) > 1 else "RoboCNC/pagina_web.h"
 PORTA = int(sys.argv[2]) if len(sys.argv) > 2 else 8099
 
+# Serve exatamente o que o ESP32 serve: os bytes de pagina_web_gz.h com
+# Content-Encoding: gzip. Servir o HTML cru daqui testaria um caminho que
+# o robo nao usa.
+import gzip as _gzip
+import pathlib as _pl
+import re as _re
+
 fonte = open(RAIZ, encoding="utf-8").read()
 i = fonte.index('R"rawliteral(') + len('R"rawliteral(')
 j = fonte.rindex(')rawliteral"')
 PAGINA = fonte[i:j].encode()
+
+_gzh = _pl.Path(RAIZ).parent / "pagina_web_gz.h"
+PAGINA_GZ = None
+if _gzh.exists():
+    _txt = _gzh.read_text(encoding="utf-8")
+    _bytes = bytes(int(b, 16) for b in _re.findall(r"0x([0-9a-fA-F]{2}),", _txt))
+    if _bytes:
+        # Conferencia dura: o comprimido tem de bater com a fonte.
+        if _gzip.decompress(_bytes) != PAGINA:
+            raise SystemExit("pagina_web_gz.h nao corresponde a pagina_web.h "
+                             "-- rode testes/gerar_pagina_gz.py")
+        PAGINA_GZ = _bytes
 
 pedidos = []          # tudo que a interface chamou
 estado = {
@@ -76,6 +95,14 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         caminho, q = self._rota()
         if caminho == "/":
+            if PAGINA_GZ is not None:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Content-Length", str(len(PAGINA_GZ)))
+                self.end_headers()
+                self.wfile.write(PAGINA_GZ)
+                return
             return self._envia(PAGINA, "text/html")
         if caminho == "/api/status":
             return self._envia(json.dumps(estado))

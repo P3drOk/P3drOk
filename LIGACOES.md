@@ -7,6 +7,63 @@ você mudar um `#define` lá, mude aqui também.
 
 ---
 
+## 0. Antes de gravar: a partição
+
+Se a IDE reclamar
+
+```
+Sketch uses 1721921 bytes (131%) of program storage space. Maximum is 1310720 bytes.
+Sketch too big
+```
+
+não é o código: é o **mapa de memória do flash**. O esquema padrão do
+ESP32 reserva só 1,25 MB para o programa, e Wi-Fi + servidor web + BLE
+ocupam ~1,7 MB.
+
+A pasta do sketch traz um **`partitions.csv`** com 3 MB de app. O núcleo
+Arduino-ESP32 usa esse arquivo quando ele está junto do `.ino`, então na
+maioria das instalações basta gravar. Se a IDE continuar dizendo
+`Maximum is 1310720 bytes`, ela ignorou o arquivo — escolha na mão:
+
+> **Tools → Partition Scheme → Huge APP (3MB No OTA/1MB SPIFFS)**
+
+Depois disso o mesmo sketch ocupa **55% da partição**, com 1,4 MB de
+sobra.
+
+**A calibração salva não se perde.** O `partitions.csv` mantém o `nvs` no
+mesmo endereço e tamanho do esquema padrão (`0x9000`, `0x5000`).
+
+### Se você não puder trocar a partição
+
+Desligue o Bluetooth em `config.h`:
+
+```c
+#define BLUETOOTH_INSTALADO  false
+```
+
+A pilha BLE é de longe o maior pedaço do sketch. Sem ela sobra a interface
+web inteira, que é o caminho principal de qualquer jeito. A própria IDE
+mostra o novo tamanho ao compilar.
+
+### Por que a página é servida comprimida
+
+`pagina_web.h` tem 75 kB de HTML. O firmware serve a versão gzip de
+`pagina_web_gz.h` — 21,8 kB — com `Content-Encoding: gzip`. São ~53 kB a
+menos de flash e uma página que chega no celular umas 3 vezes mais
+rápido, o que num ponto de acesso de ESP32 é a diferença entre abrir na
+hora e esperar.
+
+Você edita `pagina_web.h`. Depois de mexer, rode:
+
+```sh
+python3 testes/gerar_pagina_gz.py
+```
+
+O banco de testes reprova se o comprimido ficar velho, então não dá para
+esquecer e o robô servir uma interface diferente da do repositório.
+
+---
+
 ## 1. Mapa de pinos, de uma olhada
 
 | GPIO | Direção | Vai para | Observação |
@@ -209,12 +266,8 @@ consequência disso.
 da IDE. Sem ela, ponha `BLUETOOTH_INSTALADO false` em `config.h` e o
 firmware compila sem nada de Bluetooth.
 
-**Particionamento.** BLE + Wi-Fi + servidor web não cabem na partição
-padrão. Na IDE:
-
-> Tools → Partition Scheme → **Huge APP (3MB No OTA/1MB SPIFFS)**
-
-Sem isso o upload falha com *"Sketch too big"*.
+**Particionamento — leia a §0.** BLE + Wi-Fi + servidor web não cabem na
+partição padrão.
 
 **Rádio compartilhado.** BLE e Wi-Fi dividem a mesma antena. Funcionam
 juntos — é o caso de uso normal do ESP32 — mas com o gamepad conectado a
@@ -307,6 +360,6 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Jog engasga | Wi-Fi fraco. O firmware para o eixo sem heartbeat por 350 ms — é proposital. |
 | Jog recusado, nada se move | Servos desabilitados. A interface diz o motivo abaixo do joystick. |
 | Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais. |
-| *"Sketch too big"* ao gravar | Partição padrão com o Bluetooth ligado. Use **Huge APP** (§7). |
+| *"Sketch too big"*, `Maximum is 1310720` | Partição padrão. Veja a **§0** — `partitions.csv` ou o menu Huge APP. |
 | Recusa dizendo que uma junta precisa ir além do curso | Leia a frase inteira: se ela diz *"a N% do trecho"*, o problema é o **meio do cordão**, não as pontas. Reta cartesiana perto da base obriga o cotovelo a dobrar. Aproxime os pontos ou reposicione a peça. |
 | Gamepad não aparece no Dabble | `BLUETOOTH_INSTALADO` em false, ou partição sem espaço. Confira o log serial em 115200. |

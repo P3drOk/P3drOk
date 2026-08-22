@@ -24,6 +24,7 @@ uint32_t g_msgCount = 0;
 int g_comandosDescartados = 0;
 
 SerialMock Serial;
+EspMock    ESP;
 WiFiMock   WiFi;
 NvsMock    g_nvs;
 FsMock     g_fs;

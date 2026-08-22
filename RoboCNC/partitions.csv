@@ -1,0 +1,26 @@
+# Layout de particoes do RoboCNC 2DOF.
+#
+# O Arduino ESP32 usa ESTE arquivo quando ele esta na pasta do sketch,
+# no lugar do que estiver escolhido em Tools > Partition Scheme. Assim a
+# particao certa faz parte do projeto e nao depende de ninguem lembrar
+# de um menu.
+#
+# Por que 3 MB de app: Wi-Fi + servidor web + BLE (Dabble) nao cabem nos
+# 1,25 MB do esquema padrao. O sketch fica em ~1,7 MB.
+#
+# O 'nvs' esta no mesmo lugar e do mesmo tamanho do esquema padrao
+# (0x9000, 0x5000), entao a CALIBRACAO JA SALVA CONTINUA VALENDO depois
+# de trocar de particao.
+#
+# Este layout assume flash de 4 MB, que e o do ESP32-WROOM-32 comum.
+# Com 8 ou 16 MB tambem funciona: so nao aproveita o resto.
+#
+# Se a sua IDE ignorar este arquivo, escolha na mao:
+#   Tools > Partition Scheme > Huge APP (3MB No OTA/1MB SPIFFS)
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x300000,
+spiffs,     data, spiffs,   0x310000, 0xE0000,
+coredump,   data, coredump, 0x3F0000, 0x10000,

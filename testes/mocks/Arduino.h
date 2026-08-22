@@ -10,6 +10,7 @@
 #include <cstdlib>
 
 #define PROGMEM
+#define PGM_P const char*
 #define HIGH 1
 #define LOW  0
 #define INPUT        0
@@ -57,6 +58,14 @@ struct SerialMock {
   }
 };
 extern SerialMock Serial;
+
+// ---- ESP -------------------------------------------------------------
+struct EspMock {
+  uint32_t getSketchSize()      const { return 1721921; }
+  uint32_t getFreeSketchSpace() const { return 3145728 - 1721921; }
+  uint32_t getFreeHeap()        const { return 236864; }
+};
+extern EspMock ESP;
 
 // ---- utilitarios ------------------------------------------------------
 // No Arduino constrain e macro, entao aceita tipos mistos. Igual aqui.

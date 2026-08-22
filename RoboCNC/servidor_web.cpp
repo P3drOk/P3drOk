@@ -5,7 +5,7 @@
 #include "programa.h"
 #include "armazenamento.h"
 #include "controle_bt.h"
-#include "pagina_web.h"
+#include "pagina_web_gz.h"
 
 static WebServer server(80);
 
@@ -45,10 +45,18 @@ static long argL(const char* nome, long padrao) {
 }
 
 // ---------------------------------------------------------------------
+// A pagina vai comprimida. Alem de economizar ~53 kB de flash, ela
+// chega no celular umas 3 vezes mais rapido: num ponto de acesso de
+// ESP32 e a diferenca entre abrir na hora e esperar. Quem edita e
+// pagina_web.h; testes/gerar_pagina_gz.py regenera o comprimido e o
+// banco reprova se ele ficar velho.
 static void handleRaiz() {
   registrarContatoOperador();
-  Serial.println("[WEB] Servindo pagina de controle.");
-  server.send_P(200, "text/html", PAGINA_HTML);
+  Serial.printf("[WEB] Servindo pagina de controle (%u bytes comprimidos).\n",
+                (unsigned)PAGINA_HTML_GZ_LEN);
+  server.sendHeader("Content-Encoding", "gzip");
+  server.send_P(200, "text/html",
+                (PGM_P)PAGINA_HTML_GZ, PAGINA_HTML_GZ_LEN);
 }
 
 // Qualquer rota desconhecida vira log: se o navegador chegar no ESP32 e

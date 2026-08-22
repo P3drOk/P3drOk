@@ -13,6 +13,10 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true -fsyntax-only RoboCNC/servidor_web.cpp
 # Documento de fiacao que mente e pior que documento nenhum.
 python3 testes/conferir_ligacoes.py
 
+# A pagina servida e a comprimida: se ela ficar velha, o robo entrega uma
+# interface diferente da que esta no repositorio.
+python3 testes/gerar_pagina_gz.py --conferir
+
 # O banco compila com o botao de emergencia "instalado" para exercitar
 # esse ramo. O config.h de producao mantem ESTOP_FISICO_INSTALADO=false
 # ate o botao existir de verdade.
