@@ -103,6 +103,12 @@ void violacaoTexto(const Violacao& v, char* destino, size_t tam) {
     snprintf(destino, tam,
              "o elo 2 passaria a %.0f mm da base%s, dentro do raio morto de %.0f",
              v.valor, onde, v.limite);
+  } else if (!strcmp(v.causa, "derivada")) {
+    snprintf(destino, tam,
+             "perto do limite do alcance%s: 1,5 mm de cordao exigiriam %.1f graus "
+             "da junta %u (o motor nao acompanha, e a ponta corta caminho). "
+             "Afaste o cordao da borda da area util",
+             onde, v.valor, (unsigned)v.junta);
   } else if (!strcmp(v.causa, "alcance")) {
     snprintf(destino, tam, "ponto fora do alcance do braco%s", onde);
   } else {
@@ -289,54 +295,69 @@ bool retaCartesianaValida(float x0, float y0, float x1, float y1,
   int n = (int)(dist / PASSO_INTERP_MM) + 2;
   if (n > 900) n = 900;          // teto de custo para cordao muito longo
 
+  // O ramo do cotovelo e o do INICIO da reta e nao muda ate o fim. A
+  // versao anterior reescolhia o ramo a cada ponto, igual a execucao
+  // fazia -- as duas erravam junto, entao a validacao aprovava um cordao
+  // que na maquina virava uma volta inteira do braco.
+  const bool ramo = ramoCotovelo(refT2);
+
   bool achou = false;
   float piorExcesso = 0.0f;
   Violacao pior;
   violacaoLimpar(pior);
 
-  float r1 = refT1, r2 = refT2;
+  // Salto de junta entre dois pontos consecutivos. Perto do braco
+  // esticado ou totalmente dobrado ele explode: nenhuma postura do
+  // caminho e invalida, mas a DERIVADA e impossivel de seguir.
+  float ant1 = 0.0f, ant2 = 0.0f;
+  bool  temAnterior = false;
+  float maiorSalto = 0.0f, saltoOnde = 0.0f;
+  uint8_t saltoJunta = 0;
+
   for (int k = 0; k <= n; k++) {
     const float a = (float)k / (float)n;
     const float x = x0 + (x1 - x0) * a;
     const float y = y0 + (y1 - y0) * a;
 
-    float ca1, ca2, cb1, cb2;
-    const bool okA = cinematicaInversa(x, y, true,  ca1, ca2);
-    const bool okB = cinematicaInversa(x, y, false, cb1, cb2);
-    if (!okA && !okB) {
-      // Fora de alcance nao tem meio termo: e o pior caso possivel.
+    float c1, c2;
+    if (!cinematicaInversa(x, y, ramo, c1, c2)) {
       violacaoLimpar(v); v.causa = "alcance"; v.fracao = a; return false;
     }
 
-    Violacao va, vb;
-    const bool validaA = okA && posturaValidaDet(ca1, ca2, va);
-    const bool validaB = okB && posturaValidaDet(cb1, cb2, vb);
-
-    if (!validaA && !validaB) {
-      // Entre as duas solucoes, reporta a que chegou MAIS PERTO de
-      // servir. Entre os pontos da reta, guarda a PIOR: relatar a
-      // primeira faria o cordao parecer quase viavel quando o meio dele
-      // precisa de dezenas de graus a mais.
-      const Violacao& melhorAqui =
-          (okA && (!okB || fabsf(va.valor - va.limite) <= fabsf(vb.valor - vb.limite)))
-          ? va : vb;
-      const float excesso = fabsf(melhorAqui.valor - melhorAqui.limite);
+    Violacao vk;
+    if (!posturaValidaDet(c1, c2, vk)) {
+      // Guarda a PIOR violacao da reta: relatar a primeira faria o cordao
+      // parecer quase viavel quando o meio dele precisa de dezenas de
+      // graus a mais.
+      const float excesso = fabsf(vk.valor - vk.limite);
       if (!achou || excesso > piorExcesso) {
-        achou = true; piorExcesso = excesso; pior = melhorAqui; pior.fracao = a;
+        achou = true; piorExcesso = excesso; pior = vk; pior.fracao = a;
       }
-      continue;   // segue varrendo: interessa o pior ponto do cordao
+      temAnterior = false;   // nao mede salto atravessando trecho invalido
+      continue;
     }
 
-    // Segue pelo ramo de cotovelo que exige menos deslocamento, igual ao
-    // que resolverXY faz na execucao.
-    if (validaA && validaB) {
-      const float custoA = fabsf(ca1 - r1) + fabsf(ca2 - r2);
-      const float custoB = fabsf(cb1 - r1) + fabsf(cb2 - r2);
-      if (custoA <= custoB) { r1 = ca1; r2 = ca2; } else { r1 = cb1; r2 = cb2; }
-    } else if (validaA) { r1 = ca1; r2 = ca2; }
-    else                { r1 = cb1; r2 = cb2; }
+    if (temAnterior) {
+      const float d1 = fabsf(c1 - ant1), d2 = fabsf(c2 - ant2);
+      const float d  = (d1 > d2) ? d1 : d2;
+      if (d > maiorSalto) {
+        maiorSalto = d; saltoOnde = a; saltoJunta = (d1 > d2) ? 1 : 2;
+      }
+    }
+    ant1 = c1; ant2 = c2; temAnterior = true;
   }
+
   if (achou) { v = pior; return false; }
+
+  if (maiorSalto > SALTO_MAX_GRAUS) {
+    violacaoLimpar(v);
+    v.causa  = "derivada";
+    v.junta  = saltoJunta;
+    v.valor  = maiorSalto;
+    v.limite = SALTO_MAX_GRAUS;
+    v.fracao = saltoOnde;
+    return false;
+  }
   return true;
 }
 
@@ -382,5 +403,47 @@ bool resolverXY(float x, float y, float t1Atual, float t2Atual,
   const float custoB = fabsf(b1 - t1Atual) + fabsf(b2 - t2Atual);
   if (custoA <= custoB) { t1 = a1; t2 = a2; }
   else                  { t1 = b1; t2 = b2; }
+  return true;
+}
+
+bool resolverXYRamo(float x, float y, bool cotoveloCima,
+                    float& t1, float& t2, const char** motivo) {
+  if (!cinematicaInversa(x, y, cotoveloCima, t1, t2)) {
+    if (motivo) *motivo = "ponto fora do alcance do braco";
+    return false;
+  }
+  const char* m = "postura invalida";
+  if (!posturaValida(t1, t2, &m)) {
+    if (motivo) *motivo = m;
+    return false;
+  }
+  return true;
+}
+
+bool retaMaiorSalto(float x0, float y0, float x1, float y1,
+                    float refT1, float refT2,
+                    float& salto1, float& salto2) {
+  salto1 = salto2 = 0.0f;
+
+  const float dist = sqrtf((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+  int n = (int)(dist / PASSO_INTERP_MM) + 2;
+  if (n > 900) n = 900;
+
+  const bool ramo = ramoCotovelo(refT2);
+  float ant1 = 0.0f, ant2 = 0.0f;
+  bool  temAnterior = false;
+
+  for (int k = 0; k <= n; k++) {
+    const float a = (float)k / (float)n;
+    float c1, c2;
+    if (!cinematicaInversa(x0 + (x1 - x0) * a, y0 + (y1 - y0) * a,
+                           ramo, c1, c2)) return false;
+    if (temAnterior) {
+      const float d1 = fabsf(c1 - ant1), d2 = fabsf(c2 - ant2);
+      if (d1 > salto1) salto1 = d1;
+      if (d2 > salto2) salto2 = d2;
+    }
+    ant1 = c1; ant2 = c2; temAnterior = true;
+  }
   return true;
 }

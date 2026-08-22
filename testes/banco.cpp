@@ -710,70 +710,146 @@ static void teste_A13_troca_de_cotovelo() {
   J1.passosMin = grausParaPassos(J1, -150.0f);
   J1.passosMax = grausParaPassos(J1,  150.0f);
   recalcularResolucao();
-  nota("curso: J1 %.0f..%.0f, J2 %.0f..%.0f graus",
-       J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
+  nota("curso: J1 %.0f..%.0f, J2 %.0f..%.0f graus  |  alcance %.0f mm",
+       J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax, elo1Mm + elo2Mm);
 
-  // Varre retas candidatas e mede o maior salto de theta2 entre dois
-  // pontos consecutivos da interpolacao de 1,5 mm.
-  float maiorSalto = 0.0f, sx0=0, sy0=0, sx1=0, sy1=0, ondeMm = 0;
-  float t2Antes = 0, t2Depois = 0, raioNoSalto = 0;
-  bool  trocouRamo = false, algumTrocouRamo = false;
+  // ---- 1. O ramo do cotovelo nao pode trocar no meio de um cordao ----
+  //
+  // Varre retas candidatas e mede, nos DOIS resolvedores, o maior salto
+  // de theta2 entre dois pontos consecutivos da interpolacao de 1,5 mm.
+  float saltoLivre = 0.0f, saltoTravado = 0.0f;
+  bool  trocouLivre = false, trocouTravado = false;
+  float sx0 = 0, sy0 = 0;
 
   for (float y = -300; y <= 300; y += 20)
   for (float x0 = -350; x0 <= 350; x0 += 50) {
-    const float x1 = x0 + 150.0f;      // cordao de 150 mm em X
-    const float y1 = y;
     float r1 = 0, r2 = 0;
     const char* m = nullptr;
     if (!resolverXY(x0, y, 0, 0, r1, r2, &m)) continue;
-    float ant2 = r2; bool completa = true;
-    float salto = 0, onde = 0, a2 = 0, d2 = 0, raio = 0; bool ramo = false;
+    const bool ramo = ramoCotovelo(r2);
+
+    // (a) resolverXY: reescolhe o ramo a cada passo -- o comportamento antigo.
+    float a1 = r1, a2 = r2, ant = r2;
     const int N = (int)(150.0f / PASSO_INTERP_MM);
     for (int k = 1; k <= N; k++) {
       const float a = (float)k / N;
-      const float x = x0 + (x1-x0)*a, yy = y + (y1-y)*a;
       float t1, t2;
-      if (!resolverXY(x, yy, r1, r2, t1, t2, &m)) { completa = false; break; }
-      const float d = fabsf(t2 - ant2);
-      if ((ant2 > 0.5f && t2 < -0.5f) || (ant2 < -0.5f && t2 > 0.5f)) {
-        algumTrocouRamo = true;
-      }
-      if (d > salto) {
-        salto = d; onde = a * 150.0f; a2 = ant2; d2 = t2;
-        raio = sqrtf(x*x + yy*yy);
-        ramo = (ant2 > 0.5f && t2 < -0.5f) || (ant2 < -0.5f && t2 > 0.5f);
-      }
-      ant2 = t2; r1 = t1; r2 = t2;
+      if (!resolverXY(x0 + 150.0f * a, y, a1, a2, t1, t2, &m)) break;
+      const float d = fabsf(t2 - ant);
+      if (d > saltoLivre) { saltoLivre = d; sx0 = x0; sy0 = y; }
+      if ((ant > 0.5f && t2 < -0.5f) || (ant < -0.5f && t2 > 0.5f)) trocouLivre = true;
+      ant = t2; a1 = t1; a2 = t2;
     }
-    if (completa && salto > maiorSalto) {
-      maiorSalto = salto; sx0=x0; sy0=y; sx1=x1; sy1=y1; ondeMm = onde;
-      t2Antes = a2; t2Depois = d2; trocouRamo = ramo; raioNoSalto = raio;
+
+    // (b) resolverXYRamo: ramo travado -- o que a execucao usa agora.
+    float b2 = r2; ant = r2;
+    for (int k = 1; k <= N; k++) {
+      const float a = (float)k / N;
+      float t1, t2;
+      if (!resolverXYRamo(x0 + 150.0f * a, y, ramo, t1, t2, &m)) break;
+      const float d = fabsf(t2 - ant);
+      if (d > saltoTravado) saltoTravado = d;
+      if ((ant > 0.5f && t2 < -0.5f) || (ant < -0.5f && t2 > 0.5f)) trocouTravado = true;
+      ant = t2; (void)t1;
+    }
+    (void)b2;
+  }
+  nota("maior salto de theta2 num passo de %.1f mm:", PASSO_INTERP_MM);
+  nota("  resolverXY (ramo livre, como era):  %.1f graus, trocou de ramo: %s",
+       saltoLivre, trocouLivre ? "SIM" : "nao");
+  nota("  resolverXYRamo (ramo travado):      %.1f graus, trocou de ramo: %s",
+       saltoTravado, trocouTravado ? "SIM" : "nao");
+  nota("  pior reta da varredura: comeca em (%.0f, %.0f) mm", sx0, sy0);
+  checar(!trocouTravado, "A13a",
+         "com o ramo travado o cotovelo nunca vira de lado dentro do cordao");
+
+  // ---- 2. Salto grande e recusado ANTES de o arco abrir ----
+  //
+  // Perto de |r| = L1 + L2 a cinematica inversa e mal condicionada: e
+  // geometria do braco, nao defeito. O que nao pode e o firmware aceitar
+  // o cordao e descobrir isso com o arco aberto.
+  const float alc = elo1Mm + elo2Mm;
+  Violacao v;
+  float r1 = 0, r2 = 0;
+  const char* m = nullptr;
+  const bool ok0 = resolverXY(alc - 60.0f, 0.0f, 0, 0, r1, r2, &m);
+  const bool passa = ok0 && retaCartesianaValida(alc - 60.0f, 0.0f, alc - 1.0f, 0.0f,
+                                                 r1, r2, v);
+  char det[160]; violacaoTexto(v, det, sizeof(det));
+  nota("cordao ate 1 mm do alcance maximo: %s", passa ? "ACEITO" : det);
+  checar(ok0 && !passa && v.causa && !strcmp(v.causa, "derivada"), "A13b",
+         "cordao que raspa o limite do alcance e recusado pela derivada");
+
+  // ---- 3. Cordao bem condicionado continua passando ----
+  const bool ok1 = resolverXY(alc * 0.55f, alc * 0.20f, 0, 0, r1, r2, &m);
+  Violacao v2;
+  const bool bom = ok1 && retaCartesianaValida(alc * 0.55f, alc * 0.20f,
+                                               alc * 0.55f, -alc * 0.20f,
+                                               r1, r2, v2);
+  if (!bom) { violacaoTexto(v2, det, sizeof(det)); nota("recusado: %s", det); }
+  checar(bom, "A13c",
+         "cordao longe da borda do alcance continua sendo aceito");
+
+  // ---- 4. O caso da maquina do operador ----
+  //
+  // Elos de 450 e 400 mm, curso de +/-120 graus nas duas juntas. Existe
+  // reta em que o criterio antigo ("o ramo mais barato agora") vira o
+  // cotovelo no meio: 24 graus de theta2 num passo de 1,5 mm. Na chapa
+  // isso e o braco largar a reta e dar uma volta -- foi o que o operador
+  // viu num ziguezague.
+  reiniciarSistema();
+  prepararRoboCalibrado(120.0f);
+  webPost("/api/geometria?l1=450&l2=400");
+  rodarComWeb(120);
+  protEnvelope = false;
+
+  const float fx0 = -360.0f, fy0 = -770.0f, fx1 = -240.0f;
+  float q1 = 0, q2 = 0;
+  const char* mm = nullptr;
+  const bool alcanca = resolverXY(fx0, fy0, 0, 0, q1, q2, &mm);
+  nota("reta (%.0f,%.0f) -> (%.0f,%.0f), a %.0f mm da base (alcance %.0f)",
+       (double)fx0, (double)fy0, (double)fx1, (double)fy0,
+       sqrt((double)fx0*fx0 + (double)fy0*fy0), (double)(elo1Mm + elo2Mm));
+
+  float saltoL = 0, saltoT = 0;
+  bool  flipL = false, flipT = false;
+  if (alcanca) {
+    const bool ramo = ramoCotovelo(q2);
+    float a1 = q1, a2 = q2, ant = q2;
+    for (int k = 1; k <= 80; k++) {
+      const float a = (float)k / 80.0f;
+      float t1, t2;
+      if (!resolverXY(fx0 + (fx1 - fx0) * a, fy0, a1, a2, t1, t2, &mm)) break;
+      const float d = fabsf(t2 - ant);
+      if (d > saltoL) saltoL = d;
+      if ((ant > 1 && t2 < -1) || (ant < -1 && t2 > 1)) flipL = true;
+      ant = t2; a1 = t1; a2 = t2;
+    }
+    ant = q2;
+    for (int k = 1; k <= 80; k++) {
+      const float a = (float)k / 80.0f;
+      float t1, t2;
+      if (!resolverXYRamo(fx0 + (fx1 - fx0) * a, fy0, ramo, t1, t2, &mm)) break;
+      const float d = fabsf(t2 - ant);
+      if (d > saltoT) saltoT = d;
+      if ((ant > 1 && t2 < -1) || (ant < -1 && t2 > 1)) flipT = true;
+      ant = t2; (void)t1;
     }
   }
+  nota("  ramo livre  (como era): salto %.1f graus, virou o cotovelo: %s",
+       (double)saltoL, flipL ? "SIM" : "nao");
+  nota("  ramo travado (agora):   salto %.1f graus, virou o cotovelo: %s",
+       (double)saltoT, flipT ? "SIM" : "nao");
+  checar(alcanca && flipL && !flipT, "A13d",
+         "na maquina do operador o ramo livre virava o cotovelo; o travado nao");
 
-  // Um passo de 1,5 mm que exija mais de 5 graus de junta ja e maior que
-  // o dobro do que o resto do cordao pede: o seguidor nao acompanha.
-  checar(maiorSalto < 5.0f, "A13",
-         "um passo de 1,5 mm do cordao nao pode exigir salto grande de junta");
-  nota("pior cordao encontrado: (%.0f, %.0f) -> (%.0f, %.0f) mm", sx0, sy0, sx1, sy1);
-  nota("maior degrau: theta2 de %.1f para %.1f graus (%.1f graus) num passo de",
-       t2Antes, t2Depois, maiorSalto);
-  nota("%.1f mm, a %.0f mm do inicio, com a ponta a %.0f mm da base",
-       PASSO_INTERP_MM, ondeMm, raioNoSalto);
-  nota("(alcance maximo do braco = %.0f mm; troca de ramo do cotovelo neste",
-       elo1Mm + elo2Mm);
-  nota("degrau: %s; em algum ponto da varredura: %s)",
-       trocouRamo ? "SIM" : "nao", algumTrocouRamo ? "SIM" : "nao");
-  nota("");
-  nota("Perto do braco esticado a cinematica inversa e mal condicionada:");
-  nota("milimetros viram dezenas de graus. velSeg1/velSeg2 em prepararReta()");
-  nota("sao calculados pela MEDIA do trecho (delta total / tempo total), entao");
-  nota("nessa regiao o motor nao alcanca o setpoint, a ponta corta caminho e");
-  nota("o cordao deixa de ser reto -- exatamente o que a interpolacao");
-  nota("cartesiana existia para garantir. retaPercorrivel() nao reprova:");
-  nota("todas as posturas do caminho sao validas, o problema e a derivada.");
-  nota("Falta recusar cordao que passe perto de |r| = L1+L2 e travar o ramo");
-  nota("do cotovelo no inicio do trecho em vez de reescolher a cada passo.");
+  Violacao v3;
+  const bool aceito = alcanca &&
+      retaCartesianaValida(fx0, fy0, fx1, fy0, q1, q2, v3);
+  violacaoTexto(v3, det, sizeof(det));
+  nota("validacao desse cordao: %s", aceito ? "ACEITO" : det);
+  checar(!aceito, "A13e",
+         "e esse cordao passa a ser recusado antes de o arco abrir");
 }
 
 // =====================================================================
@@ -2201,6 +2277,224 @@ static void teste_H06_rotas_da_interface() {
 }
 
 // =====================================================================
+//  I - Ziguezague: o cordao segue a polilinha ou foge dela?
+//
+//  Queixa do operador: com varios pontos em ziguezague o braco "fugiu da
+//  posicao e fez uma circunferencia" em vez de reta. Aqui o percurso da
+//  PONTA e amostrado a cada milissegundo e comparado com a polilinha que
+//  o programa deveria desenhar.
+// =====================================================================
+struct PontoXY { float x, y; };
+
+// Distancia de um ponto ao segmento AB.
+static float distSegmento(float px, float py, float ax, float ay,
+                          float bx, float by) {
+  const float dx = bx - ax, dy = by - ay;
+  const float L2 = dx * dx + dy * dy;
+  float u = (L2 > 1e-6f) ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0.0f;
+  if (u < 0.0f) u = 0.0f;
+  if (u > 1.0f) u = 1.0f;
+  const float qx = ax + dx * u, qy = ay + dy * u;
+  return sqrtf((px - qx) * (px - qx) + (py - qy) * (py - qy));
+}
+static float distPolilinha(float px, float py, const PontoXY* v, int n) {
+  float melhor = 1e9f;
+  for (int i = 0; i + 1 < n; i++) {
+    const float d = distSegmento(px, py, v[i].x, v[i].y, v[i + 1].x, v[i + 1].y);
+    if (d < melhor) melhor = d;
+  }
+  return melhor;
+}
+static void pontaAgora(float& x, float& y) {
+  float xc, yc;
+  cinematicaDireta(passosParaGraus(J1, posicaoJ1()),
+                   passosParaGraus(J2, posicaoJ2()), xc, yc, x, y);
+}
+
+// Monta um ziguezague de 'n' vertices e o carrega como programa pela
+// mesma rota que a interface usa para o desenho a mao livre.
+static int montarZiguezague(PontoXY* v, int n, float x0, float passoX,
+                            float yBaixo, float yAlto, bool solda) {
+  std::string corpo;
+  for (int i = 0; i < n; i++) {
+    v[i].x = x0 + passoX * i;
+    v[i].y = (i % 2) ? yAlto : yBaixo;
+    char b[40];
+    snprintf(b, sizeof(b), "%s%.1f,%.1f", i ? ";" : "",
+             (double)v[i].x, (double)v[i].y);
+    corpo += b;
+  }
+  return webPost(solda ? "/api/prog/desenho?solda=1"
+                       : "/api/prog/desenho?solda=0", corpo.c_str());
+}
+
+static void teste_I01_ziguezague_reto() {
+  secao("I01  Ziguezague: a ponta segue a polilinha?");
+  reiniciarSistema();
+  prepararRoboCalibrado(120.0f);
+  // A maquina do operador: elos de 450 e 400 mm.
+  webPost("/api/geometria?l1=450&l2=400");
+  rodarComWeb(120);
+
+  const int N = 11;
+  PontoXY v[N];
+  const int cod = montarZiguezague(v, N, 350.0f, 30.0f, 380.0f, 460.0f, true);
+  rodarComWeb(200);
+  nota("HTTP %d (%s), %u pontos carregados -- \"%s\"", cod, webCorpo(),
+       (unsigned)progQuantidade(), ultimaMensagem);
+  checar(cod == 200 && progQuantidade() == N, "I01a",
+         "o ziguezague de 11 vertices vira programa");
+  if (progQuantidade() != N) return;
+
+  // Executa com arco (foi assim que o operador viu o defeito).
+  // Pela fila de comandos, como a interface faz: progIniciar() sozinho
+  // nao poe o robo em MODO_EXECUTANDO, e sem isso o loop nunca chama
+  // progAtualizar().
+  enviarComando(CMD_PROG_EXECUTAR, 0);
+  rodarComWeb(40);
+  const bool partiu = progRodando() && modoAtual == MODO_EXECUTANDO;
+  nota("modo=%d progRodando=%d -- \"%s\"", (int)modoAtual,
+       (int)progRodando(), ultimaMensagem);
+  checar(partiu, "I01b", "o programa e aceito para execucao");
+  if (!partiu) return;
+
+  float pior = 0.0f, piorX = 0, piorY = 0;
+  uint32_t piorMs = 0;
+  double soma = 0; uint32_t amostras = 0;
+  // Espera a aproximacao terminar antes de medir: o caminho ate o ponto 1
+  // e deslocamento, nao cordao, e sai curvo de proposito.
+  uint32_t t = 0;
+  while (progRodando() && progIndiceAtual() == 0 && t < 40000) {
+    if (t % 200 == 0) registrarContatoOperador();
+    rodar(1); t++;
+    if (getenv("VERBOSE") && t % 2000 == 0) {
+      float x, y; pontaAgora(x, y);
+      nota("  t=%6u fase=%u idx=%u ponta=(%.1f,%.1f) mov=%d solda=%d lib=%d",
+           t, progFaseTeste(), progIndiceAtual(), (double)x, (double)y,
+           (int)motoresEmMovimento(), (int)soldaLigada(), (int)movimentoLiberado);
+    }
+  }
+  while (progRodando() && t < 400000) {
+    if (t % 200 == 0) registrarContatoOperador();
+    rodar(1); t++;
+    float x, y; pontaAgora(x, y);
+    const float d = distPolilinha(x, y, v, N);
+    soma += d; amostras++;
+    if (d > pior) { pior = d; piorX = x; piorY = y; piorMs = t; }
+  }
+  nota("percurso de %u ms, %u amostras", t, amostras);
+  nota("desvio maximo da polilinha: %.1f mm em (%.0f, %.0f) aos %u ms",
+       (double)pior, (double)piorX, (double)piorY, piorMs);
+  nota("desvio medio: %.2f mm", amostras ? soma / amostras : 0.0);
+  nota("fim: \"%s\"", ultimaMensagem);
+
+  // 1,5 mm e o passo da interpolacao cartesiana: o cordao nao pode sair
+  // mais do que isso da reta que o operador desenhou.
+  checar(pior < 2.0f, "I01c",
+         "a ponta nunca sai mais de 2 mm da polilinha desenhada");
+  checar(!progRodando() && strstr(ultimaMensagem, "concluido") != nullptr,
+         "I01d", "o programa chega ao fim em vez de abortar no meio");
+}
+
+static void teste_I02_ziguezague_na_borda() {
+  secao("I02  Ziguezague raspando o limite do alcance");
+  reiniciarSistema();
+  prepararRoboCalibrado(120.0f);
+  webPost("/api/geometria?l1=450&l2=400");
+  rodarComWeb(120);
+  const float alc = elo1Mm + elo2Mm;
+
+  // Ziguezague com os vertices a 2 mm do alcance maximo. E ali que a
+  // cinematica inversa amplifica milimetros em dezenas de graus, e onde
+  // o criterio antigo virava o cotovelo no meio do cordao.
+  //
+  // A invariante nao e "tem de ser recusado": e "nunca executado torto".
+  // Recusar com motivo serve; executar seguindo a reta serve; sair da
+  // reta com o arco aberto, nao.
+  const int N = 7;
+  PontoXY v[N];
+  std::string corpo;
+  for (int i = 0; i < N; i++) {
+    const float ang = (-25.0f + 8.0f * i) * (float)M_PI / 180.0f;
+    const float r   = (i % 2) ? (alc - 2.0f) : (alc - 60.0f);
+    v[i].x = r * cosf(ang); v[i].y = r * sinf(ang);
+    char b[40];
+    snprintf(b, sizeof(b), "%s%.1f,%.1f", i ? ";" : "", (double)v[i].x, (double)v[i].y);
+    corpo += b;
+  }
+  const int cod = webPost("/api/prog/desenho?solda=1", corpo.c_str());
+  rodarComWeb(200);
+
+  if (cod != 200) {
+    nota("recusado ja na carga: \"%s\"", webCorpo());
+    checar(true, "I02a", "o desenho na borda e recusado com motivo, antes de soldar");
+    return;
+  }
+  nota("carregado: \"%s\"", ultimaMensagem);
+
+  enviarComando(CMD_PROG_EXECUTAR, 0);
+  rodarComWeb(60);
+  if (!progRodando()) {
+    nota("execucao recusada: \"%s\"", ultimaMensagem);
+    checar(!soldaLigada(), "I02a",
+           "recusado antes de o arco abrir, com motivo na tela");
+    return;
+  }
+
+  nota("execucao aceita -- entao ela tem de seguir a reta");
+  uint32_t t = 0;
+  while (progRodando() && progIndiceAtual() == 0 && t < 60000) {
+    if (t % 200 == 0) registrarContatoOperador();
+    rodar(1); t++;
+  }
+  float pior = 0.0f, piorX = 0, piorY = 0;
+  while (progRodando() && t < 400000) {
+    if (t % 200 == 0) registrarContatoOperador();
+    rodar(1); t++;
+    float x, y; pontaAgora(x, y);
+    const float d = distPolilinha(x, y, v, N);
+    if (d > pior) { pior = d; piorX = x; piorY = y; }
+  }
+  nota("desvio maximo: %.1f mm em (%.0f, %.0f); fim: \"%s\"",
+       (double)pior, (double)piorX, (double)piorY, ultimaMensagem);
+  checar(pior < 2.0f, "I02a",
+         "aceito o cordao na borda, a ponta ainda segue a reta");
+  checar(!progRodando(), "I02b", "o programa termina em vez de travar");
+}
+
+static void teste_I03_velocidade_entre_trechos() {
+  secao("I03  A velocidade programada nao pode ficar velha entre trechos");
+  reiniciarSistema();
+  prepararRoboCalibrado(120.0f);
+  webPost("/api/geometria?l1=450&l2=400");
+  rodarComWeb(120);
+
+  // Deslocamento (moverCoordenado) e depois seguimento de setpoint com o
+  // MESMO numero de Hz que ficou no cache antigo. Com o cache privado
+  // dentro de seguirSetpoint, esta segunda chamada nao reprogramava nada
+  // e o trecho corria na velocidade do deslocamento.
+  const uint32_t alvo = 1234;
+  moverCoordenado(posicaoJ1() + 4000, posicaoJ2(), 12.0f);
+  rodar(5);
+  const uint32_t depoisDoDeslocamento = J1.motor->velHz;
+  seguirSetpoint(posicaoJ1() + 100, posicaoJ2(), alvo, alvo);
+  rodar(1);
+  nota("apos moverCoordenado: %u Hz; apos seguirSetpoint(%u): %u Hz",
+       depoisDoDeslocamento, alvo, J1.motor->velHz);
+  checar(J1.motor->velHz == alvo, "I03a",
+         "seguirSetpoint reprograma mesmo depois de outro tipo de movimento");
+
+  // E continua nao reprogramando a toa: repetir o mesmo valor nao pode
+  // mandar setSpeedInHz de novo (refazer a rampa mil vezes por segundo
+  // aparece como aspereza no cordao).
+  J1.motor->velHz = 999999;             // marca: se reprogramar, muda
+  seguirSetpoint(posicaoJ1() + 200, posicaoJ2(), alvo, alvo);
+  rodar(1);
+  checar(J1.motor->velHz == 999999, "I03b",
+         "repetir a mesma velocidade nao reprograma o gerador");
+}
+
+// =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
   printf("\n\033[1mBANCO DE TESTES - RoboCNC v6\033[0m\n");
@@ -2254,6 +2548,10 @@ int main() {
   teste_H04_aferir_reducao();
   teste_H05_desenho_vira_programa();
   teste_H06_rotas_da_interface();
+
+  teste_I01_ziguezague_reto();
+  teste_I02_ziguezague_na_borda();
+  teste_I03_velocidade_entre_trechos();
 
 
 

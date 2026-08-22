@@ -132,6 +132,15 @@ static const float VEL_AUTO_PADRAO     = 12.0f;   // graus/s
 // pulsos. O firmware converte para pulsos resolvendo a cinematica.
 static const float    VEL_CORDAO_PADRAO   = 5.0f;
 static const float    PASSO_INTERP_MM     = 1.5f;  // resolucao da reta
+
+// Perto do braco esticado (|r| -> L1+L2) e perto do braco totalmente
+// dobrado (|r| -> |L1-L2|) a cinematica inversa e mal condicionada:
+// milimetros de chapa viram dezenas de graus de junta. Nenhum motor
+// acompanha isso, e a ponta corta caminho -- e justamente ali que o
+// cordao deixa de ser reto. Um passo de PASSO_INTERP_MM que exija mais
+// do que isto de qualquer junta faz o cordao ser recusado ANTES de o
+// arco abrir, em vez de sair torto.
+static const float    SALTO_MAX_GRAUS     = 4.0f;
 // Rampa tambem em graus por segundo ao quadrado, pelo mesmo motivo:
 // 8000 passos/s2 eram 17 graus/s2 numa junta e 72 na outra.
 static const float ACEL_PADRAO         = 60.0f;   // graus/s2

@@ -27,7 +27,8 @@ static uint32_t marcaTempo = 0;
 static float    xa, ya, xb, yb;
 static uint32_t tSegIni, tSegTotal;
 static uint32_t velSeg1, velSeg2;
-static float    refT1, refT2;   // mantem o mesmo "cotovelo" ao longo da reta
+static float    refT1, refT2;
+static bool     ramoSeg;        // ramo do cotovelo travado para o trecho
 
 // ---------------------------------------------------------------------
 uint8_t      progQuantidade()  { return nPontos; }
@@ -35,6 +36,9 @@ const Ponto* progLista()       { return pontos; }
 bool         progRodando()     { return fase != FASE_PARADO; }
 bool         progEmEnsaio()    { return ensaio; }
 uint8_t      progIndiceAtual() { return idx; }
+#ifdef ROBOCNC_TESTE
+uint8_t      progFaseTeste()   { return (uint8_t)fase; }
+#endif
 
 uint8_t progProgresso() {
   if (fase == FASE_PARADO || nPontos < 2) return 0;
@@ -258,14 +262,28 @@ static void prepararReta() {
 
   refT1 = passosParaGraus(J1, pontos[idx].p1);
   refT2 = passosParaGraus(J2, pontos[idx].p2);
+  // Trava o ramo do cotovelo para o trecho inteiro. Reescolher o ramo a
+  // cada 1,5 mm era o que fazia o braco largar a reta e dar uma volta
+  // ate a postura espelhada quando os dois ramos quase coincidem.
+  ramoSeg = ramoCotovelo(refT2);
 
-  // Velocidade de seguimento com folga: o motor precisa alcancar o
-  // setpoint interpolado, senao a ponta "corta caminho" e o cordao
-  // deixa de ser reto.
-  const long d1 = labs((long)pontos[idx + 1].p1 - pontos[idx].p1);
-  const long d2 = labs((long)pontos[idx + 1].p2 - pontos[idx].p2);
-  velSeg1 = (uint32_t)((uint64_t)d1 * 1000 / tSegTotal) * 3 + 200;
-  velSeg2 = (uint32_t)((uint64_t)d2 * 1000 / tSegTotal) * 3 + 200;
+  // Velocidade de seguimento dimensionada pelo PIOR passo da reta, nao
+  // pela media. Num cordao perto da borda do alcance o mesmo 1,5 mm pede
+  // dez vezes mais junta no meio do que nas pontas: com a media o motor
+  // fica para tras exatamente ali, e a ponta corta caminho.
+  float s1 = 0.0f, s2 = 0.0f;
+  const int n = (int)(dist / PASSO_INTERP_MM) + 2;
+  const float msPorPasso = (float)tSegTotal / (float)(n > 0 ? n : 1);
+  if (retaMaiorSalto(xa, ya, xb, yb, refT1, refT2, s1, s2) && msPorPasso > 0.01f) {
+    // graus/passo -> passos de motor por segundo, com 50% de folga.
+    velSeg1 = (uint32_t)(s1 * J1.passosPorGrau * 1000.0f / msPorPasso * 1.5f) + 200;
+    velSeg2 = (uint32_t)(s2 * J2.passosPorGrau * 1000.0f / msPorPasso * 1.5f) + 200;
+  } else {
+    const long d1 = labs((long)pontos[idx + 1].p1 - pontos[idx].p1);
+    const long d2 = labs((long)pontos[idx + 1].p2 - pontos[idx].p2);
+    velSeg1 = (uint32_t)((uint64_t)d1 * 1000 / tSegTotal) * 3 + 200;
+    velSeg2 = (uint32_t)((uint64_t)d2 * 1000 / tSegTotal) * 3 + 200;
+  }
 
   if (J1.motor) J1.motor->setAcceleration(grausPorSegParaHz(J1, J1.aceleracao * 4.0f));
   if (J2.motor) J2.motor->setAcceleration(grausPorSegParaHz(J2, J2.aceleracao * 4.0f));
@@ -285,7 +303,9 @@ static void atualizarReta() {
 
   float t1, t2;
   const char* m = nullptr;
-  if (!resolverXY(x, y, refT1, refT2, t1, t2, &m)) {
+  // Ramo travado: se ELE nao serve mais, o cordao acabou. Cair no outro
+  // ramo daria a volta com o arco aberto.
+  if (!resolverXYRamo(x, y, ramoSeg, t1, t2, &m)) {
     soldaDesligar();
     progParar();
     definirMensagem("Cordao %u->%u abortado a %.0f%% do trecho: %s",

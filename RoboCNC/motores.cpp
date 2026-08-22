@@ -21,6 +21,8 @@ static uint32_t limitarFreq(uint32_t v) {
 }
 
 // ---------------------------------------------------------------------
+static uint32_t velProgramada[2] = {0, 0};
+
 bool motoresIniciar() {
   J1.pinoPulso = PIN_J1_PULSO; J1.pinoDir = PIN_J1_DIR; J1.pinoAlarme = PIN_ALARME_J1;
   J2.pinoPulso = PIN_J2_PULSO; J2.pinoDir = PIN_J2_DIR; J2.pinoAlarme = PIN_ALARME_J2;
@@ -42,6 +44,11 @@ bool motoresIniciar() {
     Serial.println("!!! Falha ao conectar os geradores de pulso !!!");
     return false;
   }
+
+  // A lembranca do que ja esta programado nao vale depois de reconectar
+  // os geradores: no boot eles estao no padrao deles, nao no ultimo valor
+  // que este firmware escreveu.
+  velProgramada[0] = velProgramada[1] = 0;
 
   aplicarSentido();
   aplicarVelocidadeManual();
@@ -80,13 +87,31 @@ uint32_t grausPorSegParaHz(const Junta& j, float grausPorS) {
   return limitarFreq((uint32_t)(grausPorS * j.passosPorGrau));
 }
 
+// Ultima velocidade REALMENTE programada em cada gerador.
+//
+// Existe porque seguirSetpoint() so reprograma quando o valor muda:
+// chamar setSpeedInHz a cada milissegundo obriga o gerador a refazer a
+// rampa o tempo todo. Mas o cache tem de ser o mesmo para TODO mundo que
+// programa velocidade -- com um cache privado dentro de seguirSetpoint,
+// um moverCoordenado() no meio deixava a lembranca velha, e o trecho
+// seguinte podia rodar na velocidade do deslocamento sem reprogramar
+// nada. Toda escrita de velocidade passa por aqui.
+
+static void programarVelocidade(Junta& j, int i, uint32_t hz) {
+  if (!j.motor) return;
+  const uint32_t v = limitarFreq(hz);
+  if (v == velProgramada[i]) return;
+  velProgramada[i] = v;
+  j.motor->setSpeedInHz(v);
+}
+
 // Cada junta recebe a MESMA velocidade angular, convertida com o seu
 // proprio passosPorGrau. Antes as duas recebiam o mesmo Hz, e a de menor
 // reducao andava varias vezes mais rapido.
 void aplicarVelocidadeManual() {
   const float g = modoPrecisao ? velPrecisao : velNormal;
-  if (J1.motor) J1.motor->setSpeedInHz(grausPorSegParaHz(J1, g));
-  if (J2.motor) J2.motor->setSpeedInHz(grausPorSegParaHz(J2, g));
+  programarVelocidade(J1, 0, grausPorSegParaHz(J1, g));
+  programarVelocidade(J2, 1, grausPorSegParaHz(J2, g));
 }
 
 void aplicarAceleracao() {
@@ -221,7 +246,7 @@ void jogAtualizar() {
       const uint32_t hz = grausPorSegParaHz(j, base * f);
       if (hz != jogHzAplicado[i]) {
         jogHzAplicado[i] = hz;
-        j.motor->setSpeedInHz(hz);
+        programarVelocidade(j, i, hz);
         jogSentidoAplicado[i] = 0;    // forca reemitir o sentido
       }
     }
@@ -295,21 +320,16 @@ void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
 
   J1.motor->setAcceleration(a1);
   J2.motor->setAcceleration(a2);
-  J1.motor->setSpeedInHz(v1);
-  J2.motor->setSpeedInHz(v2);
+  programarVelocidade(J1, 0, v1);
+  programarVelocidade(J2, 1, v2);
   J1.motor->moveTo(alvo1);
   J2.motor->moveTo(alvo2);
 }
 
 void seguirSetpoint(long alvo1, long alvo2, uint32_t vel1, uint32_t vel2) {
   if (!J1.motor || !J2.motor) return;
-  // Durante um trecho a velocidade de seguimento nao muda; reprogramar a
-  // cada ciclo obriga o gerador a refazer a rampa mil vezes por segundo,
-  // o que aparece como aspereza no movimento.
-  static uint32_t ultima1 = 0, ultima2 = 0;
-  const uint32_t v1 = limitarFreq(vel1), v2 = limitarFreq(vel2);
-  if (v1 != ultima1) { ultima1 = v1; J1.motor->setSpeedInHz(v1); }
-  if (v2 != ultima2) { ultima2 = v2; J2.motor->setSpeedInHz(v2); }
+  programarVelocidade(J1, 0, vel1);
+  programarVelocidade(J2, 1, vel2);
   J1.motor->moveTo(alvo1);
   J2.motor->moveTo(alvo2);
 }

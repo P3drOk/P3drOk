@@ -26,6 +26,24 @@ bool cinematicaInversa(float x, float y, bool cotoveloCima,
 bool resolverXY(float x, float y, float t1Atual, float t2Atual,
                 float& t1, float& t2, const char** motivo);
 
+// Qual dos dois ramos do cotovelo uma postura usa. O sinal de theta2 e a
+// identidade do ramo: positivo = "cotovelo para cima" na convencao de
+// cinematicaInversa().
+inline bool ramoCotovelo(float t2) { return t2 >= 0.0f; }
+
+// Resolve XY num ramo FIXO do cotovelo.
+//
+// Num cordao isto e obrigatorio. resolverXY() reescolhe o ramo a cada
+// chamada pelo criterio "o que exige menos movimento agora"; perto do
+// braco esticado os dois ramos praticamente coincidem, e um ruido de
+// arredondamento troca a escolha no meio da reta. A troca de ramo e uma
+// descontinuidade de ate 2 x |theta2| no espaco das juntas: o braco
+// larga a reta e da uma volta ate a postura espelhada. Foi exatamente
+// isso que apareceu na maquina como "o braco fugiu da posicao e fez uma
+// circunferencia" num ziguezague.
+bool resolverXYRamo(float x, float y, bool cotoveloCima,
+                    float& t1, float& t2, const char** motivo);
+
 // ---------------------------------------------------------------------
 // Detalhe de uma recusa.
 //
@@ -72,6 +90,15 @@ bool caminhoJuntasValidoDet(float t1a, float t2a, float t1b, float t2b,
 // firmware executa num trecho com solda. Preenche onde e por que falhou.
 bool retaCartesianaValida(float x0, float y0, float x1, float y1,
                           float refT1, float refT2, Violacao& v);
+
+// Maior salto de junta entre dois pontos consecutivos da interpolacao da
+// reta, em graus, no ramo de cotovelo em que a reta comeca. E o que
+// dimensiona a velocidade de seguimento: mandar o motor na MEDIA do
+// trecho garante que ele fique para tras justamente onde a cinematica
+// amplifica. Devolve false se a reta nao for percorrivel.
+bool retaMaiorSalto(float x0, float y0, float x1, float y1,
+                    float refT1, float refT2,
+                    float& salto1, float& salto2);
 
 // Quanto a postura viola os limites, em "graus equivalentes".
 // 0 = dentro. Serve para permitir movimento de RECUPERACAO quando o
