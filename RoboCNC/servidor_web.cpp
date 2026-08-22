@@ -253,7 +253,12 @@ static void handleReproduzir() { registrarContatoOperador(); enfileirar(CMD_REPR
 static void handleTrajLimpar() { registrarContatoOperador(); enfileirar(CMD_TRAJ_LIMPAR); }
 static void handleHome()       { registrarContatoOperador(); enfileirar(CMD_IR_HOME); }
 static void handleCalibIni()   { registrarContatoOperador(); enfileirar(CMD_CALIB_INICIAR); }
-static void handleCalibConf()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CONFIRMAR); }
+// g1/g2: angulo da referencia na etapa HOME, curso real medido na etapa
+// de conclusao. Ausentes ou zero mantem o comportamento antigo.
+static void handleCalibConf() {
+  registrarContatoOperador();
+  enfileirar(CMD_CALIB_CONFIRMAR, 0, 0, argF("g1", 0.0f), argF("g2", 0.0f));
+}
 static void handleCalibCanc()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CANCELAR); }
 
 static void handleMover() {

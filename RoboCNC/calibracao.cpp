@@ -105,6 +105,47 @@ static bool ajustarCurso(Junta& j, uint8_t numero) {
   return curso >= CURSO_MINIMO_GRAUS;
 }
 
+// ---------------------------------------------------------------------
+// AFERICAO DA RESOLUCAO
+//
+// A calibracao mede o curso em PULSOS. Para virar graus, o firmware
+// divide por passosPorGrau -- que vem de passosPorVolta x reducao, dois
+// numeros DIGITADOS. Se qualquer um estiver errado, o braco de verdade
+// fica numa posicao e o da tela em outra, proporcionalmente.
+//
+// O assistente acabou de varrer o curso inteiro da junta: e a maior
+// base de medida que a maquina tem. Se o operador medir esse curso com
+// um transferidor e informar quantos graus foram de fato, sai a
+// resolucao real, sem precisar de encoder.
+//
+//     passosPorGrau = pulsos contados / graus medidos
+//
+// A reducao e reescrita para explicar essa resolucao com a engrenagem
+// eletronica informada, para o painel de ajustes continuar coerente e o
+// valor sobreviver a um recalculo.
+// ---------------------------------------------------------------------
+static bool aferirResolucao(Junta& j, float cursoRealGraus, uint8_t numero) {
+  if (cursoRealGraus <= 0.0f) return false;          // nao aferir
+
+  const long pulsos = j.passosMax - j.passosMin;
+  if (pulsos < 10 || cursoRealGraus < CURSO_MINIMO_GRAUS) {
+    Serial.printf("[CAL] Junta %u: afericao ignorada (%ld pulsos, %.1f graus).\n",
+                  (unsigned)numero, pulsos, cursoRealGraus);
+    return false;
+  }
+
+  const float antes = j.passosPorGrau;
+  const float ppg   = (float)pulsos / cursoRealGraus;
+  j.passosPorGrau = ppg;
+  if (j.passosPorVolta > 0) {
+    j.reducao = ppg * 360.0f / (float)j.passosPorVolta;
+  }
+  Serial.printf("[CAL] Junta %u aferida: %ld pulsos em %.2f graus -> "
+                "%.3f pulsos/grau (era %.3f), reducao %.4f\n",
+                (unsigned)numero, pulsos, cursoRealGraus, ppg, antes, j.reducao);
+  return true;
+}
+
 static void concluir() {
   const bool ok1 = ajustarCurso(J1, 1);
   const bool ok2 = ajustarCurso(J2, 2);
@@ -136,7 +177,7 @@ static void concluir() {
 }
 
 // ---------------------------------------------------------------------
-void calibConfirmar() {
+void calibConfirmar(float f1, float f2) {
   switch (estadoCalib) {
     case CAL_HOME:
       jogZerar();
@@ -147,8 +188,20 @@ void calibConfirmar() {
       zerarPosicoes();
       J1.passosMin = J1.passosMax = 0;
       J2.passosMin = J2.passosMax = 0;
+      // Onde o braco REALMENTE esta, em graus. O contador zera aqui, mas
+      // zero passo nao e zero grau: a cinematica chama de zero o braco
+      // esticado apontando para +X. Sem este offset o desenho na tela sai
+      // girado em relacao a maquina.
+      J1.grausHome = f1;
+      J2.grausHome = f2;
+      recalcularResolucao();
       estadoCalib = CAL_J1_NEG;
-      definirMensagem("Referencia gravada. Leve a junta 1 ao limite negativo");
+      if (f1 != 0.0f || f2 != 0.0f) {
+        definirMensagem("Referencia gravada em %.1f / %.1f graus. Leve a junta 1 ao limite negativo",
+                        f1, f2);
+      } else {
+        definirMensagem("Referencia gravada. Leve a junta 1 ao limite negativo");
+      }
       break;
 
     case CAL_J1_NEG:
@@ -179,11 +232,17 @@ void calibConfirmar() {
       estadoCalib = CAL_J2_VOLTA_POS;
       break;
 
-    case CAL_CONCLUIDO:
+    case CAL_CONCLUIDO: {
       // A partir daqui o zero novo e o oficial: nao ha mais o que desfazer.
       origemFoiDeslocada = false;
+      // Aferir ANTES de concluir: concluir() valida o curso minimo e
+      // converte para graus, e as duas coisas dependem da resolucao.
+      const bool a1 = aferirResolucao(J1, f1, 1);
+      const bool a2 = aferirResolucao(J2, f2, 2);
+      if (a1 || a2) recalcularResolucao();
       concluir();
       break;
+    }
 
     default:
       break;   // estados de retorno automatico ignoram o botao

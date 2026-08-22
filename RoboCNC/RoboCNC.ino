@@ -351,7 +351,9 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_CALIB_CONFIRMAR:
-      if (modoAtual == MODO_CALIBRANDO) calibConfirmar();
+      // f1/f2 mudam de sentido conforme a etapa: angulo da referencia no
+      // HOME, curso real medido na conclusao. Ver calibracao.h.
+      if (modoAtual == MODO_CALIBRANDO) calibConfirmar(c.f1, c.f2);
       break;
 
     case CMD_CALIB_CANCELAR:

@@ -53,8 +53,8 @@ void recalcularResolucao() {
     Junta& j = *js[i];
     j.passosPorGrau = (j.passosPorVolta * j.reducao) / 360.0f;
     if (j.passosPorGrau > 0.0f) {
-      j.grausMin = j.passosMin / j.passosPorGrau;
-      j.grausMax = j.passosMax / j.passosPorGrau;
+      j.grausMin = j.passosMin / j.passosPorGrau + j.grausHome;
+      j.grausMax = j.passosMax / j.passosPorGrau + j.grausHome;
     }
   }
 }
@@ -219,9 +219,11 @@ void carregarConfiguracoes() {
   J1.calibrada = prefs.getBool ("e1cal", false);
   J1.passosMin = prefs.getLong ("e1min", 0);
   J1.passosMax = prefs.getLong ("e1max", 0);
+  J1.grausHome = prefs.getFloat("e1hom", 0.0f);
   J2.calibrada = prefs.getBool ("e2cal", false);
   J2.passosMin = prefs.getLong ("e2min", 0);
   J2.passosMax = prefs.getLong ("e2max", 0);
+  J2.grausHome = prefs.getFloat("e2hom", 0.0f);
 
   prefs.end();
 
@@ -265,9 +267,11 @@ void salvarConfiguracoes() {
   prefs.putBool ("e1cal", J1.calibrada);
   prefs.putLong ("e1min", J1.passosMin);
   prefs.putLong ("e1max", J1.passosMax);
+  prefs.putFloat("e1hom", J1.grausHome);
   prefs.putBool ("e2cal", J2.calibrada);
   prefs.putLong ("e2min", J2.passosMin);
   prefs.putLong ("e2max", J2.passosMax);
+  prefs.putFloat("e2hom", J2.grausHome);
 
   prefs.end();
   Serial.println("[NVS] Configuracoes salvas.");

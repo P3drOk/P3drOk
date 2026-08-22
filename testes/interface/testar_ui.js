@@ -213,7 +213,7 @@ function checar(ok, texto, extra) {
   t.on('console', m => { if (m.type() === 'error') errosT.push(m.text()); });
   let rotas = [];
   const RUIDO = ['/api/status', '/api/sd', '/api/sd/lista', '/api/pontos', '/api/trajetoria'];
-  t.on('request', r => { const u = new URL(r.url()); if (u.pathname.startsWith('/api')) rotas.push(u.pathname); });
+  t.on('request', r => { const u = new URL(r.url()); if (u.pathname.startsWith('/api')) rotas.push(u.pathname + u.search); });
   t.on('dialog', d => d.accept());
   await t.goto(BASE, { waitUntil: 'domcontentloaded' });
   await t.waitForTimeout(700);
@@ -304,6 +304,65 @@ function checar(ok, texto, extra) {
          avisos.txt || 'nenhum aviso na lista');
   await t.screenshot({ path: SAIDA + '/celular-5-trecho-ruim.png' });
 
+  // Curso calibrado: barra por junta e area desenhada na mesa.
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(300);
+  const faixa = await t.evaluate(() => {
+    const e = document.getElementById('fx1');
+    const b = e.querySelector('.fxB'), i = b && b.querySelector('i');
+    return { txt: e.textContent.trim(), temBarra: !!b,
+             pos: i ? i.style.left : '', margens: b ? b.querySelectorAll('u').length : 0 };
+  });
+  checar(faixa.temBarra && faixa.margens === 2 && /%$/.test(faixa.pos),
+         'a junta mostra onde esta dentro do curso calibrado',
+         faixa.txt + '  |  marcador em ' + faixa.pos + ', ' + faixa.margens +
+         ' faixas de margem');
+
+  // Sem calibracao a barra some e o texto diz o porque.
+  await t.request.post(BASE + '/teste/estado', { data: { cal1: false } });
+  await t.waitForTimeout(500);
+  const semCal = await t.evaluate(() => document.getElementById('fx1').textContent.trim());
+  checar(semCal === 'sem curso', 'sem calibracao a barra da lugar a "sem curso"', semCal);
+  await t.request.post(BASE + '/teste/estado', { data: { cal1: true } });
+  await t.waitForTimeout(400);
+
+  // Area alcancavel na mesa: aparece com a protecao de curso ligada.
+  await t.locator('#abas button[data-aba="mesa"]').click();
+  await t.waitForTimeout(500);
+  await t.screenshot({ path: SAIDA + '/celular-6-curso.png' });
+
+  // Assistente de calibracao: campos que so aparecem onde fazem sentido.
+  for (const [calib, rotulo, temCampos] of [
+    ['HOME',      'Junta 1 esta em',      true],
+    ['J1_NEG',    '',                     false],
+    ['CONCLUIDO', 'Curso real da junta 1', true],
+  ]) {
+    await t.request.post(BASE + '/teste/estado', { data: { calib, calibEixo: 0 } });
+    await t.waitForTimeout(500);
+    const est = await t.evaluate(() => ({
+      veu: document.getElementById('veu').classList.contains('on'),
+      vis: document.getElementById('cMed').style.display !== 'none',
+      l1: document.getElementById('cMedL1').textContent.trim(),
+      g1: document.getElementById('cG1').value,
+    }));
+    checar(est.veu && est.vis === temCampos && (!temCampos || est.l1 === rotulo),
+           'assistente na etapa ' + calib + ': campos de medida ' +
+           (temCampos ? 'aparecem' : 'somem'),
+           temCampos ? ('"' + est.l1 + '" preenchido com ' + est.g1) : 'ocultos');
+  }
+
+  // Confirmar na etapa de conclusao manda o curso medido.
+  rotas = [];
+  await t.evaluate(() => { document.getElementById('cG1').value = '58.5';
+                           document.getElementById('cG2').value = '61.0'; });
+  await t.locator('#cOk').click();
+  await t.waitForTimeout(300);
+  const conf = rotas.find(x => x.startsWith('/api/calib/confirmar'));
+  checar(!!conf && /g1=58\.5/.test(conf) && /g2=61/.test(conf),
+         'concluir a calibracao envia o curso realmente medido', conf);
+  await t.request.post(BASE + '/teste/estado', { data: { calib: 'INATIVO' } });
+  await t.waitForTimeout(400);
+
   // Controles da lista de pontos.
   await t.locator('#abas button[data-aba="prog"]').click();
   await t.waitForTimeout(250);
@@ -317,7 +376,8 @@ function checar(ok, texto, extra) {
     rotas = [];
     await t.locator(sel).first().click();
     await t.waitForTimeout(250);
-    checar(rotas.includes(rota), 'lista de pontos: ' + nome + ' chama ' + rota);
+    checar(rotas.some(x => x.split('?')[0] === rota),
+           'lista de pontos: ' + nome + ' chama ' + rota);
   }
 
   // Mesa de tracado: clique comanda XY, zoom e tema respondem.
@@ -327,7 +387,8 @@ function checar(ok, texto, extra) {
   const cvb = await t.locator('#cv').boundingBox();
   await t.mouse.click(cvb.x + cvb.width * 0.62, cvb.y + cvb.height * 0.4);
   await t.waitForTimeout(250);
-  checar(rotas.includes('/api/mover_xy'), 'tocar na mesa de tracado comanda a ponta');
+  checar(rotas.some(x => x.split('?')[0] === '/api/mover_xy'),
+         'tocar na mesa de tracado comanda a ponta');
   const v1 = await t.evaluate(() => window.__vista);
   await t.locator('#zMais').click(); await t.waitForTimeout(150);
   await t.locator('#zAuto').click(); await t.waitForTimeout(150);
@@ -343,7 +404,7 @@ function checar(ok, texto, extra) {
   await t.waitForTimeout(230);
   await seta.dispatchEvent('pointerup', { pointerId: 5 });
   await t.waitForTimeout(180);
-  const jogs = rotas.filter(x => x === '/api/jog');
+  const jogs = rotas.filter(x => x.split('?')[0] === '/api/jog');
   checar(jogs.length >= 2, 'as setas de jog mandam heartbeat e depois o zero',
          jogs.length + ' chamadas a /api/jog');
 

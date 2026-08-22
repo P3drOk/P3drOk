@@ -111,6 +111,7 @@ button,input{font:inherit;color:inherit}
 .lg i{width:18px;border-top:3px solid var(--quente)}
 .lg.d i{border-top:1px dashed #7b8795}
 .lg.t i{border-top:2px solid #7b8795;opacity:.55}
+.lg.c i{border-top:2px solid var(--arco)}
 
 .zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:5px}
 .zb{width:32px;height:32px;background:var(--painel);opacity:.94;border:1px solid var(--linha);
@@ -183,6 +184,14 @@ h4:first-child{margin-top:0}
  margin-bottom:7px}
 .eixo .id{text-align:center}
 .eixo .fx{font-family:var(--mono);font-size:9px;color:var(--letra3);margin-top:2px}
+/* Onde a junta esta DENTRO do curso calibrado. Numero sozinho nao diz
+   se o braco esta sobrando ou raspando no limite. */
+.fxB{display:block;position:relative;height:4px;margin-top:4px;border-radius:2px;
+ background:var(--fundo);border:1px solid var(--linha);overflow:hidden}
+.fxB i{position:absolute;top:-1px;bottom:-1px;width:3px;margin-left:-1.5px;
+ background:var(--arco);border-radius:1px;transition:left .12s}
+.fxB.perto i{background:var(--brasa)}
+.fxB u{position:absolute;top:0;bottom:0;background:rgba(185,28,28,.20)}
 .jb{background:var(--face);border:1px solid var(--linha);border-radius:3px;height:56px;
  font-size:19px;cursor:pointer;user-select:none;touch-action:none;color:var(--letra2)}
 .jb:active,.jb.press{background:var(--arco);color:#0c1530;border-color:var(--arco)}
@@ -419,6 +428,7 @@ h4:first-child{margin-top:0}
           <div class="lg"><i></i>cordao · reta</div>
           <div class="lg d"><i></i>deslocamento · curva das juntas</div>
           <div class="lg t"><i></i>trajetoria gravada a mao livre</div>
+          <div class="lg c"><i></i>curso calibrado das juntas</div>
         </div>
         <div class="zoom">
           <button class="zb" id="zMais" title="Aproximar">+</button>
@@ -688,6 +698,16 @@ h4:first-child{margin-top:0}
   <div class="pp" id="cPasso">--</div>
   <div class="pgr"><i id="cBarra"></i></div>
   <div class="ins" id="cInstr"></div>
+
+  <!-- Aparece so nas etapas em que os numeros significam alguma coisa:
+       o angulo da referencia no HOME e o curso realmente medido no fim. -->
+  <div id="cMed" style="display:none">
+    <div class="cp"><label id="cMedL1">Junta 1</label>
+      <input type="number" id="cG1" step="0.1"><span class="un">°</span></div>
+    <div class="cp"><label id="cMedL2">Junta 2</label>
+      <input type="number" id="cG2" step="0.1"><span class="un">°</span></div>
+    <div class="nt" id="cMedNota"></div>
+  </div>
   <div class="eixo" id="cJ1">
     <button class="jb" data-j="1" data-d="-1">&#8592;</button>
     <div class="id"><span class="rot">junta 1</span></div>
@@ -778,7 +798,14 @@ $("btServos").onclick=function(){post("/api/servos?v="+(D.servos?0:1));};
 $("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
 $("btTeste").onclick =function(){post("/api/teste/rele");};
 $("btCalib").onclick =function(){post("/api/calib/iniciar");};
-$("cOk").onclick     =function(){post("/api/calib/confirmar");};
+$("cOk").onclick=function(){
+  /* Os dois campos so sao enviados nas etapas em que eles significam
+     alguma coisa; vazio vira 0, que o firmware entende como "nao mexer". */
+  const usa=$("cMed").style.display!=="none";
+  const g1=usa?(parseFloat($("cG1").value)||0):0;
+  const g2=usa?(parseFloat($("cG2").value)||0):0;
+  post("/api/calib/confirmar?g1="+g1+"&g2="+g2);
+};
 $("cNao").onclick    =function(){post("/api/calib/cancelar");};
 $("btGravar").onclick=function(){post("/api/ponto/gravar").then(lerPontos);};
 $("btLimpar").onclick=function(){
@@ -957,12 +984,41 @@ function pintar(){
     ct.strokeStyle="rgba("+C.grade+(i===0?",.45)":",.13)");
     ct.beginPath();ct.moveTo(0,Y);ct.lineTo(w,Y);ct.stroke();}
 
-  /* area util */
+  /* Alcance mecanico dos elos: onde a ponta chegaria sem limite nenhum. */
   ct.beginPath();ct.arc(ox,oy,alc*esc,0,TAU);
   ct.arc(ox,oy,Math.abs(L1-L2)*esc,0,TAU,true);
   ct.fillStyle="rgba("+C.grade+",.045)";ct.fill();
   ct.strokeStyle="rgba("+C.grade+",.5)";ct.lineWidth=1;
   ct.setLineDash([4,6]);ct.stroke();ct.setLineDash([]);
+
+  /* Area que o braco alcanca DE VERDADE com o curso calibrado.
+     A borda e a imagem do retangulo de limites das juntas pela
+     cinematica direta: percorrer os quatro lados desse retangulo desenha
+     o contorno fechado da regiao. Sem isto o operador so via o circulo
+     de alcance mecanico e ensinava pontos que a maquina depois recusava. */
+  if(D.cal1&&D.cal2&&D.protCurso&&D.j1max>D.j1min&&D.j2max>D.j2min){
+    const m=0.5;                       /* MARGEM_LIMITE_GRAUS */
+    const a0=D.j1min+m,a1=D.j1max-m,b0=D.j2min+m,b1=D.j2max-m;
+    if(a1>a0&&b1>b0){
+      const N=36;
+      ct.beginPath();
+      let primeiro=true;
+      const anda=function(fa,fb){
+        for(let k=0;k<=N;k++){
+          const u=k/N,q=ponta(fa(u),fb(u),L1,L2),t=P(q[0],q[1]);
+          if(primeiro){ct.moveTo(t[0],t[1]);primeiro=false;}else ct.lineTo(t[0],t[1]);
+        }
+      };
+      anda(function(u){return a0+(a1-a0)*u;},function(){return b0;});
+      anda(function(){return a1;},        function(u){return b0+(b1-b0)*u;});
+      anda(function(u){return a1+(a0-a1)*u;},function(){return b1;});
+      anda(function(){return a0;},        function(u){return b1+(b0-b1)*u;});
+      ct.closePath();
+      ct.fillStyle="rgba("+C.grade+",.10)";ct.fill();
+      ct.strokeStyle=C.arco;ct.lineWidth=1.5;ct.globalAlpha=.75;
+      ct.stroke();ct.globalAlpha=1;
+    }
+  }
 
   /* As zonas proibidas so aparecem quando a protecao correspondente
      esta ligada. Desenhar limite que nao e aplicado engana o operador. */
@@ -1128,6 +1184,23 @@ function porQueNaoMove(d){
   return "";
 }
 
+/* Curso da junta com o braco marcado dentro dele. As bordas vermelhas
+   sao a margem de seguranca que a validacao desconta: dali para fora o
+   movimento e recusado, entao vale ver que ela existe. */
+function faixaJunta(el,calibrada,valor,min,max){
+  if(!calibrada){el.textContent="sem curso";return;}
+  const curso=max-min;
+  if(curso<=0){el.textContent="curso invalido";return;}
+  const p=Math.max(0,Math.min(100,(valor-min)/curso*100));
+  const mg=Math.min(45,0.5/curso*100);          /* MARGEM_LIMITE_GRAUS */
+  const perto=(p<mg*1.5||p>100-mg*1.5);
+  el.innerHTML=min.toFixed(0)+"…"+max.toFixed(0)+"° · <b>"+valor.toFixed(1)+"°</b>"+
+    '<span class="fxB'+(perto?" perto":"")+'">'+
+    '<u style="left:0;width:'+mg.toFixed(2)+'%"></u>'+
+    '<u style="right:0;width:'+mg.toFixed(2)+'%"></u>'+
+    '<i style="left:'+p.toFixed(2)+'%"></i></span>';
+}
+
 function lamp(el,cls,txt){
   el.className="lp"+(cls?" "+cls:"");
   if(txt!==undefined)$("lModoT").textContent=txt;}
@@ -1153,8 +1226,8 @@ function aplicar(d){
   $("hT1").className=(d.v1>1)?"mv":"";
   $("hT2").className=(d.v2>1)?"mv":"";
 
-  $("fx1").textContent=d.cal1?(d.j1min.toFixed(0)+"…"+d.j1max.toFixed(0)+"°"):"sem curso";
-  $("fx2").textContent=d.cal2?(d.j2min.toFixed(0)+"…"+d.j2max.toFixed(0)+"°"):"sem curso";
+  faixaJunta($("fx1"),d.cal1,d.t1,d.j1min,d.j1max);
+  faixaJunta($("fx2"),d.cal2,d.t2,d.j2min,d.j2max);
 
   const t=$("tira");
   t.textContent=erro?("Recusado: "+erro):d.msg;
@@ -1229,6 +1302,36 @@ function aplicar(d){
     $("cJ2").style.display=(d.calibEixo===2||d.calibEixo===0)?"grid":"none";
     $("cOk").disabled=/VOLTA/.test(d.calib);
     $("cOk").textContent=d.calib==="CONCLUIDO"?"Concluir e salvar":"Confirmar";
+
+    const med=$("cMed");
+    if(d.calib==="HOME"){
+      med.style.display="block";
+      $("cMedL1").textContent="Junta 1 esta em";
+      $("cMedL2").textContent="Junta 2 esta em";
+      if(ultCal!=="HOME"){$("cG1").value=0;$("cG2").value=0;}
+      $("cMedNota").innerHTML=
+        "Deixe <b>0 e 0</b> se o braco estiver na postura que a cinematica "+
+        "chama de zero: <b>elo 1 apontando para a direita, na horizontal</b>, "+
+        "e <b>elo 2 alinhado com o elo 1</b> (braco esticado). Se a sua "+
+        "referencia for outra postura, informe aqui os angulos reais dela "+
+        "&mdash; sem isso o desenho na tela sai girado em relacao a maquina.";
+    }else if(d.calib==="CONCLUIDO"){
+      med.style.display="block";
+      $("cMedL1").textContent="Curso real da junta 1";
+      $("cMedL2").textContent="Curso real da junta 2";
+      const c1=Math.abs(d.j1max-d.j1min), c2=Math.abs(d.j2max-d.j2min);
+      if(ultCal!=="CONCLUIDO"){
+        $("cG1").value=c1.toFixed(1);$("cG2").value=c2.toFixed(1);}
+      $("cMedNota").innerHTML=
+        "Pelos <b>pulsos contados</b> e pela resolucao que esta nos ajustes, "+
+        "o curso deu <b>"+c1.toFixed(1)+"°</b> na junta 1 e <b>"+c2.toFixed(1)+
+        "°</b> na junta 2.<br><br>Meca o curso de verdade com transferidor ou "+
+        "inclinometro e corrija aqui. O firmware recalcula a resolucao pelos "+
+        "pulsos que acabou de contar &mdash; e a maior base de medida que a "+
+        "maquina tem, entao sai preciso. Batendo com o medido, e so confirmar.";
+    }else{
+      med.style.display="none";
+    }
   }
   ultCal=d.calib;
 

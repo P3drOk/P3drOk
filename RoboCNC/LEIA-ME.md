@@ -141,9 +141,9 @@ reprova se o gerado ficar velho.
    do T3D) e a redução mecânica da junta.
 2. `Ajustes → Geometria`: comprimento dos elos, folga de dobra, Y mínimo
    e raio morto da base.
-3. `Ajustes → Calibração`: percorra o assistente. Ao final confira se os
-   limites em graus batem com a máquina real — se não baterem, o erro
-   está na resolução, não na medição.
+3. `Ajustes → Calibração`: percorra o assistente. Ele pergunta duas
+   coisas que fazem o software concordar com o braço — veja a seção
+   abaixo.
 4. `Mover → Habilitar servos`, então jog.
 
 ## Curso util do jog
@@ -282,6 +282,64 @@ por vez.
 Soltar o dedo para o braço. Tela apagando, app indo para segundo plano ou
 aba perdendo o foco também param, na hora — e mesmo que nada disso
 chegue, o heartbeat de 350 ms do firmware para o eixo sozinho.
+
+## Como o firmware sabe em quantos graus a junta está
+
+Ele **conta pulsos**. Não há encoder na malha: o `FastAccelStepper` conta
+cada pulso emitido, a calibração mede o curso em pulsos, e a conversão
+para graus é uma divisão:
+
+```
+passosPorGrau = (passosPorVolta × redução) / 360      ← você digita os dois
+ângulo        = pulsos / passosPorGrau + grausHome
+```
+
+Ou seja: a **medição** é do robô, mas a **escala** e a **origem** vinham
+de números digitados. Errado qualquer um deles, o braço real fica numa
+posição e o da tela em outra. O assistente agora fecha os dois.
+
+### A escala — aferir pelo curso que você mediu
+
+Na última etapa o assistente mostra o curso que calculou e pergunta
+quanto ele foi **de verdade**. Meça com transferidor ou inclinômetro e
+digite. O firmware refaz a conta ao contrário:
+
+```
+passosPorGrau = pulsos contados / graus medidos
+```
+
+O assistente acabou de varrer o curso inteiro da junta — é a maior base
+de medida que a máquina tem, então sai preciso. A `redução` mostrada nos
+ajustes é reescrita para explicar essa resolução, para um recálculo
+posterior não desfazer a aferição.
+
+Exemplo real do banco de testes: operador digitou `10000` pulsos/volta e
+esqueceu o redutor 2:1. O assistente reportou 200° de curso; o braço
+girou 100. Informados os 100, a resolução foi de 27,78 para 55,56
+pulsos/grau e a redução virou 2,0 — sozinha.
+
+Deixando o campo com o valor que o assistente já sugeriu, nada muda.
+
+### A origem — onde fica o zero
+
+A cinemática chama de zero a postura com o **elo 1 apontando para a
+direita, na horizontal**, e o **elo 2 alinhado com ele** (braço
+esticado). Se a sua posição de referência for outra, o desenho na tela
+sai girado em relação à máquina.
+
+Por isso a etapa de referência pergunta em quantos graus cada junta está
+naquela postura. Deixe `0 e 0` se ela for a postura canônica; senão,
+informe os ângulos reais. O offset fica guardado em graus, então ele
+sobrevive a uma correção de resolução.
+
+### O que você vê depois
+
+Com as juntas calibradas, a mesa de traçado desenha a **área que o braço
+alcança de verdade** — o contorno azul, que é a imagem do retângulo de
+limites das juntas pela cinemática direta. O círculo tracejado continua
+sendo o alcance mecânico dos elos, que é maior. Nos botões de jog, cada
+junta ganha uma barra mostrando onde ela está dentro do curso, com as
+pontas em vermelho marcando a margem de segurança.
 
 ## Por que um cordão pode ser recusado
 

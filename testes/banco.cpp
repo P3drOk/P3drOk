@@ -1519,6 +1519,178 @@ static void teste_C03_cordao_bom_passa() {
   if (iniciou) progParar();
 }
 
+
+// =====================================================================
+//  E - O SOFTWARE CONCORDA COM O BRACO DE VERDADE?
+// =====================================================================
+
+// Percorre o assistente inteiro, colocando os limites onde o teste
+// mandar. 'cursoReal' e o que o operador mediu com transferidor
+// (0 = nao aferir); 'home1/home2' e o angulo declarado na referencia.
+static void rodarAssistente(long passosNeg, long passosPos,
+                            float home1, float home2,
+                            float cursoReal1, float cursoReal2) {
+  // Esperar por tempo fixo nao serve: entre uma etapa e a outra o eixo
+  // volta ao zero, e quanto maior o curso mais isso demora. Espera-se a
+  // ETAPA mudar.
+  auto ateEtapa = [&](EstadoCalib alvo) {
+    uint32_t t = 0;
+    while (estadoCalib != alvo && t < 20000) { rodarComWeb(20); t += 20; }
+    return estadoCalib == alvo;
+  };
+
+  enviarComando(CMD_CALIB_INICIAR);
+  ateEtapa(CAL_HOME);
+  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, home1, home2);
+  ateEtapa(CAL_J1_NEG);
+
+  J1.motor->setCurrentPosition(passosNeg);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J1_POS);
+  J1.motor->setCurrentPosition(passosPos);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_NEG);
+  J2.motor->setCurrentPosition(passosNeg);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_POS);
+  J2.motor->setCurrentPosition(passosPos);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_CONCLUIDO);
+
+  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, cursoReal1, cursoReal2);
+  ateEtapa(CAL_INATIVO);
+  rodarComWeb(60);
+}
+
+// ---------------------------------------------------------------------
+static void teste_E01_aferir_resolucao() {
+  secao("E01  Resolucao digitada errada: o curso medido corrige?");
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
+
+  // Cenario real: o operador digitou a engrenagem eletronica certa
+  // (10000) mas esqueceu a reducao do redutor, que e 2:1. A maquina
+  // acredita em metade dos pulsos por grau que existem de fato.
+  prepararConfigPendente();
+  configPendente.ppv1 = 10000; configPendente.red1 = 1.0f;
+  configPendente.ppv2 = 10000; configPendente.red2 = 1.0f;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(40);
+  const float ppgAntes = J1.passosPorGrau;
+
+  // O braco varre 5556 pulsos de curso. Com a reducao 2:1 de verdade,
+  // isso sao 100 graus reais -- mas a maquina vai calcular 200.
+  const long meio = 2778;
+  rodarAssistente(-meio, +meio, 0, 0, 0, 0);   // sem aferir
+  const float cursoCru = J1.grausMax - J1.grausMin;
+
+  checar(fabsf(cursoCru - 200.0f) < 1.0f, "E01a",
+         "sem aferir, a maquina reporta o curso pela resolucao digitada");
+  nota("%.2f pulsos/grau digitados -> curso calculado de %.1f graus",
+       ppgAntes, cursoCru);
+  nota("O braco de verdade girou 100. A conta esta certa; o numero que");
+  nota("entrou nela e que estava errado.");
+
+  // Agora o operador mede com transferidor e informa os 100 graus reais.
+  rodarAssistente(-meio, +meio, 0, 0, 100.0f, 100.0f);
+
+  const float ppgDepois = J1.passosPorGrau;
+  const float cursoAferido = J1.grausMax - J1.grausMin;
+
+  checar(fabsf(cursoAferido - 100.0f) < 0.1f &&
+         fabsf(ppgDepois - 55.56f) < 0.2f, "E01b",
+         "informado o curso real, a resolucao e recalculada pelos pulsos contados");
+  nota("curso informado 100 graus, %ld pulsos contados", 2 * meio);
+  nota("resolucao: %.2f -> %.2f pulsos/grau; curso agora %.2f graus",
+       ppgAntes, ppgDepois, cursoAferido);
+
+  // A reducao no painel de ajustes tem de explicar a nova resolucao,
+  // senao um recalculo posterior desfaz a afericao.
+  const float ppgRecalc = (J1.passosPorVolta * J1.reducao) / 360.0f;
+  checar(fabsf(J1.reducao - 2.0f) < 0.01f &&
+         fabsf(ppgRecalc - ppgDepois) < 0.05f, "E01c",
+         "a reducao mostrada passa a explicar a resolucao aferida");
+  nota("reducao reescrita para %.4f : 1  (o redutor real e 2:1)", J1.reducao);
+  nota("recalculo a partir dela: %.2f pulsos/grau -- bate com a aferida",
+       ppgRecalc);
+
+  // E o braco parado no meio do curso tem de ler o angulo certo.
+  J1.motor->setCurrentPosition(0); rodarComWeb(5);
+  checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 0.01f, "E01d",
+         "no meio do curso o software le o mesmo angulo que o braco esta");
+  nota("pulso 0 -> %.3f graus", passosParaGraus(J1, posicaoJ1()));
+}
+
+// ---------------------------------------------------------------------
+static void teste_E02_angulo_da_referencia() {
+  secao("E02  Referencia gravada fora do zero: o desenho acompanha?");
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
+
+  // A cinematica chama de zero o braco esticado apontando para +X. Aqui
+  // a referencia e gravada com a junta 1 a 30 graus e a 2 a -15.
+  const long meio = (long)(60.0f * ((10000 * 1.0f) / 360.0f));
+  rodarAssistente(-meio, +meio, 30.0f, -15.0f, 0, 0);
+
+  J1.motor->setCurrentPosition(0);
+  J2.motor->setCurrentPosition(0);
+  rodarComWeb(5);
+  const float t1 = passosParaGraus(J1, posicaoJ1());
+  const float t2 = passosParaGraus(J2, posicaoJ2());
+
+  checar(fabsf(t1 - 30.0f) < 0.05f && fabsf(t2 + 15.0f) < 0.05f, "E02a",
+         "na referencia o software le os angulos que o operador declarou");
+  nota("contador em zero pulso -> software le %.2f / %.2f graus", t1, t2);
+
+  // Ida e volta exata: sem isso todo ponto gravado escorregaria.
+  const long p = grausParaPassos(J1, 47.5f);
+  checar(fabsf(passosParaGraus(J1, p) - 47.5f) < 0.02f, "E02b",
+         "graus -> passos -> graus fecha, com o offset no meio");
+  nota("47.5 graus -> %ld passos -> %.3f graus", p, passosParaGraus(J1, p));
+
+  // Os limites deslocam junto.
+  checar(fabsf(J1.grausMin - (-30.0f)) < 0.5f &&
+         fabsf(J1.grausMax - (90.0f)) < 0.5f, "E02c",
+         "o curso calibrado e reportado nos angulos reais da maquina");
+  nota("curso da junta 1: %.1f a %.1f graus (60 para cada lado de 30)",
+       J1.grausMin, J1.grausMax);
+
+  // E a ponta desenhada tem de sair onde a postura real coloca.
+  float xc, yc, xp, yp;
+  cinematicaDireta(t1, t2, xc, yc, xp, yp);
+  float xr, yr, xe, ye;
+  cinematicaDireta(30.0f, -15.0f, xr, yr, xe, ye);
+  checar(fabsf(xp - xe) < 0.1f && fabsf(yp - ye) < 0.1f, "E02d",
+         "a ponta no desenho cai onde a postura real do braco coloca");
+  nota("ponta desenhada (%.0f, %.0f) mm; postura real 30/-15 da (%.0f, %.0f)",
+       xp, yp, xe, ye);
+}
+
+// ---------------------------------------------------------------------
+static void teste_E03_sem_informar_nada() {
+  secao("E03  Quem nao preencher nada tem o comportamento de antes");
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
+
+  const float ppgAntes = J1.passosPorGrau;
+  const float redAntes = J1.reducao;
+  const long meio = (long)(45.0f * ppgAntes);
+
+  rodarAssistente(-meio, +meio, 0, 0, 0, 0);
+
+  checar(J1.calibrada && J2.calibrada &&
+         fabsf(J1.passosPorGrau - ppgAntes) < 0.001f &&
+         fabsf(J1.reducao - redAntes) < 0.001f &&
+         fabsf(J1.grausHome) < 0.001f &&
+         fabsf(J1.grausMin + 45.0f) < 0.5f &&
+         fabsf(J1.grausMax - 45.0f) < 0.5f, "E03",
+         "campos em branco: resolucao, offset e curso como sempre foram");
+  nota("resolucao %.3f (era %.3f), offset %.1f, curso %.1f a %.1f",
+       J1.passosPorGrau, ppgAntes, J1.grausHome, J1.grausMin, J1.grausMax);
+
+  // Valor absurdo tem de ser ignorado, nao aceito.
+  rodarAssistente(-meio, +meio, 0, 0, 0.3f, 0.0f);
+  checar(fabsf(J1.passosPorGrau - ppgAntes) < 0.001f, "E03b",
+         "curso informado menor que o minimo e ignorado, nao aplicado");
+  nota("informado 0.3 grau (minimo %.0f): resolucao segue em %.3f",
+       CURSO_MINIMO_GRAUS, J1.passosPorGrau);
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1556,6 +1728,10 @@ int main() {
   teste_C01_mensagens_de_recusa();
   teste_C02_braco_fora_da_area();
   teste_C03_cordao_bom_passa();
+
+  teste_E01_aferir_resolucao();
+  teste_E02_angulo_da_referencia();
+  teste_E03_sem_informar_nada();
 
 
 

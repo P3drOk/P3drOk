@@ -13,7 +13,20 @@
 // =====================================================================
 
 void calibIniciar();
-void calibConfirmar();
+
+// Confirma a etapa atual do assistente. Os dois numeros sao opcionais e
+// mudam de significado conforme a etapa:
+//
+//   CAL_HOME       angulo REAL de cada junta nesta posicao de referencia.
+//                  0 e 0 significa "braco esticado apontando para +X",
+//                  que e a postura que a cinematica chama de zero.
+//
+//   CAL_CONCLUIDO  curso REAL de cada junta, medido com transferidor ou
+//                  inclinometro. Zero = nao aferir, mantem a resolucao
+//                  que esta nos ajustes.
+//
+// Nas demais etapas os numeros sao ignorados.
+void calibConfirmar(float f1 = 0.0f, float f2 = 0.0f);
 void calibCancelar();
 void calibAtualizar();   // chamar a cada ciclo do loop
 

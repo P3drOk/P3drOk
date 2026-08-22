@@ -33,6 +33,17 @@ struct Junta {
   float grausMin      = -90.0f;
   float grausMax      =  90.0f;
 
+  // Angulo REAL da junta na posicao de referencia da calibracao.
+  //
+  // O contador de passos nasce em zero no HOME, mas zero passo nao
+  // significa zero grau: a cinematica direta assume theta1 = 0 com o elo
+  // 1 apontando para +X (braco esticado na horizontal, para a direita).
+  // Se a referencia foi gravada em outra postura, o desenho na tela sai
+  // girado em relacao ao braco de verdade. Este offset, em GRAUS,
+  // reconcilia os dois -- e por ser em graus ele sobrevive a uma
+  // correcao de resolucao.
+  float grausHome     = 0.0f;
+
   uint32_t aceleracao = ACEL_PADRAO;
   bool     alarme     = false;
 };

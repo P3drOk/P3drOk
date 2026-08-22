@@ -4,14 +4,18 @@
 #include <string.h>
 
 // ---------------------------------------------------------------------
+// Ponto unico de conversao entre o que o motor conta e o que a maquina
+// e. Todo o resto do firmware -- validacao, cinematica, arquivos, tela --
+// passa por aqui, entao basta o offset viver neste par de funcoes para o
+// sistema inteiro falar o mesmo idioma que o braco de verdade.
 float passosParaGraus(const Junta& j, long passos) {
-  if (j.passosPorGrau <= 0.0f) return 0.0f;
-  return (float)passos / j.passosPorGrau;
+  if (j.passosPorGrau <= 0.0f) return j.grausHome;
+  return (float)passos / j.passosPorGrau + j.grausHome;
 }
 
 long grausParaPassos(const Junta& j, float graus) {
   if (j.passosPorGrau <= 0.0f) return 0;
-  return lroundf(graus * j.passosPorGrau);
+  return lroundf((graus - j.grausHome) * j.passosPorGrau);
 }
 
 // ---------------------------------------------------------------------
