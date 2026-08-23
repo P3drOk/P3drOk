@@ -107,6 +107,13 @@ e comparar com o comandado dá **detecção de perda de passo em tempo
 real** — o sistema para e avisa em vez de soldar torto até o fim. É a
 melhoria técnica de maior valor da lista.
 
+> **Modbus pelo RS485 do driver não substitui isso.** Cada leitura custa
+> de 5 a 20 ms, com jitter alto — dá para mostrar posição na tela e ler
+> alarme, não para pegar perda de passo no meio de um cordão. A
+> ferramenta de diagnóstico do RS485, e o porquê de ele normalmente não
+> responder, estão em
+> [`ferramentas/RS485_T3D.md`](ferramentas/RS485_T3D.md).
+
 ### Nível 2 — o que melhora a solda
 
 **2.1 Parâmetros por trecho.** Hoje a velocidade de cordão é uma só para
