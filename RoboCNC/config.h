@@ -83,7 +83,21 @@
 // Um barramento, os dois drivers: multiponto, enderecos diferentes.
 static const uint32_t ENC_BAUD_PADRAO    = 19200;
 static const uint8_t  ENC_PARIDADE_PADRAO = 0;      // 0=8N1 1=8E1 2=8O1
-static const uint8_t  ENC_FUNCAO_PADRAO  = 3;       // 3=holding 4=input
+// Padroes medidos na maquina do operador com ferramentas/teste_rs485:
+//
+//   funcao 4 (input registers) -- a funcao 3 e a tabela de PARAMETROS,
+//     onde nada muda quando o eixo gira;
+//   registrador 5 = palavra BAIXA, registrador 6 = palavra ALTA;
+//   girando o eixo a mao, a contagem andou 139828 -- 1,07 volta num
+//     encoder de 17 bits (131072 por volta), que e o que fecha.
+//
+// Registrador 0 nunca e posicao: e onde comeca a tabela de parametros.
+// Por isso um 0 guardado no NVS e tratado como "nao configurado" e cai
+// nestes padroes.
+static const uint8_t  ENC_FUNCAO_PADRAO  = 4;       // 3=holding 4=input
+static const uint16_t ENC_REG_PADRAO     = 5;       // palavra baixa da posicao
+static const bool     ENC_BAIXA_PRIMEIRO = true;
+static const float    ENC_CONTAGENS_PADRAO = 131072.0f;   // encoder de 17 bits
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;
 static const uint32_t ENC_TIMEOUT_MS     = 60;      // resposta do driver

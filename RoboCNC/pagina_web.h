@@ -360,6 +360,13 @@ h4:first-child{margin-top:0}
 .lista.arqs{border:1px solid var(--linha);border-radius:3px;overflow:hidden;
  margin-bottom:9px}
 /* ---------- encoder ---------- */
+.rodas{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.roda{position:relative;aspect-ratio:1/1;background:var(--mesa);
+ border:1px solid var(--linha);border-radius:5px;min-width:0}
+.roda canvas{position:absolute;inset:0;width:100%;height:100%}
+.roda .rot{position:absolute;left:0;right:0;bottom:5px;text-align:center;
+ font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;
+ color:var(--letra3);text-transform:uppercase}
 .encGrade{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
 .encCel{background:var(--painel);border:1px solid var(--linha);border-radius:4px;
  padding:8px 6px;text-align:center;min-width:0}
@@ -732,6 +739,17 @@ h4:first-child{margin-top:0}
             <div class="tx"><div class="tt">Encoder dos drivers</div>
             <span class="sb" id="sbEnc">desligado</span></div></div>
           <div class="dentro">
+            <div class="rodas">
+              <div class="roda"><canvas id="cvR1"></canvas>
+                <span class="rot">junta 1</span></div>
+              <div class="roda"><canvas id="cvR2"></canvas>
+                <span class="rot">junta 2</span></div>
+            </div>
+            <div class="nt">O ponteiro grosso e onde o <b>encoder</b> diz que o
+            eixo esta; o fino e onde o firmware <b>mandou</b> ele estar. A
+            abertura entre os dois e o erro. O disco pequeno no centro gira
+            junto com o eixo do motor &mdash; se ele para de girar enquanto o
+            braco anda, a leitura morreu.</div>
             <div class="encGrade">
               <div class="encCel"><span class="rot">junta 1 comandado</span><b id="eC1">--</b></div>
               <div class="encCel"><span class="rot">junta 1 medido</span><b id="eM1">--</b></div>
@@ -2022,11 +2040,108 @@ redeAtualizar();
    O historico vive aqui no navegador. O ESP32 nao guarda serie temporal
    -- ele publica o instante, e quem desenha e quem tem memoria de sobra.
    ===================================================================== */
+/* Por que nao esta lendo. Espelha MotivoEncoder em encoder.h -- tela que
+   so diz "nada" nao ensina ninguem. */
+const MOTIVO=["ok","aguardando","sem resposta","quadro corrompido",
+              "registrador recusado","formato inesperado"];
 const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
 const encHist=[[],[]];
 let encD=null, encCarregou=false;
 
 const cvEnc=$("cvEnc"), ctEnc=cvEnc?cvEnc.getContext("2d"):null;
+
+/* ---------------------------------------------------------------------
+   As duas rodinhas.
+
+   Cada uma e a junta vista de cima. Ponteiro GROSSO = onde o encoder diz
+   que o eixo esta. Ponteiro FINO = onde o firmware mandou. A abertura
+   entre os dois e o erro, e da para ver sem ler numero.
+
+   No centro, um disco pequeno gira com a volta do MOTOR (a contagem
+   modulo uma volta). Ele e a prova visual de que a leitura esta viva: se
+   o braco anda e o disco nao gira, o dado morreu.
+   --------------------------------------------------------------------- */
+const RODAS=[$("cvR1"),$("cvR2")];
+function rodaMedir(cv){
+  if(!cv)return null;
+  const d=window.devicePixelRatio||1,r=cv.parentElement.getBoundingClientRect();
+  if(r.width<2||r.height<2)return null;
+  cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);
+  const ct=cv.getContext("2d");ct.setTransform(d,0,0,d,0,0);
+  return ct;
+}
+function rodaPintar(i,d){
+  const cv=RODAS[i];if(!cv)return;
+  const ct=rodaMedir(cv);if(!ct)return;
+  const C=paleta(),dp=window.devicePixelRatio||1;
+  const w=cv.width/dp,h=cv.height/dp;
+  const cx=w/2, cy=h/2-4, R=Math.min(w,h)/2-14;
+  ct.clearRect(0,0,w,h);
+
+  const L=(d.j||[])[i]||{};
+  const cmd=(i===0)?d.t1:d.t2;
+  const lim=(i===0)?[d.j1min,d.j1max]:[d.j2min,d.j2max];
+  const temFaixa=(typeof lim[0]==="number")&&(lim[1]>lim[0]);
+  const g=Math.PI/180;
+  /* Angulo cresce no anti-horario e o canvas cresce no horario: o menos
+     no seno e o que faz a rodinha girar para o mesmo lado do braco. */
+  const P=function(a,r){return [cx+r*Math.cos(a*g),cy-r*Math.sin(a*g)];};
+
+  /* faixa util, quando ha calibracao */
+  ct.lineWidth=7;
+  ct.strokeStyle="rgba("+C.grade+",.5)";
+  ct.beginPath();ct.arc(cx,cy,R,0,Math.PI*2);ct.stroke();
+  if(temFaixa){
+    ct.strokeStyle=C.arco;ct.globalAlpha=.25;
+    ct.beginPath();ct.arc(cx,cy,R,-lim[1]*g,-lim[0]*g);ct.stroke();
+    ct.globalAlpha=1;
+  }
+
+  /* marcas de 30 em 30 graus */
+  ct.strokeStyle="rgba("+C.grade+",.9)";ct.lineWidth=1;
+  for(let a=0;a<360;a+=30){
+    const p1=P(a,R-6),p2=P(a,R-11);
+    ct.beginPath();ct.moveTo(p1[0],p1[1]);ct.lineTo(p2[0],p2[1]);ct.stroke();
+  }
+
+  /* ponteiro fino: comandado */
+  if(typeof cmd==="number"){
+    const p=P(cmd,R-13);
+    ct.strokeStyle=C.arco;ct.lineWidth=1.8;
+    ct.beginPath();ct.moveTo(cx,cy);ct.lineTo(p[0],p[1]);ct.stroke();
+  }
+
+  /* ponteiro grosso: medido */
+  if(L.ok){
+    const p=P(L.graus,R-13);
+    ct.strokeStyle=C.quente;ct.lineWidth=4;ct.lineCap="round";
+    ct.beginPath();ct.moveTo(cx,cy);ct.lineTo(p[0],p[1]);ct.stroke();
+    ct.lineCap="butt";
+  }
+
+  /* disco central que gira com a volta do motor */
+  const rc=Math.max(12,R*0.3);
+  ct.fillStyle=C.papel;ct.beginPath();ct.arc(cx,cy,rc,0,Math.PI*2);ct.fill();
+  ct.strokeStyle="rgba("+C.grade+",.9)";ct.lineWidth=1;ct.stroke();
+  if(L.ok){
+    const cvVolta=(i===0)?d.cv1:d.cv2;
+    const voltas=cvVolta>0?((L.bruto-L.ref)/cvVolta):0;
+    const giro=(voltas-Math.floor(voltas))*360;
+    ct.save();ct.translate(cx,cy);ct.rotate(-giro*g);
+    ct.strokeStyle=C.quente;ct.lineWidth=2.5;
+    ct.beginPath();ct.moveTo(0,0);ct.lineTo(rc-3,0);ct.stroke();
+    ct.fillStyle=C.quente;
+    ct.beginPath();ct.arc(rc-3,0,2.5,0,Math.PI*2);ct.fill();
+    ct.restore();
+  }
+
+  /* numero no meio */
+  ct.fillStyle=L.ok?C.letra:C.letra3;
+  ct.font="600 "+Math.max(11,Math.round(R*0.22))+"px ui-monospace,Menlo,monospace";
+  ct.textAlign="center";ct.textBaseline="middle";
+  ct.fillText(L.ok?(L.graus.toFixed(1)+"°"):"--", cx, cy+rc+Math.max(11,R*0.18));
+}
+
 
 function encMedir(){
   if(!cvEnc)return;
@@ -2102,7 +2217,7 @@ function encAplicar(d){
                 Math.abs(L.erro)>0.5);
       encHist[i].push(L.erro);
     }else{
-      encCelula("eM"+(i+1),d.ativo?"sem leitura":"desligado");
+      encCelula("eM"+(i+1),d.ativo?MOTIVO[L.motivo||1]:"desligado");
       encCelula("eE"+(i+1),"--",false);
       /* Sem leitura o historico continua andando com zero, senao o
          grafico mente dizendo que estava tudo bem no buraco. */
@@ -2133,6 +2248,7 @@ function encAplicar(d){
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
   }
   encMedir();encPintar();
+  rodaPintar(0,d);rodaPintar(1,d);
 }
 
 function encAtualizar(){
@@ -2446,8 +2562,8 @@ const ABAS=[
  ["mover","Mover","M12 4v16M4 12h16M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3"],
  ["prog","Programa","M5 6h14M5 12h9M5 18h5M17 15l2 2 3-4"],
  ["arq","Arquivos","M4 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"],
- ["enc","Encoder","M3 17l5-6 4 4 5-8 4 5M3 21h18"],
- ["ajuste","Ajustes","M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 4.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 11a2 2 0 110 4 1.7 1.7 0 00-1.6 0z"]
+ ["ajuste","Ajustes","M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 4.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 11a2 2 0 110 4 1.7 1.7 0 00-1.6 0z"],
+ ["enc","Encoder","M12 3a9 9 0 100 18 9 9 0 000-18zM12 12l5-3M12 12v-4"],
 ];
 const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAjuste"};
 

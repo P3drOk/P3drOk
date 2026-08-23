@@ -238,16 +238,49 @@ jeito que não se desfaz pela tela.
 ### O registrador é configurável, e tem de ser
 
 O mapa Modbus do T3D não é publicado e muda por versão de firmware.
-Número fixo no código seria adivinhação — e o seu segundo driver pode
-vir diferente.
+Número fixo no código seria adivinhação — e o segundo driver pode vir
+diferente.
 
-**Registrador 0 quase nunca é a posição.** Na faixa baixa mora a tabela
-de parâmetros: dá para reconhecer pelos pares simétricos (+250 / −250,
-+80 / −80) e pelo valor de preenchimento repetido dezenas de vezes.
+**O que foi medido nesta máquina**, com `ferramentas/teste_rs485`, e que
+virou o padrão de fábrica:
 
-Para achar: `ferramentas/teste_rs485` (modo 7 caça o registrador que
-muda quando você gira o eixo), ou aqui mesmo — digite um endereço, salve
-e mova o braço olhando o gráfico. O certo acompanha.
+| | |
+|---|---|
+| velocidade | 19200 8N1 |
+| endereço | 1 |
+| **função** | **4 — *input registers*** |
+| **registrador** | **5 (palavra baixa) e 6 (palavra alta)** |
+| ordem | **palavra baixa primeiro** |
+| contagens por volta | 131072 (encoder de 17 bits) |
+
+Como se sabe que é esse: girando o eixo à mão, o par 5/6 passou de
+143 535 para 283 363 — **139 828 contagens**, ou 1,067 volta num encoder
+de 17 bits. É exatamente o que uma volta à mão parece. Os registradores
+20 e 34 são espelhos do mesmo contador.
+
+**A função importa.** A função 3 (*holding*) é a tabela de parâmetros:
+dá para reconhecer pelos pares simétricos (+250 / −250, +80 / −80) e
+pelo valor de preenchimento repetido dezenas de vezes. Nada ali muda
+quando o eixo gira. Os dados vivos estão na função 4.
+
+**Registrador 0 nunca é a posição** — é o começo da tabela de
+parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
+"nunca foi configurado" e cai no padrão medido.
+
+### Se não estiver lendo
+
+A célula do medido diz **por quê**, não só "nada":
+
+| Na tela | O que é |
+|---|---|
+| `aguardando` | ainda não perguntou |
+| `sem resposta` | ninguém respondeu naquele endereço Modbus |
+| `quadro corrompido` | veio byte, mas o CRC não fecha — velocidade ou paridade |
+| `registrador recusado` | **o driver está aí e respondeu** "esse registrador não existe". Só o endereço está errado |
+| `formato inesperado` | respondeu, mas não no formato pedido — confira 16/32 bits |
+
+A rodinha do meio é a prova visual: se o braço anda e o disco central não
+gira, a leitura morreu.
 
 ### Palavra baixa primeiro
 

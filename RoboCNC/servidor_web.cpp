@@ -585,10 +585,10 @@ static void jsonEncoderJunta(String& out, uint8_t j) {
   char b[200];
   snprintf(b, sizeof(b),
     "{\"ok\":%s,\"bruto\":%ld,\"ref\":%ld,\"graus\":%.3f,\"erro\":%.3f,"
-    "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu}",
+    "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu,\"motivo\":%u}",
     L.valido ? "true" : "false", (long)L.bruto, (long)L.referencia,
     L.graus, L.erro, (unsigned long)L.idadeMs,
-    (unsigned long)L.leituras, (unsigned long)L.falhas);
+    (unsigned long)L.leituras, (unsigned long)L.falhas, (unsigned)L.motivo);
   out += b;
 }
 
@@ -599,12 +599,13 @@ static void handleEncoder() {
 
   String out;
   out.reserve(640);
-  char cab[320];
+  char cab[420];
   snprintf(cab, sizeof(cab),
     "{\"ativo\":%s,\"baud\":%lu,\"par\":%u,\"func\":%u,\"per\":%u,"
     "\"b32\":%s,\"lo\":%s,"
     "\"id1\":%u,\"id2\":%u,\"reg1\":%u,\"reg2\":%u,"
-    "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,\"j\":[",
+    "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,"
+    "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,\"j\":[",
     configEncoder.ativo ? "true" : "false",
     (unsigned long)configEncoder.baud, (unsigned)configEncoder.paridade,
     (unsigned)configEncoder.funcao, (unsigned)configEncoder.periodoMs,
@@ -613,7 +614,8 @@ static void handleEncoder() {
     (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
     (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
     configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
-    s.t1, s.t2);
+    s.t1, s.t2,
+    J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
   out += cab;
   jsonEncoderJunta(out, 1);
   out += ',';

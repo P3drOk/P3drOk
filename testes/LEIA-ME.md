@@ -95,6 +95,7 @@ no próprio `checar(...)`.
 | L03 | erro comandado − medido, inclusive com o eixo preso |
 | L04 | driver mudo, exceção e CRC ruim não viram posição |
 | L05 | o módulo nunca escreve, e só se configura em manual |
+| L06 | os números medidos na máquina do operador são remontados iguais |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

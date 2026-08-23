@@ -27,6 +27,16 @@
 //  grafico na tela) e o sistema guarda.
 // =====================================================================
 
+// Por que nao esta lendo. Tela que so diz "nada" nao ensina ninguem.
+enum MotivoEncoder : uint8_t {
+  MOTIVO_OK = 0,
+  MOTIVO_NUNCA,      // ainda nao perguntou
+  MOTIVO_SILENCIO,   // ninguem respondeu naquele endereco
+  MOTIVO_CRC,        // veio byte, mas corrompido ou de outro escravo
+  MOTIVO_EXCECAO,    // o driver respondeu "esse registrador nao existe"
+  MOTIVO_FORMATO     // respondeu, mas nao no formato pedido
+};
+
 struct LeituraEncoder {
   bool     valido;        // houve leitura recente e coerente
   int32_t  bruto;         // contagem crua do registrador
@@ -36,6 +46,7 @@ struct LeituraEncoder {
   uint32_t idadeMs;       // ha quanto tempo foi a ultima leitura boa
   uint32_t leituras;      // contador de sucessos
   uint32_t falhas;        // contador de silencios e CRC ruim
+  uint8_t  motivo;        // MotivoEncoder: por que a ultima tentativa falhou
 };
 
 void encoderIniciar();                 // cria a tarefa no core 0

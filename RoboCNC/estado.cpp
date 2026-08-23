@@ -26,8 +26,10 @@ uint16_t escalaVelocidadeTraj = 100;
 uint8_t  suavidadePartida     = SUAVIDADE_PADRAO;
 
 ConfigEncoder configEncoder = {
-  false, ENC_BAUD_PADRAO, ENC_PARIDADE_PADRAO, ENC_FUNCAO_PADRAO,
-  ENC_PERIODO_PADRAO, true, false, {1, 2}, {0, 0}, {10000.0f, 10000.0f}
+  true, ENC_BAUD_PADRAO, ENC_PARIDADE_PADRAO, ENC_FUNCAO_PADRAO,
+  ENC_PERIODO_PADRAO, true, ENC_BAIXA_PRIMEIRO,
+  {1, 2}, {ENC_REG_PADRAO, ENC_REG_PADRAO},
+  {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO}
 };
 ConfigEncoder encoderPendente = configEncoder;
 
@@ -244,19 +246,30 @@ void carregarConfiguracoes() {
   J2.passosMax = prefs.getLong ("e2max", 0);
   J2.grausHome = prefs.getFloat("e2hom", 0.0f);
 
-  configEncoder.ativo        = prefs.getBool ("encOn",  false);
+  configEncoder.ativo        = prefs.getBool ("encOn",  true);
   configEncoder.baud         = prefs.getUInt ("encBd",  ENC_BAUD_PADRAO);
   configEncoder.paridade     = (uint8_t) prefs.getUInt("encPar", ENC_PARIDADE_PADRAO);
   configEncoder.funcao       = (uint8_t) prefs.getUInt("encFn",  ENC_FUNCAO_PADRAO);
+  if (configEncoder.funcao != 3 && configEncoder.funcao != 4)
+    configEncoder.funcao = ENC_FUNCAO_PADRAO;
   configEncoder.periodoMs    = (uint16_t)prefs.getUInt("encPer", ENC_PERIODO_PADRAO);
   configEncoder.trintaEDois  = prefs.getBool ("enc32",  true);
-  configEncoder.baixaPrimeiro= prefs.getBool ("encLo",  false);
+  configEncoder.baixaPrimeiro= prefs.getBool ("encLo",  ENC_BAIXA_PRIMEIRO);
   configEncoder.id[0]        = (uint8_t) prefs.getUInt("encId1", 1);
   configEncoder.id[1]        = (uint8_t) prefs.getUInt("encId2", 2);
-  configEncoder.reg[0]       = (uint16_t)prefs.getUInt("encRg1", 0);
-  configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", 0);
-  configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", 10000.0f);
-  configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", 10000.0f);
+  configEncoder.reg[0]       = (uint16_t)prefs.getUInt("encRg1", ENC_REG_PADRAO);
+  configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", ENC_REG_PADRAO);
+  configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", ENC_CONTAGENS_PADRAO);
+  configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", ENC_CONTAGENS_PADRAO);
+  // Registrador 0 e o inicio da tabela de parametros, nunca a posicao.
+  // Um 0 gravado por uma versao anterior significa "nunca foi
+  // configurado" -- vale o padrao medido, nao um endereco que so pode
+  // devolver parametro.
+  for (uint8_t i = 0; i < 2; i++) {
+    if (configEncoder.reg[i] == 0) configEncoder.reg[i] = ENC_REG_PADRAO;
+    if (configEncoder.contagensPorVolta[i] < 1.0f)
+      configEncoder.contagensPorVolta[i] = ENC_CONTAGENS_PADRAO;
+  }
   encoderPendente = configEncoder;
 
   prefs.end();

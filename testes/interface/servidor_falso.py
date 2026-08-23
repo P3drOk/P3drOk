@@ -79,11 +79,13 @@ def _encoder():
             "id1": 1, "id2": 2, "reg1": 4096, "reg2": 0,
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],
+            "j1min": estado["j1min"], "j1max": estado["j1max"],
+            "j2min": estado["j2min"], "j2max": estado["j2max"],
             "j": [{"ok": True, "bruto": 123456 + _enc["n"] * 7, "ref": 123456,
                    "graus": estado["t1"] - e1, "erro": e1,
-                   "idade": 20, "n": _enc["n"], "falhas": 2},
+                   "idade": 20, "n": _enc["n"], "falhas": 2, "motivo": 0},
                   {"ok": False, "bruto": 0, "ref": 0, "graus": 0.0, "erro": 0.0,
-                   "idade": 9999, "n": 0, "falhas": 0}]}
+                   "idade": 9999, "n": 0, "falhas": 0, "motivo": 2}]}
 
 SD = {"estado": "PRONTO", "ocupado": False, "seq": 7,
       "totalMB": 3782, "livreMB": 3779, "msg": "cartao montado"}

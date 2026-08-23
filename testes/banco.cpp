@@ -2752,6 +2752,53 @@ static void teste_L05_so_leitura_e_so_em_manual() {
          "L05d", "com o robo fora do manual a configuracao nao muda");
 }
 
+static void teste_L06_a_maquina_do_operador() {
+  secao("L06  A configuracao medida na maquina do operador");
+  reiniciarSistema();
+
+  // Padrao de fabrica DEPOIS da medicao: funcao 4, registrador 5,
+  // 32 bits com a palavra baixa primeiro, encoder de 17 bits.
+  nota("padrao: funcao %u, registrador %u, %s, %.0f contagens por volta",
+       (unsigned)configEncoder.funcao, (unsigned)configEncoder.reg[0],
+       configEncoder.baixaPrimeiro ? "palavra baixa primeiro" : "palavra alta primeiro",
+       (double)configEncoder.contagensPorVolta[0]);
+  checar(configEncoder.funcao == 4 && configEncoder.reg[0] == 5 &&
+         configEncoder.baixaPrimeiro && configEncoder.trintaEDois,
+         "L06a", "o padrao sai igual ao que foi medido na maquina");
+
+  // Registrador 0 gravado por versao anterior nao pode virar leitura: 0
+  // e o inicio da tabela de PARAMETROS, onde nada muda com o eixo.
+  g_nvs.u["encRg1"] = 0;
+  g_nvs.u["encRg2"] = 0;
+  carregarConfiguracoes();
+  nota("com 0 gravado no NVS, o registrador vira %u",
+       (unsigned)configEncoder.reg[0]);
+  checar(configEncoder.reg[0] == ENC_REG_PADRAO, "L06b",
+         "registrador 0 guardado por versao velha e tratado como nao configurado");
+
+  // O caso concreto: os numeros que o driver do operador devolveu.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(5, true, 143535);      // 2 * 65536 + 12463
+  g_uart.escravo[0].funcao = 4;
+  encoderPendente = configEncoder;
+  encoderPendente.funcao = 4;
+  enviarComando(CMD_APLICAR_ENCODER);
+  rodarComWeb(400);
+  const int32_t lido1 = encoderLer(1).bruto;
+
+  g_uart.escravo[0].posicao = 283363;    // 4 * 65536 + 21219, depois de girar
+  rodarComWeb(400);
+  const int32_t lido2 = encoderLer(1).bruto;
+
+  nota("antes %ld, depois %ld, variou %ld contagens",
+       (long)lido1, (long)lido2, (long)(lido2 - lido1));
+  nota("com encoder de 17 bits isso e %.3f volta do motor",
+       (double)(lido2 - lido1) / 131072.0);
+  checar(lido1 == 143535 && lido2 == 283363, "L06c",
+         "os numeros que o driver devolveu na bancada sao remontados iguais");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -2967,6 +3014,7 @@ int main() {
   teste_L03_erro_de_posicao();
   teste_L04_driver_mudo_e_excecao();
   teste_L05_so_leitura_e_so_em_manual();
+  teste_L06_a_maquina_do_operador();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

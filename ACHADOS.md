@@ -1150,3 +1150,77 @@ defeito clássico e é invisível até você ver os dois valores lado a lado.
 |-------|----------|-------|
 | firmware | 141 / 0 | **160 / 0** |
 | interface | 80 / 0 | **89 / 0** |
+
+---
+
+# Rodada 11 — o encoder achado, e por que não estava lendo
+
+## R24 · O registrador  ✅  `L06`
+
+O operador rodou o diagnóstico e trouxe os números. Eles respondem tudo:
+
+- **Função 4**, não 3. A função 3 é a tabela de parâmetros — reconhecível
+  pelos pares simétricos (+250 / −250, +80 / −80) e pelo `0x5E07`
+  repetido trinta vezes como preenchimento. Nada ali muda com o eixo.
+- **Registrador 5 (palavra baixa) + 6 (palavra alta)**, palavra baixa
+  primeiro. Girando à mão, o par foi de 143 535 para 283 363 —
+  139 828 contagens, **1,067 volta** num encoder de 17 bits. É o que uma
+  volta à mão parece; nenhuma outra resolução fecha.
+- Os registradores 20 e 34 são espelhos do mesmo contador (20 tem
+  deslocamento fixo de 28 546; 34 é a mesma leitura um instante depois).
+
+Viraram o padrão de fábrica. E um `0` guardado no NVS por uma versão
+anterior passou a ser tratado como "nunca configurado", senão a máquina
+do operador continuaria perguntando ao registrador 0 para sempre.
+
+## R25 · Duas corridas entre núcleos que eu tinha deixado passar  ✅
+
+**`encoderReconfigurar()` reabria a UART do core 1.** Ele é chamado pelo
+handler de `CMD_APLICAR_ENCODER`, que roda no core 1; a UART pertence à
+tarefa do core 0. `rs.end()` / `rs.begin()` por baixo de uma leitura em
+andamento corrompe o quadro. Agora o core 1 só levanta
+`pedidoReabrir` e a tarefa reabre no começo do próximo ciclo — o mesmo
+padrão de `redePedidoReconectar`.
+
+Essa é a segunda vez nesta funcionalidade que escrevi código de core 0
+chamando coisa de core 1 (a primeira foi `posicaoJ1()`). A regra existe
+justamente porque é fácil de errar.
+
+## R26 · "Não está lendo nada" tinha de dizer o quê  ✅
+
+A célula do medido mostrava `sem leitura` para cinco causas diferentes.
+Agora carrega o motivo: `sem resposta`, `quadro corrompido`,
+`registrador recusado`, `formato inesperado`. **`registrador recusado` é
+notícia boa** — quer dizer que o driver está lá e respondeu; só o
+endereço está errado.
+
+Mesma família do botão mudo da rodada 2: um estado que não explica a si
+mesmo faz o operador concluir que o sistema está quebrado.
+
+## R27 · As duas rodinhas
+
+A pedido: dois mostradores circulares, um por junta.
+
+- Ponteiro **grosso** = onde o encoder diz que o eixo está.
+- Ponteiro **fino** = onde o firmware mandou.
+- A abertura entre os dois **é** o erro, sem ler número.
+- No centro, um disco gira com a volta do motor (contagem módulo uma
+  volta). É a prova visual de que a leitura está viva: braço andando e
+  disco parado quer dizer que o dado morreu.
+
+A aba foi para o fim da barra.
+
+## Uma vírgula
+
+A entrada nova de `ABAS` ficou sem vírgula depois da anterior. Em
+JavaScript `[...]["enc",...]` não é erro de sintaxe: é **indexação**. O
+array virou cinco elementos com o último `undefined`, e a página inteira
+morreu em `a[0]`. O banco de interface pegou na primeira execução, antes
+de chegar ao operador.
+
+## Cobertura
+
+| banco | rodada 10 | agora |
+|-------|-----------|-------|
+| firmware | 160 / 0 | **163 / 0** |
+| interface | 89 / 0 | **90 / 0** |

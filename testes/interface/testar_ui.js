@@ -614,11 +614,22 @@ function checar(ok, texto, extra) {
   checar(/°$/.test(enc.cmd) && /°$/.test(enc.med) && /°$/.test(enc.err),
          'Encoder: mostra comandado, medido e erro em graus da junta',
          enc.cmd + ' | ' + enc.med + ' | ' + enc.err);
-  checar(enc.med2 === 'sem leitura',
-         'Encoder: junta sem resposta diz isso, nao finge zero', enc.med2);
+  checar(enc.med2 === 'sem resposta',
+         'Encoder: junta sem leitura diz POR QUE, nao so "nada"', enc.med2);
   checar(enc.sb === 'lendo', 'Encoder: o cabecalho da aba mostra o estado', enc.sb);
   checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
          enc.w + ' px');
+
+  const rodas = await t.evaluate(() => {
+    const a = document.getElementById('cvR1'), b = document.getElementById('cvR2');
+    // Pixel nao transparente no meio = alguem desenhou o mostrador.
+    const ct = a.getContext('2d');
+    const px = ct.getImageData(Math.floor(a.width / 2), Math.floor(a.height / 2), 1, 1).data;
+    return { w1: a.width, w2: b.width, pintou: px[3] > 0 };
+  });
+  checar(rodas.w1 > 60 && rodas.w2 > 60 && rodas.pintou,
+         'Encoder: as duas rodinhas sao desenhadas com a posicao do motor',
+         rodas.w1 + 'x' + rodas.w1 + ' px, centro pintado: ' + rodas.pintou);
 
   // O historico tem de crescer com as consultas.
   await t.waitForTimeout(1600);

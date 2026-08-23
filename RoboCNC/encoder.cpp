@@ -12,6 +12,9 @@ static portMUX_TYPE   travaEnc = portMUX_INITIALIZER_UNLOCKED;
 static bool     linhaAberta = false;
 static uint32_t proximaEm   = 0;
 static uint8_t  vez         = 0;      // qual junta ler no proximo ciclo
+// O core 1 nao pode chamar rs.begin(): a UART e da tarefa do core 0, e
+// reabrir no meio de uma leitura corrompe o quadro. Ele so deixa recado.
+static volatile bool pedidoReabrir = false;
 
 // ---------------------------------------------------------------------
 static uint32_t cfgSerial(uint8_t paridade) {
@@ -91,7 +94,8 @@ static size_t trocar(const uint8_t* saida, size_t nSaida,
 // ---------------------------------------------------------------------
 // Le a posicao de uma junta. Devolve false se nao veio resposta boa.
 // ---------------------------------------------------------------------
-static bool lerPosicao(uint8_t i, int32_t& valor) {
+static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
+  motivo = MOTIVO_OK;
   const uint16_t quantos = configEncoder.trintaEDois ? 2 : 1;
 
   uint8_t q[8];
@@ -107,14 +111,21 @@ static bool lerPosicao(uint8_t i, int32_t& valor) {
 
   uint8_t r[16];
   const size_t n = trocar(q, 8, r, sizeof(r));
-  if (n < 5) return false;
+  if (n < 5) { motivo = MOTIVO_SILENCIO; return false; }
 
   const uint16_t cc = crc16(r, n - 2);
-  if (r[n - 2] != (uint8_t)(cc & 0xFF) || r[n - 1] != (uint8_t)(cc >> 8)) return false;
-  if (r[0] != configEncoder.id[i]) return false;
-  if (r[1] & 0x80) return false;                 // excecao: registrador nao existe
-  if (r[1] != configEncoder.funcao) return false;
-  if (r[2] != quantos * 2) return false;
+  if (r[n - 2] != (uint8_t)(cc & 0xFF) || r[n - 1] != (uint8_t)(cc >> 8)) {
+    motivo = MOTIVO_CRC; return false;
+  }
+  if (r[0] != configEncoder.id[i]) { motivo = MOTIVO_CRC; return false; }
+  if (r[1] & 0x80) {
+    // O driver respondeu "esse registrador nao existe". E informacao boa:
+    // ele esta la, so o endereco esta errado.
+    motivo = MOTIVO_EXCECAO; return false;
+  }
+  if (r[1] != configEncoder.funcao || r[2] != quantos * 2) {
+    motivo = MOTIVO_FORMATO; return false;
+  }
 
   if (quantos == 1) {
     valor = (int16_t)((r[3] << 8) | r[4]);       // com sinal: pode ser negativo
@@ -137,7 +148,7 @@ static bool lerPosicao(uint8_t i, int32_t& valor) {
 // motor. A reducao mecanica leva os dois para o mesmo lugar: graus da
 // junta.
 // ---------------------------------------------------------------------
-static void publicar(uint8_t i, bool ok, int32_t bruto) {
+static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   const Junta& j = (i == 0) ? J1 : J2;
   const float  cv  = configEncoder.contagensPorVolta[i];
   const float  red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
@@ -150,6 +161,7 @@ static void publicar(uint8_t i, bool ok, int32_t bruto) {
   const float comandado = (i == 0) ? s.t1 : s.t2;
 
   portENTER_CRITICAL(&travaEnc);
+  leitura[i].motivo = motivo;
   if (ok) {
     leitura[i].bruto    = bruto;
     leitura[i].idadeMs  = 0;
@@ -189,13 +201,20 @@ void encoderZerar(uint8_t junta) {
   portEXIT_CRITICAL(&travaEnc);
 }
 
+// Chamado pelo CORE 1. Nao toca no radio: so pede, e a tarefa do core 0
+// reabre no comeco do proximo ciclo. Reabrir a UART por baixo de uma
+// leitura em andamento corrompe o quadro -- e a mesma regra que separa
+// motor de rede neste projeto.
 void encoderReconfigurar() {
-  if (!configEncoder.ativo) { if (linhaAberta) { rs.end(); linhaAberta = false; } return; }
-  abrirLinha();
-  modoEscuta();
   portENTER_CRITICAL(&travaEnc);
-  for (uint8_t i = 0; i < 2; i++) { leitura[i].leituras = 0; leitura[i].falhas = 0; }
+  for (uint8_t i = 0; i < 2; i++) {
+    leitura[i].leituras = 0;
+    leitura[i].falhas   = 0;
+    leitura[i].motivo   = MOTIVO_NUNCA;
+    leitura[i].valido   = false;
+  }
   portEXIT_CRITICAL(&travaEnc);
+  pedidoReabrir = true;
 }
 
 // ---------------------------------------------------------------------
@@ -216,6 +235,10 @@ static void ciclo() {
   }
   portEXIT_CRITICAL(&travaEnc);
 
+  if (pedidoReabrir) {
+    pedidoReabrir = false;
+    if (linhaAberta) { rs.end(); linhaAberta = false; }
+  }
   if (!configEncoder.ativo) return;
   if (!linhaAberta) { abrirLinha(); modoEscuta(); }
 
@@ -231,11 +254,12 @@ static void ciclo() {
     vez = (uint8_t)(1 - vez);
     tentativas++;
   }
-  if (configEncoder.reg[vez] == 0) return;
+  if (configEncoder.reg[vez] == 0) return;   // junta nao configurada
 
   int32_t bruto = 0;
-  const bool ok = lerPosicao(vez, bruto);
-  publicar(vez, ok, bruto);
+  uint8_t motivo = MOTIVO_OK;
+  const bool ok = lerPosicao(vez, bruto, motivo);
+  publicar(vez, ok, bruto, motivo);
   vez = (uint8_t)(1 - vez);
 }
 
@@ -254,6 +278,7 @@ void encoderIniciar() {
   modoEscuta();
 
   memset((void*)leitura, 0, sizeof(leitura));
+  for (uint8_t i = 0; i < 2; i++) leitura[i].motivo = MOTIVO_NUNCA;
 
   if (configEncoder.ativo) {
     abrirLinha();
@@ -277,6 +302,7 @@ void encoderIniciar() {
 void encoderCicloTeste() { ciclo(); }
 void encoderReiniciarTeste() {
   memset((void*)leitura, 0, sizeof(leitura));
+  pedidoReabrir = false;
   linhaAberta = false;
   proximaEm = 0;
   vez = 0;
