@@ -556,37 +556,60 @@ static void monitorar(uint16_t endereco) {
   Serial.print(" e "); Serial.print(endereco + 1);
   Serial.println(". GIRE O EIXO A MAO. Qualquer tecla encerra.");
   Serial.println();
+  Serial.println("  reg      +1       32b alto|baixo   32b baixo|alto   unid/s");
+  Serial.println("  --------------------------------------------------------");
 
   abrirLinha();
-  bool primeiro = true;
-  int32_t base32 = 0;
+  bool     primeiro = true;
+  int32_t  antesAB = 0, antesBA = 0;
+  uint32_t antesMs = millis();
+  uint8_t  falhas  = 0;
 
   while (!Serial.available()) {
     uint16_t v0 = 0, v1 = 0;
     uint8_t  c = 0;
     const uint8_t a = lerUm(endereco, v0, c);
     const uint8_t b = lerUm((uint16_t)(endereco + 1), v1, c);
-    if (a != 1) { Serial.println("  (sem leitura)"); delay(300); continue; }
 
-    // As duas montagens possiveis de 32 bits. A que fizer sentido ao
-    // girar o eixo e a certa.
+    if (a != 1) {
+      // Nao inunda a tela: avisa uma vez a cada dez falhas seguidas.
+      if ((falhas++ % 10) == 0) Serial.println("  (sem leitura)");
+      delay(200);
+      continue;
+    }
+    falhas = 0;
+
+    // As duas montagens possiveis de 32 bits. Muito driver Modbus manda a
+    // palavra BAIXA primeiro; olhar so uma das duas faz a posicao parecer
+    // que pula sem sentido. A que crescer suave ao girar o eixo e a certa.
     const int32_t altoBaixo = (int32_t)(((uint32_t)v0 << 16) | v1);
     const int32_t baixoAlto = (int32_t)(((uint32_t)v1 << 16) | v0);
-    if (primeiro) { base32 = altoBaixo; primeiro = false; }
 
-    Serial.print("  reg "); Serial.print(endereco);
-    Serial.print(" = "); Serial.print(v0);
-    if (b == 1) {
-      Serial.print("   reg "); Serial.print(endereco + 1);
-      Serial.print(" = "); Serial.print(v1);
-      Serial.print("   |  32b(a<<16|b) = "); Serial.print(altoBaixo);
-      Serial.print("   32b(b<<16|a) = "); Serial.print(baixoAlto);
-      Serial.print("   delta = "); Serial.print(altoBaixo - base32);
-    }
-    Serial.println();
-    delay(200);
+    const uint32_t agora = millis();
+    const float dt = (agora - antesMs) / 1000.0f;
+    if (primeiro) { antesAB = altoBaixo; antesBA = baixoAlto; primeiro = false; }
+
+    // Velocidade pela montagem que variou MENOS em modulo: a montagem
+    // errada da saltos enormes, a certa varia suave.
+    const int32_t dAB = altoBaixo - antesAB;
+    const int32_t dBA = baixoAlto - antesBA;
+    const int32_t dBom = (labs(dAB) <= labs(dBA)) ? dAB : dBA;
+    const float vel = (dt > 0.001f) ? (dBom / dt) : 0.0f;
+
+    Serial.print("  ");   Serial.print(v0);
+    Serial.print("\t");   Serial.print((b == 1) ? (int)v1 : -1);
+    Serial.print("\t");   Serial.print(altoBaixo);
+    Serial.print("\t");   Serial.print(baixoAlto);
+    Serial.print("\t");   Serial.println(vel);
+
+    antesAB = altoBaixo; antesBA = baixoAlto; antesMs = agora;
+    delay(100);
   }
   while (Serial.available()) Serial.read();
+  Serial.println();
+  Serial.println("A coluna que crescer SUAVE ao girar o eixo e a montagem");
+  Serial.println("certa. A outra da saltos de dezenas de milhares -- e o");
+  Serial.println("sinal classico de palavra alta e baixa trocadas.");
   Serial.println("(fim do monitor)");
   Serial.println();
 }
