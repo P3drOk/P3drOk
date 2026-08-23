@@ -28,7 +28,10 @@ uint8_t  suavidadePartida     = SUAVIDADE_PADRAO;
 ConfigEncoder configEncoder = {
   true, ENC_BAUD_PADRAO, ENC_PARIDADE_PADRAO, ENC_FUNCAO_PADRAO,
   ENC_PERIODO_PADRAO, true, ENC_BAIXA_PRIMEIRO,
-  {1, 2}, {ENC_REG_PADRAO, ENC_REG_PADRAO},
+  // Junta 2 nasce com registrador 0 = NAO LIGADA. Perguntar a um driver
+  // que nao existe so gasta metade do barramento com tempo esgotado, e
+  // enche a tela de falha que nao e falha.
+  {1, 2}, {ENC_REG_PADRAO, 0},
   {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO}
 };
 ConfigEncoder encoderPendente = configEncoder;
@@ -258,18 +261,19 @@ void carregarConfiguracoes() {
   configEncoder.id[0]        = (uint8_t) prefs.getUInt("encId1", 1);
   configEncoder.id[1]        = (uint8_t) prefs.getUInt("encId2", 2);
   configEncoder.reg[0]       = (uint16_t)prefs.getUInt("encRg1", ENC_REG_PADRAO);
-  configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", ENC_REG_PADRAO);
+  configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", 0);
   configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", ENC_CONTAGENS_PADRAO);
   configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", ENC_CONTAGENS_PADRAO);
   // Registrador 0 e o inicio da tabela de parametros, nunca a posicao.
   // Um 0 gravado por uma versao anterior significa "nunca foi
   // configurado" -- vale o padrao medido, nao um endereco que so pode
   // devolver parametro.
-  for (uint8_t i = 0; i < 2; i++) {
-    if (configEncoder.reg[i] == 0) configEncoder.reg[i] = ENC_REG_PADRAO;
+  // Junta 1 com 0 gravado por versao anterior vira o padrao medido; a
+  // junta 2 pode ficar em 0 de proposito, que quer dizer "nao ligada".
+  if (configEncoder.reg[0] == 0) configEncoder.reg[0] = ENC_REG_PADRAO;
+  for (uint8_t i = 0; i < 2; i++)
     if (configEncoder.contagensPorVolta[i] < 1.0f)
       configEncoder.contagensPorVolta[i] = ENC_CONTAGENS_PADRAO;
-  }
   encoderPendente = configEncoder;
 
   prefs.end();

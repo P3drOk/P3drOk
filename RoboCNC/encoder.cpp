@@ -16,6 +16,19 @@ static uint8_t  vez         = 0;      // qual junta ler no proximo ciclo
 // reabrir no meio de uma leitura corrompe o quadro. Ele so deixa recado.
 static volatile bool pedidoReabrir = false;
 
+// Ultimo quadro trocado, para a tela poder mostrar o que saiu e o que
+// voltou. Sem isso, "sem resposta" e uma palavra sem prova -- e foi
+// exatamente ver os bytes crus que resolveu o diagnostico na bancada.
+static uint8_t  ultimoEnvio[8];
+static uint8_t  ultimaResposta[16];
+static uint8_t  nEnvio = 0, nResposta = 0;
+static uint8_t  juntaDoQuadro = 0;
+
+// Como a posicao de 32 bits e pedida ao driver. Ver lerPosicao().
+enum { LEITURA_DUPLA = 0, LEITURA_SIMPLES = 1 };
+static uint8_t modoLeitura[2]    = { LEITURA_DUPLA, LEITURA_DUPLA };
+static uint8_t falhasSeguidas[2] = { 0, 0 };
+
 // ---------------------------------------------------------------------
 static uint32_t cfgSerial(uint8_t paridade) {
   switch (paridade) {
@@ -37,9 +50,15 @@ static uint32_t usEntreQuadros() {
 }
 
 static void abrirLinha() {
-  if (linhaAberta) rs.end();
+  // end() seguido de begin() no mesmo instante deixa a UART do ESP32 em
+  // estado indefinido -- o driver de UART do core precisa de um tempo
+  // para largar e retomar os pinos. O sketch de diagnostico que funciona
+  // na bancada tem estas duas pausas; a primeira versao daqui nao tinha,
+  // e a diferenca era exatamente essa.
+  if (linhaAberta) { rs.end(); delay(5); }
   rs.begin(configEncoder.baud, cfgSerial(configEncoder.paridade),
            PIN_RS485_RX, PIN_RS485_TX);
+  delay(5);
   linhaAberta = true;
 }
 
@@ -73,36 +92,50 @@ static size_t trocar(const uint8_t* saida, size_t nSaida,
   modoEscuta();
 
   size_t n = 0;
-  const uint32_t limite = millis() + ENC_TIMEOUT_MS;
+  const uint32_t inicio = millis();
   uint32_t ultimoUs = micros();
 
-  while (millis() < limite && n < maxEntrada) {
+  // A subtracao com sinal aguenta a volta do contador de milissegundos;
+  // "millis() < inicio + espera" trava a leitura por 49 dias a cada 49
+  // dias de maquina ligada.
+  while ((int32_t)(millis() - inicio) < (int32_t)ENC_TIMEOUT_MS &&
+         n < maxEntrada) {
     if (rs.available()) {
       entrada[n++] = (uint8_t)rs.read();
       ultimoUs = micros();
       continue;
     }
-    if (n && (micros() - ultimoUs) > usEntreQuadros()) break;
-    // Sem esta pausa o laco vira espera ocupada: ate 60 ms queimando o
-    // core 0, que e o mesmo do servidor web. Um caractere a 19200 leva
-    // 570 us, entao esperar 50 us entre olhadas nao perde byte nenhum.
-    delayMicroseconds(50);
+    if (n) {
+      // O quadro ja comecou: acaba em poucos milissegundos, e e o
+      // silencio de 3,5 caracteres que marca o fim. Aqui vale olhar de
+      // perto. Um caractere a 19200 leva 570 us: 50 us nao perde byte.
+      if ((micros() - ultimoUs) > usEntreQuadros()) break;
+      delayMicroseconds(50);
+    } else {
+      // Ainda esperando o PRIMEIRO byte, o que pode levar a espera
+      // inteira. delayMicroseconds e espera OCUPADA: ficar nela queima o
+      // core 0, que e o mesmo do servidor web, e o painel engasga a cada
+      // driver que demora. vTaskDelay entrega o core; a UART tem fila
+      // propria em hardware, entao dormir 1 ms nao perde byte nenhum.
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
   }
   return n;
 }
 
 // ---------------------------------------------------------------------
-// Le a posicao de uma junta. Devolve false se nao veio resposta boa.
+// Uma pergunta "ler N registradores a partir de X". Devolve as palavras
+// cruas, na ordem em que vieram do fio.
 // ---------------------------------------------------------------------
-static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
+static bool lerRegs(uint8_t i, uint16_t reg, uint16_t quantos,
+                    uint16_t* palavras, uint8_t& motivo) {
   motivo = MOTIVO_OK;
-  const uint16_t quantos = configEncoder.trintaEDois ? 2 : 1;
 
   uint8_t q[8];
   q[0] = configEncoder.id[i];
   q[1] = configEncoder.funcao;
-  q[2] = (uint8_t)(configEncoder.reg[i] >> 8);
-  q[3] = (uint8_t)(configEncoder.reg[i] & 0xFF);
+  q[2] = (uint8_t)(reg >> 8);
+  q[3] = (uint8_t)(reg & 0xFF);
   q[4] = (uint8_t)(quantos >> 8);
   q[5] = (uint8_t)(quantos & 0xFF);
   const uint16_t c = crc16(q, 6);
@@ -111,6 +144,14 @@ static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
 
   uint8_t r[16];
   const size_t n = trocar(q, 8, r, sizeof(r));
+
+  portENTER_CRITICAL(&travaEnc);
+  memcpy(ultimoEnvio, q, 8);           nEnvio = 8;
+  memcpy(ultimaResposta, r, n < sizeof(ultimaResposta) ? n : sizeof(ultimaResposta));
+  nResposta = (uint8_t)(n < sizeof(ultimaResposta) ? n : sizeof(ultimaResposta));
+  juntaDoQuadro = (uint8_t)(i + 1);
+  portEXIT_CRITICAL(&travaEnc);
+
   if (n < 5) { motivo = MOTIVO_SILENCIO; return false; }
 
   const uint16_t cc = crc16(r, n - 2);
@@ -119,25 +160,95 @@ static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
   }
   if (r[0] != configEncoder.id[i]) { motivo = MOTIVO_CRC; return false; }
   if (r[1] & 0x80) {
-    // O driver respondeu "esse registrador nao existe". E informacao boa:
-    // ele esta la, so o endereco esta errado.
+    // O driver respondeu "nao sei responder isso". E informacao boa: ele
+    // esta la, so a pergunta esta errada.
     motivo = MOTIVO_EXCECAO; return false;
   }
   if (r[1] != configEncoder.funcao || r[2] != quantos * 2) {
     motivo = MOTIVO_FORMATO; return false;
   }
+  for (uint16_t k = 0; k < quantos; k++)
+    palavras[k] = (uint16_t)((r[3 + k * 2] << 8) | r[4 + k * 2]);
+  return true;
+}
 
-  if (quantos == 1) {
-    valor = (int16_t)((r[3] << 8) | r[4]);       // com sinal: pode ser negativo
+// ---------------------------------------------------------------------
+// Le a posicao de uma junta. Devolve false se nao veio resposta boa.
+//
+// Duas palavras de 16 bits podem vir de duas maneiras:
+//
+//   DUPLA   -- uma pergunta so, "leia 2 registradores". E barata e, o
+//              que importa mais, ATOMICA: as duas palavras saem do mesmo
+//              instante do contador.
+//   SIMPLES -- duas perguntas de um registrador cada. E o que o programa
+//              de teste de bancada faz, e portanto a UNICA forma
+//              provada neste driver.
+//
+// O sistema comeca na dupla e cai para a simples sozinho se o driver nao
+// responder a ela. Foi exatamente essa a diferenca entre o teste que
+// funcionou e o sistema que so dava falha: ninguem nunca tinha pedido
+// dois registradores de uma vez a este driver.
+// ---------------------------------------------------------------------
+static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
+  const uint16_t reg = configEncoder.reg[i];
+
+  if (!configEncoder.trintaEDois) {
+    uint16_t p = 0;
+    if (!lerRegs(i, reg, 1, &p, motivo)) return false;
+    valor = (int16_t)p;                    // com sinal: pode ser negativo
     return true;
   }
-  const uint16_t p0 = (uint16_t)((r[3] << 8) | r[4]);
-  const uint16_t p1 = (uint16_t)((r[5] << 8) | r[6]);
-  // Muito driver Modbus manda a palavra BAIXA primeiro. Errar isto faz a
-  // posicao dar saltos de dezenas de milhares.
-  valor = configEncoder.baixaPrimeiro
-        ? (int32_t)(((uint32_t)p1 << 16) | p0)
-        : (int32_t)(((uint32_t)p0 << 16) | p1);
+
+  const bool baixa = configEncoder.baixaPrimeiro;
+
+  if (modoLeitura[i] == LEITURA_DUPLA) {
+    uint16_t p[2];
+    if (lerRegs(i, reg, 2, p, motivo)) {
+      falhasSeguidas[i] = 0;
+      valor = baixa ? (int32_t)(((uint32_t)p[1] << 16) | p[0])
+                    : (int32_t)(((uint32_t)p[0] << 16) | p[1]);
+      return true;
+    }
+    // Silencio pode ser fio. Excecao ou formato e o driver dizendo que
+    // NAO faz leitura de dois registradores -- ai nao adianta insistir.
+    if (motivo == MOTIVO_EXCECAO || motivo == MOTIVO_FORMATO ||
+        ++falhasSeguidas[i] >= 4) {
+      modoLeitura[i]   = LEITURA_SIMPLES;
+      falhasSeguidas[i] = 0;
+    }
+    return false;
+  }
+
+  // Duas perguntas nao sao atomicas: a palavra baixa pode dar a volta
+  // entre uma e outra, e o resultado seria um salto de 65536 contagens
+  // que nao aconteceu. Le a ALTA duas vezes, uma de cada lado da baixa,
+  // e so aceita quando ela nao mudou no meio.
+  const uint16_t regBaixa = baixa ? reg : (uint16_t)(reg + 1);
+  const uint16_t regAlta  = baixa ? (uint16_t)(reg + 1) : reg;
+
+  uint16_t alta1 = 0, palavraBaixa = 0, alta2 = 0;
+  const bool leu = lerRegs(i, regAlta,  1, &alta1, motivo)
+                && lerRegs(i, regBaixa, 1, &palavraBaixa, motivo)
+                && lerRegs(i, regAlta,  1, &alta2, motivo);
+  if (!leu) {
+    // Nem a forma provada respondeu: o problema nao e a pergunta, e o
+    // fio ou o endereco. Volta para a dupla depois de um tempo, senao a
+    // maquina fica presa na forma cara triplicando perguntas no vazio --
+    // e, quando o fio voltar, quem funcionar ganha.
+    if (++falhasSeguidas[i] >= 8) {
+      modoLeitura[i]    = LEITURA_DUPLA;
+      falhasSeguidas[i] = 0;
+    }
+    return false;
+  }
+  falhasSeguidas[i] = 0;
+  if (alta1 != alta2) {
+    // Virou a palavra no meio da leitura. Nao e falha do driver: a
+    // proxima volta do ciclo pega o par inteiro.
+    motivo = MOTIVO_VIRADA;
+    return false;
+  }
+  valor = (int32_t)(((uint32_t)alta1 << 16) | palavraBaixa);
   return true;
 }
 
@@ -212,6 +323,10 @@ void encoderReconfigurar() {
     leitura[i].falhas   = 0;
     leitura[i].motivo   = MOTIVO_NUNCA;
     leitura[i].valido   = false;
+    // Configuracao nova, pergunta nova: tenta de novo a forma barata em
+    // vez de herdar a decisao tomada com a configuracao antiga.
+    modoLeitura[i]    = LEITURA_DUPLA;
+    falhasSeguidas[i] = 0;
   }
   portEXIT_CRITICAL(&travaEnc);
   pedidoReabrir = true;
@@ -237,7 +352,7 @@ static void ciclo() {
 
   if (pedidoReabrir) {
     pedidoReabrir = false;
-    if (linhaAberta) { rs.end(); linhaAberta = false; }
+    if (linhaAberta) { rs.end(); delay(5); linhaAberta = false; }
   }
   if (!configEncoder.ativo) return;
   if (!linhaAberta) { abrirLinha(); modoEscuta(); }
@@ -292,7 +407,14 @@ void encoderIniciar() {
   }
 
 #ifndef ROBOCNC_TESTE
-  xTaskCreatePinnedToCore(tarefaEncoder, "encoder", 3072, nullptr, 1, nullptr, 0);
+  // Prioridade 2, ACIMA da tarefa web (1). O motivo e concreto: entre
+  // rs.flush() e baixar o DE ha uma janela de menos de um milissegundo
+  // em que a linha ainda esta sendo dirigida por nos. Com a mesma
+  // prioridade da tarefa web, o escalonador troca de tarefa no tique de
+  // 1 ms bem no meio dessa janela; o driver responde, nos ainda estamos
+  // com o DE alto, e o quadro morre na colisao. Toda vez, no mesmo
+  // ponto -- que e o que faz parecer que "nunca le nada".
+  xTaskCreatePinnedToCore(tarefaEncoder, "encoder", 3072, nullptr, 2, nullptr, 0);
 #else
   (void)tarefaEncoder;
 #endif
@@ -306,5 +428,40 @@ void encoderReiniciarTeste() {
   linhaAberta = false;
   proximaEm = 0;
   vez = 0;
+  for (uint8_t i = 0; i < 2; i++) {
+    modoLeitura[i]    = LEITURA_DUPLA;
+    falhasSeguidas[i] = 0;
+  }
+  nEnvio = nResposta = juntaDoQuadro = 0;
 }
 #endif
+
+// ---------------------------------------------------------------------
+// O ultimo quadro que passou no fio, em hexadecimal. E o que transforma
+// "nao le nada" num diagnostico.
+// ---------------------------------------------------------------------
+void encoderUltimoQuadro(char* destino, size_t tam) {
+  if (!destino || tam == 0) return;
+  destino[0] = '\0';
+
+  uint8_t env[8], resp[16], nE, nR, jq;
+  portENTER_CRITICAL(&travaEnc);
+  memcpy(env, ultimoEnvio, sizeof(env));
+  memcpy(resp, ultimaResposta, sizeof(resp));
+  nE = nEnvio; nR = nResposta; jq = juntaDoQuadro;
+  portEXIT_CRITICAL(&travaEnc);
+
+  if (!nE) { snprintf(destino, tam, "nenhuma pergunta enviada ainda"); return; }
+
+  const uint8_t iq = (jq == 2) ? 1 : 0;
+  size_t p = 0;
+  p += (size_t)snprintf(destino + p, tam - p, "junta %u  %s  ->", (unsigned)jq,
+                        modoLeitura[iq] == LEITURA_DUPLA
+                          ? "2 registradores" : "1 de cada vez");
+  for (uint8_t k = 0; k < nE && p + 4 < tam; k++)
+    p += (size_t)snprintf(destino + p, tam - p, " %02X", env[k]);
+  if (p + 6 < tam) p += (size_t)snprintf(destino + p, tam - p, "   <-");
+  if (!nR) { snprintf(destino + p, tam - p, " (silencio)"); return; }
+  for (uint8_t k = 0; k < nR && p + 4 < tam; k++)
+    p += (size_t)snprintf(destino + p, tam - p, " %02X", resp[k]);
+}

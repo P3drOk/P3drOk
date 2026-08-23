@@ -267,20 +267,71 @@ quando o eixo gira. Os dados vivos estão na função 4.
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
 "nunca foi configurado" e cai no padrão medido.
 
+### Duas formas de perguntar a posição de 32 bits
+
+A posição ocupa dois registradores. Dá para pedir os dois **de uma vez**
+(uma pergunta, resposta atômica, mais barata) ou **um de cada vez**
+(duas perguntas). O programa de bancada só usa a segunda — então ela é a
+única comprovada neste driver.
+
+O sistema **não escolhe por adivinhação**: começa na dupla e cai sozinho
+para uma-de-cada-vez se o driver recusar, e volta a tentar a dupla se
+nem essa responder (senão uma máquina com fio partido ficaria presa na
+forma cara). A linha do quadro cru, no fim do painel, diz qual está em
+uso.
+
+Duas perguntas não são atômicas: a palavra baixa pode dar a volta entre
+uma e outra. Por isso a forma simples lê **alta, baixa, alta** e só
+aceita o par quando a palavra alta não mudou no meio.
+
 ### Se não estiver lendo
 
 A célula do medido diz **por quê**, não só "nada":
 
 | Na tela | O que é |
 |---|---|
+| `não ligada` | esta junta está com registrador 0 — não é falha, é ausência |
 | `aguardando` | ainda não perguntou |
 | `sem resposta` | ninguém respondeu naquele endereço Modbus |
 | `quadro corrompido` | veio byte, mas o CRC não fecha — velocidade ou paridade |
 | `registrador recusado` | **o driver está aí e respondeu** "esse registrador não existe". Só o endereço está errado |
 | `formato inesperado` | respondeu, mas não no formato pedido — confira 16/32 bits |
+| `contagem virou no meio` | a palavra alta mudou entre duas perguntas. Não é defeito: o próximo ciclo pega o par inteiro |
+
+**Com um driver só ligado**, a junta 2 nasce com registrador 0 e aparece
+como *não ligada*. Ela não gasta barramento nem conta falha — perguntar
+a um driver que não existe só enche a tela de falha que não é falha.
+
+#### O quadro cru
+
+Contador de falha não diagnostica nada. Por isso o painel mostra, em
+hexadecimal, **o último quadro que passou no fio** — a mesma coisa que o
+programa de bancada mostra:
+
+```
+junta 1  2 registradores  -> 01 04 00 05 00 02 21 CB   <- 01 04 04 30 AF 00 02 …
+```
+
+| depois da seta de volta | o que é |
+|---|---|
+| `(silencio)` | ninguém respondeu — fio A/B, DE/RE, endereço |
+| bytes, mas sem leitura | respondeu outra coisa — função ou registrador |
 
 A rodinha do meio é a prova visual: se o braço anda e o disco central não
 gira, a leitura morreu.
+
+### Espera pela resposta
+
+`ENC_TIMEOUT_MS` é **150 ms**, que é a espera que o programa de bancada
+usa para ler registrador nesta máquina. Não é chute nem folga inventada:
+com 60 ms a resposta do T3D chegava depois do prazo e virava "sem
+resposta" — falha em cima de driver bom.
+
+Enquanto espera o primeiro byte a tarefa **dorme**, em vez de girar em
+`delayMicroseconds`: o núcleo 0 é o mesmo do servidor web, e queimá-lo
+por 150 ms a cada driver lento engasgaria o painel. Depois que o quadro
+começa, volta a olhar de perto — é o silêncio de 3,5 caracteres que marca
+o fim.
 
 ### Palavra baixa primeiro
 

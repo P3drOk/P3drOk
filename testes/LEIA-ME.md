@@ -11,7 +11,7 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/freertos/` | fila de comandos com capacidade real e contagem de descartes |
 | `mocks/SD.h`, `mocks/FS.h`, `mocks/SPI.h` | sistema de arquivos em memória, com cartão ausente e escrita falhando |
 | `mocks/WiFi.h` | só para o `.ino` compilar |
-| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro**: responde ao quadro, encena mudo, exceção e CRC ruim |
+| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro**: tabela de registradores de verdade (um ou dois por pergunta), encena mudo, exceção, CRC ruim e driver que **recusa** a leitura dupla |
 | `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler |
 
 `servidor_web.cpp` **entra** no banco. Os dois defeitos que o operador sentiu na
@@ -96,6 +96,8 @@ no próprio `checar(...)`.
 | L04 | driver mudo, exceção e CRC ruim não viram posição |
 | L05 | o módulo nunca escreve, e só se configura em manual |
 | L06 | os números medidos na máquina do operador são remontados iguais |
+| L07 | falhou: o quadro cru na tela diz o porquê, e junta não ligada não é falha |
+| L08 | driver que só responde um registrador por pergunta também é lido, sozinho |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

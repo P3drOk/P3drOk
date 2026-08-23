@@ -100,7 +100,12 @@ static const bool     ENC_BAIXA_PRIMEIRO = true;
 static const float    ENC_CONTAGENS_PADRAO = 131072.0f;   // encoder de 17 bits
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;
-static const uint32_t ENC_TIMEOUT_MS     = 60;      // resposta do driver
+// Tempo maximo esperando a resposta do driver. 150 ms nao e chute: e a
+// espera que o programa de teste de bancada usa para ler registrador,
+// e com ela o HL-T3DL20A responde. Com 60 ms a resposta chegava
+// depois do prazo e virava "sem resposta" -- falha em cima de
+// driver bom.
+static const uint32_t ENC_TIMEOUT_MS     = 150;     // resposta do driver
 // Sem leitura por este tempo, o valor deixa de ser confiavel e a
 // interface para de mostrar erro calculado em cima de dado velho.
 static const uint32_t ENC_IDADE_MAX_MS   = 1000;

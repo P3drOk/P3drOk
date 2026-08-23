@@ -1224,3 +1224,130 @@ de chegar ao operador.
 |-------|-----------|-------|
 | firmware | 160 / 0 | **163 / 0** |
 | interface | 89 / 0 | **90 / 0** |
+
+---
+
+# Rodada 12 — "0 leituras, 222 falhas"
+
+O operador ligou **um** driver, abriu a aba Encoder e viu as duas juntas
+com o mesmo número: *0 leituras, 222 falhas*. O mesmo motor, o mesmo
+driver e a mesma fiação respondiam sem erro nenhum ao programa de
+bancada `ferramentas/teste_rs485`.
+
+Quando o teste passa e a máquina falha, a diferença não está no motor:
+está no que o sistema faz **diferente** do teste. Achei cinco.
+
+## R28 · A pergunta que ninguém nunca tinha feito ao driver  ✅  `L08`
+
+A posição tem 32 bits, dois registradores. O firmware pedia **os dois de
+uma vez** — uma pergunta, resposta atômica, mais barata. O programa de
+bancada que funcionou **nunca** fez isso: ele lê **um registrador por
+pergunta**, sempre.
+
+Ou seja: a única forma de perguntar comprovada neste driver era a que o
+sistema não usava. E se o T3D recusa a leitura dupla, o resultado é
+exatamente o que o operador viu — falha em cima de driver perfeito.
+
+Não dá para provar num escritório qual das duas o driver aceita. Então o
+sistema deixou de apostar:
+
+- começa na **dupla** (atômica, barata);
+- se ela levar exceção, formato errado, ou falhar quatro vezes seguidas,
+  cai sozinho para **um registrador por vez**;
+- se nem essa responder, volta a tentar a dupla — senão uma máquina com
+  fio partido ficaria presa na forma cara, triplicando perguntas no
+  vazio, e quando o fio voltasse ganharia a forma errada.
+
+Duas perguntas não são atômicas: a palavra baixa pode dar a volta entre
+uma e outra e a posição saltaria 65 536 contagens que nunca existiram.
+Por isso a forma simples lê **alta, baixa, alta** e só aceita o par
+quando a palavra alta não mudou no meio. Quando muda, não conta como
+defeito: `MOTIVO_VIRADA`, "contagem virou no meio", e o próximo ciclo
+pega o par inteiro.
+
+A tela diz qual das duas está em uso, em texto.
+
+## R29 · A espera curta demais  ✅
+
+`ENC_TIMEOUT_MS` era **60 ms**. Nenhum caminho de leitura do programa de
+bancada usa menos que **80**, e o que o operador rodou com sucesso usa
+**150**. Uma resposta que chega em 90 ms é resposta boa; com 60 ms de
+prazo ela virava "sem resposta". Passou para 150 ms — o número que já
+tinha funcionado na máquina dele, não um chute.
+
+E 150 ms de espera **ocupada** seria pior que o defeito: `delayMicroseconds`
+não devolve o núcleo, e o núcleo 0 é o mesmo do servidor web — o painel
+engasgaria a cada driver lento. Agora, enquanto espera o **primeiro**
+byte, a tarefa dorme com `vTaskDelay(1 ms)`; a UART tem fila em hardware
+e não perde nada. Depois que o quadro começa, volta a olhar de 50 em 50
+µs, que é o que enxerga o silêncio de 3,5 caracteres.
+
+## R30 · Três diferenças menores, todas reais  ✅
+
+- **`abrirLinha()` sem pausas.** O programa de bancada faz `end()`,
+  `delay(5)`, `begin()`, `delay(5)`. O firmware fazia `end()` e `begin()`
+  colados; o driver de UART do core precisa de tempo para largar e
+  retomar os pinos.
+- **Prioridade da tarefa igual à do servidor web (1).** Entre
+  `rs.flush()` e baixar o DE existe uma janela de menos de um
+  milissegundo em que ainda somos nós dirigindo a linha. Com prioridade
+  igual, o escalonador troca de tarefa no tique de 1 ms bem dentro dessa
+  janela: o driver responde, o nosso DE ainda está alto, e o quadro morre
+  na colisão — sempre no mesmo ponto. Subiu para 2.
+- **A junta 2 nascia perguntando.** Registrador padrão 5 no endereço 2,
+  com um único driver na bancada: metade do barramento gasta em tempo
+  esgotado, e a tela cheia de "falha" que não é falha. Agora nasce com
+  registrador **0 = não ligada**, e a tela diz *não ligada* em vez de
+  contar falha.
+
+## R31 · Contador de falha não é diagnóstico  ✅  `L07`
+
+"222 falhas" não diz nada. O que resolveu o caso na bancada foi **ver os
+bytes**. Então a máquina passou a mostrar os mesmos bytes: o último
+quadro trocado, em hexadecimal, no painel e em `/api/encoder`.
+
+Com ele, o operador separa sozinho os dois casos que exigem consertos
+opostos:
+
+| o que aparece depois da seta de volta | o que é |
+|---|---|
+| `(silencio)` | ninguém respondeu — fio A/B, DE/RE, endereço |
+| bytes, mas sem leitura | respondeu outra coisa — função ou registrador |
+
+## R32 · O HTTP 200 que era recusa  ✅  `K02`
+
+O banco pegou: logo depois de trocar de etapa na calibração, `/api/sentido`
+respondia **200** e o comando era recusado pelo núcleo 1 em seguida. O
+servidor decide olhando o `Snapshot`, que era publicado a cada 40 ms —
+uma cópia velha por uma fração de segundo.
+
+40 ms de atraso é irrelevante para posição e velocidade, que é para o que
+esse intervalo existe. Não é irrelevante para **modo** e **etapa**, que
+são justamente o que decide se um comando pode entrar. Agora troca de
+modo ou de etapa publica na hora; o resto continua a 40 ms.
+
+## R33 · Dois mocks que mentiam  ✅
+
+Da mesma família da rodada 7:
+
+- **`vTaskDelay` era vazio.** No ESP32 ela dorme e o relógio anda. Vazia,
+  um laço que espera por tempo giraria para sempre no banco — o mock
+  esconderia exatamente o defeito que deveria mostrar.
+- **O escravo Modbus não era uma tabela de registradores.** Só sabia
+  responder à pergunta que o firmware fazia. Agora tem os dois
+  registradores de verdade, atende leitura de um ou de dois, e sabe
+  encenar o driver que **recusa** a pergunta dupla — sem isso o `L08`
+  não existiria.
+
+E o barramento passou a ser reiniciado entre cenários, como o NVS e o
+sistema de arquivos já eram: um cenário que terminava com o driver mudo
+deixava o seguinte gastando o tempo esgotado de cada leitura, e o relógio
+do banco corria mais rápido que o movimento. Quatro cenários de
+calibração falharam por isso, nenhum deles com defeito nenhum.
+
+## Cobertura
+
+| banco | rodada 11 | agora |
+|-------|-----------|-------|
+| firmware | 163 / 0 | **171 / 0** |
+| interface | 90 / 0 | **93 / 0** |

@@ -771,6 +771,13 @@ h4:first-child{margin-top:0}
             <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
             <div class="pq2" id="qEncZerar"></div>
             <div class="res" id="encEstado">--</div>
+            <div class="nt">Ultima conversa no fio, byte a byte &mdash; a
+            mesma coisa que o programa de teste de bancada mostra. Se depois
+            da seta de volta vier <b>(silencio)</b>, ninguem respondeu: veja
+            fio A/B, o DE/RE e o <b>endereco</b>. Se vierem bytes mas a
+            leitura nao vale, o driver respondeu outra coisa: veja a
+            <b>funcao</b> e o <b>registrador</b>.</div>
+            <div class="res" id="encQuadro">--</div>
           </div>
         </div>
 
@@ -2043,7 +2050,8 @@ redeAtualizar();
 /* Por que nao esta lendo. Espelha MotivoEncoder em encoder.h -- tela que
    so diz "nada" nao ensina ninguem. */
 const MOTIVO=["ok","aguardando","sem resposta","quadro corrompido",
-              "registrador recusado","formato inesperado"];
+              "registrador recusado","formato inesperado",
+              "contagem virou no meio"];
 const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
 const encHist=[[],[]];
 let encD=null, encCarregou=false;
@@ -2217,7 +2225,13 @@ function encAplicar(d){
                 Math.abs(L.erro)>0.5);
       encHist[i].push(L.erro);
     }else{
-      encCelula("eM"+(i+1),d.ativo?MOTIVO[L.motivo||1]:"desligado");
+      /* Registrador 0 quer dizer "esta junta nao foi ligada ainda".
+         Nao e falha: e o estado normal de quem so tem um driver na
+         bancada, e chamar isso de falha assusta a toa. */
+      const reg=(i===0)?d.reg1:d.reg2;
+      encCelula("eM"+(i+1), !d.ativo?"desligado"
+                          : !reg?"nao ligada"
+                          : MOTIVO[L.motivo||1]);
       encCelula("eE"+(i+1),"--",false);
       /* Sem leitura o historico continua andando com zero, senao o
          grafico mente dizendo que estava tudo bem no buraco. */
@@ -2230,12 +2244,16 @@ function encAplicar(d){
   const L1=j[0]||{},L2=j[1]||{};
   $("sbEnc").textContent = !d.ativo ? "desligado"
     : (L1.ok||L2.ok) ? "lendo" : "sem resposta";
+  /* Junta sem registrador nao aparece com contador de falha: ela nem
+     chega a ser perguntada. */
+  const linhaJunta=(n,reg,L)=>
+    "junta "+n+": "+(!reg ? "nao ligada"
+      : (L.n||0)+" leituras, "+(L.falhas||0)+" falhas"+
+        (L.ok?("   bruto "+L.bruto):""));
   $("encEstado").textContent=
-    "junta 1: "+(L1.n||0)+" leituras, "+(L1.falhas||0)+" falhas"+
-    (L1.ok?("   bruto "+L1.bruto):"")+
-    "\njunta 2: "+(L2.n||0)+" leituras, "+(L2.falhas||0)+" falhas"+
-    (L2.ok?("   bruto "+L2.bruto):"")+
+    linhaJunta(1,d.reg1,L1)+"\n"+linhaJunta(2,d.reg2,L2)+
     "\n"+d.baud+" bps  ·  funcao "+d.func+"  ·  "+d.per+" ms";
+  $("encQuadro").textContent=d.quadro||"--";
 
   if(!encCarregou){
     encCarregou=true;

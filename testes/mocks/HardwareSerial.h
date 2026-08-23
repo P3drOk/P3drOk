@@ -27,6 +27,10 @@ struct EscravoModbus {
   bool     mudo     = false;    // encena driver que nao responde
   uint8_t  excecao  = 0;        // se != 0, responde excecao
   bool     crcRuim  = false;
+  // Driver que so aceita UM registrador por pergunta. Existe de verdade:
+  // o programa de bancada nunca pediu dois de uma vez, entao ninguem
+  // provou que o T3D aceita. Com isto o banco exercita esse driver.
+  bool     soUmRegistrador = false;
   uint32_t perguntas = 0;
 };
 
@@ -105,23 +109,33 @@ class HardwareSerial {
       }
       const uint16_t reg = (uint16_t)((q[2] << 8) | q[3]);
       const uint16_t qtd = (uint16_t)((q[4] << 8) | q[5]);
-      if (reg != e.regBase || (qtd != 1 && qtd != 2)) {
+
+      // A posicao mora em regBase (primeira palavra) e regBase+1
+      // (segunda), na ordem que baixaPrimeiro diz. Ler uma so, ou as
+      // duas de uma vez, tem que dar a mesma coisa -- e por isso o
+      // escravo do banco e uma tabela de registradores de verdade, e nao
+      // um caso especial para cada pergunta.
+      const uint16_t alta  = (uint16_t)(((uint32_t)e.posicao >> 16) & 0xFFFF);
+      const uint16_t baixa = (uint16_t)((uint32_t)e.posicao & 0xFFFF);
+      const uint16_t palavra[2] = { e.baixaPrimeiro ? baixa : alta,
+                                    e.baixaPrimeiro ? alta  : baixa };
+
+      if (e.soUmRegistrador && qtd > 1) {
+        r = {e.id, (uint8_t)(q[1] | 0x80), 3};   // valor de dado ilegal
+        empurrar(r, true);
+        return;
+      }
+      if (qtd < 1 || qtd > 2 || reg < e.regBase || reg + qtd > e.regBase + 2) {
         r = {e.id, (uint8_t)(q[1] | 0x80), 2};   // endereco ilegal
         empurrar(r, true);
         return;
       }
 
       r = {e.id, e.funcao, (uint8_t)(qtd * 2)};
-      if (qtd == 1) {
-        r.push_back((uint8_t)((e.posicao >> 8) & 0xFF));
-        r.push_back((uint8_t)(e.posicao & 0xFF));
-      } else {
-        const uint16_t alta  = (uint16_t)(((uint32_t)e.posicao >> 16) & 0xFFFF);
-        const uint16_t baixa = (uint16_t)((uint32_t)e.posicao & 0xFFFF);
-        const uint16_t p0 = e.baixaPrimeiro ? baixa : alta;
-        const uint16_t p1 = e.baixaPrimeiro ? alta  : baixa;
-        r.push_back((uint8_t)(p0 >> 8)); r.push_back((uint8_t)(p0 & 0xFF));
-        r.push_back((uint8_t)(p1 >> 8)); r.push_back((uint8_t)(p1 & 0xFF));
+      for (uint16_t k = 0; k < qtd; k++) {
+        const uint16_t v = palavra[(reg - e.regBase) + k];
+        r.push_back((uint8_t)(v >> 8));
+        r.push_back((uint8_t)(v & 0xFF));
       }
       empurrar(r, !e.crcRuim);
       if (e.crcRuim) { fila.push_back(0xAA); fila.push_back(0xBB); }

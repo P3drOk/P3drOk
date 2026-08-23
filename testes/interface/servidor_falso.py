@@ -69,14 +69,17 @@ TRAJ = [[round(300 * _m.cos(_a / 40.0), 1), round(300 * _m.sin(_a / 40.0) - 60, 
 REDE = {"ssid": "Robo2dof", "ip": "192.168.4.1", "nome": "robo2dof"}
 
 import math as _mm
-_enc = {"n": 0}
+# reg2 = 0 e a bancada do operador: um driver so, junta 2 nao ligada. O
+# banco troca isso por /teste/encoder para ver tambem a junta ligada que
+# nao responde -- os dois casos escrevem coisas diferentes na tela.
+_enc = {"n": 0, "reg2": 0, "motivo2": 1}
 def _encoder():
     _enc["n"] += 1
     # erro pequeno e oscilante na junta 1, junta 2 sem leitura
     e1 = 0.12 * _mm.sin(_enc["n"] / 6.0)
     return {"ativo": True, "baud": 19200, "par": 0, "func": 3, "per": 50,
             "b32": True, "lo": False,
-            "id1": 1, "id2": 2, "reg1": 4096, "reg2": 0,
+            "id1": 1, "id2": 2, "reg1": 4096, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],
             "j1min": estado["j1min"], "j1max": estado["j1max"],
@@ -85,7 +88,10 @@ def _encoder():
                    "graus": estado["t1"] - e1, "erro": e1,
                    "idade": 20, "n": _enc["n"], "falhas": 2, "motivo": 0},
                   {"ok": False, "bruto": 0, "ref": 0, "graus": 0.0, "erro": 0.0,
-                   "idade": 9999, "n": 0, "falhas": 0, "motivo": 2}]}
+                   "idade": 9999, "n": 0, "falhas": 0,
+                   "motivo": _enc["motivo2"]}],
+            "quadro": "junta 1  2 registradores  -> 01 03 10 00 00 02 C1 0C"
+                      "   <- 01 03 04 E2 40 00 01 5B 2E"}
 
 SD = {"estado": "PRONTO", "ocupado": False, "seq": 7,
       "totalMB": 3782, "livreMB": 3779, "msg": "cartao montado"}
@@ -163,6 +169,9 @@ class H(BaseHTTPRequestHandler):
         # maquina (sem calibracao, servos desligados, executando...).
         if caminho == "/teste/estado":
             estado.update(json.loads(corpo or b"{}"))
+            return self._envia("ok", "text/plain")
+        if caminho == "/teste/encoder":
+            _enc.update(json.loads(corpo or b"{}"))
             return self._envia("ok", "text/plain")
         return self._envia("ok", "text/plain")
 

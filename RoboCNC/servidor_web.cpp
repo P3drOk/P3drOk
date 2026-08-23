@@ -620,7 +620,17 @@ static void handleEncoder() {
   jsonEncoderJunta(out, 1);
   out += ',';
   jsonEncoderJunta(out, 2);
-  out += "]}";
+  out += "]";
+
+  // O ultimo quadro cru. Contador de falha sozinho nao diz nada: com os
+  // bytes na tela da para separar "ninguem respondeu" (fio, DE/RE, id
+  // errado) de "respondeu outra coisa" (funcao ou registrador errado),
+  // que e a mesma pista que o codigo de teste de bancada da.
+  char quadro[96];
+  encoderUltimoQuadro(quadro, sizeof(quadro));
+  out += ",\"quadro\":\"";
+  out += quadro;   // hex e palavras fixas: nada para escapar
+  out += "\"}";
   server.send(200, "application/json", out);
 }
 

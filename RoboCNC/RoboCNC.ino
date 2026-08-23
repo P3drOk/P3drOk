@@ -584,8 +584,20 @@ static void supervisionar() {
 
 // ---------------------------------------------------------------------
 static void publicar() {
-  if (millis() - ultimaPublicacao < 40) return;
+  // O intervalo de 40 ms e uma economia de banda para valores que mudam
+  // o tempo todo (posicao, velocidade). Modo e etapa do assistente nao
+  // sao desses: o painel decide o que pode mandar olhando para eles, e
+  // uma copia velha faz o servidor aceitar um comando que o core 1 vai
+  // recusar logo em seguida -- o operador ve "ok" e depois a recusa.
+  // Entao troca de modo ou de etapa publica na hora.
+  static uint8_t modoPublicado  = 255;
+  static uint8_t calibPublicada = 255;
+  const bool mudouEstado = ((uint8_t)modoAtual != modoPublicado ||
+                            (uint8_t)estadoCalib != calibPublicada);
+  if (!mudouEstado && millis() - ultimaPublicacao < 40) return;
   ultimaPublicacao = millis();
+  modoPublicado  = (uint8_t)modoAtual;
+  calibPublicada = (uint8_t)estadoCalib;
 
   Snapshot s;
   s.modo  = (uint8_t)modoAtual;

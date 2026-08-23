@@ -151,6 +151,14 @@ static void reiniciarSistema() {
   g_fs  = FsMock();
   armReiniciarTeste();
   encoderReiniciarTeste();
+  // O barramento RS485 tambem e estado: um cenario que terminou com o
+  // driver mudo deixava o seguinte gastando o tempo esgotado de cada
+  // leitura, e o relogio do banco corria mais rapido que o movimento.
+  // Cada cenario comeca com o driver 1 respondendo e o 2 ausente, que e
+  // a bancada do operador.
+  g_uart.escravo[0] = EscravoModbus{};
+  g_uart.escravo[1] = EscravoModbus{};
+  g_uart.escravo[1].existe = false;
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -2799,6 +2807,105 @@ static void teste_L06_a_maquina_do_operador() {
          "os numeros que o driver devolveu na bancada sao remontados iguais");
 }
 
+// ---------------------------------------------------------------------
+// O operador ligou um driver so e a tela mostrou "0 leituras, 222
+// falhas" nas DUAS juntas, sem nada que dissesse o porque. Contador de
+// falha sozinho nao diagnostica: o programa de teste de bancada resolve
+// justamente porque mostra os bytes. A tela precisa mostrar o mesmo.
+// ---------------------------------------------------------------------
+// Pega o valor de um campo de texto do JSON, so para a nota sair legivel.
+static const char* jsonTrecho(const char* json, const char* campo) {
+  static char buf[120];
+  char chave[40];
+  snprintf(chave, sizeof(chave), "\"%s\":\"", campo);
+  const char* p = strstr(json, chave);
+  if (!p) { snprintf(buf, sizeof(buf), "(campo %s ausente)", campo); return buf; }
+  p += strlen(chave);
+  const char* f = strchr(p, '"');
+  size_t n = f ? (size_t)(f - p) : strlen(p);
+  if (n >= sizeof(buf)) n = sizeof(buf) - 1;
+  memcpy(buf, p, n); buf[n] = '\0';
+  return buf;
+}
+
+// ---------------------------------------------------------------------
+// O caso que explica o "222 falhas": o programa de bancada nunca pediu
+// DOIS registradores de uma vez, so um. Se o driver nao aceita a
+// pergunta dupla, o teste passa e o sistema falha -- que foi exatamente
+// o que aconteceu na maquina do operador.
+// ---------------------------------------------------------------------
+static void teste_L08_driver_que_so_le_um_registrador() {
+  secao("L08  Driver que so responde um registrador por pergunta");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(5, true, 143535);          // 2 * 65536 + 12463
+  g_uart.escravo[0].soUmRegistrador = true;
+
+  // Com a pergunta dupla recusada, as primeiras leituras falham.
+  rodarComWeb(200);
+  nota("logo depois de recusar a pergunta dupla: %lu falhas",
+       (unsigned long)encoderLer(1).falhas);
+
+  // E o sistema tem que descobrir sozinho e passar a perguntar um de
+  // cada vez, sem ninguem mexer em configuracao nenhuma.
+  rodarComWeb(1500);
+  const LeituraEncoder L = encoderLer(1);
+  nota("depois de cair para a forma provada: bruto %ld, %lu leituras",
+       (long)L.bruto, (unsigned long)L.leituras);
+  checar(L.valido && L.bruto == 143535, "L08a",
+         "o driver que so le um registrador por vez tambem e lido, sozinho");
+  checar(L.leituras > 3, "L08b",
+         "e continua sendo lido, nao foi sorte de uma vez");
+
+  webGet("/api/encoder");
+  nota("quadro: %s", jsonTrecho(webCorpo(), "quadro"));
+  checar(strstr(webCorpo(), "1 de cada vez") != nullptr, "L08c",
+         "a tela diz de que jeito esta perguntando, sem abrir o codigo");
+
+  // O valor tem que bater com o do driver que aceita os dois de uma vez:
+  // e a mesma posicao, so a pergunta muda.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(5, true, 143535);
+  rodarComWeb(400);
+  nota("mesmo driver aceitando a pergunta dupla: bruto %ld",
+       (long)encoderLer(1).bruto);
+  checar(encoderLer(1).bruto == 143535, "L08d",
+         "as duas formas de perguntar dao o mesmo numero");
+}
+
+static void teste_L07_o_quadro_cru_na_tela() {
+  secao("L07  Falhou: da para saber o porque sem abrir o codigo?");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(0x1000, false, 4242);
+  rodarComWeb(300);
+
+  webGet("/api/encoder");
+  const char* corpo = webCorpo();
+  nota("lendo bem: %s", jsonTrecho(corpo, "quadro"));
+  checar(strstr(corpo, "\"quadro\"") != nullptr, "L07a",
+         "a resposta traz o ultimo quadro trocado no fio");
+  checar(strstr(corpo, "01 03") != nullptr, "L07b",
+         "com os bytes da pergunta, id e funcao a vista");
+
+  // Cabo arrancado: e aqui que o operador precisa da diferenca entre
+  // "ninguem respondeu" e "respondeu outra coisa".
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(600);
+  webGet("/api/encoder");
+  nota("mudo: %s", jsonTrecho(webCorpo(), "quadro"));
+  checar(strstr(webCorpo(), "silencio") != nullptr, "L07c",
+         "driver mudo aparece como silencio, nao so como numero de falha");
+
+  // Junta 2 sem registrador: nao e falha, e ausencia. Chamar de falha
+  // manda o operador procurar defeito que nao existe.
+  webGet("/api/encoder");
+  nota("junta 2 com registrador %u", (unsigned)configEncoder.reg[1]);
+  checar(configEncoder.reg[1] == 0 && encoderLer(2).falhas == 0, "L07d",
+         "junta nao ligada nao acumula falha para o operador cacar");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3015,6 +3122,8 @@ int main() {
   teste_L04_driver_mudo_e_excecao();
   teste_L05_so_leitura_e_so_em_manual();
   teste_L06_a_maquina_do_operador();
+  teste_L07_o_quadro_cru_na_tela();
+  teste_L08_driver_que_so_le_um_registrador();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

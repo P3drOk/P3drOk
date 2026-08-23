@@ -34,7 +34,11 @@ enum MotivoEncoder : uint8_t {
   MOTIVO_SILENCIO,   // ninguem respondeu naquele endereco
   MOTIVO_CRC,        // veio byte, mas corrompido ou de outro escravo
   MOTIVO_EXCECAO,    // o driver respondeu "esse registrador nao existe"
-  MOTIVO_FORMATO     // respondeu, mas nao no formato pedido
+  MOTIVO_FORMATO,    // respondeu, mas nao no formato pedido
+  // Lendo um registrador de cada vez, a palavra alta mudou entre as duas
+  // perguntas. Nao e defeito: e a contagem virando no meio da leitura, e
+  // a proxima volta do ciclo pega o par inteiro.
+  MOTIVO_VIRADA
 };
 
 struct LeituraEncoder {
@@ -60,6 +64,10 @@ void encoderZerar(uint8_t junta);      // 0 = as duas
 // Aplica a configuracao que esta em configEncoder (chamado pelo core 1
 // ao processar CMD_APLICAR_ENCODER).
 void encoderReconfigurar();
+
+// Ultimo quadro Modbus que passou no fio, em hexadecimal, pronto para a
+// tela. "Sem resposta" sem os bytes crus e uma palavra sem prova.
+void encoderUltimoQuadro(char* destino, size_t tam);
 
 #ifdef ROBOCNC_TESTE
 // O banco bombeia a tarefa a mao, como faz com a do cartao.

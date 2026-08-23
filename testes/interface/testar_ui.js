@@ -43,7 +43,10 @@ function checar(ok, texto, extra) {
   const resp = await p.request.get(BASE + '/');
   const cab = resp.headers();
   const bytesRede = parseInt(cab['content-length'] || '0', 10);
-  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 40000,
+  // O teto nao e estetico: a pagina inteira vai comprimida na flash e sai
+  // pelo Wi-Fi proprio do robo, que e lento. 48 KB e o limite com folga
+  // para o que existe hoje; passar disso e hora de olhar o que cresceu.
+  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 48000,
          'a pagina e servida comprimida, como o firmware faz',
          'Content-Encoding: ' + cab['content-encoding'] + ', ' + bytesRede +
          ' bytes na rede');
@@ -614,8 +617,31 @@ function checar(ok, texto, extra) {
   checar(/°$/.test(enc.cmd) && /°$/.test(enc.med) && /°$/.test(enc.err),
          'Encoder: mostra comandado, medido e erro em graus da junta',
          enc.cmd + ' | ' + enc.med + ' | ' + enc.err);
-  checar(enc.med2 === 'sem resposta',
-         'Encoder: junta sem leitura diz POR QUE, nao so "nada"', enc.med2);
+  // Um driver so ligado e o caso normal de bancada: a junta 2 nao esta
+  // "com defeito", ela nao esta ligada. Contar isso como falha manda o
+  // operador cacar problema que nao existe.
+  checar(enc.med2 === 'nao ligada',
+         'Encoder: junta sem registrador aparece como nao ligada, nao como falha',
+         enc.med2);
+  const est2 = await t.evaluate(() => document.getElementById('encEstado').textContent);
+  checar(/junta 2: nao ligada/.test(est2),
+         'Encoder: e o resumo tambem, sem contador de falha inventado',
+         est2.replace(/\n/g, ' | '));
+  const quadro = await t.evaluate(() => document.getElementById('encQuadro').textContent);
+  checar(/->/.test(quadro) && /<-/.test(quadro),
+         'Encoder: a tela mostra o ultimo quadro cru trocado no fio',
+         quadro);
+
+  // Agora a junta 2 LIGADA e muda: ai sim e falha, e a tela tem que
+  // dizer qual.
+  await t.request.post(BASE + '/teste/encoder', { data: { reg2: 4098, motivo2: 2 } });
+  await t.waitForTimeout(700);
+  const med2b = await t.evaluate(() => document.getElementById('eM2').textContent.trim());
+  checar(med2b === 'sem resposta',
+         'Encoder: junta ligada que nao responde diz POR QUE, nao so "nada"',
+         med2b);
+  await t.request.post(BASE + '/teste/encoder', { data: { reg2: 0, motivo2: 1 } });
+  await t.waitForTimeout(700);
   checar(enc.sb === 'lendo', 'Encoder: o cabecalho da aba mostra o estado', enc.sb);
   checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
          enc.w + ' px');
