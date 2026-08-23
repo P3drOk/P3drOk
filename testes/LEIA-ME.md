@@ -11,6 +11,7 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/freertos/` | fila de comandos com capacidade real e contagem de descartes |
 | `mocks/SD.h`, `mocks/FS.h`, `mocks/SPI.h` | sistema de arquivos em memória, com cartão ausente e escrita falhando |
 | `mocks/WiFi.h` | só para o `.ino` compilar |
+| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro**: responde ao quadro, encena mudo, exceção e CRC ruim |
 | `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler |
 
 `servidor_web.cpp` **entra** no banco. Os dois defeitos que o operador sentiu na
@@ -89,6 +90,11 @@ no próprio `checar(...)`.
 | K01 | trocar o sentido do eixo chega ao gerador de pulso e ao NVS |
 | K02 | dá para inverter na etapa de referência; depois de medir, não |
 | K03 | com o eixo andando a troca de sentido é recusada, com motivo |
+| L01 | lê a posição do encoder e não encosta nos pinos de passo/direção |
+| L02 | palavra baixa primeiro: o erro que faz a posição saltar |
+| L03 | erro comandado − medido, inclusive com o eixo preso |
+| L04 | driver mudo, exceção e CRC ruim não viram posição |
+| L05 | o módulo nunca escreve, e só se configura em manual |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

@@ -197,6 +197,32 @@ struct ConfigPendente {
 };
 extern ConfigPendente configPendente;
 
+// ---------------------------------------------------------------------
+// Encoder por Modbus.
+//
+// Um barramento RS485 e os dois drivers nele, com enderecos diferentes.
+// Velocidade, paridade e funcao sao do barramento; endereco de escravo,
+// registrador e contagens por volta sao de cada junta.
+//
+// O registrador e configuravel porque o mapa Modbus do T3D nao esta
+// publicado. Numero fixo no codigo seria adivinhacao.
+// ---------------------------------------------------------------------
+struct ConfigEncoder {
+  bool     ativo;
+  uint32_t baud;
+  uint8_t  paridade;        // 0=8N1 1=8E1 2=8O1
+  uint8_t  funcao;          // 3 = holding, 4 = input registers
+  uint16_t periodoMs;
+  bool     trintaEDois;     // posicao em 2 registradores (32 bits)
+  bool     baixaPrimeiro;   // palavra baixa vem antes da alta
+  uint8_t  id[2];           // endereco Modbus de cada junta
+  uint16_t reg[2];          // registrador da posicao de cada junta
+  float    contagensPorVolta[2];   // do ENCODER, por volta do MOTOR
+};
+extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
+extern ConfigEncoder encoderPendente;    // area de preparo, core 0 enche
+void aplicarEncoderPendente();           // core 1: grava e reconfigura
+
 void prepararConfigPendente();   // core 0: copia o estado vivo para a area
 void aplicarConfigPendente();    // core 1: copia de volta e recalcula
 

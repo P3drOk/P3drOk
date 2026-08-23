@@ -21,6 +21,10 @@
 extern uint32_t g_millis;
 inline uint32_t millis() { return g_millis; }
 inline void delay(uint32_t ms) { g_millis += ms; }
+// micros() e delayMicroseconds() existem no core; sem eles aqui o banco
+// compila codigo que a IDE recusa.
+inline uint32_t micros() { return g_millis * 1000UL; }
+inline void delayMicroseconds(uint32_t us) { g_millis += (us + 999) / 1000; }
 
 // ---- GPIO simulado ----------------------------------------------------
 extern int  g_pinModo[64];

@@ -34,5 +34,6 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     RoboCNC/calibracao.cpp \
     RoboCNC/armazenamento.cpp \
     RoboCNC/servidor_web.cpp \
-    RoboCNC/rede.cpp
+    RoboCNC/rede.cpp \
+    RoboCNC/encoder.cpp
 exec testes/saida/banco

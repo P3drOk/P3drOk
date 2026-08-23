@@ -204,6 +204,69 @@ A interface é servida comprimida (75 kB → 21,8 kB). Você edita
 `pagina_web.h`; depois rode `python3 testes/gerar_pagina_gz.py`. O banco
 reprova se o gerado ficar velho.
 
+## Encoder pelos drivers (Modbus / RS485)
+
+Aba **Encoder**. Lê a posição real do eixo pelo próprio driver e mostra,
+ao lado do comandado, **quanto o braço deixou de andar**.
+
+| | |
+|---|---|
+| comandado | de onde o firmware acha que o braço está |
+| medido | de onde o encoder do driver diz que ele está |
+| **erro** | a diferença, em graus da junta |
+
+O gráfico é do **erro**, nos últimos instantes. Linha reta em zero quer
+dizer que o braço foi para onde foi mandado. **Degrau ou deriva quer
+dizer passo perdido** — e o valor não volta sozinho.
+
+### O que ele não faz
+
+Não fecha malha. Cada leitura Modbus custa de 5 a 20 ms com jitter, o
+que dá umas 20 amostras por segundo. Dá para acusar perda de passo em
+segundos e para conferir depois de um cordão; **não** dá para cortar o
+arco no instante em que o motor escorrega. Para isso o caminho continua
+sendo a saída PA/PB do driver num contador PCNT
+([`ROADMAP.md`](../ROADMAP.md) §1.4).
+
+### Só leitura
+
+Nenhuma função deste módulo escreve registrador, e a rota de
+configuração recusa qualquer função Modbus que não seja 3 ou 4. Um
+defeito que escrevesse num parâmetro do servo estragaria a máquina de um
+jeito que não se desfaz pela tela.
+
+### O registrador é configurável, e tem de ser
+
+O mapa Modbus do T3D não é publicado e muda por versão de firmware.
+Número fixo no código seria adivinhação — e o seu segundo driver pode
+vir diferente.
+
+**Registrador 0 quase nunca é a posição.** Na faixa baixa mora a tabela
+de parâmetros: dá para reconhecer pelos pares simétricos (+250 / −250,
++80 / −80) e pelo valor de preenchimento repetido dezenas de vezes.
+
+Para achar: `ferramentas/teste_rs485` (modo 7 caça o registrador que
+muda quando você gira o eixo), ou aqui mesmo — digite um endereço, salve
+e mova o braço olhando o gráfico. O certo acompanha.
+
+### Palavra baixa primeiro
+
+Muito driver Modbus manda a palavra baixa antes da alta. Errar isso faz
+a posição dar saltos de dezenas de milhares em vez de crescer suave. Se
+for o que você vê, marque a chave — é uma linha de configuração, não um
+registrador errado.
+
+### Onde ligar
+
+Mesmo módulo MAX485 do diagnóstico, mesmos pinos:
+`RO`→divisor→GPIO 22, `DI`→GPIO 21, `DE`→GPIO 4, `RE`→GPIO 26. Os dois
+drivers no **mesmo** barramento, com endereços Modbus diferentes.
+
+> A UART2 do ESP32 tem como pinos padrão o **16 e o 17**, que neste
+> projeto são o passo e a direção da junta 1. Todo `begin()` deste
+> projeto passa RX e TX explicitamente, e o cenário `L01c` verifica isso
+> — esquecer os pinos mandaria lixo para o driver do braço.
+
 ## Rede — Wi-Fi próprio, e só isso
 
 A máquina cria a sua própria rede. Ela **não entra na rede de ninguém,

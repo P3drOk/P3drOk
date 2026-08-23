@@ -1088,3 +1088,65 @@ mesma rota. Os parâmetros `inv1`/`inv2` continuam aceitos em
 |-------|----------|-------|
 | firmware | 130 / 0 | **141 / 0** |
 | interface | 76 / 0 | **80 / 0** |
+
+---
+
+# Rodada 10 — encoder por Modbus
+
+## R22 · Leitura do encoder pelos drivers  `L01`–`L05`  ✅
+
+Aba **Encoder** nova: comandado, medido e **erro** por junta, com
+gráfico do erro nos últimos instantes. Linha reta em zero = o braço foi
+para onde foi mandado; degrau ou deriva = passo perdido.
+
+Tarefa própria no core 0, mestre Modbus RTU escrito à mão (sem
+biblioteca), um barramento RS485 e os dois drivers nele com endereços
+diferentes. Pinos 21/22/4/26, livres no mapa.
+
+**O registrador é configurável, e tem de ser.** O mapa Modbus do T3D não
+é publicado e muda por versão de firmware; número fixo no código seria
+adivinhação, e o segundo driver pode vir diferente. A descoberta se faz
+com `ferramentas/teste_rs485` ou no próprio painel, digitando um
+endereço e olhando o gráfico.
+
+Três decisões que valem registro:
+
+- **Só leitura.** Nenhuma função escreve registrador, e a rota recusa
+  função Modbus que não seja 3 ou 4 (`L05c`). Um defeito que escrevesse
+  num parâmetro do servo estragaria a máquina de um jeito que não se
+  desfaz pela tela.
+- **O ângulo comandado vem do Snapshot, não de `posicaoJ1()`.** Escrevi
+  errado na primeira versão: `motores.h` é do core 1, e esta tarefa roda
+  no core 0. É exatamente a regra de ouro do projeto, e o Snapshot existe
+  para isso.
+- **Leitura velha para de valer.** Passado `ENC_IDADE_MAX_MS`, o valor
+  fica inválido em vez de a tela mostrar erro calculado em cima de dado
+  morto (`L04b`).
+
+## R23 · Espera ocupada no core 0, achada pelo mock  ✅
+
+O laço de recepção do Modbus era `while (millis() < limite)` sem pausa
+nenhuma. Em hardware isso queima até 60 ms de core 0 por leitura — o
+mesmo core do servidor web.
+
+No banco ficou impossível de ignorar: `millis()` só anda quando alguém
+chama `delay()`, então o laço **travou o banco inteiro**. O mock não
+"falhou o teste": ele deixou o defeito impossível de despachar.
+Corrigido com uma pausa de 50 µs entre olhadas — um caractere a 19200
+leva 570 µs, então não se perde byte.
+
+## O mock de UART tem um escravo Modbus dentro
+
+`mocks/HardwareSerial.h` não é um cano mudo: ele entende o quadro que o
+firmware manda e responde como um driver responderia, com CRC de
+verdade. Dá para encenar driver mudo, exceção, CRC corrompido e ordem de
+palavras trocada. É o que permite testar o mestre Modbus inteiro sem
+hardware — inclusive o caso da palavra baixa primeiro (`L02`), que é o
+defeito clássico e é invisível até você ver os dois valores lado a lado.
+
+## Cobertura
+
+| banco | rodada 9 | agora |
+|-------|----------|-------|
+| firmware | 141 / 0 | **160 / 0** |
+| interface | 80 / 0 | **89 / 0** |

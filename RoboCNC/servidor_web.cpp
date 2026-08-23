@@ -6,6 +6,7 @@
 #include "armazenamento.h"
 #include "calibracao.h"
 #include "rede.h"
+#include "encoder.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -573,6 +574,89 @@ static void handleProgDesenho() {
 }
 
 // ---------------------------------------------------------------------
+// ENCODER
+//
+// A leitura roda numa tarefa do core 0; aqui so se publica o que ela
+// achou e se guarda a configuracao. O endereco do registrador e
+// configuravel porque o mapa Modbus do driver nao esta publicado.
+// ---------------------------------------------------------------------
+static void jsonEncoderJunta(String& out, uint8_t j) {
+  const LeituraEncoder L = encoderLer(j);
+  char b[200];
+  snprintf(b, sizeof(b),
+    "{\"ok\":%s,\"bruto\":%ld,\"ref\":%ld,\"graus\":%.3f,\"erro\":%.3f,"
+    "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu}",
+    L.valido ? "true" : "false", (long)L.bruto, (long)L.referencia,
+    L.graus, L.erro, (unsigned long)L.idadeMs,
+    (unsigned long)L.leituras, (unsigned long)L.falhas);
+  out += b;
+}
+
+static void handleEncoder() {
+  registrarContatoOperador();
+  Snapshot s;
+  lerSnapshot(s);
+
+  String out;
+  out.reserve(640);
+  char cab[320];
+  snprintf(cab, sizeof(cab),
+    "{\"ativo\":%s,\"baud\":%lu,\"par\":%u,\"func\":%u,\"per\":%u,"
+    "\"b32\":%s,\"lo\":%s,"
+    "\"id1\":%u,\"id2\":%u,\"reg1\":%u,\"reg2\":%u,"
+    "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,\"j\":[",
+    configEncoder.ativo ? "true" : "false",
+    (unsigned long)configEncoder.baud, (unsigned)configEncoder.paridade,
+    (unsigned)configEncoder.funcao, (unsigned)configEncoder.periodoMs,
+    configEncoder.trintaEDois ? "true" : "false",
+    configEncoder.baixaPrimeiro ? "true" : "false",
+    (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
+    (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
+    configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
+    s.t1, s.t2);
+  out += cab;
+  jsonEncoderJunta(out, 1);
+  out += ',';
+  jsonEncoderJunta(out, 2);
+  out += "]}";
+  server.send(200, "application/json", out);
+}
+
+static void handleEncoderConfig() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+
+  ConfigEncoder c = configEncoder;
+  c.ativo         = argL("ativo", c.ativo ? 1 : 0) != 0;
+  c.baud          = (uint32_t)argL("baud", (long)c.baud);
+  c.paridade      = (uint8_t) constrain(argL("par",  c.paridade), 0, 2);
+  c.funcao        = (uint8_t) argL("func", c.funcao);
+  c.periodoMs     = (uint16_t)constrain(argL("per", c.periodoMs), ENC_PERIODO_MIN_MS, 2000);
+  c.trintaEDois   = argL("b32", c.trintaEDois ? 1 : 0) != 0;
+  c.baixaPrimeiro = argL("lo",  c.baixaPrimeiro ? 1 : 0) != 0;
+  c.id[0]         = (uint8_t) constrain(argL("id1",  c.id[0]), 1, 247);
+  c.id[1]         = (uint8_t) constrain(argL("id2",  c.id[1]), 1, 247);
+  c.reg[0]        = (uint16_t)constrain(argL("reg1", c.reg[0]), 0, 65535);
+  c.reg[1]        = (uint16_t)constrain(argL("reg2", c.reg[1]), 0, 65535);
+  c.contagensPorVolta[0] = argF("cv1", c.contagensPorVolta[0]);
+  c.contagensPorVolta[1] = argF("cv2", c.contagensPorVolta[1]);
+
+  if (c.funcao != 3 && c.funcao != 4) { erro("funcao Modbus deve ser 3 ou 4"); return; }
+  if (c.baud < 1200 || c.baud > 500000) { erro("velocidade fora de faixa"); return; }
+  if (c.contagensPorVolta[0] < 1.0f || c.contagensPorVolta[1] < 1.0f) {
+    erro("contagens por volta invalidas"); return;
+  }
+
+  encoderPendente = c;
+  enfileirar(CMD_APLICAR_ENCODER);
+}
+
+static void handleEncoderZerar() {
+  registrarContatoOperador();
+  enfileirar(CMD_ENCODER_ZERAR, argL("j", 0));
+}
+
+// ---------------------------------------------------------------------
 // REDE
 //
 // So leitura: a maquina tem Wi-Fi proprio e nada a configurar. O painel
@@ -789,6 +873,10 @@ void servidorIniciar() {
   server.on("/api/sentido",         HTTP_POST, handleSentido);
 
   server.on("/api/rede",           HTTP_GET,  handleRede);
+
+  server.on("/api/encoder",        HTTP_GET,  handleEncoder);
+  server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
+  server.on("/api/encoder/zerar",  HTTP_POST, handleEncoderZerar);
 
   server.onNotFound(handleNaoEncontrado);
   server.begin();

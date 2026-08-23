@@ -24,6 +24,8 @@
 #include "WiFi.h"
 #include "ESPmDNS.h"
 #include "DNSServer.h"
+#include "HardwareSerial.h"
+#include "encoder.h"
 #include "Preferences.h"
 #include "FS.h"
 #include <string>
@@ -75,6 +77,7 @@ static void rodar(uint32_t ms) {
     // Idem para a tarefa de rede: no ESP32 ela vive dentro de
     // tarefaRede(), que o mock de FreeRTOS nao executa.
     redeAtender();
+    encoderCicloTeste();
   }
 }
 // Simula o navegador vivo: heartbeat HTTP a cada 200 ms.
@@ -147,6 +150,7 @@ static void reiniciarSistema() {
   g_nvs = NvsMock();
   g_fs  = FsMock();
   armReiniciarTeste();
+  encoderReiniciarTeste();
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -2539,6 +2543,215 @@ static void teste_I03_velocidade_entre_trechos() {
 // =====================================================================
 //  J - Rede: Wi-Fi proprio, e so isso
 // =====================================================================
+// =====================================================================
+//  L - Encoder por Modbus
+// =====================================================================
+static void prepararEncoder(uint16_t reg, bool baixaPrimeiro, int32_t posicao) {
+  encoderPendente = configEncoder;
+  encoderPendente.ativo         = true;
+  encoderPendente.baud          = 19200;
+  encoderPendente.paridade      = 0;
+  encoderPendente.funcao        = 3;
+  encoderPendente.periodoMs     = ENC_PERIODO_MIN_MS;
+  encoderPendente.trintaEDois   = true;
+  encoderPendente.baixaPrimeiro = baixaPrimeiro;
+  encoderPendente.id[0]  = 1;   encoderPendente.id[1]  = 2;
+  encoderPendente.reg[0] = reg; encoderPendente.reg[1] = 0;   // junta 2 nao ligada
+  encoderPendente.contagensPorVolta[0] = 10000.0f;
+  encoderPendente.contagensPorVolta[1] = 10000.0f;
+  enviarComando(CMD_APLICAR_ENCODER);
+  rodarComWeb(60);
+
+  g_uart.escravo[0] = EscravoModbus{};
+  g_uart.escravo[0].id = 1;
+  g_uart.escravo[0].funcao = 3;
+  g_uart.escravo[0].regBase = reg;
+  g_uart.escravo[0].baixaPrimeiro = baixaPrimeiro;
+  g_uart.escravo[0].posicao = posicao;
+  g_uart.escravo[1].existe = false;    // o segundo driver ainda nao existe
+}
+
+static void teste_L01_le_o_encoder() {
+  secao("L01  Ler a posicao do encoder pelo driver");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(0x1000, false, 25000);
+  rodarComWeb(400);
+
+  const LeituraEncoder L = encoderLer(1);
+  nota("bruto %ld, %lu leituras, %lu falhas", (long)L.bruto,
+       (unsigned long)L.leituras, (unsigned long)L.falhas);
+  nota("UART aberta em %lu bps nos pinos RX=%d TX=%d",
+       (unsigned long)g_uart.baudAtual, (int)g_uart.pinRx, (int)g_uart.pinTx);
+  checar(L.valido && L.bruto == 25000, "L01a",
+         "a contagem do driver chega inteira ao sistema");
+  checar(L.leituras > 3 && L.falhas == 0, "L01b",
+         "e continua chegando, sem falha");
+
+  // A UART2 tem 16 e 17 como padrao, que aqui sao passo e direcao da
+  // junta 1. Se o begin() esquecer os pinos, o braco recebe lixo.
+  checar(g_uart.pinRx == PIN_RS485_RX && g_uart.pinTx == PIN_RS485_TX,
+         "L01c", "a UART2 nao encosta nos pinos de passo e direcao");
+
+  // Junta 2 sem registrador configurado: nao se pergunta nada a ela.
+  const LeituraEncoder L2 = encoderLer(2);
+  nota("junta 2: %lu leituras, %lu falhas (registrador nao configurado)",
+       (unsigned long)L2.leituras, (unsigned long)L2.falhas);
+  checar(!L2.valido && L2.leituras == 0 && L2.falhas == 0, "L01d",
+         "junta sem registrador nao vira falha nem numero inventado");
+}
+
+static void teste_L02_ordem_das_palavras() {
+  secao("L02  Palavra baixa primeiro: o erro que faz a posicao saltar");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Driver manda a palavra BAIXA primeiro, sistema configurado como se
+  // fosse a alta. E o defeito classico.
+  prepararEncoder(0x1000, false, 0x0001ABCD);
+  g_uart.escravo[0].baixaPrimeiro = true;    // o driver, ao contrario
+  rodarComWeb(400);
+  const int32_t errado = encoderLer(1).bruto;
+
+  encoderPendente = configEncoder;
+  encoderPendente.baixaPrimeiro = true;      // agora bate
+  enviarComando(CMD_APLICAR_ENCODER);
+  rodarComWeb(400);
+  const int32_t certo = encoderLer(1).bruto;
+
+  nota("posicao real 0x%08lX", (unsigned long)0x0001ABCD);
+  nota("lida com a ordem errada: %ld (0x%08lX)", (long)errado, (unsigned long)errado);
+  nota("lida com a ordem certa:  %ld (0x%08lX)", (long)certo,  (unsigned long)certo);
+  checar(certo == 0x0001ABCD, "L02a",
+         "com a ordem certa o valor bate com o do driver");
+  checar(errado != certo, "L02b",
+         "com a ordem errada da outro numero -- e por isso a chave existe");
+}
+
+static void teste_L03_erro_de_posicao() {
+  secao("L03  O grafico do erro: comandado menos medido");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  // 4000 passos por volta, reducao 10: 111 passos por grau de junta.
+  webPost("/api/config?ppv1=4000&red1=10");
+  rodarComWeb(120);
+
+  prepararEncoder(0x1000, false, 0);
+  rodarComWeb(300);
+  encoderZerar(0);
+  rodarComWeb(200);
+
+  const LeituraEncoder z = encoderLer(1);
+  nota("parado e zerado: medido %.3f, erro %.3f", (double)z.graus, (double)z.erro);
+  checar(z.valido && fabsf(z.erro) < 0.01f, "L03a",
+         "com o braco parado e o encoder zerado, o erro e zero");
+
+  // O encoder acompanha o comando: uma volta do motor = 36 graus de
+  // junta com reducao 10, e 10000 contagens de encoder.
+  const long alvo = grausParaPassos(J1, passosParaGraus(J1, posicaoJ1()) + 36.0f);
+  moverCoordenado(alvo, posicaoJ2(), 20.0f);
+  for (int k = 0; k < 400 && motoresEmMovimento(); k++) {
+    g_uart.escravo[0].posicao =
+        (int32_t)(passosParaGraus(J1, posicaoJ1()) * 10.0f / 360.0f * 10000.0f);
+    rodarComWeb(10);
+  }
+  rodarComWeb(200);
+  const LeituraEncoder ok = encoderLer(1);
+  nota("depois de 36 graus: comandado %.2f, medido %.2f, erro %.3f",
+       (double)passosParaGraus(J1, posicaoJ1()), (double)ok.graus, (double)ok.erro);
+  checar(fabsf(ok.erro) < 0.2f, "L03b",
+         "encoder acompanhando o comando: erro fica perto de zero");
+
+  // Agora o motor escorrega: o comando anda, o eixo nao.
+  const int32_t travado = g_uart.escravo[0].posicao;
+  const long alvo2 = grausParaPassos(J1, passosParaGraus(J1, posicaoJ1()) + 10.0f);
+  moverCoordenado(alvo2, posicaoJ2(), 20.0f);
+  for (int k = 0; k < 400 && motoresEmMovimento(); k++) {
+    g_uart.escravo[0].posicao = travado;      // eixo preso
+    rodarComWeb(10);
+  }
+  rodarComWeb(200);
+  const LeituraEncoder perdeu = encoderLer(1);
+  nota("com o eixo preso: comandado %.2f, medido %.2f, erro %.2f",
+       (double)passosParaGraus(J1, posicaoJ1()), (double)perdeu.graus,
+       (double)perdeu.erro);
+  checar(perdeu.erro > 9.0f, "L03c",
+         "eixo preso enquanto o comando anda: o erro denuncia os graus perdidos");
+}
+
+static void teste_L04_driver_mudo_e_excecao() {
+  secao("L04  Driver mudo, registrador inexistente e CRC ruim");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(0x1000, false, 777);
+  rodarComWeb(300);
+  checar(encoderLer(1).valido, "L04a", "comeca lendo bem");
+
+  // Cabo arrancado.
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(1600);
+  const LeituraEncoder m = encoderLer(1);
+  nota("mudo por 1,6 s: valido=%d, idade=%lu ms, falhas=%lu",
+       (int)m.valido, (unsigned long)m.idadeMs, (unsigned long)m.falhas);
+  checar(!m.valido, "L04b",
+         "leitura velha para de valer em vez de virar erro calculado em cima de dado morto");
+  checar(m.falhas > 3, "L04c", "e as falhas sao contadas para a tela mostrar");
+
+  // Voltou.
+  g_uart.escravo[0].mudo = false;
+  rodarComWeb(400);
+  checar(encoderLer(1).valido, "L04d", "religado o cabo, volta sozinho");
+
+  // Registrador que nao existe: o driver responde excecao.
+  g_uart.escravo[0].excecao = 2;
+  rodarComWeb(800);
+  nota("com excecao 2: valido=%d", (int)encoderLer(1).valido);
+  checar(!encoderLer(1).valido, "L04e",
+         "excecao nao vira posicao: registrador errado nao inventa numero");
+
+  // CRC ruim: quadro corrompido nao pode virar leitura.
+  g_uart.escravo[0].excecao = 0;
+  g_uart.escravo[0].crcRuim = true;
+  const uint32_t antes = encoderLer(1).leituras;
+  rodarComWeb(800);
+  nota("com CRC ruim: leituras %lu -> %lu",
+       (unsigned long)antes, (unsigned long)encoderLer(1).leituras);
+  checar(encoderLer(1).leituras == antes, "L04f",
+         "quadro com CRC ruim e descartado, nao aceito");
+}
+
+static void teste_L05_so_leitura_e_so_em_manual() {
+  secao("L05  O encoder nunca escreve, e so se configura parado");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(0x1000, false, 100);
+  rodarComWeb(300);
+
+  // Nenhuma funcao de escrita Modbus (5, 6, 15, 16) pode sair daqui: um
+  // defeito que escrevesse num parametro do servo estragaria a maquina
+  // de um jeito que nao se desfaz pela tela.
+  nota("o escravo recebeu %lu perguntas, todas de leitura",
+       (unsigned long)g_uart.escravo[0].perguntas);
+  checar(g_uart.escravo[0].perguntas > 3, "L05a",
+         "o barramento esta sendo usado");
+  checar(configEncoder.funcao == 3 || configEncoder.funcao == 4, "L05b",
+         "so funcoes de leitura sao possiveis na configuracao");
+
+  const int codRuim = webPost("/api/encoder/config?func=6");
+  nota("tentativa de configurar funcao 6 (escrever registrador): HTTP %d -- \"%s\"",
+       codRuim, webCorpo());
+  checar(codRuim == 400, "L05c",
+         "funcao de escrita e recusada na porta");
+
+  // Fora do manual nao se reconfigura.
+  enviarComando(CMD_GRAVAR_INICIAR);
+  rodarComWeb(60);
+  const int cod = webPost("/api/encoder/config?reg1=999");
+  nota("em modo %d: HTTP %d", (int)modoAtual, cod);
+  checar(modoAtual != MODO_MANUAL && cod == 400 && configEncoder.reg[0] == 0x1000,
+         "L05d", "com o robo fora do manual a configuracao nao muda");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -2748,6 +2961,12 @@ int main() {
   teste_I01_ziguezague_reto();
   teste_I02_ziguezague_na_borda();
   teste_I03_velocidade_entre_trechos();
+
+  teste_L01_le_o_encoder();
+  teste_L02_ordem_das_palavras();
+  teste_L03_erro_de_posicao();
+  teste_L04_driver_mudo_e_excecao();
+  teste_L05_so_leitura_e_so_em_manual();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

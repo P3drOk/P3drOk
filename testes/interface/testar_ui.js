@@ -50,7 +50,7 @@ function checar(ok, texto, extra) {
 
   // Barra de abas presente e com as cinco abas
   const nAbas = await p.locator('#abas button').count();
-  checar(nAbas === 5, 'barra de abas inferior com 5 abas', nAbas + ' abas encontradas');
+  checar(nAbas === 6, 'barra de abas inferior com 6 abas', nAbas + ' abas encontradas');
 
   // Aba inicial = Mover, com o joystick visivel
   const joyVis = await p.locator('#joy').isVisible();
@@ -133,6 +133,7 @@ function checar(ok, texto, extra) {
   for (const [aba, alvo, nome] of [
     ['prog',   '#e2',      'Programa'],
     ['arq',    '#sdBar',   'Arquivos'],
+    ['enc',    '#cvEnc',   'Encoder'],
     ['ajuste', '#e1',      'Ajustes'],
     ['mesa',   '#cv',      'Mesa'],
   ]) {
@@ -598,6 +599,62 @@ function checar(ok, texto, extra) {
   await t.request.post(BASE + '/teste/estado',
     { data: { j1min: -95, j1max: 95, j2min: -120, j2max: 30 } });
   await t.waitForTimeout(400);
+
+  // Encoder: leitura ao vivo, grafico do erro e configuracao do registrador.
+  await t.locator('#abas button[data-aba="enc"]').click();
+  await t.waitForTimeout(900);
+  const enc = await t.evaluate(() => ({
+    cmd:  document.getElementById('eC1').textContent.trim(),
+    med:  document.getElementById('eM1').textContent.trim(),
+    err:  document.getElementById('eE1').textContent.trim(),
+    med2: document.getElementById('eM2').textContent.trim(),
+    sb:   document.getElementById('sbEnc').textContent.trim(),
+    w:    document.getElementById('cvEnc').width,
+  }));
+  checar(/°$/.test(enc.cmd) && /°$/.test(enc.med) && /°$/.test(enc.err),
+         'Encoder: mostra comandado, medido e erro em graus da junta',
+         enc.cmd + ' | ' + enc.med + ' | ' + enc.err);
+  checar(enc.med2 === 'sem leitura',
+         'Encoder: junta sem resposta diz isso, nao finge zero', enc.med2);
+  checar(enc.sb === 'lendo', 'Encoder: o cabecalho da aba mostra o estado', enc.sb);
+  checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
+         enc.w + ' px');
+
+  // O historico tem de crescer com as consultas.
+  await t.waitForTimeout(1600);
+  const nAmostras = await t.evaluate(() => window.__encN || 0);
+  checar(nAmostras >= 2, 'Encoder: o grafico acumula historico do erro',
+         nAmostras + ' amostras');
+
+  await t.evaluate(() => document.querySelectorAll('#pnEnc .et')
+    .forEach((x, i) => x.classList.toggle('aberta', i === 1)));
+  await t.waitForTimeout(300);
+  const cfg = await t.evaluate(() => ({
+    reg1: document.getElementById('encReg1').value,
+    baud: document.getElementById('encBaud').value,
+    on:   document.getElementById('encAtivo').classList.contains('on'),
+  }));
+  checar(cfg.reg1 === '4096' && cfg.baud === '19200' && cfg.on,
+         'Encoder: a configuracao vinda do robo preenche os campos',
+         'reg ' + cfg.reg1 + ', ' + cfg.baud + ' bps');
+
+  rotas = [];
+  await t.locator('#encReg1').fill('8192');
+  await t.locator('#btEncSalvar').click();
+  await t.waitForTimeout(400);
+  const salvou = rotas.find(x => x.split('?')[0] === '/api/encoder/config');
+  checar(!!salvou && /reg1=8192/.test(salvou),
+         'Encoder: mudar o registrador vai pela rota de configuracao',
+         salvou || 'nada');
+
+  rotas = [];
+  await t.evaluate(() => document.querySelectorAll('#pnEnc .et')
+    .forEach((x, i) => x.classList.toggle('aberta', i === 0)));
+  await t.waitForTimeout(300);
+  await t.locator('#btEncZerar').click();
+  await t.waitForTimeout(300);
+  checar(rotas.some(x => x.split('?')[0] === '/api/encoder/zerar'),
+         'Encoder: "Zerar a contagem aqui" chama a rota certa');
 
   // Rede: a maquina tem Wi-Fi proprio, o painel so diz por onde chegar.
   await t.locator('#abas button[data-aba="ajuste"]').click();

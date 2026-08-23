@@ -59,6 +59,38 @@
 //
 // Ponha 10 uF ceramico entre 3V3 e GND junto ao modulo: o cartao puxa
 // picos de ~100 mA na escrita e a queda de tensao derruba a montagem.
+// ---------------------------------------------------------------------
+// RS485 -- leitura do encoder pelos drivers, por Modbus RTU
+//
+// ATENCAO: a UART2 do ESP32 tem como pinos PADRAO o 16 e o 17, que neste
+// projeto sao o PASSO e a DIRECAO da junta 1. Chamar begin() sem passar
+// os pinos faria a UART tomar conta deles e mandar lixo para o driver.
+// Todo begin() deste projeto passa RX e TX explicitamente.
+// ---------------------------------------------------------------------
+#ifndef PIN_RS485_RX
+#define PIN_RS485_RX  22    // vem do RO do MAX485, ja em 3,3 V
+#endif
+#ifndef PIN_RS485_TX
+#define PIN_RS485_TX  21    // vai para o DI
+#endif
+#ifndef PIN_RS485_DE
+#define PIN_RS485_DE   4    // driver enable
+#endif
+#ifndef PIN_RS485_RE
+#define PIN_RS485_RE  26    // receiver enable (ativo em baixo)
+#endif
+
+// Um barramento, os dois drivers: multiponto, enderecos diferentes.
+static const uint32_t ENC_BAUD_PADRAO    = 19200;
+static const uint8_t  ENC_PARIDADE_PADRAO = 0;      // 0=8N1 1=8E1 2=8O1
+static const uint8_t  ENC_FUNCAO_PADRAO  = 3;       // 3=holding 4=input
+static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
+static const uint16_t ENC_PERIODO_PADRAO = 50;
+static const uint32_t ENC_TIMEOUT_MS     = 60;      // resposta do driver
+// Sem leitura por este tempo, o valor deixa de ser confiavel e a
+// interface para de mostrar erro calculado em cima de dado velho.
+static const uint32_t ENC_IDADE_MAX_MS   = 1000;
+
 #ifndef PIN_SD_CS
 #define PIN_SD_CS    5
 #endif
@@ -317,6 +349,8 @@ enum TipoComando : uint8_t {
   CMD_AFERIR_MARCAR,    // a = junta: marca a contagem atual como inicio da medida
   CMD_AFERIR_APLICAR,   // a = junta, f1 = graus realmente percorridos
   CMD_INVERTER_EIXO,    // a = junta, b = 0/1: para que lado o eixo gira
+  CMD_APLICAR_ENCODER,  // grava encoderPendente e reconfigura o Modbus
+  CMD_ENCODER_ZERAR,    // a = junta (0 = as duas): marca a contagem atual
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

@@ -18,6 +18,7 @@
 #include "armazenamento.h"
 #include "servidor_web.h"
 #include "rede.h"
+#include "encoder.h"
 #include <math.h>
 
 static bool     emergenciaAtiva  = false;
@@ -83,7 +84,8 @@ static const char* NOME_CMD[] = {
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
-  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","INVERTER_EIXO","JOG_XY",
+  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","INVERTER_EIXO",
+  "APLICAR_ENCODER","ENCODER_ZERAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -353,6 +355,9 @@ static void processarComando(const Comando& c) {
       if (modoAtual != MODO_MANUAL) {
         definirMensagem("Referencie com o robo parado no modo manual");
         break;
+      // A contagem do encoder tambem recomeca aqui: as duas medidas
+      // tem de partir do mesmo ponto, senao o erro nasce torto.
+      encoderZerar(0);
       }
       calibReferenciar();
       logEvento("referenciado na posicao atual");
@@ -366,6 +371,21 @@ static void processarComando(const Comando& c) {
     case CMD_AFERIR_APLICAR:
       if (modoAtual == MODO_MANUAL) aferirAplicar((uint8_t)c.a, c.f1);
       else definirMensagem("Afira com o robo parado no modo manual");
+      break;
+
+    case CMD_APLICAR_ENCODER:
+      // Reabrir a UART e regravar o NVS com o braco andando nao e
+      // perigoso, mas nao ha motivo: o encoder e leitura, e o operador
+      // esta configurando, nao operando.
+      if (modoAtual == MODO_MANUAL) aplicarEncoderPendente();
+      else definirMensagem("Configure o encoder com o robo parado no modo manual");
+      break;
+
+    case CMD_ENCODER_ZERAR:
+      // O zero do encoder anda junto com o zero da maquina: e o mesmo
+      // instante em que se declara onde o braco esta.
+      encoderZerar((uint8_t)c.a);
+      definirMensagem("Encoder zerado na posicao atual");
       break;
 
     case CMD_INVERTER_EIXO: {
@@ -642,6 +662,9 @@ void setup() {
   // Cartao por ultimo: ele le o contador de partidas no NVS (core 1) e
   // so entao cria a propria tarefa no core 0.
   armIniciar();
+
+  // Encoder por Modbus: tarefa propria no core 0, so leitura.
+  encoderIniciar();
 
   // Ocupacao do flash no boot. A pasta do sketch traz um partitions.csv
   // com 3 MB de app; se alguem gravar com a particao errada, isto

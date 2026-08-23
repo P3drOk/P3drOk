@@ -359,6 +359,22 @@ h4:first-child{margin-top:0}
  flex:0 0 auto}
 .lista.arqs{border:1px solid var(--linha);border-radius:3px;overflow:hidden;
  margin-bottom:9px}
+/* ---------- encoder ---------- */
+.encGrade{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.encCel{background:var(--painel);border:1px solid var(--linha);border-radius:4px;
+ padding:8px 6px;text-align:center;min-width:0}
+.encCel .rot{display:block;font-family:var(--mono);font-size:8.5px;
+ letter-spacing:.08em;color:var(--letra3);text-transform:uppercase}
+.encCel b{display:block;font-family:var(--mono);font-size:15px;font-weight:500;
+ margin-top:3px;font-variant-numeric:tabular-nums;overflow:hidden;
+ text-overflow:ellipsis}
+.encCel.err b{color:var(--arco)}
+.encCel.err.ruim b{color:var(--brasa)}
+.grafico{position:relative;height:170px;background:var(--mesa);
+ border:1px solid var(--linha);border-radius:5px;margin-bottom:10px}
+.grafico canvas{position:absolute;inset:0;width:100%;height:100%}
+.lg.g1 i{border-top:2px solid var(--arco)}
+.lg.g2 i{border-top:2px solid var(--quente)}
 .linhaNome{display:flex;gap:7px;margin-bottom:9px}
 .linhaNome input{flex:1;min-width:0;background:var(--fundo);
  border:1px solid var(--linha);border-radius:2px;padding:9px 10px;font-size:13px}
@@ -705,6 +721,78 @@ h4:first-child{margin-top:0}
             </div>
             <div class="nt">Sem cartao no slot, tudo continua funcionando: o que
             se perde e a biblioteca e o registro.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================== ENCODER =========================== -->
+      <section class="pane" id="pnEnc">
+        <div class="et aberta">
+          <div class="cab"><div class="mk">&#9711;</div>
+            <div class="tx"><div class="tt">Encoder dos drivers</div>
+            <span class="sb" id="sbEnc">desligado</span></div></div>
+          <div class="dentro">
+            <div class="encGrade">
+              <div class="encCel"><span class="rot">junta 1 comandado</span><b id="eC1">--</b></div>
+              <div class="encCel"><span class="rot">junta 1 medido</span><b id="eM1">--</b></div>
+              <div class="encCel err"><span class="rot">junta 1 erro</span><b id="eE1">--</b></div>
+              <div class="encCel"><span class="rot">junta 2 comandado</span><b id="eC2">--</b></div>
+              <div class="encCel"><span class="rot">junta 2 medido</span><b id="eM2">--</b></div>
+              <div class="encCel err"><span class="rot">junta 2 erro</span><b id="eE2">--</b></div>
+            </div>
+            <div class="grafico"><canvas id="cvEnc"></canvas>
+              <div class="legenda">
+                <div class="lg g1"><i></i>erro junta 1</div>
+                <div class="lg g2"><i></i>erro junta 2</div>
+              </div>
+            </div>
+            <div class="nt">O grafico mostra <b>comandado menos medido</b>, em
+            graus da junta, nos ultimos instantes. Linha reta em zero quer dizer
+            que o braco foi para onde foi mandado. <b>Degrau ou deriva quer dizer
+            passo perdido</b> &mdash; e o valor nao volta sozinho.</div>
+            <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
+            <div class="pq2" id="qEncZerar"></div>
+            <div class="res" id="encEstado">--</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9881;</div>
+            <div class="tx"><div class="tt">Ligacao Modbus</div>
+            <span class="sb">endereco, registrador, formato</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="tr"><div class="ch" id="encAtivo"><i></i></div>
+              <span>ler o encoder pelos drivers</span></div>
+            <h4>Barramento</h4>
+            <div class="cp"><label>Velocidade</label><input type="number" id="encBaud" min="1200"><span class="un">bps</span></div>
+            <div class="cp"><label>Paridade</label>
+              <select id="encPar"><option value="0">8N1</option><option value="1">8E1</option><option value="2">8O1</option></select></div>
+            <div class="cp"><label>Funcao Modbus</label>
+              <select id="encFunc"><option value="3">3 &middot; holding</option><option value="4">4 &middot; input</option></select></div>
+            <div class="cp"><label>Periodo de leitura</label><input type="number" id="encPer" min="20" max="2000" step="10"><span class="un">ms</span></div>
+            <h4>Junta 1</h4>
+            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId1" min="1" max="247"></div>
+            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg1" min="0" max="65535"></div>
+            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv1" min="1"></div>
+            <h4>Junta 2</h4>
+            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
+            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
+            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
+            <h4>Formato do valor</h4>
+            <div class="tr"><div class="ch" id="enc32"><i></i></div>
+              <span>posicao em 32 bits (dois registradores)</span></div>
+            <div class="tr"><div class="ch" id="encLo"><i></i></div>
+              <span>palavra baixa vem primeiro</span></div>
+            <div class="nt">Muito driver Modbus manda a palavra baixa antes da
+            alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
+            vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
+            <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
+            <div class="pq2" id="qEncSalvar"></div>
+            <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
+            drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
+            estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
+            ou tente um endereco aqui e olhe o grafico &mdash; o certo acompanha o
+            eixo quando voce move o braco.</div>
           </div>
         </div>
       </section>
@@ -1174,7 +1262,7 @@ function paleta(){
   palQuando=t;
   PAL={papel:cor("--papel"),grade:cor("--grade"),arco:cor("--arco"),
        quente:cor("--quente"),brasa:cor("--brasa"),letra:cor("--letra"),
-       letra2:cor("--letra2"),
+       letra2:cor("--letra2"),letra3:cor("--letra3"),
        elo1:t==="escuro"?"#8b98a9":"#5a6675",
        elo2:t==="escuro"?"#b7c2d1":"#8794a5",
        juntaF:t==="escuro"?"#2a333e":"#ffffff",
@@ -1924,6 +2012,154 @@ function redeAtualizar(){
 }
 redeAtualizar();
 
+/* =====================================================================
+   Encoder.
+
+   O grafico mostra COMANDADO MENOS MEDIDO, em graus da junta. E a
+   grandeza que interessa: linha reta em zero quer dizer que o braco foi
+   para onde foi mandado; degrau ou deriva quer dizer passo perdido.
+
+   O historico vive aqui no navegador. O ESP32 nao guarda serie temporal
+   -- ele publica o instante, e quem desenha e quem tem memoria de sobra.
+   ===================================================================== */
+const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
+const encHist=[[],[]];
+let encD=null, encCarregou=false;
+
+const cvEnc=$("cvEnc"), ctEnc=cvEnc?cvEnc.getContext("2d"):null;
+
+function encMedir(){
+  if(!cvEnc)return;
+  const d=window.devicePixelRatio||1,r=cvEnc.parentElement.getBoundingClientRect();
+  if(r.width<2||r.height<2)return;
+  cvEnc.width=Math.round(r.width*d);cvEnc.height=Math.round(r.height*d);
+  ctEnc.setTransform(d,0,0,d,0,0);
+}
+addEventListener("resize",encMedir);
+
+function encPintar(){
+  if(!ctEnc||!cvEnc.width)return;
+  const C=paleta();
+  const dp=window.devicePixelRatio||1;
+  const w=cvEnc.width/dp,h=cvEnc.height/dp;
+  ctEnc.clearRect(0,0,w,h);
+  ctEnc.fillStyle=C.papel;ctEnc.fillRect(0,0,w,h);
+
+  /* Escala simetrica em torno do zero, com piso: sem piso, ruido de
+     centesimo de grau viraria montanha e assustaria por nada. */
+  let pico=0.5;
+  encHist.forEach(function(s){s.forEach(function(v){
+    const a=Math.abs(v);if(a>pico)pico=a;});});
+  pico=pico*1.15;
+
+  /* grade e rotulos */
+  ctEnc.strokeStyle="rgba("+C.grade+",.45)";ctEnc.lineWidth=1;
+  ctEnc.fillStyle=C.letra3;
+  ctEnc.font="9px ui-monospace,Menlo,monospace";ctEnc.textAlign="left";
+  [-1,-0.5,0,0.5,1].forEach(function(f){
+    const y=h/2-f*(h/2-10);
+    ctEnc.beginPath();ctEnc.moveTo(34,y);ctEnc.lineTo(w-6,y);
+    if(f===0){ctEnc.strokeStyle=C.arco;ctEnc.globalAlpha=.5;}
+    ctEnc.stroke();
+    ctEnc.strokeStyle="rgba("+C.grade+",.45)";ctEnc.globalAlpha=1;
+    ctEnc.fillText((f*pico).toFixed(2)+"°",4,y+3);
+  });
+
+  /* as duas juntas */
+  [[0,C.arco],[1,C.quente]].forEach(function(par){
+    const s=encHist[par[0]];
+    if(s.length<2)return;
+    ctEnc.strokeStyle=par[1];ctEnc.lineWidth=1.8;
+    ctEnc.beginPath();
+    s.forEach(function(v,i){
+      const x=34+(w-40)*i/(ENC_AMOSTRAS-1);
+      const y=h/2-(v/pico)*(h/2-10);
+      if(i)ctEnc.lineTo(x,y);else ctEnc.moveTo(x,y);
+    });
+    ctEnc.stroke();
+  });
+}
+
+function encCelula(id,texto,ruim){
+  const b=$(id);if(!b)return;
+  b.textContent=texto;
+  const cel=b.parentElement;
+  if(cel&&cel.classList.contains("err"))cel.classList.toggle("ruim",!!ruim);
+}
+
+function encAplicar(d){
+  encD=d;
+  const j=d.j||[];
+  [0,1].forEach(function(i){
+    const L=j[i]||{};
+    const cmd=(i===0)?d.t1:d.t2;
+    encCelula("eC"+(i+1),cmd.toFixed(2)+"°");
+    if(L.ok){
+      encCelula("eM"+(i+1),L.graus.toFixed(2)+"°");
+      /* Meio grau ja e mais do que qualquer folga sadia num braco de
+         solda: acima disso a celula fica vermelha. */
+      encCelula("eE"+(i+1),(L.erro>=0?"+":"")+L.erro.toFixed(2)+"°",
+                Math.abs(L.erro)>0.5);
+      encHist[i].push(L.erro);
+    }else{
+      encCelula("eM"+(i+1),d.ativo?"sem leitura":"desligado");
+      encCelula("eE"+(i+1),"--",false);
+      /* Sem leitura o historico continua andando com zero, senao o
+         grafico mente dizendo que estava tudo bem no buraco. */
+      if(encHist[i].length)encHist[i].push(0);
+    }
+    while(encHist[i].length>ENC_AMOSTRAS)encHist[i].shift();
+  });
+  window.__encN=encHist[0].length;   /* o banco de interface confere */
+
+  const L1=j[0]||{},L2=j[1]||{};
+  $("sbEnc").textContent = !d.ativo ? "desligado"
+    : (L1.ok||L2.ok) ? "lendo" : "sem resposta";
+  $("encEstado").textContent=
+    "junta 1: "+(L1.n||0)+" leituras, "+(L1.falhas||0)+" falhas"+
+    (L1.ok?("   bruto "+L1.bruto):"")+
+    "\njunta 2: "+(L2.n||0)+" leituras, "+(L2.falhas||0)+" falhas"+
+    (L2.ok?("   bruto "+L2.bruto):"")+
+    "\n"+d.baud+" bps  ·  funcao "+d.func+"  ·  "+d.per+" ms";
+
+  if(!encCarregou){
+    encCarregou=true;
+    $("encAtivo").className="ch"+(d.ativo?" on":"");
+    $("enc32").className  ="ch"+(d.b32?" on":"");
+    $("encLo").className  ="ch"+(d.lo?" on":"");
+    $("encBaud").value=d.baud;$("encPar").value=d.par;
+    $("encFunc").value=d.func;$("encPer").value=d.per;
+    $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
+    $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
+  }
+  encMedir();encPintar();
+}
+
+function encAtualizar(){
+  return fetch("/api/encoder").then(function(r){return r.json();})
+   .then(encAplicar).catch(function(){});
+}
+
+/* As chaves sao locais ate o operador salvar: mudar o formato do valor a
+   cada clique reabriria a UART no meio da leitura. */
+["encAtivo","enc32","encLo"].forEach(function(id){
+  $(id).onclick=function(){$(id).classList.toggle("on");};
+});
+$("btEncSalvar").onclick=function(){
+  const on=function(id){return $(id).classList.contains("on")?1:0;};
+  post("/api/encoder/config?ativo="+on("encAtivo")+
+       "&baud="+$("encBaud").value+"&par="+$("encPar").value+
+       "&func="+$("encFunc").value+"&per="+$("encPer").value+
+       "&b32="+on("enc32")+"&lo="+on("encLo")+
+       "&id1="+$("encId1").value+"&reg1="+$("encReg1").value+"&cv1="+$("encCv1").value+
+       "&id2="+$("encId2").value+"&reg2="+$("encReg2").value+"&cv2="+$("encCv2").value)
+   .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];});
+};
+$("btEncZerar").onclick=function(){
+  post("/api/encoder/zerar?j=0").then(function(){
+    encHist[0]=[];encHist[1]=[];});
+};
+
 /* ---------- status ---------- */
 const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
  EXECUTANDO:"executa",POSICIONANDO:"movendo",CALIBRANDO:"calibra",FALHA:"falha"};
@@ -2165,6 +2401,9 @@ function aplicar(d){
   if(d.maxPts>1&&d.maxPts!==MAX_PTS){MAX_PTS=d.maxPts;posContar();}
   if(abaAtual==="arq")sdEstadoSalvar();
   acao("Home", porQueNaoMove(d,true));
+  acao("EncZerar", (encD&&encD.ativo) ? "" : "ligue a leitura do encoder");
+  acao("EncSalvar", (d.modo==="MANUAL") ? ""
+     : "configure o encoder com o robo parado no modo manual");
   /* Zerar reescreve a contagem de pulsos: so com o robo parado. Nao exige
      calibracao -- e justamente o que se usa no modo de instalacao. */
   acao("Refer", porQueNaoMove(d,false));
@@ -2184,6 +2423,7 @@ function tick(){
      WebServer atende uma conexao por vez e cada requisicao a mais
      concorre com o heartbeat do jog. */
   if(abaAtual==="arq")sdAtualizar(false);
+  if(abaAtual==="enc")encAtualizar();
   fetch("/api/status").then(function(r){return r.json();}).then(function(d){
     quedas=0;aplicar(d);
   }).catch(function(){
@@ -2206,9 +2446,10 @@ const ABAS=[
  ["mover","Mover","M12 4v16M4 12h16M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3"],
  ["prog","Programa","M5 6h14M5 12h9M5 18h5M17 15l2 2 3-4"],
  ["arq","Arquivos","M4 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"],
+ ["enc","Encoder","M3 17l5-6 4 4 5-8 4 5M3 21h18"],
  ["ajuste","Ajustes","M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 4.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 11a2 2 0 110 4 1.7 1.7 0 00-1.6 0z"]
 ];
-const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",ajuste:"pnAjuste"};
+const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAjuste"};
 
 (function montarAbas(){
   let h="",t="";

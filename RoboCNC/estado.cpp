@@ -1,4 +1,5 @@
 #include "estado.h"
+#include "encoder.h"
 #include <Preferences.h>
 #include <stdarg.h>
 #include <string.h>
@@ -23,6 +24,12 @@ bool protEnvelope = PROT_ENVELOPE_PADRAO;
 
 uint16_t escalaVelocidadeTraj = 100;
 uint8_t  suavidadePartida     = SUAVIDADE_PADRAO;
+
+ConfigEncoder configEncoder = {
+  false, ENC_BAUD_PADRAO, ENC_PARIDADE_PADRAO, ENC_FUNCAO_PADRAO,
+  ENC_PERIODO_PADRAO, true, false, {1, 2}, {0, 0}, {10000.0f, 10000.0f}
+};
+ConfigEncoder encoderPendente = configEncoder;
 
 Modo        modoAtual     = MODO_MANUAL;
 EstadoCalib estadoCalib   = CAL_INATIVO;
@@ -237,6 +244,21 @@ void carregarConfiguracoes() {
   J2.passosMax = prefs.getLong ("e2max", 0);
   J2.grausHome = prefs.getFloat("e2hom", 0.0f);
 
+  configEncoder.ativo        = prefs.getBool ("encOn",  false);
+  configEncoder.baud         = prefs.getUInt ("encBd",  ENC_BAUD_PADRAO);
+  configEncoder.paridade     = (uint8_t) prefs.getUInt("encPar", ENC_PARIDADE_PADRAO);
+  configEncoder.funcao       = (uint8_t) prefs.getUInt("encFn",  ENC_FUNCAO_PADRAO);
+  configEncoder.periodoMs    = (uint16_t)prefs.getUInt("encPer", ENC_PERIODO_PADRAO);
+  configEncoder.trintaEDois  = prefs.getBool ("enc32",  true);
+  configEncoder.baixaPrimeiro= prefs.getBool ("encLo",  false);
+  configEncoder.id[0]        = (uint8_t) prefs.getUInt("encId1", 1);
+  configEncoder.id[1]        = (uint8_t) prefs.getUInt("encId2", 2);
+  configEncoder.reg[0]       = (uint16_t)prefs.getUInt("encRg1", 0);
+  configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", 0);
+  configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", 10000.0f);
+  configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", 10000.0f);
+  encoderPendente = configEncoder;
+
   prefs.end();
 
   recalcularResolucao();
@@ -288,10 +310,38 @@ void salvarConfiguracoes() {
   prefs.putLong ("e2max", J2.passosMax);
   prefs.putFloat("e2hom", J2.grausHome);
 
+  prefs.putBool ("encOn",  configEncoder.ativo);
+  prefs.putUInt ("encBd",  configEncoder.baud);
+  prefs.putUInt ("encPar", configEncoder.paridade);
+  prefs.putUInt ("encFn",  configEncoder.funcao);
+  prefs.putUInt ("encPer", configEncoder.periodoMs);
+  prefs.putBool ("enc32",  configEncoder.trintaEDois);
+  prefs.putBool ("encLo",  configEncoder.baixaPrimeiro);
+  prefs.putUInt ("encId1", configEncoder.id[0]);
+  prefs.putUInt ("encId2", configEncoder.id[1]);
+  prefs.putUInt ("encRg1", configEncoder.reg[0]);
+  prefs.putUInt ("encRg2", configEncoder.reg[1]);
+  prefs.putFloat("encCv1", configEncoder.contagensPorVolta[0]);
+  prefs.putFloat("encCv2", configEncoder.contagensPorVolta[1]);
+
   prefs.end();
   Serial.println("[NVS] Configuracoes salvas.");
 }
 
+
+// Gravada separada do resto: mexer no encoder nao pode reescrever
+// calibracao, e salvar calibracao nao pode reescrever o registrador que
+// o operador levou uma tarde para achar.
+void aplicarEncoderPendente() {
+  configEncoder = encoderPendente;
+  if (configEncoder.periodoMs < ENC_PERIODO_MIN_MS)
+    configEncoder.periodoMs = ENC_PERIODO_MIN_MS;
+  salvarConfiguracoes();
+  encoderReconfigurar();
+  definirMensagem(configEncoder.ativo
+                  ? "Encoder: leitura ligada"
+                  : "Encoder: leitura desligada");
+}
 
 void restaurarPadroes() {
   // Chamada apenas pelo core 1 (ver CMD_RESTAURAR_PADROES no .ino).
