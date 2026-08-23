@@ -1038,3 +1038,53 @@ antes de tentar resolver, e isso acontece **antes** do DNS.
 
 Menos cenários porque há menos sistema: doze verificações do modo estação
 saíram junto com o código que elas cobriam.
+
+---
+
+# Rodada 9 — a seta que não queria dizer nada
+
+## R21 · "Aperto a seta para a esquerda e o braço vai no horário"  `K01`–`K03`  ✅
+
+Duas coisas diferentes por trás da mesma queixa, e só uma delas era o que
+o operador achava.
+
+**1. O rótulo estava errado, não o movimento.** Os botões de jog eram
+`←` `→` para a junta 1 e `↓` `↑` para a junta 2. Junta é coisa que
+**gira**: seta para os lados não quer dizer nada, porque para que lado a
+ponta anda depende de onde o braço está. A convenção da cinemática é
+θ crescente no anti-horário, então `←` (θ−) girava no horário — correto
+pela convenção, e ilegível na tela.
+
+Os botões passaram a falar em rotação: **↺ anti-horário** e
+**↻ horário**, olhando o eixo de cima. Agora a frase "apertei ↻ e girou
+anti-horário" é sem ambiguidade, e tem um conserto só.
+
+**2. O conserto existia e estava fora de alcance.** `inv1`/`inv2` iam por
+`/api/config`, que passa por `exigirManual()`. Durante o assistente o modo
+é `MODO_CALIBRANDO`, então era recusado — o operador descobria o problema
+exatamente onde não podia resolvê-lo, e a saída era cancelar o assistente,
+ir em Ajustes e recomeçar.
+
+Agora há `POST /api/sentido?j=&v=` e `CMD_INVERTER_EIXO`, aceitos em
+manual **e na etapa de referência da calibração**, onde uma conferência
+de sentido com as duas chaves aparece no próprio assistente.
+
+Três recusas, todas com motivo na tela:
+
+- **Depois da etapa de referência, não.** Dali em diante já existe limite
+  medido; trocar o sinal do eixo inverteria o significado do que foi
+  medido. A conferência some da tela e o firmware recusa (`K02c`).
+- **Com o eixo andando, não.** Reescrever o `DIR` por baixo do gerador de
+  pulso é o jeito mais rápido de mandar o braço para o batente (`K03`).
+- Junta inexistente é barrada na porta.
+
+Um conceito, um caminho: as chaves de Ajustes e as do assistente chamam a
+mesma rota. Os parâmetros `inv1`/`inv2` continuam aceitos em
+`/api/config` para uma página em cache, pelo mesmo motivo do `velC`.
+
+## Cobertura
+
+| banco | rodada 8 | agora |
+|-------|----------|-------|
+| firmware | 130 / 0 | **141 / 0** |
+| interface | 76 / 0 | **80 / 0** |

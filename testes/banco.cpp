@@ -2539,6 +2539,96 @@ static void teste_I03_velocidade_entre_trechos() {
 // =====================================================================
 //  J - Rede: Wi-Fi proprio, e so isso
 // =====================================================================
+static void teste_K01_sentido_do_eixo() {
+  secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  const bool antes     = J1.inverterDir;
+  const bool sobeAntes = J1.motor->dirSobe;
+  nota("junta 1: inverterDir=%d, dirHighCountsUp no gerador=%d",
+       (int)antes, (int)sobeAntes);
+
+  checar(webPost("/api/sentido?j=1&v=1") == 200, "K01a",
+         "POST /api/sentido inverte a junta em modo manual");
+  rodarComWeb(120);
+  nota("depois: inverterDir=%d, dirHighCountsUp=%d -- \"%s\"",
+       (int)J1.inverterDir, (int)J1.motor->dirSobe, ultimaMensagem);
+  checar(J1.inverterDir && J1.motor->dirSobe != sobeAntes, "K01b",
+         "o sinal chega no gerador de pulso, nao so na variavel");
+  checar(g_nvs.b.count("inv1") && g_nvs.b["inv1"], "K01c",
+         "e fica gravado: religar nao volta ao sentido errado");
+  checar(fabsf(J2.passosPorGrau) > 0 && !J2.inverterDir, "K01d",
+         "a outra junta nao e tocada");
+
+  // Recusas na porta.
+  checar(webPost("/api/sentido?j=9&v=1") == 400, "K01e",
+         "junta inexistente e recusada");
+}
+
+static void teste_K02_sentido_durante_a_calibracao() {
+  secao("K02  O sentido errado se descobre calibrando -- da para consertar la?");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  enviarComando(CMD_CALIB_INICIAR);
+  rodarComWeb(200);
+  nota("modo=%d etapa=%d (CAL_HOME=%d)", (int)modoAtual, (int)estadoCalib,
+       (int)CAL_HOME);
+  checar(modoAtual == MODO_CALIBRANDO && estadoCalib == CAL_HOME, "K02a",
+         "o assistente para na etapa de referencia");
+
+  // E exatamente aqui que o operador aperta a seta e ve o braco ir para o
+  // outro lado. Mandar cancelar o assistente para consertar era pedir
+  // para ele desistir.
+  const int cod = webPost("/api/sentido?j=1&v=1");
+  rodarComWeb(200);
+  nota("na etapa de referencia: HTTP %d -- \"%s\"", cod, ultimaMensagem);
+  checar(cod == 200 && J1.inverterDir, "K02b",
+         "na etapa de referencia da para inverter sem cancelar o assistente");
+
+  // Depois de medir o primeiro limite, NAO: trocar o sinal do eixo agora
+  // inverteria o significado do que ja foi medido.
+  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, 0.0f, 0.0f);
+  uint32_t t = 0;
+  while (estadoCalib != CAL_J1_NEG && t < 5000) { rodarComWeb(20); t += 20; }
+  const bool eraInv = J1.inverterDir;
+  const int cod2 = webPost("/api/sentido?j=1&v=0");
+  rodarComWeb(120);
+  nota("na etapa %d: HTTP %d, inverterDir continua %d -- \"%s\"",
+       (int)estadoCalib, cod2, (int)J1.inverterDir, ultimaMensagem);
+  checar(estadoCalib == CAL_J1_NEG && cod2 == 400 &&
+         J1.inverterDir == eraInv, "K02c",
+         "depois de medir o primeiro limite o sentido trava, com motivo");
+}
+
+static void teste_K03_sentido_com_o_braco_andando() {
+  secao("K03  Trocar o sentido com o braco em movimento");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Poe o eixo em movimento de verdade e tenta trocar o sinal por baixo
+  // do gerador de pulso: e o jeito mais rapido de mandar o braco para o
+  // batente na direcao errada.
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(60); }
+  const bool andando = motoresEmMovimento();
+  const bool eraInv  = J1.inverterDir;
+  webPost("/api/sentido?j=1&v=1");
+  rodarComWeb(20);
+  nota("andando=%d; inverterDir %d -> %d -- \"%s\"", (int)andando,
+       (int)eraInv, (int)J1.inverterDir, ultimaMensagem);
+  checar(andando && J1.inverterDir == eraInv, "K03a",
+         "com o eixo andando o sentido nao muda");
+  checar(strstr(ultimaMensagem, "parar") != nullptr, "K03b",
+         "e o operador e avisado do porque, em vez de nada acontecer");
+
+  enviarComando(CMD_JOG, 1, 0);
+  rodarComWeb(600);
+  webPost("/api/sentido?j=1&v=1");
+  rodarComWeb(120);
+  checar(J1.inverterDir, "K03c", "parado, a mesma troca passa");
+}
+
 static void teste_J01_wifi_proprio() {
   secao("J01  A maquina depende de rede de alguem?");
   reiniciarSistema();
@@ -2658,6 +2748,10 @@ int main() {
   teste_I01_ziguezague_reto();
   teste_I02_ziguezague_na_borda();
   teste_I03_velocidade_entre_trechos();
+
+  teste_K01_sentido_do_eixo();
+  teste_K02_sentido_durante_a_calibracao();
+  teste_K03_sentido_com_o_braco_andando();
 
   teste_J01_wifi_proprio();
   teste_J02_endereco_do_painel();

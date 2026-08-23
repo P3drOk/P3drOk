@@ -522,15 +522,35 @@ Deixando o campo com o valor que o assistente já sugeriu, nada muda.
 
 ### O sentido — para que lado a junta cresce
 
-Se o braço vai para um lado e o desenho na tela vai para o outro, o sinal
-do eixo está trocado. **Nenhuma calibração conserta isso**, porque o erro
-não é de escala, é de sinal: a aferição só corrigiria a proporção, e o
-braço continuaria espelhado.
+Junta é coisa que **gira**. Seta para os lados não quer dizer nada aqui:
+para que lado a ponta anda depende de onde o braço está. Por isso os
+botões de jog falam em rotação — **↺ anti-horário** e **↻ horário**,
+olhando o eixo de cima.
 
-`Ajustes → Sentido dos eixos` tem uma chave por junta. A cinemática
-espera ângulo crescente no sentido **anti-horário**, com a junta 1 em zero
-apontando para a **direita**. Marcar a chave inverte o `DIR` no gerador de
-pulso — não precisa trocar fio no driver.
+A cinemática espera ângulo crescente no sentido **anti-horário**, com a
+junta 1 em zero apontando para a **direita**. Então a regra é simples: se
+você apertar ↻ e o braço girar anti-horário, o sinal daquele eixo está
+trocado.
+
+Isso não é erro de escala e **nenhuma calibração conserta** — é erro de
+sinal. Marque a chave em `Ajustes → Sentido dos eixos`, que inverte o
+`DIR` no gerador de pulso. Não precisa trocar fio no driver.
+
+**Também dá para corrigir dentro do assistente de calibração.** É lá que
+o problema aparece: o operador aperta a seta pela primeira vez e o braço
+vai para o outro lado. Na etapa de referência há uma conferência de
+sentido com as duas chaves, e mandar cancelar o assistente para consertar
+seria pedir para ele desistir.
+
+Só na etapa de referência, e por um motivo: dali em diante já existe
+limite medido, e trocar o sinal do eixo depois inverteria o significado
+do que foi medido. Depois dessa etapa a troca sai da tela e o firmware a
+recusa, dizendo por quê.
+
+Duas outras recusas, pelo mesmo cuidado: com o eixo em movimento a troca
+não passa (reescrever o `DIR` por baixo do gerador de pulso é o jeito
+mais rápido de mandar o braço para o batente), e junta que não existe é
+barrada na porta.
 
 ### A origem — onde fica o zero
 

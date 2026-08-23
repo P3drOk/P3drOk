@@ -515,15 +515,21 @@ h4:first-child{margin-top:0}
 
             <h4>Passo a passo</h4>
             <div class="eixo">
-              <button class="jb" data-j="1" data-d="-1">&#8592;</button>
+              <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;</button>
               <div class="id"><span class="rot">junta 1</span><div class="fx" id="fx1"></div></div>
-              <button class="jb" data-j="1" data-d="1">&#8594;</button>
+              <button class="jb" data-j="1" data-d="-1" title="horario">&#8635;</button>
             </div>
             <div class="eixo">
-              <button class="jb" data-j="2" data-d="-1">&#8595;</button>
+              <button class="jb" data-j="2" data-d="1" title="anti-horario">&#8634;</button>
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
-              <button class="jb" data-j="2" data-d="1">&#8593;</button>
+              <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;</button>
             </div>
+            <div class="nt">Junta e coisa que <b>gira</b>: &#8634; e anti-horario,
+            &#8635; e horario, olhando o eixo de cima. Seta para os lados nao
+            queria dizer nada aqui &mdash; para que lado a ponta anda depende de
+            onde o braco esta.<br><br>Se o braco girar ao contrario do botao, o
+            sinal daquele eixo esta trocado: <b>Ajustes &rarr; Sentido dos
+            eixos</b>.</div>
 
             <h4>Ir para um angulo</h4>
             <div class="cp"><label>Junta 1</label><input type="number" id="inMt1" step="0.5"><span class="un">°</span></div>
@@ -863,14 +869,28 @@ h4:first-child{margin-top:0}
     <div class="nt" id="cMedNota"></div>
   </div>
   <div class="eixo" id="cJ1">
-    <button class="jb" data-j="1" data-d="-1">&#8592;</button>
+    <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;</button>
     <div class="id"><span class="rot">junta 1</span></div>
-    <button class="jb" data-j="1" data-d="1">&#8594;</button>
+    <button class="jb" data-j="1" data-d="-1" title="horario">&#8635;</button>
   </div>
   <div class="eixo" id="cJ2">
-    <button class="jb" data-j="2" data-d="-1">&#8595;</button>
+    <button class="jb" data-j="2" data-d="1" title="anti-horario">&#8634;</button>
     <div class="id"><span class="rot">junta 2</span></div>
-    <button class="jb" data-j="2" data-d="1">&#8593;</button>
+    <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;</button>
+  </div>
+
+  <!-- So na etapa de referencia: e aqui que o operador descobre que o
+       braco gira ao contrario, e mandar cancelar para consertar era
+       pedir para ele desistir do assistente. Depois desta etapa ja ha
+       limite medido, e trocar o sinal inverteria o que foi medido. -->
+  <div id="cSent" style="display:none">
+    <div class="nt"><b>Confira o sentido antes de medir.</b> Aperte
+    &#8635; (horario) em cada junta e veja para que lado ela vai de
+    verdade. Se for ao contrario, marque aqui.</div>
+    <div class="tr"><div class="ch" id="cInv1"><i></i></div>
+      <span>inverter a junta 1</span></div>
+    <div class="tr"><div class="ch" id="cInv2"><i></i></div>
+      <span>inverter a junta 2</span></div>
   </div>
   <button class="b pri" id="cOk">Confirmar</button>
   <button class="b mini" id="cNao">Cancelar</button>
@@ -908,7 +928,8 @@ document.querySelectorAll(".jb").forEach(function(b){
   ["pointerup","pointerleave","pointercancel"].forEach(function(v){
     b.addEventListener(v,function(){jogOff(b.dataset.j,b);});});
 });
-const TK={ArrowLeft:["1","-1"],ArrowRight:["1","1"],ArrowUp:["2","1"],ArrowDown:["2","-1"]};
+/* Setas do teclado no mesmo sentido dos botoes: esquerda = anti-horario. */
+const TK={ArrowLeft:["1","1"],ArrowRight:["1","-1"],ArrowUp:["2","1"],ArrowDown:["2","-1"]};
 addEventListener("keydown",function(e){
   if(document.activeElement&&/INPUT/.test(document.activeElement.tagName))return;
   if(e.code==="Space"){e.preventDefault();post("/api/parar");return;}
@@ -958,11 +979,16 @@ $("btCalApagar").onclick=function(){
              "ate calibrar de novo."))
     post("/api/calib/apagar");
 };
-$("sInv1").onclick=function(){D.inv1=!D.inv1;salvarSentido();};
-$("sInv2").onclick=function(){D.inv2=!D.inv2;salvarSentido();};
-function salvarSentido(){
-  return post("/api/config?inv1="+(D.inv1?1:0)+"&inv2="+(D.inv2?1:0));
+/* Sentido do eixo: uma rota so, chamada dos dois lugares onde o assunto
+   aparece -- Ajustes e a etapa de referencia da calibracao. Duas telas,
+   um conceito, um caminho. */
+function inverterEixo(j,v){
+  return post("/api/sentido?j="+j+"&v="+(v?1:0));
 }
+$("sInv1").onclick=function(){inverterEixo(1,!D.inv1);};
+$("sInv2").onclick=function(){inverterEixo(2,!D.inv2);};
+$("cInv1").onclick=function(){inverterEixo(1,!D.inv1);};
+$("cInv2").onclick=function(){inverterEixo(2,!D.inv2);};
 $("cOk").onclick=function(){
   /* Os dois campos so sao enviados nas etapas em que eles significam
      alguma coisa; vazio vira 0, que o firmware entende como "nao mexer". */
@@ -2020,6 +2046,8 @@ function aplicar(d){
 
   $("sInv1").className="ch"+(d.inv1?" on":"");
   $("sInv2").className="ch"+(d.inv2?" on":"");
+  $("cInv1").className="ch"+(d.inv1?" on":"");
+  $("cInv2").className="ch"+(d.inv2?" on":"");
 
   const temCal=d.cal1&&d.cal2;
   $("calEstado").textContent=temCal
@@ -2072,6 +2100,10 @@ function aplicar(d){
     $("cOk").textContent=d.calib==="CONCLUIDO"?"Concluir e salvar":"Confirmar";
 
     const med=$("cMed");
+    /* A conferencia de sentido so na etapa de referencia: dali em diante
+       ja ha limite medido, e trocar o sinal do eixo inverteria o
+       significado do que foi medido. */
+    $("cSent").style.display=(d.calib==="HOME")?"block":"none";
     if(d.calib==="HOME"){
       med.style.display="block";
       $("cMedL1").textContent="Junta 1 esta em";

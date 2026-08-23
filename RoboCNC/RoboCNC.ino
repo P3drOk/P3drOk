@@ -83,7 +83,7 @@ static const char* NOME_CMD[] = {
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
-  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","JOG_XY",
+  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","INVERTER_EIXO","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -367,6 +367,33 @@ static void processarComando(const Comando& c) {
       if (modoAtual == MODO_MANUAL) aferirAplicar((uint8_t)c.a, c.f1);
       else definirMensagem("Afira com o robo parado no modo manual");
       break;
+
+    case CMD_INVERTER_EIXO: {
+      // Sentido do eixo. Vale em manual e TAMBEM na primeira etapa da
+      // calibracao: e ali que o operador descobre que o braco vai para o
+      // lado errado, e mandar cancelar o assistente para consertar era
+      // pedir para ele desistir.
+      //
+      // So na etapa HOME: dali em diante ja ha limite medido, e trocar o
+      // sinal do eixo depois inverteria o significado do que foi medido.
+      const bool naReferencia = (modoAtual == MODO_CALIBRANDO &&
+                                 estadoCalib == CAL_HOME);
+      if (modoAtual != MODO_MANUAL && !naReferencia) {
+        definirMensagem("Troque o sentido em manual ou na etapa de referencia");
+        break;
+      }
+      if (motoresEmMovimento()) {
+        definirMensagem("Espere o braco parar para trocar o sentido");
+        break;
+      }
+      Junta& j = (c.a == 2) ? J2 : J1;
+      j.inverterDir = (c.b != 0);
+      aplicarSentido();
+      salvarConfiguracoes();
+      definirMensagem("Junta %d: sentido %s", (c.a == 2) ? 2 : 1,
+                      j.inverterDir ? "invertido" : "normal");
+      break;
+    }
 
     case CMD_CALIB_APAGAR:
       // Vale tambem no meio do assistente: e a saida de quem quer comecar

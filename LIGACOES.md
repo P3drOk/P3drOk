@@ -316,6 +316,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais, ou use *Apagar calibração gravada*. |
 | Braço trava durante a **calibração** | Já corrigido: sem calibração válida o jog é livre (modo de instalação). Se ainda travar, veja se os servos estão habilitados — a interface diz o motivo abaixo do joystick. |
 | Braço vai para um lado, desenho vai para o outro | Sinal do eixo trocado. `Ajustes → Sentido dos eixos`, chave da junta. Calibração não conserta: o erro é de sinal, não de escala. |
+| Aperto ↻ e a junta gira anti-horário | Mesmo caso. Dá para corrigir sem sair do assistente: a etapa de referência da calibração tem as duas chaves. |
 | Ângulo na tela não bate com o transferidor | Resolução digitada errada. Refaça a calibração e informe o **curso real medido** na última etapa. |
 | Ângulo na tela não bate com o transferidor, e a calibração não resolve | Redução mecânica diferente do catálogo. `Ajustes → Aferir a redução no braço`: marque, gire, meça e grave. |
 | Desenho na tela deslocado do braço depois de perder passo | Leve o braço à posição de referência e use `Mover → Zerar a máquina aqui`. |

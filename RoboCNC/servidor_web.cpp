@@ -309,6 +309,25 @@ static void handleAferirAplicar(){
   enfileirar(CMD_AFERIR_APLICAR, j, 0, g);
 }
 
+// Sentido do eixo. Nao passa por exigirManual(): a etapa de referencia
+// da calibracao tambem aceita, porque e exatamente ali que o operador
+// descobre que o braco gira para o outro lado. Quem decide de verdade e
+// o core 1, que enxerga a etapa do assistente.
+static void handleSentido() {
+  registrarContatoOperador();
+  const long j = argL("j", 0);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+
+  Snapshot s;
+  lerSnapshot(s);
+  if (s.modo != MODO_MANUAL &&
+      !(s.modo == MODO_CALIBRANDO && s.calib == CAL_HOME)) {
+    erro("troque o sentido com o robo em manual, ou na etapa de referencia da calibracao");
+    return;
+  }
+  enfileirar(CMD_INVERTER_EIXO, j, argL("v", 0) != 0 ? 1 : 0);
+}
+
 static void handleMover() {
   registrarContatoOperador();
   Snapshot s;
@@ -767,6 +786,7 @@ void servidorIniciar() {
   server.on("/api/referenciar",     HTTP_POST, handleReferenciar);
   server.on("/api/aferir/marcar",   HTTP_POST, handleAferirMarcar);
   server.on("/api/aferir/aplicar",  HTTP_POST, handleAferirAplicar);
+  server.on("/api/sentido",         HTTP_POST, handleSentido);
 
   server.on("/api/rede",           HTTP_GET,  handleRede);
 

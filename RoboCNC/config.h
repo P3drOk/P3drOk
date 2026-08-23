@@ -316,6 +316,7 @@ enum TipoComando : uint8_t {
   CMD_REFERENCIAR,      // o braco esta na posicao de referencia: sincroniza a contagem
   CMD_AFERIR_MARCAR,    // a = junta: marca a contagem atual como inicio da medida
   CMD_AFERIR_APLICAR,   // a = junta, f1 = graus realmente percorridos
+  CMD_INVERTER_EIXO,    // a = junta, b = 0/1: para que lado o eixo gira
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

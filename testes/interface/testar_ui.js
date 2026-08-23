@@ -403,6 +403,42 @@ function checar(ok, texto, extra) {
            temCampos ? ('"' + est.l1 + '" preenchido com ' + est.g1) : 'ocultos');
   }
 
+  // O sentido do eixo se descobre errado APERTANDO a seta no assistente.
+  // Tem de dar para consertar ali, sem cancelar tudo.
+  await t.request.post(BASE + '/teste/estado',
+    { data: { calib: 'HOME', calibEixo: 0 } });
+  await t.waitForTimeout(500);
+  const setas = await t.evaluate(() => {
+    const b = [...document.querySelectorAll('#cJ1 .jb')];
+    return { n: b.length, txt: b.map(x => x.textContent.trim()).join(' '),
+             dir: b.map(x => x.dataset.d).join(' '),
+             sent: document.getElementById('cSent').style.display !== 'none' };
+  });
+  // Junta e coisa que gira: seta para os lados nao quer dizer nada aqui.
+  checar(/\u21ba/.test(setas.txt) && /\u21bb/.test(setas.txt),
+         'assistente: os botoes de jog falam em sentido de rotacao, nao em lados',
+         setas.txt + '  (data-d: ' + setas.dir + ')');
+  checar(setas.sent,
+         'assistente: na etapa de referencia aparece a conferencia de sentido');
+
+  rotas = [];
+  await t.locator('#cInv1').click();
+  await t.waitForTimeout(300);
+  const inv = rotas.find(x => x.split('?')[0] === '/api/sentido');
+  checar(!!inv && /j=1/.test(inv),
+         'assistente: inverter a junta 1 chama /api/sentido sem cancelar o assistente',
+         inv || 'nada');
+
+  // Depois de medir o primeiro limite, o sentido some: ja ha medida que
+  // seria invertida junto.
+  await t.request.post(BASE + '/teste/estado', { data: { calib: 'J1_NEG' } });
+  await t.waitForTimeout(500);
+  checar(!(await t.evaluate(() =>
+             document.getElementById('cSent').style.display !== 'none')),
+         'assistente: passada a referencia, a troca de sentido sai da tela');
+  await t.request.post(BASE + '/teste/estado', { data: { calib: 'CONCLUIDO' } });
+  await t.waitForTimeout(500);
+
   // Confirmar na etapa de conclusao manda o curso medido.
   rotas = [];
   await t.evaluate(() => { document.getElementById('cG1').value = '58.5';

@@ -86,6 +86,9 @@ no próprio `checar(...)`.
 | J01 | Wi-Fi próprio, sem modo estação e sem procurar rede de terceiro |
 | J02 | o painel diz por onde se chega nele, e as rotas removidas somem |
 | J03 | qualquer endereço digitado cai no painel (DNS de captura) |
+| K01 | trocar o sentido do eixo chega ao gerador de pulso e ao NVS |
+| K02 | dá para inverter na etapa de referência; depois de medir, não |
+| K03 | com o eixo andando a troca de sentido é recusada, com motivo |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 
