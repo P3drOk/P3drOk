@@ -116,7 +116,10 @@ static void colherVarredura(int n) {
   nVizinhas = 0;
   for (int i = 0; i < n && nVizinhas < MAX_REDES_VIZINHAS; i++) {
     RedeVizinha& r = vizinhas[nVizinhas];
-    const char* s = WiFi.SSID(i);
+    // WiFi.SSID(i) devolve String por valor: guardar o c_str() de um
+    // temporario daria ponteiro pendurado.
+    const String nome = WiFi.SSID(i);
+    const char* s = nome.c_str();
     if (!s || !s[0]) continue;                 // rede oculta: nada a mostrar
     // Duplicata: o mesmo SSID aparece uma vez por canal e por banda.
     bool repetida = false;
@@ -177,7 +180,11 @@ void redeAtender() {
     case EST_CONECTANDO: {
       const int st = WiFi.status();
       if (st == WL_CONNECTED) {
-        strncpy(ipEstacao, WiFi.localIP(), sizeof(ipEstacao) - 1);
+        // localIP() devolve IPAddress, nao texto -- ele nao converte para
+        // const char*. A String de toString() fica numa variavel com
+        // nome: passar o c_str() de um temporario e ponteiro pendurado.
+        const String ip = WiFi.localIP().toString();
+        strncpy(ipEstacao, ip.c_str(), sizeof(ipEstacao) - 1);
         ipEstacao[sizeof(ipEstacao) - 1] = '\0';
         falhasSeguidas = 0;
         mudarPara(EST_CONECTADA);

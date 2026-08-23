@@ -1959,19 +1959,27 @@ function redePintarLista(j){
 }
 
 function redeEstadoBotoes(){
+  const semRobo=!D.modo;
   const manual=(D.modo==="MANUAL");
   const senha=$("redeSenha").value;
-  acao("RedeVarrer", redeVarrendo ? "procurando..."
-     : !manual ? "procure redes com o robo parado no modo manual" : "");
+  acao("RedeVarrer",
+      semRobo ? "sem contato com o robo"
+    : redeVarrendo ? "procurando..."
+    : !manual ? "procure redes com o robo parado no modo manual" : "");
   acao("RedeConectar",
-      !manual ? "conecte com o robo parado no modo manual"
+      semRobo ? "sem contato com o robo"
+    : !manual ? "conecte com o robo parado no modo manual"
     : !redeEscolhida ? "escolha uma rede na lista"
     : (senha.length>0&&senha.length<8) ? "a senha de Wi-Fi tem no minimo 8 caracteres"
     : "");
   acao("RedeEsquecer",
-      !manual ? "esqueca a rede com o robo parado no modo manual"
+      semRobo ? "sem contato com o robo"
+    : !manual ? "esqueca a rede com o robo parado no modo manual"
     : (redeD&&redeD.ssid) ? "" : "nao ha rede gravada");
 }
+/* Estado inicial: sem isto os botoes nascem clicaveis e so travam quando
+   o primeiro status chega -- meio segundo em que a tela mente. */
+redeEstadoBotoes();
 
 function redeAtualizar(forcar){
   return fetch("/api/rede").then(function(r){return r.json();}).then(function(d){

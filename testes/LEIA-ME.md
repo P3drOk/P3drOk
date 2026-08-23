@@ -19,6 +19,10 @@ ali, e nenhum teste de motor os pegaria. O que continua faltando de propósito n
 mock é socket, concorrência e HTTP de verdade: o banco chama o handler na mesma
 thread.
 
+**A assinatura do mock é a assinatura do core, não a conveniente.** Um mock
+que aceita mais que a biblioteca de verdade deixa o banco passar limpo e joga
+o erro na IDE do operador. Ver [`mocks/LEIA-ME.md`](mocks/LEIA-ME.md).
+
 O banco compila com `-DESTOP_FISICO_INSTALADO=true` para exercitar o ramo da
 emergência física. O `config.h` de produção mantém `false` até o botão existir.
 

@@ -937,3 +937,50 @@ válido de rede e sai escapado nos dois JSON.
 |-------|----------|-------|
 | firmware | 120 / 0 | **142 / 0** |
 | interface | 74 / 0 | **83 / 0** |
+
+---
+
+# Rodada 7 — o mock que mentia
+
+## R17 · `rede.cpp` não compilava na IDE, e o banco não viu  ✅
+
+```
+error: cannot convert 'String' to 'const char*' in initialization
+     const char* s = WiFi.SSID(i);
+error: invalid user-defined conversion from 'IPAddress' to 'const char*'
+     strncpy(ipEstacao, WiFi.localIP(), ...);
+```
+
+O código estava errado, mas o defeito de fundo é do **banco**: o mock de
+`WiFi` devolvia `const char*` onde o core do ESP32 devolve `String` e
+`IPAddress`. Compilou limpo aqui e falhou na máquina do operador — o pior
+lugar possível para descobrir.
+
+É a segunda vez na mesma rodada: o mock de `WebServer` também não
+decodificava percent-encoding, enquanto o do ESP32 decodifica.
+
+**Um mock que aceita mais que a biblioteca de verdade não é um mock, é
+uma armadilha.** A regra virou documento
+([`testes/mocks/LEIA-ME.md`](testes/mocks/LEIA-ME.md)): a assinatura do
+mock é a do core, não a conveniente, e onde não for óbvia fica escrito
+`// core: <assinatura real>` ao lado.
+
+Corrigido nos dois lados:
+
+- `rede.cpp` guarda `WiFi.SSID(i)` numa `String` com nome (o `c_str()` de
+  um temporário é ponteiro pendurado) e usa `WiFi.localIP().toString()`.
+- O mock passou a devolver `String` e `IPAddress`, e `IPAddress` ganhou
+  `toString()` sem conversão implícita para `const char*` — é justamente
+  essa recusa que o banco precisa reproduzir.
+- Junto, as assinaturas de `Preferences` e do resto de `WiFi` foram
+  alinhadas com o core (`size_t putString`, `bool setHostname`,
+  `int16_t scanComplete`, `int8_t RSSI()`).
+
+## R18 · Botões de rede nasciam clicáveis  ✅
+
+Achado pela varredura de interface, não por mim: `btRedeConectar` e
+`btRedeEsquecer` ficavam habilitados até o primeiro `/api/rede` chegar —
+meio segundo em que a tela mente sobre o que dá para fazer. Mesma família
+do botão mudo. Agora `redeEstadoBotoes()` roda uma vez na carga, e sem
+contato com o robô o motivo é "sem contato com o robo" em vez de um
+palpite sobre o modo.

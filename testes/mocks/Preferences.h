@@ -21,10 +21,10 @@ class Preferences {
   long     getLong (const char* k, long d)     { auto i=g_nvs.l.find(k); return i==g_nvs.l.end()?d:i->second; }
   float    getFloat(const char* k, float d)    { auto i=g_nvs.f.find(k); return i==g_nvs.f.end()?d:i->second; }
   bool     getBool (const char* k, bool d)     { auto i=g_nvs.b.find(k); return i==g_nvs.b.end()?d:i->second; }
-  void putUInt (const char* k, uint32_t v) { g_nvs.u[k]=v; }
-  void putLong (const char* k, long v)     { g_nvs.l[k]=v; }
-  void putFloat(const char* k, float v)    { g_nvs.f[k]=v; }
-  void putBool (const char* k, bool v)     { g_nvs.b[k]=v; }
+  size_t putUInt (const char* k, uint32_t v) { g_nvs.u[k]=v; return 4; }
+  size_t putLong (const char* k, long v)     { g_nvs.l[k]=v; return 4; }
+  size_t putFloat(const char* k, float v)    { g_nvs.f[k]=v; return 4; }
+  size_t putBool (const char* k, bool v)     { g_nvs.b[k]=v; return 1; }
 
   // As credenciais de Wi-Fi sao texto: o NVS de verdade guarda string, e
   // sem isto o banco nao consegue exercitar o caminho de gravar rede.
@@ -37,5 +37,8 @@ class Preferences {
     destino[n] = '\0';
     return n;
   }
-  void putString(const char* k, const char* v) { g_nvs.s[k] = v ? v : ""; }
+  size_t putString(const char* k, const char* v) {   // core: devolve size_t
+    g_nvs.s[k] = v ? v : "";
+    return g_nvs.s[k].size();
+  }
 };

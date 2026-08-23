@@ -87,11 +87,19 @@ struct String : std::string {
   long  toInt()   const { return empty() ? 0L   : atol(c_str()); }
 };
 
-// IPAddress: o firmware so a usa para fixar o IP do ponto de acesso.
+// IPAddress do core do ESP32. A assinatura importa: ela NAO converte para
+// const char*, e foi por o mock antes devolver texto que um
+// strncpy(dest, WiFi.localIP(), n) compilou aqui e falhou na IDE.
 struct IPAddress {
   uint8_t o[4];
   IPAddress(uint8_t a=0,uint8_t b=0,uint8_t c=0,uint8_t d=0){o[0]=a;o[1]=b;o[2]=c;o[3]=d;}
   operator uint32_t() const {
     return ((uint32_t)o[0]<<24)|((uint32_t)o[1]<<16)|((uint32_t)o[2]<<8)|o[3];
+  }
+  String toString() const {
+    char b[16];
+    snprintf(b, sizeof(b), "%u.%u.%u.%u", (unsigned)o[0], (unsigned)o[1],
+             (unsigned)o[2], (unsigned)o[3]);
+    return String(b);
   }
 };

@@ -4,6 +4,16 @@
 // tentativa de entrar numa rede com sucesso ou falha encenados pelo
 // teste, e varredura ASSINCRONA (que e o ponto delicado -- a varredura
 // sincrona bloquearia a tarefa web por segundos).
+//
+// AS ASSINATURAS SAO AS DO CORE DE VERDADE, nao as convenientes. Este
+// arquivo ja devolveu const char* onde o ESP32 devolve String e
+// IPAddress; o banco compilou limpo e a IDE do operador nao. Um mock que
+// aceita mais que o original nao e um mock, e uma armadilha:
+//
+//   SSID(i)    -> String     (por valor; c_str() de temporario e cilada)
+//   SSID()     -> String
+//   localIP()  -> IPAddress  (NAO converte para const char*)
+//   softAPIP() -> IPAddress
 #pragma once
 #include "Arduino.h"
 #include <string>
@@ -51,24 +61,26 @@ struct WiFiMock {
   bool        varrendo = false;
   int         varreduraN = WIFI_SCAN_FAILED;
 
-  void mode(int m) { modoAtual = m; }
-  bool softAP(const char* s, const char* p) {
+  bool mode(int m) { modoAtual = m; return true; }  // core: bool mode(wifi_mode_t)
+  bool softAP(const char* s, const char* p) {   // core: bool softAP(const char*, const char*)
     apSsid = s ? s : ""; apSenha = p ? p : "";
     return !falharAp;
   }
-  bool softAPConfig(uint32_t, uint32_t, uint32_t) { apIpFixo = true; return true; }
-  const char* softAPIP() { return "192.168.4.1"; }
-  void setHostname(const char* h) { host = h ? h : ""; }
-  void setSleep(bool) {}
+  bool softAPConfig(IPAddress, IPAddress, IPAddress) { apIpFixo = true; return true; }
+  IPAddress softAPIP() { return IPAddress(192, 168, 4, 1); }
+  bool setHostname(const char* h) { host = h ? h : ""; return true; }   // core: bool
+  bool setSleep(bool) { return true; }        // core: bool
   void persistent(bool) {}
-  void setAutoReconnect(bool) {}
+  bool setAutoReconnect(bool) { return true; }// core: bool
 
-  void begin(const char* s, const char* p) {
+  int begin(const char* s, const char* p) {   // core: wl_status_t
     staSsid = s ? s : ""; staSenha = p ? p : "";
     tentouEm = millis(); tentando = true; estado = WL_IDLE_STATUS;
+    return estado;
   }
-  void disconnect(bool = false, bool = false) {
+  bool disconnect(bool = false, bool = false) {   // core: bool
     tentando = false; estado = WL_DISCONNECTED; staSsid.clear();
+    return true;
   }
   int status() {
     if (tentando && millis() - tentouEm >= msParaConectar) {
@@ -81,24 +93,26 @@ struct WiFiMock {
     }
     return estado;
   }
-  const char* localIP()  { return estado == WL_CONNECTED ? "192.168.0.77" : "0.0.0.0"; }
-  int32_t     RSSI()     { return -52; }
-  const char* SSID()     { return staSsid.c_str(); }
+  IPAddress localIP() {
+    return estado == WL_CONNECTED ? IPAddress(192, 168, 0, 77) : IPAddress(0, 0, 0, 0);
+  }
+  int8_t      RSSI()     { return -52; }   // core: int8_t na estacao
+  String      SSID()     { return String(staSsid); }
 
-  int scanNetworks(bool assincrona = false, bool = false, bool = false, uint32_t = 300) {
+  int16_t scanNetworks(bool assincrona = false, bool = false, bool = false, uint32_t = 300) {
     varreuEm = millis(); varrendo = true; varreduraN = WIFI_SCAN_RUNNING;
     if (!assincrona) { varrendo = false; varreduraN = (int)vizinhanca.size(); }
-    return varreduraN;
+    return (int16_t)varreduraN;
   }
-  int scanComplete() {
+  int16_t scanComplete() {   // core: int16_t
     if (varrendo && millis() - varreuEm >= msParaVarrer) {
       varrendo = false; varreduraN = (int)vizinhanca.size();
     }
-    return varreduraN;
+    return (int16_t)varreduraN;
   }
   void scanDelete() { varreduraN = WIFI_SCAN_FAILED; varrendo = false; }
 
-  const char* SSID(int i) { return vizinhanca[(size_t)i].ssid.c_str(); }
+  String      SSID(int i) { return String(vizinhanca[(size_t)i].ssid); }
   int32_t     RSSI(int i) { return vizinhanca[(size_t)i].rssi; }
   int32_t     channel(int i) { return vizinhanca[(size_t)i].canal; }
   uint8_t     encryptionType(int i) { return vizinhanca[(size_t)i].cripto; }
