@@ -313,8 +313,8 @@ static void escutar() {
 // =====================================================================
 //  MODO 3 - Procurar o driver
 //
-//  Varre velocidade x paridade x endereco. Reporta qualquer sinal de
-//  vida, inclusive:
+//  Varre velocidade x paridade x endereco e ANOTA todos os achados numa
+//  tabela. Reporta qualquer sinal de vida:
 //
 //    - resposta valida        -> achou
 //    - resposta de EXCECAO    -> ACHOU TAMBEM. O escravo respondeu
@@ -323,6 +323,29 @@ static void escutar() {
 //    - bytes com CRC ruim     -> a velocidade esta perto, a paridade
 //                                provavelmente errada
 // =====================================================================
+struct Achado {
+  uint32_t baud;
+  uint8_t  paridade;
+  uint8_t  id;
+  uint8_t  func;
+  bool     excecao;
+  uint8_t  codigo;      // codigo da excecao, quando for o caso
+};
+static const uint8_t MAX_ACHADOS = 12;
+static Achado achados[MAX_ACHADOS];
+static uint8_t nAchados = 0;
+
+static const char* textoExcecao(uint8_t c) {
+  switch (c) {
+    case 1: return "funcao ilegal (tente f 3 ou f 4)";
+    case 2: return "endereco de registrador ilegal";
+    case 3: return "valor ilegal (quantidade de registradores)";
+    case 4: return "falha no escravo";
+    case 6: return "escravo ocupado";
+    default: return "codigo nao padronizado";
+  }
+}
+
 static void procurar(uint8_t idMax) {
   Serial.println();
   Serial.println("== PROCURANDO O DRIVER ==");
@@ -330,7 +353,7 @@ static void procurar(uint8_t idMax) {
   Serial.println(", todas as velocidades e paridades. Pode demorar.");
   Serial.println();
 
-  uint8_t achados = 0;
+  nAchados = 0;
   for (uint8_t b = 0; b < N_BAUDS; b++) {
     for (uint8_t p = 0; p < N_PARIDADES; p++) {
       baudAtual = BAUDS[b];
@@ -354,16 +377,24 @@ static void procurar(uint8_t idMax) {
           Serial.print("  <- "); hexLinha(r, n);
 
           if (crcConfere(r, n) && r[0] == id) {
-            if (r[1] & 0x80) {
+            const bool exc = (r[1] & 0x80) != 0;
+            if (exc) {
               Serial.print("  *** ACHOU (excecao ");
               Serial.print((int)r[2]);
-              Serial.print("): o driver esta AI e respondeu. So o");
-              Serial.println(" registrador 0 que nao serve.");
+              Serial.print(": "); Serial.print(textoExcecao(r[2]));
+              Serial.println(") ***");
             } else {
               Serial.println("  *** ACHOU, resposta valida ***");
             }
-            achados++;
-            idAtual = id; funcAtual = f;
+            if (nAchados < MAX_ACHADOS) {
+              achados[nAchados].baud     = BAUDS[b];
+              achados[nAchados].paridade = p;
+              achados[nAchados].id       = id;
+              achados[nAchados].func     = f;
+              achados[nAchados].excecao  = exc;
+              achados[nAchados].codigo   = exc ? r[2] : 0;
+              nAchados++;
+            }
           } else {
             Serial.println("  (CRC nao bate: velocidade perto, paridade suspeita)");
           }
@@ -375,14 +406,7 @@ static void procurar(uint8_t idMax) {
   }
 
   Serial.println();
-  if (achados) {
-    Serial.print("Achado. Ultima combinacao boa: ");
-    Serial.print(baudAtual); Serial.print(" ");
-    Serial.print(PARIDADES[paridadeAtual].nome);
-    Serial.print("  id "); Serial.print((int)idAtual);
-    Serial.print("  funcao "); Serial.println((int)funcAtual);
-    Serial.println("Agora use o modo 4 para achar o registrador da posicao.");
-  } else {
+  if (!nAchados) {
     Serial.println("SILENCIO ABSOLUTO em todas as combinacoes.");
     Serial.println("Nesta ordem, e o que costuma ser:");
     Serial.println("  1. Rode o modo 1. Se ele falhar, o problema nem chegou");
@@ -394,18 +418,78 @@ static void procurar(uint8_t idMax) {
     Serial.println("     habilitado e qual o endereco e a velocidade.");
     Serial.println("     Muito driver sai de fabrica com a porta desligada.");
     Serial.println("  5. GND do ESP32 comum com o do driver.");
+    Serial.println();
+    return;
   }
+
+  Serial.println("=== TUDO QUE RESPONDEU ===");
+  for (uint8_t k = 0; k < nAchados; k++) {
+    Serial.print("  ");
+    Serial.print(achados[k].baud);
+    Serial.print(" ");
+    Serial.print(PARIDADES[achados[k].paridade].nome);
+    Serial.print("  id "); Serial.print((int)achados[k].id);
+    Serial.print("  funcao "); Serial.print((int)achados[k].func);
+    if (achados[k].excecao) {
+      Serial.print("   excecao ");
+      Serial.print((int)achados[k].codigo);
+      Serial.print(" (");
+      Serial.print(textoExcecao(achados[k].codigo));
+      Serial.print(")");
+    } else {
+      Serial.print("   resposta valida");
+    }
+    Serial.println();
+  }
+
+  // Prefere uma resposta VALIDA; se so houve excecao, fica com a
+  // primeira -- excecao tambem prova que o escravo esta la.
+  uint8_t escolha = 0;
+  for (uint8_t k = 0; k < nAchados; k++) {
+    if (!achados[k].excecao) { escolha = k; break; }
+  }
+  baudAtual     = achados[escolha].baud;
+  paridadeAtual = achados[escolha].paridade;
+  idAtual       = achados[escolha].id;
+  funcAtual     = achados[escolha].func;
+  abrirLinha();
+
+  Serial.println();
+  Serial.print("Configuracao adotada: ");
+  Serial.print(baudAtual); Serial.print(" ");
+  Serial.print(PARIDADES[paridadeAtual].nome);
+  Serial.print("  id "); Serial.print((int)idAtual);
+  Serial.print("  funcao "); Serial.println((int)funcAtual);
+  Serial.println("Agora use o modo 7 para cacar o registrador do encoder.");
   Serial.println();
 }
 
 // =====================================================================
 //  MODO 4 - Varrer registradores
 //
-//  Com o driver ja respondendo, le faixa por faixa e mostra o que tem
-//  dentro. Para achar o encoder: rode uma vez, GIRE O EIXO A MAO, rode
-//  de novo e compare. O registrador que mudou junto com o eixo e o da
-//  posicao. E assim que se acha sem manual.
+//  Le faixa por faixa e mostra o que tem dentro. Excecao NAO e escondida:
+//  se o driver recusa uma faixa inteira, isso aparece -- tela vazia nao
+//  ensina nada a ninguem.
+//
+//  Ler oito de uma vez e mais rapido, mas muito driver so aceita ler
+//  registradores que existem de verdade e recusa o bloco inteiro se um
+//  deles nao existir. Por isso, quando o bloco e recusado, ele volta e
+//  tenta um por um.
 // =====================================================================
+
+// Le UM registrador. Devolve: 0 = silencio, 1 = valor em 'valor',
+// 2 = excecao (codigo em 'codigo').
+static uint8_t lerUm(uint16_t endereco, uint16_t& valor, uint8_t& codigo) {
+  uint8_t r[16];
+  const size_t n = lerRegistradores(idAtual, funcAtual, endereco, 1,
+                                    r, sizeof(r), 150);
+  if (!n || !crcConfere(r, n)) return 0;
+  if (r[1] & 0x80) { codigo = (n > 2) ? r[2] : 0; return 2; }
+  if (n < 7 || r[2] < 2) return 0;
+  valor = (uint16_t)((r[3] << 8) | r[4]);
+  return 1;
+}
+
 static void varrerRegistradores(uint16_t inicio, uint16_t fim) {
   Serial.println();
   Serial.println("== VARREDURA DE REGISTRADORES ==");
@@ -416,17 +500,15 @@ static void varrerRegistradores(uint16_t inicio, uint16_t fim) {
   Serial.println();
 
   abrirLinha();
-  uint8_t r[64];
-  uint16_t lidos = 0;
+  uint16_t lidos = 0, excecoes = 0, mudos = 0;
+  uint8_t ultimaExcecao = 0;
 
-  for (uint32_t a = inicio; a <= fim; a += 8) {
-    const uint16_t quantos = (uint16_t)((fim - a + 1) < 8 ? (fim - a + 1) : 8);
-    const size_t n = lerRegistradores(idAtual, funcAtual, (uint16_t)a,
-                                      quantos, r, sizeof(r), 150);
-    if (!n) continue;
-    if (!crcConfere(r, n)) continue;
-    if (r[1] & 0x80) continue;                  // excecao: faixa nao existe
-    if ((size_t)r[2] + 5 > n) continue;
+  for (uint32_t a = inicio; a <= fim; a++) {
+    uint16_t v = 0;
+    uint8_t  c = 0;
+    const uint8_t st = lerUm((uint16_t)a, v, c);
+    if (st == 0) { mudos++; continue; }
+    if (st == 2) { excecoes++; ultimaExcecao = c; continue; }
 
     Serial.print("  0x");
     if (a < 0x1000) Serial.print("0");
@@ -435,25 +517,161 @@ static void varrerRegistradores(uint16_t inicio, uint16_t fim) {
     Serial.print((unsigned)a, HEX);
     Serial.print(" (");
     Serial.print((unsigned)a);
-    Serial.print(")  ");
-    for (uint8_t k = 0; k < r[2] / 2; k++) {
-      const uint16_t v = (uint16_t)((r[3 + k * 2] << 8) | r[4 + k * 2]);
-      Serial.print(v);
-      Serial.print("  ");
-    }
-    Serial.println();
+    Serial.print(")  =  ");
+    Serial.println(v);
     lidos++;
   }
 
   Serial.println();
-  if (!lidos) {
-    Serial.println("Nada respondeu nesta faixa. Tente outra, ou a funcao 4.");
+  Serial.print("Resumo: "); Serial.print(lidos); Serial.print(" leram, ");
+  Serial.print(excecoes); Serial.print(" recusados, ");
+  Serial.print(mudos); Serial.println(" sem resposta.");
+
+  if (!lidos && excecoes) {
+    Serial.print("Faixa inteira recusada com excecao ");
+    Serial.print((int)ultimaExcecao);
+    Serial.print(": "); Serial.println(textoExcecao(ultimaExcecao));
+    Serial.println("O driver ESTA respondendo -- so nao ha registrador aqui.");
+    Serial.println("Tente outra faixa (4 4096 4351, 4 8192 8447) ou a outra");
+    Serial.println("funcao (f 3 / f 4).");
+  } else if (!lidos && mudos) {
+    Serial.println("Ninguem respondeu. Confira a configuracao com o modo 3.");
+  } else if (lidos) {
+    Serial.println("Agora use o modo 7 para achar qual deles e o encoder.");
+  }
+  Serial.println();
+}
+
+// =====================================================================
+//  MODO 6 - Monitorar um registrador ao vivo
+//
+//  Le o registrador e o seguinte, sem parar, e imprime. Gire o eixo a
+//  mao e veja o numero andar. E o jeito mais direto de confirmar que
+//  achou a posicao.
+// =====================================================================
+static void monitorar(uint16_t endereco) {
+  Serial.println();
+  Serial.println("== MONITOR ==");
+  Serial.print("Registradores "); Serial.print(endereco);
+  Serial.print(" e "); Serial.print(endereco + 1);
+  Serial.println(". GIRE O EIXO A MAO. Qualquer tecla encerra.");
+  Serial.println();
+
+  abrirLinha();
+  bool primeiro = true;
+  int32_t base32 = 0;
+
+  while (!Serial.available()) {
+    uint16_t v0 = 0, v1 = 0;
+    uint8_t  c = 0;
+    const uint8_t a = lerUm(endereco, v0, c);
+    const uint8_t b = lerUm((uint16_t)(endereco + 1), v1, c);
+    if (a != 1) { Serial.println("  (sem leitura)"); delay(300); continue; }
+
+    // As duas montagens possiveis de 32 bits. A que fizer sentido ao
+    // girar o eixo e a certa.
+    const int32_t altoBaixo = (int32_t)(((uint32_t)v0 << 16) | v1);
+    const int32_t baixoAlto = (int32_t)(((uint32_t)v1 << 16) | v0);
+    if (primeiro) { base32 = altoBaixo; primeiro = false; }
+
+    Serial.print("  reg "); Serial.print(endereco);
+    Serial.print(" = "); Serial.print(v0);
+    if (b == 1) {
+      Serial.print("   reg "); Serial.print(endereco + 1);
+      Serial.print(" = "); Serial.print(v1);
+      Serial.print("   |  32b(a<<16|b) = "); Serial.print(altoBaixo);
+      Serial.print("   32b(b<<16|a) = "); Serial.print(baixoAlto);
+      Serial.print("   delta = "); Serial.print(altoBaixo - base32);
+    }
+    Serial.println();
+    delay(200);
+  }
+  while (Serial.available()) Serial.read();
+  Serial.println("(fim do monitor)");
+  Serial.println();
+}
+
+// =====================================================================
+//  MODO 7 - Cacar o encoder
+//
+//  Le a faixa, espera voce girar o eixo, le de novo e mostra SO os
+//  registradores que mudaram. E o que responde a pergunta "qual deles e
+//  a posicao" sem voce comparar duas telas a olho.
+// =====================================================================
+static const uint16_t MAX_CACA = 512;
+static uint16_t cacaAntes[MAX_CACA];
+static uint8_t  cacaValido[MAX_CACA];
+
+static void cacar(uint16_t inicio, uint16_t fim) {
+  if ((uint32_t)(fim - inicio) + 1 > MAX_CACA) fim = (uint16_t)(inicio + MAX_CACA - 1);
+
+  Serial.println();
+  Serial.println("== CACAR O ENCODER ==");
+  Serial.print("Faixa "); Serial.print(inicio);
+  Serial.print(" a "); Serial.println(fim);
+  Serial.println("Lendo o estado inicial...");
+  abrirLinha();
+
+  uint16_t n = 0;
+  for (uint32_t a = inicio; a <= fim; a++) {
+    uint16_t v = 0; uint8_t c = 0;
+    cacaValido[a - inicio] = (lerUm((uint16_t)a, v, c) == 1) ? 1 : 0;
+    cacaAntes[a - inicio]  = v;
+    if (cacaValido[a - inicio]) n++;
+  }
+  Serial.print(n); Serial.println(" registradores lidos.");
+  if (!n) {
+    Serial.println("Nenhum registrador nesta faixa. Tente outra, ou f 3 / f 4.");
+    Serial.println();
+    return;
+  }
+
+  Serial.println();
+  Serial.println(">>> GIRE O EIXO A MAO, bastante, e aperte qualquer tecla.");
+  while (!Serial.available()) { }
+  while (Serial.available()) Serial.read();
+
+  Serial.println();
+  Serial.println("Comparando...");
+  Serial.println();
+
+  uint16_t mudaram = 0;
+  for (uint32_t a = inicio; a <= fim; a++) {
+    if (!cacaValido[a - inicio]) continue;
+    uint16_t v = 0; uint8_t c = 0;
+    if (lerUm((uint16_t)a, v, c) != 1) continue;
+    const uint16_t antes = cacaAntes[a - inicio];
+    if (v == antes) continue;
+
+    const int32_t d = (int32_t)v - (int32_t)antes;
+    Serial.print("  0x");
+    if (a < 0x1000) Serial.print("0");
+    if (a < 0x100)  Serial.print("0");
+    if (a < 0x10)   Serial.print("0");
+    Serial.print((unsigned)a, HEX);
+    Serial.print(" (");
+    Serial.print((unsigned)a);
+    Serial.print(")   ");
+    Serial.print(antes);
+    Serial.print("  ->  ");
+    Serial.print(v);
+    Serial.print("   (variou ");
+    Serial.print(d);
+    Serial.println(")");
+    mudaram++;
+  }
+
+  Serial.println();
+  if (!mudaram) {
+    Serial.println("Nada mudou nesta faixa. Ou o encoder nao esta aqui, ou");
+    Serial.println("o eixo nao girou o bastante. Tente outra faixa ou gire mais.");
   } else {
-    Serial.println("Agora GIRE O EIXO A MAO e rode a mesma varredura.");
-    Serial.println("O registrador que mudou junto com o eixo e a posicao.");
-    Serial.println("Posicao costuma ocupar DOIS registradores (32 bits):");
-    Serial.println("valor = (alto << 16) | baixo, ou o contrario -- gire");
-    Serial.println("bastante e veja qual dos dois anda mais devagar.");
+    Serial.print(mudaram); Serial.println(" registrador(es) mudaram.");
+    Serial.println();
+    Serial.println("O que variou MUITO e a parte baixa da posicao; o vizinho");
+    Serial.println("que variou pouco (ou nada) e a parte alta. Confirme com o");
+    Serial.println("modo 6 no endereco mais baixo dos dois: gire o eixo e veja");
+    Serial.println("o numero andar junto.");
   }
   Serial.println();
 }
@@ -520,6 +738,9 @@ static void menu() {
   Serial.println(" 4              varrer registradores 0..255");
   Serial.println(" 4 4096 4351    varrer a faixa que voce quiser");
   Serial.println(" 5 01 03 00 00 00 02    mandar quadro cru (CRC automatico)");
+  Serial.println(" 6 100          monitorar um registrador ao vivo");
+  Serial.println(" 7              cacar o encoder na faixa 0..255");
+  Serial.println(" 7 4096 4351    cacar na faixa que voce quiser");
   Serial.println(" b 19200        fixar a velocidade");
   Serial.println(" p 1            paridade: 0=8N1 1=8E1 2=8O1");
   Serial.println(" i 2            fixar o endereco do escravo");
@@ -573,6 +794,17 @@ void loop() {
       break;
     }
     case '5': quadroCru(resto); break;
+    case '6': monitorar((uint16_t)numero); break;
+    case '7': {
+      uint16_t ini = 0, fim = 255;
+      if (resto.length()) {
+        ini = (uint16_t)numero;
+        const char* esp = strchr(resto.c_str(), ' ');
+        fim = esp ? (uint16_t)atol(esp + 1) : (uint16_t)(ini + 255);
+      }
+      cacar(ini, fim);
+      break;
+    }
     case 'b': if (numero >= 1200) { baudAtual = (uint32_t)numero; abrirLinha(); } break;
     case 'p': if (numero >= 0 && numero < N_PARIDADES) { paridadeAtual = (uint8_t)numero; abrirLinha(); } break;
     case 'i': if (numero > 0 && numero < 248) idAtual = (uint8_t)numero; break;
