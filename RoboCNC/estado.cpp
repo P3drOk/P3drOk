@@ -32,7 +32,8 @@ ConfigEncoder configEncoder = {
   // que nao existe so gasta metade do barramento com tempo esgotado, e
   // enche a tela de falha que nao e falha.
   {1, 2}, {ENC_REG_PADRAO, 0},
-  {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO}
+  {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO},
+  ENC_DE_HARDWARE_PADRAO
 };
 ConfigEncoder encoderPendente = configEncoder;
 
@@ -250,6 +251,7 @@ void carregarConfiguracoes() {
   J2.grausHome = prefs.getFloat("e2hom", 0.0f);
 
   configEncoder.ativo        = prefs.getBool ("encOn",  true);
+  configEncoder.deHardware   = prefs.getBool ("encDeHw", ENC_DE_HARDWARE_PADRAO);
   configEncoder.baud         = prefs.getUInt ("encBd",  ENC_BAUD_PADRAO);
   configEncoder.paridade     = (uint8_t) prefs.getUInt("encPar", ENC_PARIDADE_PADRAO);
   configEncoder.funcao       = (uint8_t) prefs.getUInt("encFn",  ENC_FUNCAO_PADRAO);
@@ -328,6 +330,7 @@ void salvarConfiguracoes() {
   prefs.putFloat("e2hom", J2.grausHome);
 
   prefs.putBool ("encOn",  configEncoder.ativo);
+  prefs.putBool ("encDeHw", configEncoder.deHardware);
   prefs.putUInt ("encBd",  configEncoder.baud);
   prefs.putUInt ("encPar", configEncoder.paridade);
   prefs.putUInt ("encFn",  configEncoder.funcao);

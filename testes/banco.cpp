@@ -25,6 +25,7 @@
 #include "ESPmDNS.h"
 #include "DNSServer.h"
 #include "HardwareSerial.h"
+#include "driver/uart.h"
 #include "encoder.h"
 #include "Preferences.h"
 #include "FS.h"
@@ -2906,6 +2907,92 @@ static void teste_L07_o_quadro_cru_na_tela() {
          "junta nao ligada nao acumula falha para o operador cacar");
 }
 
+// ---------------------------------------------------------------------
+// A janela entre o ultimo bit e baixar o DE. Num sketch sozinho na placa
+// ela e respeitada; aqui dentro ha Wi-Fi, servidor web, cartao e as
+// interrupcoes dos motores no mesmo nucleo, e qualquer um deles pode
+// estica-la. Quem baixa o DE tem que ser o periferico.
+// ---------------------------------------------------------------------
+static void teste_L09_de_pelo_hardware() {
+  secao("L09  Quem baixa o DE do MAX485");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  nota("padrao de fabrica: DE por hardware = %d",
+       (int)configEncoder.deHardware);
+  checar(configEncoder.deHardware, "L09a",
+         "de fabrica o DE e baixado pelo periferico, nao pelo firmware");
+
+  prepararEncoder(0x1000, false, 999);
+  rodarComWeb(300);
+  nota("UART em modo %d (RS485 meio-duplex = %d), RTS no pino %d",
+       g_uartIdf.modo, (int)UART_MODE_RS485_HALF_DUPLEX, g_uartIdf.pinoRts);
+  checar(g_uartIdf.modo == UART_MODE_RS485_HALF_DUPLEX &&
+         g_uartIdf.pinoRts == PIN_RS485_DE, "L09b",
+         "a UART entra em RS485 meio-duplex com o DE como RTS");
+  checar(encoderLer(1).valido, "L09c",
+         "e a leitura continua funcionando desse jeito");
+
+  // Quem tiver fiacao que nao goste do modo por hardware precisa poder
+  // voltar sem regravar firmware.
+  const int cod = webPost("/api/encoder/config?dehw=0");
+  rodarComWeb(300);
+  nota("desmarcando na tela: HTTP %d, modo da UART %d", cod, g_uartIdf.modo);
+  checar(cod == 200 && !configEncoder.deHardware &&
+         g_uartIdf.modo == UART_MODE_UART, "L09d",
+         "da para voltar ao controle por GPIO pela tela, sem regravar");
+  checar(encoderLer(1).valido || encoderLer(1).leituras > 0, "L09e",
+         "e do jeito antigo tambem le");
+}
+
+// ---------------------------------------------------------------------
+// Atualizar o firmware NAO apaga o NVS. Uma configuracao de encoder
+// gravada por uma versao anterior continua valendo e ganha do padrao
+// novo -- quem atualizou fica perguntando no registrador errado para
+// sempre, e nada na tela diz isso.
+// ---------------------------------------------------------------------
+static void teste_L10_configuracao_velha_no_nvs() {
+  secao("L10  Configuracao de encoder de uma versao anterior");
+  reiniciarSistema();
+
+  // O que uma versao anterior deste projeto gravava: funcao 3 na faixa
+  // 0x1000, que nesta maquina nao e a posicao.
+  g_nvs.u["encFn"]  = 3;
+  g_nvs.u["encRg1"] = 0x1000;
+  g_nvs.u["encRg2"] = 0x1000;
+  carregarConfiguracoes();
+  nota("depois de atualizar o firmware: funcao %u, registrador %u",
+       (unsigned)configEncoder.funcao, (unsigned)configEncoder.reg[0]);
+  checar(configEncoder.funcao == 3 && configEncoder.reg[0] == 0x1000, "L10a",
+         "o que estava gravado ganha do padrao novo -- e por isso que da para nao ler nada");
+
+  prepararRoboCalibrado();
+  const int cod = webPost("/api/encoder/padroes");
+  rodarComWeb(200);
+  nota("depois de \"voltar aos padroes medidos\": HTTP %d, funcao %u, "
+       "registrador %u, junta 2 em %u",
+       cod, (unsigned)configEncoder.funcao, (unsigned)configEncoder.reg[0],
+       (unsigned)configEncoder.reg[1]);
+  checar(cod == 200 && configEncoder.funcao == ENC_FUNCAO_PADRAO &&
+         configEncoder.reg[0] == ENC_REG_PADRAO &&
+         configEncoder.baixaPrimeiro && configEncoder.trintaEDois, "L10b",
+         "um botao devolve tudo ao que foi medido nesta maquina");
+  checar(configEncoder.reg[1] == 0, "L10c",
+         "e a junta 2 volta a nascer nao ligada, sem inventar falha");
+
+  // E fica gravado: nao adianta consertar so ate o proximo boot.
+  checar(g_nvs.u.count("encRg1") && g_nvs.u["encRg1"] == ENC_REG_PADRAO,
+         "L10d", "gravado no NVS, senao voltaria o defeito no proximo boot");
+
+  // So parado.
+  enviarComando(CMD_GRAVAR_INICIAR);
+  rodarComWeb(60);
+  nota("em modo %d: HTTP %d", (int)modoAtual,
+       webPost("/api/encoder/padroes"));
+  checar(modoAtual != MODO_MANUAL, "L10e",
+         "e, como toda configuracao, so em manual");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3124,6 +3211,8 @@ int main() {
   teste_L06_a_maquina_do_operador();
   teste_L07_o_quadro_cru_na_tela();
   teste_L08_driver_que_so_le_um_registrador();
+  teste_L09_de_pelo_hardware();
+  teste_L10_configuracao_velha_no_nvs();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

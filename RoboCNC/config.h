@@ -80,6 +80,23 @@
 #define PIN_RS485_RE  26    // receiver enable (ativo em baixo)
 #endif
 
+// Quem levanta e baixa o DE do MAX485.
+//
+// true  = o proprio periferico de UART, no modo RS485 meio-duplex. Ele
+//         baixa o DE no fim do ultimo bit de parada, com precisao de
+//         hardware, e NADA no software atrapalha isso.
+// false = o firmware, por GPIO, com uma espera depois do flush().
+//
+// Por que isto existe: entre o ultimo bit sair e o firmware baixar o DE
+// ha aproximadamente um milissegundo em que o MAX485 ainda esta
+// DIRIGINDO a linha. Se o driver responder dentro dessa janela, a
+// resposta colide e some. Num sketch sozinho na placa a janela e
+// respeitada; aqui dentro ha Wi-Fi, servidor web, cartao e as
+// interrupcoes dos geradores de pulso -- tudo no mesmo nucleo -- e
+// qualquer um deles pode esticar essa janela sem aviso. Por isso o
+// padrao e deixar o hardware fazer.
+static const bool ENC_DE_HARDWARE_PADRAO = true;
+
 // Um barramento, os dois drivers: multiponto, enderecos diferentes.
 static const uint32_t ENC_BAUD_PADRAO    = 19200;
 static const uint8_t  ENC_PARIDADE_PADRAO = 0;      // 0=8N1 1=8E1 2=8O1

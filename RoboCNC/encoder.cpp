@@ -1,6 +1,11 @@
 #include "encoder.h"
 #include <HardwareSerial.h>
+#include <driver/uart.h>
 #include <string.h>
+
+// A UART2 e a mesma que o objeto rs abre; o numero precisa bater para o
+// modo RS485 por hardware cair no periferico certo.
+#define ENC_UART_NUM  UART_NUM_2
 
 // UART2. Os pinos SEMPRE vao explicitos no begin(): o padrao da UART2 e
 // GPIO 16 e 17, que neste projeto sao o passo e a direcao da junta 1.
@@ -59,11 +64,39 @@ static void abrirLinha() {
   rs.begin(configEncoder.baud, cfgSerial(configEncoder.paridade),
            PIN_RS485_RX, PIN_RS485_TX);
   delay(5);
+
+  if (configEncoder.deHardware) {
+    // O DE vira a linha RTS do periferico, e a UART entra em RS485
+    // meio-duplex: ela levanta o DE ao comecar a transmitir e o baixa no
+    // fim do ultimo bit de parada, sozinha. Nenhuma tarefa, interrupcao
+    // ou pausa do Wi-Fi consegue esticar essa janela.
+    //
+    // Neste modo o proprio periferico desliga a recepcao enquanto
+    // transmite, entao nao ha eco para descartar e o RE pode ficar
+    // sempre em baixo (recebendo).
+    uart_set_pin(ENC_UART_NUM, PIN_RS485_TX, PIN_RS485_RX,
+                 PIN_RS485_DE, UART_PIN_NO_CHANGE);
+    uart_set_mode(ENC_UART_NUM, UART_MODE_RS485_HALF_DUPLEX);
+    digitalWrite(PIN_RS485_RE, LOW);
+  } else {
+    uart_set_mode(ENC_UART_NUM, UART_MODE_UART);
+    pinMode(PIN_RS485_DE, OUTPUT);
+    digitalWrite(PIN_RS485_DE, LOW);
+  }
   linhaAberta = true;
 }
 
-static void modoEscuta()      { digitalWrite(PIN_RS485_DE, LOW);  digitalWrite(PIN_RS485_RE, LOW); }
-static void modoTransmissao() { digitalWrite(PIN_RS485_RE, HIGH); digitalWrite(PIN_RS485_DE, HIGH); }
+// Com o DE no hardware nao ha o que fazer aqui: quem levanta e baixa e o
+// periferico, e o RE fica sempre ouvindo.
+static void modoEscuta() {
+  if (!configEncoder.deHardware) digitalWrite(PIN_RS485_DE, LOW);
+  digitalWrite(PIN_RS485_RE, LOW);
+}
+static void modoTransmissao() {
+  if (configEncoder.deHardware) return;
+  digitalWrite(PIN_RS485_RE, HIGH);
+  digitalWrite(PIN_RS485_DE, HIGH);
+}
 
 // ---------------------------------------------------------------------
 static uint16_t crc16(const uint8_t* b, size_t n) {
@@ -82,14 +115,19 @@ static size_t trocar(const uint8_t* saida, size_t nSaida,
   while (rs.available()) rs.read();
 
   modoTransmissao();
-  delayMicroseconds(50);
+  if (!configEncoder.deHardware) delayMicroseconds(50);
   rs.write(saida, nSaida);
   rs.flush();
-  // flush() esvazia a fila, mas o ultimo bit ainda pode estar saindo do
-  // registrador de deslocamento. Baixar DE agora corta o fim do quadro e
-  // o escravo descarta calado.
-  delayMicroseconds(usPorChar() * 2);
-  modoEscuta();
+  if (!configEncoder.deHardware) {
+    // flush() esvazia a fila, mas o ultimo bit ainda pode estar saindo do
+    // registrador de deslocamento. Baixar DE agora corta o fim do quadro
+    // e o escravo descarta calado. Esperar, por outro lado, deixa a
+    // linha DIRIGIDA por nos por mais um milissegundo -- e se o driver
+    // responder rapido, a resposta colide e some. E este dilema que o
+    // modo por hardware acaba: ele baixa no fim do ultimo bit, e ponto.
+    delayMicroseconds(usPorChar() * 2);
+    modoEscuta();
+  }
 
   size_t n = 0;
   const uint32_t inicio = millis();

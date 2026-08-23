@@ -218,6 +218,7 @@ struct ConfigEncoder {
   uint8_t  id[2];           // endereco Modbus de cada junta
   uint16_t reg[2];          // registrador da posicao de cada junta
   float    contagensPorVolta[2];   // do ENCODER, por volta do MOTOR
+  bool     deHardware;      // o periferico de UART baixa o DE, nao o firmware
 };
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
 extern ConfigEncoder encoderPendente;    // area de preparo, core 0 enche

@@ -267,6 +267,42 @@ quando o eixo gira. Os dados vivos estão na função 4.
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
 "nunca foi configurado" e cai no padrão medido.
 
+### Quem baixa o DE do MAX485
+
+Entre o último bit sair pelo fio e o firmware baixar o DE existe cerca de
+**um milissegundo** em que o transceptor ainda está *segurando* a linha.
+Se o driver responder rápido dentro dessa janela, a resposta colide com o
+nosso próprio transmissor e some — sempre, no mesmo ponto.
+
+Num programa sozinho na placa essa janela é respeitada. Aqui dentro há
+Wi-Fi, servidor web, cartão e as interrupções dos geradores de pulso, tudo
+no **mesmo núcleo**, e qualquer um deles pode esticá-la sem aviso. É a
+única diferença entre o sistema e o programa de bancada que nenhuma
+leitura de código consegue descartar.
+
+Por isso o padrão é `ENC_DE_HARDWARE_PADRAO = true`: a UART entra em
+**RS485 meio-duplex**, o DE vira a linha RTS do periférico, e é o
+*hardware* que o baixa no fim do bit de parada. Nenhuma tarefa,
+interrupção ou pausa do Wi-Fi alcança isso. Nesse modo o próprio
+periférico desliga a recepção enquanto transmite, então não há eco para
+descartar e o RE fica sempre ouvindo.
+
+A chave **"o DE quem baixa é o hardware da UART"**, na aba Encoder,
+desliga isso sem regravar firmware — para o caso de alguma fiação não
+gostar.
+
+### Atualizei o firmware e parou de ler
+
+**Atualizar o firmware não apaga o NVS.** A configuração de encoder
+gravada por uma versão anterior continua valendo e **ganha do padrão
+novo** — quem atualizou de uma versão que apontava para outro registrador
+fica perguntando no lugar errado para sempre.
+
+O botão **"Voltar aos padrões medidos"**, na aba Encoder, desfaz isso: põe
+tudo de volta em 19200 8N1, função 4, registrador 5, palavra baixa
+primeiro, 131072 contagens, junta 2 não ligada. É o primeiro a tentar
+quando a leitura para depois de uma atualização.
+
 ### Duas formas de perguntar a posição de 32 bits
 
 A posição ocupa dois registradores. Dá para pedir os dois **de uma vez**

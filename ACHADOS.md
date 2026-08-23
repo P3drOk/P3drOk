@@ -1237,7 +1237,14 @@ bancada `ferramentas/teste_rs485`.
 Quando o teste passa e a máquina falha, a diferença não está no motor:
 está no que o sistema faz **diferente** do teste. Achei cinco.
 
-## R28 · A pergunta que ninguém nunca tinha feito ao driver  ✅  `L08`
+## R28 · A pergunta que ninguém nunca tinha feito ao driver  ⚠️  `L08`
+
+> **Corrigido depois.** O operador mandou o código que ele de fato usou:
+> os modos 4 e 6 lêem **8 registradores por pergunta**, e funcionam. O
+> driver aceita leitura múltipla, então isto **não era** a causa do
+> "222 falhas". O recuo automático descrito abaixo ficou no código como
+> robustez — não como conserto. A investigação seguiu em R34–R36.
+
 
 A posição tem 32 bits, dois registradores. O firmware pedia **os dois de
 uma vez** — uma pergunta, resposta atômica, mais barata. O programa de
@@ -1351,3 +1358,75 @@ calibração falharam por isso, nenhum deles com defeito nenhum.
 |-------|-----------|-------|
 | firmware | 163 / 0 | **171 / 0** |
 | interface | 90 / 0 | **93 / 0** |
+
+---
+
+# Rodada 13 — "não sei o motivo ainda, pois nesse código lia normalmente"
+
+O operador mandou o programa que de fato usou. Ele **mata a hipótese
+R28**: os modos 4 e 6 lêem **8 registradores por pergunta** e funcionam,
+então o driver aceita leitura múltipla sem problema.
+
+Isso é um resultado bom, não um desperdício: fecha uma porta e obriga a
+procurar no que sobrou. E o que sobrou é a diferença que nenhuma leitura
+de código descarta — **o programa de bancada está sozinho na placa; o
+sistema não está.**
+
+## R34 · A janela entre o último bit e baixar o DE  ✅  `L09`
+
+Depois de `rs.flush()` o firmware espera dois tempos de caractere
+(~1 ms a 19200) antes de baixar o DE — margem para o último bit sair do
+registrador de deslocamento. Durante essa espera **o MAX485 continua
+dirigindo a linha**. Se o driver responder dentro dela, a resposta
+colide com o nosso próprio transmissor e some.
+
+No programa de bancada essa janela é respeitada: nada mais roda na
+placa. No sistema há Wi-Fi, servidor web, cartão e as interrupções dos
+geradores de pulso — **tudo no mesmo núcleo**. Qualquer um deles pode
+esticar a janela, e o Wi-Fi do ESP32 roda em prioridade 23: subir a
+tarefa do encoder para 2 (R30) não protege contra ele.
+
+Não dá para consertar isso com prioridade nem com seção crítica. Dá para
+consertar tirando o software do caminho: a UART entra em **RS485
+meio-duplex**, o DE vira a linha **RTS do periférico**, e o *hardware*
+o baixa no fim do bit de parada. Nenhuma tarefa, interrupção ou pausa do
+rádio alcança isso.
+
+No modo meio-duplex o periférico desliga a recepção enquanto transmite,
+então não há eco para descartar e o RE fica sempre ouvindo. **Não muda
+nada na fiação.** A chave na aba Encoder volta ao controle por GPIO sem
+regravar firmware, caso alguma montagem não goste.
+
+## R35 · Atualizar o firmware não apaga o NVS  ✅  `L10`
+
+`carregarConfiguracoes()` lê a configuração de encoder do NVS com o
+padrão novo apenas como *fallback*. Ou seja: **o que uma versão anterior
+gravou continua valendo depois da atualização** e ganha do padrão medido.
+
+Quem rodou uma versão anterior deste projeto — que apontava para a faixa
+`0x1000` na função 3 — ficou perguntando no registrador errado para
+sempre, sem nada na tela dizendo isso. Falha determinística, 222 de 222,
+exatamente o sintoma.
+
+O cenário `L10` encena a atualização: grava a configuração velha no NVS,
+recarrega, e confirma que ela ganha. Depois aperta o botão novo,
+**"Voltar aos padrões medidos"**, e confere que tudo volta ao que foi
+medido nesta máquina — e que fica *gravado*, senão o defeito voltaria no
+próximo boot.
+
+## R36 · O que ainda decide o caso
+
+O quadro cru (R31) já está na tela. Ele parte o que sobrou em dois, e os
+dois pedem consertos opostos:
+
+| na tela | onde está o problema |
+|---|---|
+| `(silencio)` | ninguém respondeu — R34 (colisão no DE), fio, ou endereço |
+| bytes, mas sem leitura | respondeu outra coisa — R35 (registrador velho no NVS) |
+
+## Cobertura
+
+| banco | rodada 12 | agora |
+|-------|-----------|-------|
+| firmware | 171 / 0 | **181 / 0** |
+| interface | 93 / 0 | **93 / 0** |

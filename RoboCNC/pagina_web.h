@@ -811,8 +811,26 @@ h4:first-child{margin-top:0}
             <div class="nt">Muito driver Modbus manda a palavra baixa antes da
             alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
             vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
+            <h4>Controle do transceptor</h4>
+            <div class="tr"><div class="ch" id="encDeHw"><i></i></div>
+              <span>o DE quem baixa e o hardware da UART</span></div>
+            <div class="nt">Entre o ultimo bit sair e o firmware baixar o DE ha
+            cerca de <b>um milissegundo</b> em que o MAX485 ainda esta segurando
+            a linha. Se o driver responder rapido nessa janela, a resposta
+            colide e some. Com esta chave marcada quem baixa o DE e o proprio
+            periferico de UART, no fim do bit de parada &mdash; e nem Wi-Fi, nem
+            cartao, nem as interrupcoes dos motores conseguem atrasar isso.
+            <b>Desmarque so se piorar.</b></div>
             <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
             <div class="pq2" id="qEncSalvar"></div>
+            <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
+            <div class="pq2" id="qEncPadroes"></div>
+            <div class="nt">Configuracao salva por uma <b>versao anterior</b> do
+            firmware continua valendo depois de atualizar &mdash; o que esta
+            gravado ganha do padrao novo. Se voce atualizou e a leitura parou,
+            este botao e o primeiro a tentar: ele volta tudo para o que foi
+            medido nesta maquina (19200 8N1, funcao 4, registrador 5, palavra
+            baixa primeiro, 131072 contagens).</div>
             <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
             drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
             estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
@@ -2260,6 +2278,7 @@ function encAplicar(d){
     $("encAtivo").className="ch"+(d.ativo?" on":"");
     $("enc32").className  ="ch"+(d.b32?" on":"");
     $("encLo").className  ="ch"+(d.lo?" on":"");
+    $("encDeHw").className="ch"+(d.dehw?" on":"");
     $("encBaud").value=d.baud;$("encPar").value=d.par;
     $("encFunc").value=d.func;$("encPer").value=d.per;
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
@@ -2276,7 +2295,7 @@ function encAtualizar(){
 
 /* As chaves sao locais ate o operador salvar: mudar o formato do valor a
    cada clique reabriria a UART no meio da leitura. */
-["encAtivo","enc32","encLo"].forEach(function(id){
+["encAtivo","enc32","encLo","encDeHw"].forEach(function(id){
   $(id).onclick=function(){$(id).classList.toggle("on");};
 });
 $("btEncSalvar").onclick=function(){
@@ -2284,10 +2303,14 @@ $("btEncSalvar").onclick=function(){
   post("/api/encoder/config?ativo="+on("encAtivo")+
        "&baud="+$("encBaud").value+"&par="+$("encPar").value+
        "&func="+$("encFunc").value+"&per="+$("encPer").value+
-       "&b32="+on("enc32")+"&lo="+on("encLo")+
+       "&b32="+on("enc32")+"&lo="+on("encLo")+"&dehw="+on("encDeHw")+
        "&id1="+$("encId1").value+"&reg1="+$("encReg1").value+"&cv1="+$("encCv1").value+
        "&id2="+$("encId2").value+"&reg2="+$("encReg2").value+"&cv2="+$("encCv2").value)
    .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];});
+};
+$("btEncPadroes").onclick=function(){
+  post("/api/encoder/padroes").then(function(){
+    encCarregou=false;encHist[0]=[];encHist[1]=[];});
 };
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){
