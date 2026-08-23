@@ -51,6 +51,25 @@ class WebServer {
   }
   String uri() { return String(uriAtual); }
 
+  // O WebServer do ESP32 decodifica percent-encoding e '+' antes de
+  // entregar o argumento. Sem isto aqui, o banco veria "Oficina%202G" e
+  // um defeito de decodificacao passaria batido -- a pagina manda tudo
+  // por encodeURIComponent.
+  static std::string decodificar(const std::string& e) {
+    std::string r;
+    for (size_t i = 0; i < e.size(); i++) {
+      if (e[i] == '+') { r += ' '; continue; }
+      if (e[i] == '%' && i + 2 < e.size()) {
+        const std::string h = e.substr(i + 1, 2);
+        char* fim = nullptr;
+        const long v = strtol(h.c_str(), &fim, 16);
+        if (fim && *fim == '\0') { r += (char)v; i += 2; continue; }
+      }
+      r += e[i];
+    }
+    return r;
+  }
+
   // ---- lado do banco de testes -------------------------------------
   // Despacha "/api/x?a=1&b=2" com corpo opcional (vira o arg "plain",
   // como faz o WebServer do ESP32 quando o Content-Type nao e de
@@ -68,8 +87,8 @@ class WebServer {
         const std::string par = q.substr(p, e == std::string::npos ? std::string::npos : e - p);
         const size_t ig = par.find('=');
         if (!par.empty()) {
-          if (ig == std::string::npos) args[par] = "";
-          else args[par.substr(0, ig)] = par.substr(ig + 1);
+          if (ig == std::string::npos) args[decodificar(par)] = "";
+          else args[decodificar(par.substr(0, ig))] = decodificar(par.substr(ig + 1));
         }
         if (e == std::string::npos) break;
         p = e + 1;

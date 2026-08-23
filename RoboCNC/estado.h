@@ -142,6 +142,11 @@ extern bool movimentoLiberado;
 // o supervisor corta movimento e arco: interface fechada ou Wi-Fi caido
 // nao pode deixar o braco andando.
 // ---------------------------------------------------------------------
+// Credenciais da rede da oficina. Escritas so pelo core 1, ao aplicar a
+// configuracao; o core 0 le para conectar. Vazio = so ponto de acesso.
+extern char wifiSsid[MAX_SSID + 1];
+extern char wifiSenha[MAX_SENHA_WIFI + 1];
+
 extern volatile uint32_t ultimoContatoOperadorMs;
 void registrarContatoOperador();
 
@@ -196,6 +201,16 @@ struct ConfigPendente {
   bool     protCurso, protDobra, protEnvelope;
 };
 extern ConfigPendente configPendente;
+
+// Area de preparo da rede, separada da de movimento de proposito: trocar
+// de Wi-Fi nao mexe em resolucao nem em velocidade, e nao deve carregar
+// junto uma copia inteira da configuracao da maquina.
+struct RedePendente {
+  char ssid[MAX_SSID + 1];
+  char senha[MAX_SENHA_WIFI + 1];
+};
+extern RedePendente redePendente;
+void aplicarRedePendente();      // core 1: grava no NVS e pede a reconexao
 
 void prepararConfigPendente();   // core 0: copia o estado vivo para a area
 void aplicarConfigPendente();    // core 1: copia de volta e recalcula

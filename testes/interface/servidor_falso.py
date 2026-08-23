@@ -66,6 +66,15 @@ import math as _m
 TRAJ = [[round(300 * _m.cos(_a / 40.0), 1), round(300 * _m.sin(_a / 40.0) - 60, 1),
          1 if _a < 20 else 0] for _a in range(-20, 21)]
 
+REDE = {"ap": {"ssid": "Robo2dof", "ip": "192.168.4.1"},
+        "nome": "robo2dof", "est": "DESLIGADA", "ssid": "", "ip": "",
+        "rssi": 0, "varrendo": False, "seq": 3}
+VIZINHAS = {"varrendo": False, "redes": [
+    {"ssid": "Oficina 2G", "rssi": -48, "canal": 6, "aberta": False},
+    {"ssid": "VIVOFIBRA-A1B2", "rssi": -71, "canal": 11, "aberta": False},
+    {"ssid": "Convidados", "rssi": -80, "canal": 1, "aberta": True},
+]}
+
 SD = {"estado": "PRONTO", "ocupado": False, "seq": 7,
       "totalMB": 3782, "livreMB": 3779, "msg": "cartao montado"}
 LISTA = {
@@ -111,6 +120,10 @@ class H(BaseHTTPRequestHandler):
             return self._envia(json.dumps(PONTOS))
         if caminho == "/api/trajetoria":
             return self._envia(json.dumps({"pts": TRAJ}))
+        if caminho == "/api/rede":
+            return self._envia(json.dumps(REDE))
+        if caminho == "/api/rede/lista":
+            return self._envia(json.dumps(VIZINHAS))
         if caminho == "/api/sd":
             return self._envia(json.dumps(SD))
         if caminho == "/api/sd/lista":
@@ -136,6 +149,17 @@ class H(BaseHTTPRequestHandler):
         corpo = self.rfile.read(tam) if tam else b""
         # Gancho so do banco de testes: permite encenar outros estados da
         # maquina (sem calibracao, servos desligados, executando...).
+        if caminho == "/api/rede/conectar":
+            REDE["ssid"] = q.get("ssid", [""])[0]
+            REDE["est"] = "CONECTADA"
+            REDE["ip"] = "192.168.0.77"
+            REDE["rssi"] = -52
+            REDE["seq"] += 1
+            return self._envia("ok", "text/plain")
+        if caminho == "/api/rede/esquecer":
+            REDE["ssid"] = ""; REDE["est"] = "DESLIGADA"; REDE["ip"] = ""
+            REDE["rssi"] = 0; REDE["seq"] += 1
+            return self._envia("ok", "text/plain")
         if caminho == "/teste/estado":
             estado.update(json.loads(corpo or b"{}"))
             return self._envia("ok", "text/plain")

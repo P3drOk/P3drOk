@@ -5,6 +5,7 @@
 #include "programa.h"
 #include "armazenamento.h"
 #include "calibracao.h"
+#include "rede.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -553,6 +554,100 @@ static void handleProgDesenho() {
 }
 
 // ---------------------------------------------------------------------
+// REDE
+//
+// O ponto de acesso proprio nunca sai do ar; o que se configura aqui e a
+// entrada na rede da oficina. Como a pagina continua sendo servida pelo
+// AP, dar a senha errada nao deixa ninguem trancado do lado de fora.
+// ---------------------------------------------------------------------
+// O SSID vem do roteador de outra pessoa: aspas e barra invertida sao
+// nomes validos de rede e quebrariam o JSON da resposta.
+static void escaparJson(String& fora, const char* texto) {
+  for (const char* p = texto; *p; p++) {
+    if (*p == '"' || *p == '\\') fora += '\\';
+    if ((unsigned char)*p >= 0x20) fora += *p;
+  }
+}
+
+static void handleRede() {
+  registrarContatoOperador();
+  String ssid;
+  escaparJson(ssid, wifiSsid);
+  char json[480];
+  snprintf(json, sizeof(json),
+    "{\"ap\":{\"ssid\":\"%s\",\"ip\":\"%s\"},"
+    "\"nome\":\"%s\",\"est\":\"%s\",\"ssid\":\"%s\","
+    "\"ip\":\"%s\",\"rssi\":%ld,\"varrendo\":%s,\"seq\":%lu}",
+    WIFI_AP_SSID, redeIpAcesso(), redeNomeLocal(), redeEstadoTexto(),
+    ssid.c_str(), redeIpEstacao(), (long)redeSinal(),
+    redeVarrendo() ? "true" : "false", (unsigned long)redeSequencia());
+  server.send(200, "application/json", json);
+}
+
+static void handleRedeVarrer() {
+  registrarContatoOperador();
+  // A varredura tira o radio do canal do ponto de acesso por alguns
+  // segundos. Com o braco andando, o heartbeat falharia e o supervisor
+  // cortaria o movimento -- um botao de tela derrubando a maquina.
+  if (!exigirManual()) return;
+  if (!redeVarrerIniciar()) { erro("ja estou procurando redes"); return; }
+  ok();
+}
+
+static void handleRedeLista() {
+  registrarContatoOperador();
+  const uint8_t n = redeVizinhasN();
+  const RedeVizinha* v = redeVizinhas();
+  String out;
+  out.reserve(64 + (size_t)n * 72);
+  out += "{\"varrendo\":";
+  out += redeVarrendo() ? "true" : "false";
+  out += ",\"redes\":[";
+  for (uint8_t i = 0; i < n; i++) {
+    if (i) out += ',';
+    out += "{\"ssid\":\"";
+    escaparJson(out, v[i].ssid);
+    out += "\",\"rssi\":"; out += (int)v[i].rssi;
+    out += ",\"canal\":";  out += (int)v[i].canal;
+    out += ",\"aberta\":"; out += v[i].aberta ? "true" : "false";
+    out += '}';
+  }
+  out += "]}";
+  server.send(200, "application/json", out);
+}
+
+static void handleRedeConectar() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+
+  const String ssid  = server.arg("ssid");
+  const String senha = server.arg("senha");
+  if (ssid.length() == 0)          { erro("escolha uma rede"); return; }
+  if (ssid.length() > MAX_SSID)    { erro("nome de rede longo demais"); return; }
+  if (senha.length() > MAX_SENHA_WIFI) { erro("senha longa demais"); return; }
+  // WPA exige 8 caracteres. Recusar aqui evita a viagem completa ate o
+  // roteador para o operador so descobrir "senha" na tela dez segundos
+  // depois.
+  if (senha.length() > 0 && senha.length() < 8) {
+    erro("a senha de Wi-Fi tem no minimo 8 caracteres"); return;
+  }
+
+  strncpy(redePendente.ssid,  ssid.c_str(),  sizeof(redePendente.ssid)  - 1);
+  strncpy(redePendente.senha, senha.c_str(), sizeof(redePendente.senha) - 1);
+  redePendente.ssid [sizeof(redePendente.ssid)  - 1] = '\0';
+  redePendente.senha[sizeof(redePendente.senha) - 1] = '\0';
+  enfileirar(CMD_APLICAR_REDE);
+}
+
+static void handleRedeEsquecer() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  redePendente.ssid[0]  = '\0';
+  redePendente.senha[0] = '\0';
+  enfileirar(CMD_APLICAR_REDE);
+}
+
+// ---------------------------------------------------------------------
 // CARTAO SD
 //
 // Nenhum handler faz I/O: eles consultam o estado publicado pela tarefa
@@ -750,6 +845,12 @@ void servidorIniciar() {
   server.on("/api/referenciar",     HTTP_POST, handleReferenciar);
   server.on("/api/aferir/marcar",   HTTP_POST, handleAferirMarcar);
   server.on("/api/aferir/aplicar",  HTTP_POST, handleAferirAplicar);
+
+  server.on("/api/rede",           HTTP_GET,  handleRede);
+  server.on("/api/rede/lista",     HTTP_GET,  handleRedeLista);
+  server.on("/api/rede/varrer",    HTTP_POST, handleRedeVarrer);
+  server.on("/api/rede/conectar",  HTTP_POST, handleRedeConectar);
+  server.on("/api/rede/esquecer",  HTTP_POST, handleRedeEsquecer);
 
   server.onNotFound(handleNaoEncontrado);
   server.begin();

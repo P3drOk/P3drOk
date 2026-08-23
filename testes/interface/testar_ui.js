@@ -563,6 +563,79 @@ function checar(ok, texto, extra) {
     { data: { j1min: -95, j1max: 95, j2min: -120, j2max: 30 } });
   await t.waitForTimeout(400);
 
+  // Rede: escolher o modem na lista, digitar a senha e conectar.
+  await t.locator('#abas button[data-aba="ajuste"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => document.querySelectorAll('#pnAjuste .et')
+    .forEach(x => x.classList.toggle('aberta', x.id === 'eRede')));
+  await t.waitForTimeout(900);
+
+  const endereco = (await t.locator('#redeEnd').textContent()).replace(/\n/g, ' | ');
+  checar(/192\.168\.4\.1/.test(endereco) && /robo2dof\.local/.test(endereco),
+         'Rede: o painel mostra o IP fixo do AP e o nome que vale nas duas redes',
+         endereco);
+
+  rotas = [];
+  await t.locator('#btRedeVarrer').click();
+  await t.waitForTimeout(500);
+  checar(rotas.some(x => x.split('?')[0] === '/api/rede/varrer'),
+         'Rede: "Procurar redes" dispara a varredura');
+  const nRedes = await t.locator('#redeLista .arq').count();
+  checar(nRedes === 3, 'Rede: a lista de vizinhas aparece', nRedes + ' rede(s)');
+
+  const semEscolha = await t.evaluate(() => ({
+    dis: document.getElementById('btRedeConectar').disabled,
+    motivo: document.getElementById('qRedeConectar').textContent.trim(),
+  }));
+  checar(semEscolha.dis && /escolha/.test(semEscolha.motivo),
+         'Rede: sem escolher a rede, Conectar fica travado dizendo o porque',
+         semEscolha.motivo);
+
+  await t.locator('#redeLista .arq').first().click();
+  await t.waitForTimeout(200);
+  await t.locator('#redeSenha').fill('123');
+  await t.waitForTimeout(200);
+  const senhaCurta = await t.evaluate(() => ({
+    dis: document.getElementById('btRedeConectar').disabled,
+    motivo: document.getElementById('qRedeConectar').textContent.trim(),
+  }));
+  checar(senhaCurta.dis && /8 caracteres/.test(senhaCurta.motivo),
+         'Rede: senha com menos de 8 caracteres e barrada antes de ir ao robo',
+         senhaCurta.motivo);
+
+  // Mostrar a senha, para conferir o que foi digitado.
+  await t.locator('#redeVer').click();
+  await t.waitForTimeout(150);
+  checar(await t.evaluate(() =>
+           document.getElementById('redeSenha').type === 'text'),
+         'Rede: da para revelar a senha digitada');
+
+  rotas = [];
+  await t.locator('#redeSenha').fill('senhadaoficina');
+  await t.waitForTimeout(200);
+  await t.locator('#btRedeConectar').click();
+  await t.waitForTimeout(900);
+  const conectar = rotas.find(x => x.split('?')[0] === '/api/rede/conectar');
+  checar(!!conectar && /ssid=Oficina/.test(conectar) && /senha=senhadaoficina/.test(conectar),
+         'Rede: Conectar manda a rede escolhida e a senha', conectar || 'nada');
+  const estado = (await t.locator('#redeEst').textContent()).replace(/\n/g, ' | ');
+  checar(/CONECTADA|conectada/.test(estado) && /192\.168\.0\.77/.test(estado),
+         'Rede: conectada, o painel mostra o IP recebido do roteador', estado);
+
+  // Fora do manual nada de mexer em rede.
+  await t.request.post(BASE + '/teste/estado', { data: { modo: 'EXECUTANDO' } });
+  await t.waitForTimeout(900);
+  const ocupado = await t.evaluate(() => ({
+    v: document.getElementById('btRedeVarrer').disabled,
+    c: document.getElementById('btRedeConectar').disabled,
+    motivo: document.getElementById('qRedeVarrer').textContent.trim(),
+  }));
+  checar(ocupado.v && ocupado.c && /manual/.test(ocupado.motivo),
+         'Rede: com o robo em movimento, mexer em rede fica travado',
+         ocupado.motivo);
+  await t.request.post(BASE + '/teste/estado', { data: { modo: 'MANUAL' } });
+  await t.waitForTimeout(600);
+
   // Zerar a maquina na posicao e aferir a reducao (as tres etapas).
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(250);

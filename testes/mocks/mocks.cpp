@@ -4,6 +4,7 @@
 #include "SD.h"
 #include "freertos/queue.h"
 #include "WebServer.h"
+#include "ESPmDNS.h"
 
 uint32_t g_millis = 0;
 int g_pinModo[64]    = {0};
@@ -26,6 +27,7 @@ int g_comandosDescartados = 0;
 SerialMock Serial;
 EspMock    ESP;
 WiFiMock   WiFi;
+MDNSMock   MDNS;
 NvsMock    g_nvs;
 FsMock     g_fs;
 SDMock     SD;

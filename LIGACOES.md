@@ -310,6 +310,9 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Arco abre sozinho ao energizar | Relé no GPIO 2, ou falta o pull-down de 10 k. |
 | Cartão não monta | 5 V em vez de 3V3; falta o capacitor de 10 µF; fio longo demais para 20 MHz. |
 | Jog engasga | Wi-Fi fraco. O firmware para o eixo sem heartbeat por 350 ms — é proposital. |
+| O celular caiu do Wi-Fi da máquina logo depois de conectar na rede da oficina | Esperado: o ESP32 tem um rádio só e mudou o AP para o canal do roteador. Volta em alguns segundos. |
+| `robo2dof.local` não abre | mDNS não resolvido no aparelho. Use o IP mostrado no painel, ou `192.168.4.1` pelo Wi-Fi da máquina. |
+| A rede de 5 GHz não aparece na lista | O ESP32 não tem rádio de 5 GHz. Use o nome da rede de 2,4. |
 | Jog recusado, nada se move | Servos desabilitados. A interface diz o motivo abaixo do joystick. |
 | Braço trava e não sai do limite | Calibração com curso curto demais. Refaça movendo até os limites reais, ou use *Apagar calibração gravada*. |
 | Braço trava durante a **calibração** | Já corrigido: sem calibração válida o jog é livre (modo de instalação). Se ainda travar, veja se os servos estão habilitados — a interface diz o motivo abaixo do joystick. |

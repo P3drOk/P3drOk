@@ -869,3 +869,71 @@ nome vazio ou com caractere proibido).
 | interface | 59 / 0 | **74 / 0** |
 
 Primeira rodada sem nenhuma anomalia aberta.
+
+---
+
+# Rodada 6 — rede: os dois jeitos ao mesmo tempo
+
+## R16 · Ponto de acesso próprio **e** rede da oficina  `J01`–`J04`  ✅
+
+O rádio sobe em `WIFI_AP_STA`: o Wi-Fi da própria máquina **nunca sai do
+ar**, mesmo com ela dentro da rede da oficina. Não é desperdício — é a
+saída de emergência. Senha trocada, roteador desligado, sinal fraco no
+fundo do galpão: em qualquer desses casos o painel continua alcançável em
+`192.168.4.1`. Não há como desligar o AP próprio, e é de propósito: um
+equipamento que se move não pode ficar inacessível por causa da rede de
+outra pessoa.
+
+`J01d`/`J01e` fixam isso: com a senha da oficina errada, o estado sai como
+*senha recusada* (não como falha genérica) **e** o AP continua no ar.
+
+- IP do AP fixado pelo projeto (`WIFI_AP_IP`), não herdado do padrão da
+  biblioteca — assim não muda quando o core do ESP32 for atualizado.
+- `robo2dof.local` por mDNS, anunciado nas **duas** interfaces, mais o
+  mesmo nome como hostname de DHCP.
+- Credenciais no NVS do projeto, gravadas pelo core 1 via
+  `CMD_APLICAR_REDE`; o core 0 só recebe `redePedidoReconectar`.
+  `WiFi.persistent(false)` impede a biblioteca de guardar uma segunda
+  cópia que brigaria com a nossa.
+- Retentativa com recuo progressivo (15 s → 5 min). Insistir de segundo
+  em segundo com a senha errada só atrapalha o próprio AP: cada tentativa
+  tira o rádio do canal.
+
+### O ponto perigoso: a varredura  `J03`
+
+A varredura de redes do ESP32 tira o rádio do canal do AP por vários
+segundos. **Feita de forma síncrona dentro da tarefa web**, ela faria o
+servidor parar de responder, o heartbeat do operador venceria em
+`TIMEOUT_CONEXAO_MS` e o supervisor cortaria movimento e arco — um botão
+de tela derrubando o braço.
+
+Por isso ela é assíncrona (`WiFi.scanNetworks(true)` + `scanComplete()`),
+e o cenário J03 mede exatamente isso: o handler devolve em 0 ms, o
+servidor responde 30 de 30 pedidos de status durante a varredura, e
+`movimentoLiberado` não cai. Além disso, tanto a varredura quanto a troca
+de rede exigem `MODO_MANUAL` nas duas pontas.
+
+## Duas falhas do próprio banco, encontradas por estes cenários
+
+**O banco não executava a tarefa de rede.** `tarefaRede()` roda num
+`xTaskCreatePinnedToCore` que o mock de FreeRTOS não executa, então
+`redeAtender()` nunca era chamado — quatro cenários falharam por isso
+antes de eu perceber que o defeito era do banco. Agora `rodar()` bombeia
+`redeAtender()` como já bombeava `armCicloTeste()`.
+
+**O mock de WebServer não decodificava percent-encoding.** O WebServer do
+ESP32 decodifica `%20` e `+` antes de entregar o argumento; o mock
+entregava cru. A página manda tudo por `encodeURIComponent`, então o
+banco via `Oficina%202G` e teria deixado passar um defeito de
+decodificação. Corrigido no mock — vale para todas as rotas, não só as de
+rede.
+
+`J04f` fecha o buraco correspondente do outro lado: SSID com aspas é nome
+válido de rede e sai escapado nos dois JSON.
+
+## Cobertura
+
+| banco | rodada 5 | agora |
+|-------|----------|-------|
+| firmware | 120 / 0 | **142 / 0** |
+| interface | 74 / 0 | **83 / 0** |
