@@ -241,10 +241,8 @@ static const float JOY_FRACAO_MIN = 0.05f;
 // ---------------------------------------------------------------------
 // WIFI
 // ---------------------------------------------------------------------
-// Ponto de acesso proprio: sempre ligado, mesmo com a maquina dentro da
-// rede da oficina. E a saida de emergencia quando o roteador cai ou a
-// senha esta errada -- um equipamento que se move nao pode ficar
-// inacessivel por causa da rede de outra pessoa.
+// Wi-Fi proprio da maquina: o unico que existe. O painel nao depende de
+// roteador, de senha de terceiro nem de internet.
 static const char* const WIFI_AP_SSID  = "Robo2dof";
 static const char* const WIFI_AP_SENHA = "12345678";
 
@@ -253,18 +251,14 @@ static const char* const WIFI_AP_SENHA = "12345678";
 // core do ESP32.
 static const uint8_t WIFI_AP_IP[4] = {192, 168, 4, 1};
 
-// Nome na rede. Vale nas DUAS interfaces: http://robo2dof.local abre
-// tanto pelo Wi-Fi da maquina quanto pela rede da oficina, sem depender
-// do IP que o roteador entregou. So letras minusculas, numeros e hifen.
+// Nome na rede: http://robo2dof.local abre o painel sem decorar IP.
+// So letras minusculas, numeros e hifen.
 static const char* const WIFI_NOME_LOCAL = "robo2dof";
 
-// Estacao: entrar na rede da oficina.
-static const uint32_t WIFI_STA_TIMEOUT_MS       = 15000;  // desiste da tentativa
-static const uint32_t WIFI_RETENTATIVA_MS       = 15000;  // recuo por falha
-static const uint32_t WIFI_RETENTATIVA_MAX_MS   = 300000; // teto do recuo
-static const uint8_t  MAX_REDES_VIZINHAS        = 20;     // o que a varredura mostra
-static const uint8_t  MAX_SSID                  = 32;
-static const uint8_t  MAX_SENHA_WIFI            = 63;
+// A maquina NAO entra na rede de ninguem. Houve aqui um modo estacao;
+// ele saiu porque o ESP32 tem um radio so: em AP+STA o ponto de acesso
+// acompanha o canal do roteador e o radio divide tempo entre as duas
+// redes, o que aparece como atraso no heartbeat do jog.
 
 // ---------------------------------------------------------------------
 // TIPOS
@@ -322,7 +316,6 @@ enum TipoComando : uint8_t {
   CMD_REFERENCIAR,      // o braco esta na posicao de referencia: sincroniza a contagem
   CMD_AFERIR_MARCAR,    // a = junta: marca a contagem atual como inicio da medida
   CMD_AFERIR_APLICAR,   // a = junta, f1 = graus realmente percorridos
-  CMD_APLICAR_REDE,     // grava as credenciais de redePendente e reconecta
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

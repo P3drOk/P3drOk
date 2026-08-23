@@ -83,10 +83,9 @@ no próprio `checar(...)`.
 | I01 | ziguezague de 11 vértices seguido milímetro a milímetro |
 | I02 | ziguezague raspando o limite do alcance |
 | I03 | a velocidade programada não fica velha entre trechos |
-| J01 | o ponto de acesso próprio nunca sai do ar, nem com a senha errada |
-| J02 | entrar na rede da oficina, gravar e voltar sozinho ao religar |
-| J03 | a varredura de redes não pode derrubar o braço |
-| J04 | o que a rota de rede recusa, e SSID com aspas no JSON |
+| J01 | Wi-Fi próprio, sem modo estação e sem procurar rede de terceiro |
+| J02 | o painel diz por onde se chega nele, e as rotas removidas somem |
+| J03 | qualquer endereço digitado cai no painel (DNS de captura) |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

@@ -204,75 +204,50 @@ A interface é servida comprimida (75 kB → 21,8 kB). Você edita
 `pagina_web.h`; depois rode `python3 testes/gerar_pagina_gz.py`. O banco
 reprova se o gerado ficar velho.
 
-## Rede — os dois jeitos ao mesmo tempo
+## Rede — Wi-Fi próprio, e só isso
 
-`Ajustes → Rede Wi-Fi`.
+A máquina cria a sua própria rede. Ela **não entra na rede de ninguém,
+não procura roteador e não fala com a internet**. O painel não depende de
+nada de fora para funcionar.
 
-O **Wi-Fi da própria máquina fica sempre ligado**, mesmo depois de ela
-entrar na rede da oficina. Isso não é desperdício, é a saída de
-emergência: senha trocada, roteador desligado, sinal que não chega no
-fundo do galpão — em qualquer desses casos o painel continua alcançável.
-Um equipamento que se move não pode ficar inacessível por causa da rede
-de outra pessoa. Não há como desligar o ponto de acesso próprio, e é de
-propósito.
-
-### O endereço é sempre o mesmo
-
-| Como você chega | Endereço |
+| Como chegar | Endereço |
 |---|---|
-| pelo Wi-Fi da máquina (`Robo2dof`) | `http://192.168.4.1` |
-| por qualquer uma das duas | `http://robo2dof.local` |
+| Wi-Fi `Robo2dof` → navegador | `http://192.168.4.1` |
+| o mesmo, sem decorar IP | `http://robo2dof.local` |
 
-O IP do ponto de acesso é **fixado pelo projeto** (`WIFI_AP_IP` em
-`config.h`), não herdado do padrão da biblioteca — assim ele não muda
-quando o core do ESP32 for atualizado.
+O IP é **fixado pelo projeto** (`WIFI_AP_IP` em `config.h`), não herdado
+do padrão da biblioteca — assim ele não muda quando o core do ESP32 for
+atualizado. O `robo2dof.local` vem do mDNS, que funciona em iPhone, Mac,
+Windows 10+, Linux e Android recente.
 
-Na rede da oficina o IP vem do roteador e pode mudar; por isso existe o
-`robo2dof.local`, servido por **mDNS** nas duas interfaces. Funciona em
-iPhone, Mac, Windows 10+, Linux e Android recente. Se o seu aparelho não
-resolver `.local`, o painel mostra o IP que o roteador entregou — e vale
-reservar esse IP no roteador pelo MAC.
+Um **DNS de captura** responde qualquer nome com o IP da máquina. Duas
+consequências, as duas boas: ao entrar na rede o celular detecta portal
+cativo e costuma oferecer abrir o painel sozinho — em vez de reclamar
+que não há internet e pular para os dados móveis — e digitar qualquer
+coisa na barra de endereço cai no painel.
 
-O nome também vai como *hostname* de DHCP, então a máquina aparece como
-`robo2dof` na lista de dispositivos do roteador.
+> Nome de uma palavra só (`robo2dof`, sem `.local` e sem barra) depende
+> do navegador: alguns tratam como busca antes de tentar resolver.
+> `robo2dof.local` e `192.168.4.1` funcionam sempre.
 
-### Escolher a rede pelo painel
+### Por que não existe modo estação
 
-`Procurar redes` lista as vizinhas, da mais forte para a mais fraca, com
-o nível em dBm e se pedem senha. Escolha, digite a senha e conecte. Dá
-para revelar a senha digitada antes de mandar.
+Houve aqui um modo de entrar na rede da oficina, com varredura, escolha
+de rede e senha pelo painel. Saiu por um motivo técnico, não por gosto.
 
-Três coisas que valem saber:
+**O ESP32 tem um rádio só.** Ligado nas duas redes ao mesmo tempo
+(`WIFI_AP_STA`), o ponto de acesso é obrigado a acompanhar o canal do
+roteador, e o rádio passa a dividir tempo de antena entre as duas. Isso
+aparece como atraso e tremor no joystick — e o heartbeat do jog, que
+corta o movimento se faltar por 350 ms, é justamente o tráfego que não
+pode atrasar.
 
-- **Só 2,4 GHz.** O ESP32 não tem rádio de 5 GHz, então a lista já sai
-  filtrada — rede de 5 GHz não aparece porque ele não a enxerga. Se o
-  roteador usa o mesmo nome nas duas faixas, escolha esse nome
-  normalmente: a máquina entra pela de 2,4.
-- **A procura pisca a conexão.** Ela tira o rádio do canal do ponto de
-  acesso por alguns segundos. Por isso é **assíncrona** — o handler HTTP
-  devolve na hora e a varredura corre em segundo plano, senão o servidor
-  pararia de responder, o heartbeat do operador venceria em
-  `TIMEOUT_CONEXAO_MS` e o supervisor cortaria o movimento. Um botão de
-  tela derrubando a máquina. Mesmo assim, tanto a procura quanto a troca
-  de rede **só são aceitas com o robô parado no modo manual**.
-- **Um rádio só.** Ao entrar na rede da oficina, o ESP32 muda o ponto de
-  acesso próprio para o canal do roteador. Quem estava conectado nele cai
-  e volta em alguns segundos. É esperado e acontece uma vez.
+Rede de terceiro não vale latência no controle de uma máquina que se
+move. Em `WIFI_AP` puro o rádio nunca sai do canal.
 
-### Onde as credenciais ficam
+O código está no histórico do git, se um dia fizer sentido voltar.
 
-No NVS do projeto (`wssid`, `wsenha`), gravadas pelo **core 1** como
-qualquer outro ajuste: a página prepara, `CMD_APLICAR_REDE` aplica. O
-core 0 é quem fala com o rádio, e só recebe o recado
-(`redePedidoReconectar`). `WiFi.persistent(false)` impede a biblioteca de
-guardar uma segunda cópia na área dela, que brigaria com a nossa.
-
-Senha errada não trava ninguém do lado de fora — o painel continua sendo
-servido pelo ponto de acesso próprio, e o estado aparece na tela como
-*senha recusada*, não como falha genérica. As tentativas seguem com
-recuo progressivo (15 s, 30 s, …, até 5 min): insistir de segundo em
-segundo com a senha errada só atrapalha o próprio ponto de acesso.
-
+## Primeira partida
 ## Primeira partida
 
 1. `Ajustes → Resolução`: informe pulsos por volta (engrenagem eletrônica

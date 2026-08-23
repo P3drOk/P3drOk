@@ -83,7 +83,7 @@ static const char* NOME_CMD[] = {
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
-  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","APLICAR_REDE","JOG_XY",
+  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -366,18 +366,6 @@ static void processarComando(const Comando& c) {
     case CMD_AFERIR_APLICAR:
       if (modoAtual == MODO_MANUAL) aferirAplicar((uint8_t)c.a, c.f1);
       else definirMensagem("Afira com o robo parado no modo manual");
-      break;
-
-    case CMD_APLICAR_REDE:
-      // Trocar de rede pisca o radio por alguns segundos, e o heartbeat
-      // do operador passa por ele. Com o braco andando isso viraria uma
-      // parada de seguranca no meio do movimento.
-      if (modoAtual == MODO_MANUAL) {
-        aplicarRedePendente();
-        logEvento("rede alterada para \"%s\"", wifiSsid[0] ? wifiSsid : "(nenhuma)");
-      } else {
-        definirMensagem("Troque de rede com o robo parado no modo manual");
-      }
       break;
 
     case CMD_CALIB_APAGAR:

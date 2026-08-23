@@ -359,10 +359,6 @@ h4:first-child{margin-top:0}
  flex:0 0 auto}
 .lista.arqs{border:1px solid var(--linha);border-radius:3px;overflow:hidden;
  margin-bottom:9px}
-.arq.sel{background:var(--face);box-shadow:inset 3px 0 0 var(--arco)}
-.arq .sinal{font-family:var(--mono);font-size:9.5px;color:var(--letra3);
- flex:0 0 auto;letter-spacing:.08em}
-.arq .cad{flex:0 0 auto;font-size:11px;color:var(--letra3)}
 .linhaNome{display:flex;gap:7px;margin-bottom:9px}
 .linhaNome input{flex:1;min-width:0;background:var(--fundo);
  border:1px solid var(--linha);border-radius:2px;padding:9px 10px;font-size:13px}
@@ -737,42 +733,22 @@ h4:first-child{margin-top:0}
 
         <div class="et" id="eRede">
           <div class="cab"><div class="mk">&#9776;</div>
-            <div class="tx"><div class="tt">Rede Wi-Fi</div>
+            <div class="tx"><div class="tt">Endereco do painel</div>
             <span class="sb" id="sbRede">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <h4>Endereco do painel</h4>
             <div class="res" id="redeEnd">--</div>
-            <div class="nt">O <b>Wi-Fi da propria maquina fica sempre ligado</b>,
-            mesmo depois de ela entrar na rede da oficina. Nao e desperdicio: e a
-            saida quando o roteador cai, a senha muda ou o sinal nao chega no
-            fundo do galpao. Um equipamento que se move nao pode ficar
-            inacessivel por causa da rede de outra pessoa.</div>
-
-            <h4>Rede da oficina</h4>
-            <div class="res" id="redeEst">--</div>
-            <button class="b" id="btRedeVarrer">Procurar redes</button>
-            <div class="pq2" id="qRedeVarrer"></div>
-            <div class="nt">A procura tira o radio do canal por alguns segundos:
-            a tela pode piscar. Por isso ela so e aceita com o robo parado no
-            modo manual.</div>
-            <div id="redeLista"></div>
-            <div class="cp"><label>Senha</label>
-              <input type="password" id="redeSenha" maxlength="63" autocomplete="off"></div>
-            <div class="tr"><div class="ch" id="redeVer"><i></i></div>
-              <span>mostrar a senha</span></div>
-            <button class="b pri" id="btRedeConectar">Conectar</button>
-            <div class="pq2" id="qRedeConectar"></div>
-            <button class="b mini x" id="btRedeEsquecer">Esquecer a rede</button>
-            <div class="pq2" id="qRedeEsquecer"></div>
-            <div class="nt">O ESP32 so tem radio de <b>2,4 GHz</b>, entao a lista
-            ja sai filtrada: rede de 5 GHz nao aparece porque ele nao a enxerga.
-            Se o seu roteador usa o mesmo nome nas duas faixas, escolha esse nome
-            normalmente &mdash; a maquina entra pela de 2,4.</div>
-            <div class="nt">O ESP32 tem <b>um radio so</b>. Ao entrar na rede da
-            oficina ele muda o ponto de acesso proprio para o canal do roteador,
-            e quem estava conectado nele cai e volta em alguns segundos. E
-            esperado, acontece uma vez, e nao derruba a maquina &mdash; mas nao
-            faca isso com o braco a meio de um trabalho.</div>
+            <div class="nt">A maquina tem <b>Wi-Fi proprio</b> e so isso. Ela nao
+            entra na rede de ninguem, nao procura roteador e nao fala com a
+            internet: o painel nao depende de nada de fora para funcionar.</div>
+            <div class="nt">Entre no Wi-Fi da maquina e abra qualquer um dos dois
+            enderecos. Depois de entrar na rede, o celular costuma oferecer abrir
+            o painel sozinho &mdash; e digitar qualquer coisa na barra de
+            endereco tambem cai aqui.</div>
+            <div class="nt">Ja houve aqui um modo de entrar na rede da oficina.
+            Ele saiu porque o ESP32 tem <b>um radio so</b>: ligado nas duas redes,
+            o ponto de acesso e obrigado a acompanhar o canal do roteador e o
+            radio passa a dividir tempo. Isso vira atraso e tremor no joystick, e
+            o heartbeat do jog e justamente o que nao pode atrasar.</div>
           </div>
         </div>
 
@@ -1908,117 +1884,19 @@ $("pAplicar").onclick=function(){
 };
 
 /* =====================================================================
-   Rede.
-
-   O ponto de acesso proprio nunca sai do ar, entao configurar a rede da
-   oficina e sempre seguro: errar a senha nao tranca ninguem do lado de
-   fora -- a pagina continua sendo servida pelo Wi-Fi da maquina.
+   Rede: so mostrar por onde se chega no painel.
+   A maquina tem Wi-Fi proprio e nada a configurar.
    ===================================================================== */
-let redeSeq=-1, redeD=null, redeEscolhida="", redeVarrendo=false;
-const REDE_TXT={
-  DESLIGADA:"nao configurada",
-  CONECTANDO:"conectando...",
-  CONECTADA:"conectada",
-  SEM_REDE:"a rede configurada nao aparece",
-  SENHA:"senha recusada",
-  FALHOU:"nao conseguiu entrar; tentando de novo"
-};
-/* RSSI em barras: -50 e otimo, -85 e o limite do usavel. */
-function barras(r){
-  const n=r>=-55?4:r>=-67?3:r>=-75?2:1;
-  return "█".repeat(n)+"░".repeat(4-n);
-}
-
-function redePintarLista(j){
-  const cx=$("redeLista");
-  redeVarrendo=!!j.varrendo;
-  if(redeVarrendo){
-    cx.innerHTML='<div class="nulo">Procurando redes de 2,4 GHz...</div>';
-    return;
-  }
-  const r=j.redes||[];
-  if(!r.length){
-    cx.innerHTML='<div class="nulo">Nenhuma rede encontrada.<br>Aperte "Procurar redes".</div>';
-    return;
-  }
-  let h='<div class="lista arqs">';
-  r.forEach(function(x){
-    const sel=(x.ssid===redeEscolhida)?" sel":"";
-    h+='<div class="arq'+sel+'" data-ssid="'+x.ssid.replace(/"/g,"&quot;")+'">'+
-       '<span class="nm">'+x.ssid.replace(/</g,"&lt;")+'</span>'+
-       '<span class="cad">'+(x.aberta?"aberta":"&#128274;")+'</span>'+
-       '<span class="sinal">'+barras(x.rssi)+" "+x.rssi+'</span></div>';
-  });
-  cx.innerHTML=h+'</div>';
-  cx.querySelectorAll("[data-ssid]").forEach(function(e){e.onclick=function(){
-    redeEscolhida=e.dataset.ssid;
-    cx.querySelectorAll(".arq").forEach(function(a){a.classList.toggle("sel",a===e);});
-    $("redeSenha").focus();
-    redeEstadoBotoes();
-  };});
-}
-
-function redeEstadoBotoes(){
-  const semRobo=!D.modo;
-  const manual=(D.modo==="MANUAL");
-  const senha=$("redeSenha").value;
-  acao("RedeVarrer",
-      semRobo ? "sem contato com o robo"
-    : redeVarrendo ? "procurando..."
-    : !manual ? "procure redes com o robo parado no modo manual" : "");
-  acao("RedeConectar",
-      semRobo ? "sem contato com o robo"
-    : !manual ? "conecte com o robo parado no modo manual"
-    : !redeEscolhida ? "escolha uma rede na lista"
-    : (senha.length>0&&senha.length<8) ? "a senha de Wi-Fi tem no minimo 8 caracteres"
-    : "");
-  acao("RedeEsquecer",
-      semRobo ? "sem contato com o robo"
-    : !manual ? "esqueca a rede com o robo parado no modo manual"
-    : (redeD&&redeD.ssid) ? "" : "nao ha rede gravada");
-}
-/* Estado inicial: sem isto os botoes nascem clicaveis e so travam quando
-   o primeiro status chega -- meio segundo em que a tela mente. */
-redeEstadoBotoes();
-
-function redeAtualizar(forcar){
+function redeAtualizar(){
   return fetch("/api/rede").then(function(r){return r.json();}).then(function(d){
-    redeD=d;
     $("redeEnd").textContent=
-      "pelo Wi-Fi da maquina  ·  http://"+d.ap.ip+
-      "\nrede \""+d.ap.ssid+"\", sempre ligada"+
-      "\n\nem qualquer uma das duas  ·  http://"+d.nome+".local";
-    const t=REDE_TXT[d.est]||d.est;
-    $("redeEst").textContent = d.est==="CONECTADA"
-      ? ("\""+d.ssid+"\"  ·  "+t+"\nIP na rede da oficina: "+d.ip+
-         "\nsinal "+barras(d.rssi)+" ("+d.rssi+" dBm)")
-      : d.ssid ? ("\""+d.ssid+"\"  ·  "+t)
-               : "nenhuma rede da oficina gravada";
-    $("sbRede").textContent = d.est==="CONECTADA" ? d.ssid : t;
-    if(forcar||d.seq!==redeSeq){redeSeq=d.seq;
-      return fetch("/api/rede/lista").then(function(r){return r.json();})
-              .then(redePintarLista);}
-  }).then(redeEstadoBotoes).catch(function(){});
+      "rede Wi-Fi \""+d.ssid+"\"\n\n"+
+      "http://"+d.ip+"\n"+
+      "http://"+d.nome+".local";
+    $("sbRede").textContent=d.ssid+" · "+d.ip;
+  }).catch(function(){});
 }
-
-$("btRedeVarrer").onclick=function(){
-  post("/api/rede/varrer").then(function(){redeSeq=-1;redeVarrendo=true;
-    redePintarLista({varrendo:true});});
-};
-$("btRedeConectar").onclick=function(){
-  post("/api/rede/conectar?ssid="+encodeURIComponent(redeEscolhida)+
-       "&senha="+encodeURIComponent($("redeSenha").value))
-   .then(function(){$("redeSenha").value="";redeSeq=-1;});
-};
-$("btRedeEsquecer").onclick=function(){
-  if(!confirm("Esquecer a rede da oficina?\n\nO Wi-Fi da propria maquina continua ligado, entao o painel nao some."))return;
-  post("/api/rede/esquecer").then(function(){redeEscolhida="";redeSeq=-1;});
-};
-$("redeSenha").oninput=redeEstadoBotoes;
-$("redeVer").onclick=function(){
-  const c=$("redeVer").classList.toggle("on");
-  $("redeSenha").type=c?"text":"password";
-};
+redeAtualizar();
 
 /* ---------- status ---------- */
 const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
@@ -2274,8 +2152,6 @@ function tick(){
      WebServer atende uma conexao por vez e cada requisicao a mais
      concorre com o heartbeat do jog. */
   if(abaAtual==="arq")sdAtualizar(false);
-  /* Idem para a rede: so pergunta com a secao aberta na tela. */
-  if(abaAtual==="ajuste"&&$("eRede").classList.contains("aberta"))redeAtualizar(false);
   fetch("/api/status").then(function(r){return r.json();}).then(function(d){
     quedas=0;aplicar(d);
   }).catch(function(){

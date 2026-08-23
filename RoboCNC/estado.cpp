@@ -1,5 +1,4 @@
 #include "estado.h"
-#include "rede.h"
 #include <Preferences.h>
 #include <stdarg.h>
 #include <string.h>
@@ -24,10 +23,6 @@ bool protEnvelope = PROT_ENVELOPE_PADRAO;
 
 uint16_t escalaVelocidadeTraj = 100;
 uint8_t  suavidadePartida     = SUAVIDADE_PADRAO;
-
-char wifiSsid [MAX_SSID + 1]        = "";
-char wifiSenha[MAX_SENHA_WIFI + 1]  = "";
-RedePendente redePendente = {"", ""};
 
 Modo        modoAtual     = MODO_MANUAL;
 EstadoCalib estadoCalib   = CAL_INATIVO;
@@ -242,11 +237,6 @@ void carregarConfiguracoes() {
   J2.passosMax = prefs.getLong ("e2max", 0);
   J2.grausHome = prefs.getFloat("e2hom", 0.0f);
 
-  // Rede da oficina. Vazio = a maquina fica so com o ponto de acesso
-  // proprio, que e o estado de fabrica.
-  prefs.getString("wssid",  wifiSsid,  sizeof(wifiSsid));
-  prefs.getString("wsenha", wifiSenha, sizeof(wifiSenha));
-
   prefs.end();
 
   recalcularResolucao();
@@ -302,24 +292,6 @@ void salvarConfiguracoes() {
   Serial.println("[NVS] Configuracoes salvas.");
 }
 
-// Gravada separada da configuracao de movimento: trocar de rede nao pode
-// reescrever calibracao, e salvar calibracao nao pode reescrever senha.
-void aplicarRedePendente() {
-  strncpy(wifiSsid,  redePendente.ssid,  sizeof(wifiSsid)  - 1);
-  strncpy(wifiSenha, redePendente.senha, sizeof(wifiSenha) - 1);
-  wifiSsid [sizeof(wifiSsid)  - 1] = '\0';
-  wifiSenha[sizeof(wifiSenha) - 1] = '\0';
-
-  prefs.begin("robo2dof", false);
-  prefs.putString("wssid",  wifiSsid);
-  prefs.putString("wsenha", wifiSenha);
-  prefs.end();
-
-  // O core 0 e quem fala com o radio. Aqui so fica o recado.
-  redePedidoReconectar = true;
-  if (wifiSsid[0]) definirMensagem("Rede \"%s\" gravada. Conectando...", wifiSsid);
-  else             definirMensagem("Rede esquecida. So o Wi-Fi da propria maquina");
-}
 
 void restaurarPadroes() {
   // Chamada apenas pelo core 1 (ver CMD_RESTAURAR_PADROES no .ino).

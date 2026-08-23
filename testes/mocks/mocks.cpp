@@ -5,6 +5,7 @@
 #include "freertos/queue.h"
 #include "WebServer.h"
 #include "ESPmDNS.h"
+#include "DNSServer.h"
 
 uint32_t g_millis = 0;
 int g_pinModo[64]    = {0};
@@ -48,6 +49,7 @@ int digitalRead(uint8_t p) { return p < 64 ? g_pinEntrada[p] : 1; }
 // ---------------------------------------------------------------------
 // Servidor web: o banco fala com os handlers de verdade.
 WebServer* WebServer::atual = nullptr;
+DNSServer* DNSServer::atual = nullptr;
 
 int webPost(const std::string& alvo, const char* corpo) {
   return WebServer::atual ? WebServer::atual->pedir(HTTP_POST, alvo, corpo) : 0;

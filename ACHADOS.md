@@ -984,3 +984,57 @@ meio segundo em que a tela mente sobre o que dá para fazer. Mesma família
 do botão mudo. Agora `redeEstadoBotoes()` roda uma vez na carga, e sem
 contato com o robô o motivo é "sem contato com o robo" em vez de um
 palpite sobre o modo.
+
+---
+
+# Rodada 8 — fora o modo estação
+
+## R19 · Entrar na rede da oficina saiu  `J01`–`J03`  ✅
+
+Pedido do operador, com a queixa certa: a máquina ficou mais lenta e o
+joystick com atraso depois que o modo estação entrou. A queixa tem
+mecanismo, não é impressão.
+
+**O ESP32 tem um rádio só.** Em `WIFI_AP_STA` o ponto de acesso é
+obrigado a acompanhar o canal do roteador e o rádio divide tempo de
+antena entre as duas redes. O heartbeat do jog — que corta o movimento se
+faltar por 350 ms — é justamente o tráfego que não pode atrasar. Rede de
+terceiro não vale latência no controle de uma máquina que se move.
+
+Removido: varredura, escolha de rede, senha pelo painel, credenciais no
+NVS, `CMD_APLICAR_REDE`, `RedePendente`, a máquina de estados da conexão
+e quatro rotas HTTP. O rádio sobe em `WIFI_AP` puro e nunca sai do canal.
+
+Fica: IP fixo `192.168.4.1` declarado pelo projeto, mDNS
+`robo2dof.local`, e um `GET /api/rede` de leitura que diz ao operador por
+onde chegar no painel.
+
+O ganho de flash é modesto (a pilha de Wi-Fi já estava lá para o ponto de
+acesso; a página encolheu 1,5 kB). O ganho real é de latência, e é o que
+motivou a remoção.
+
+## R20 · DNS de captura  `J03`  ✅
+
+Uma adição pequena no lugar do que saiu, para atender o que o operador
+pediu: chegar no painel sem decorar endereço. Um servidor de DNS na porta
+53 responde qualquer nome com o IP da máquina.
+
+- Ao entrar na rede, o celular detecta portal cativo e costuma **oferecer
+  abrir o painel sozinho** — em vez de reclamar que não há internet e
+  pular para os dados móveis, que é o comportamento chato do Android.
+- Qualquer coisa digitada na barra de endereço cai no painel.
+
+Honestidade sobre o limite: nome de uma palavra só (`robo2dof`, sem
+`.local` e sem barra) depende do navegador — vários tratam como busca
+antes de tentar resolver, e isso acontece **antes** do DNS.
+`robo2dof.local` e `192.168.4.1` funcionam sempre.
+
+## Cobertura
+
+| banco | rodada 7 | agora |
+|-------|----------|-------|
+| firmware | 142 / 0 | **130 / 0** |
+| interface | 83 / 0 | **76 / 0** |
+
+Menos cenários porque há menos sistema: doze verificações do modo estação
+saíram junto com o código que elas cobriam.

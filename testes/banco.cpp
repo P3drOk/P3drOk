@@ -23,6 +23,7 @@
 #include "rede.h"
 #include "WiFi.h"
 #include "ESPmDNS.h"
+#include "DNSServer.h"
 #include "Preferences.h"
 #include "FS.h"
 #include <string>
@@ -175,9 +176,6 @@ static void reiniciarSistemaMantendoNvs() {
   reiniciarSistema();
   g_nvs = guardado;
   carregarConfiguracoes();
-  // O radio ja subiu com o que havia antes de restaurar o NVS; refaz a
-  // conexao com as credenciais recem-carregadas, como faria um boot.
-  redePedidoReconectar = true;
   rodarComWeb(50);
 }
 
@@ -2539,177 +2537,67 @@ static void teste_I03_velocidade_entre_trechos() {
 }
 
 // =====================================================================
-//  J - Rede: ponto de acesso proprio + rede da oficina
+//  J - Rede: Wi-Fi proprio, e so isso
 // =====================================================================
-static void prepararVizinhanca() {
-  WiFi.vizinhanca.clear();
-  WiFi.vizinhanca.push_back(RedeMock{"Oficina 2G",     -48, 6,  1});
-  WiFi.vizinhanca.push_back(RedeMock{"VIVOFIBRA-A1B2", -71, 11, 1});
-  WiFi.vizinhanca.push_back(RedeMock{"Convidados",     -80, 1,  0});
-  WiFi.vizinhanca.push_back(RedeMock{"Oficina 2G",     -60, 1,  1});  // duplicata
-  WiFi.vizinhanca.push_back(RedeMock{"",               -70, 3,  1});  // oculta
+static void teste_J01_wifi_proprio() {
+  secao("J01  A maquina depende de rede de alguem?");
+  reiniciarSistema();
+
+  nota("modo do radio: %d (AP=%d, AP_STA=%d)",
+       WiFi.modoAtual, WIFI_AP, WIFI_AP_STA);
+  checar(WiFi.modoAtual == WIFI_AP, "J01a",
+         "o radio sobe so como ponto de acesso, sem modo estacao");
+  // Um radio so: em AP+STA o ponto de acesso acompanha o canal do
+  // roteador e o tempo de antena e dividido. Era isso que aparecia como
+  // atraso no joystick.
+  checar(WiFi.staSsid.empty() && !WiFi.tentando, "J01b",
+         "nenhuma tentativa de entrar em rede de terceiro");
+
+  nota("ponto de acesso \"%s\", IP fixado: %s",
+       WiFi.apSsid.c_str(), WiFi.apIpFixo ? "sim" : "nao");
+  checar(WiFi.apSsid == WIFI_AP_SSID && WiFi.apIpFixo, "J01c",
+         "o Wi-Fi proprio sobe com IP declarado pelo projeto");
+  checar(MDNS.ativo && MDNS.nome == WIFI_NOME_LOCAL, "J01d",
+         "robo2dof.local e anunciado");
+  nota("painel: http://%s e http://%s.local", redeIpAcesso(), redeNomeLocal());
 }
 
-static void teste_J01_ponto_de_acesso_sempre_ligado() {
-  secao("J01  O Wi-Fi da propria maquina sai do ar em algum momento?");
-  prepararVizinhanca();
+static void teste_J02_endereco_do_painel() {
+  secao("J02  O painel sabe dizer por onde se chega nele");
   reiniciarSistema();
 
-  nota("modo do radio: %d (AP_STA=%d), IP do AP fixado: %s",
-       WiFi.modoAtual, WIFI_AP_STA, WiFi.apIpFixo ? "sim" : "nao");
-  checar(WiFi.modoAtual == WIFI_AP_STA, "J01a",
-         "o radio sobe em AP+STA: os dois ao mesmo tempo");
-  checar(WiFi.apSsid == WIFI_AP_SSID && WiFi.apIpFixo, "J01b",
-         "o ponto de acesso proprio sobe com IP fixo declarado pelo projeto");
-  checar(MDNS.ativo && MDNS.nome == WIFI_NOME_LOCAL, "J01c",
-         "o nome robo2dof.local e anunciado");
-  nota("endereco do painel: http://%s e http://%s.local",
-       redeIpAcesso(), redeNomeLocal());
+  checar(webGet("/api/rede") == 200, "J02a", "GET /api/rede responde");
+  const std::string j = webCorpo();
+  nota("%s", j.c_str());
+  checar(j.find("\"ip\":\"192.168.4.1\"") != std::string::npos, "J02b",
+         "o IP do ponto de acesso e o fixo do projeto");
+  checar(j.find("\"nome\":\"robo2dof\"") != std::string::npos, "J02c",
+         "e o nome mDNS vai junto");
 
-  // Senha errada da rede da oficina: o painel NAO pode sumir junto.
-  strncpy(redePendente.ssid,  "Oficina 2G", sizeof(redePendente.ssid) - 1);
-  strncpy(redePendente.senha, "erradaerrada", sizeof(redePendente.senha) - 1);
-  enviarComando(CMD_APLICAR_REDE);
-  rodarComWeb(3000);
-  nota("estado da estacao: %s; AP ainda em %s (\"%s\")",
-       redeEstadoTexto(), redeIpAcesso(), WiFi.apSsid.c_str());
-  checar(redeEstado() == EST_SENHA, "J01d",
-         "senha errada e reportada como senha errada, nao como falha generica");
-  checar(WiFi.apSsid == WIFI_AP_SSID && WiFi.modoAtual == WIFI_AP_STA, "J01e",
-         "e o Wi-Fi da propria maquina continua no ar mesmo assim");
+  // As rotas de configuracao de rede sairam: nao pode sobrar meia porta
+  // aberta que a pagina nao usa mais.
+  checar(webPost("/api/rede/varrer")   == 404 &&
+         webPost("/api/rede/conectar") == 404 &&
+         webPost("/api/rede/esquecer") == 404 &&
+         webGet ("/api/rede/lista")    == 404, "J02d",
+         "as rotas do modo estacao nao existem mais");
 }
 
-static void teste_J02_entrar_na_rede() {
-  secao("J02  Entrar na rede da oficina e lembrar dela");
-  prepararVizinhanca();
+static void teste_J03_qualquer_endereco_cai_no_painel() {
+  secao("J03  Entrar na rede da maquina e achar o painel");
   reiniciarSistema();
-  WiFi.senhaCerta = "senhadaoficina";
 
-  const int cod = webPost("/api/rede/conectar?ssid=Oficina%202G&senha=senhadaoficina");
-  rodarComWeb(3000);
-  nota("HTTP %d; estado %s; IP %s; \"%s\"", cod, redeEstadoTexto(),
-       redeIpEstacao(), ultimaMensagem);
-  checar(cod == 200 && redeEstado() == EST_CONECTADA, "J02a",
-         "POST /api/rede/conectar entra na rede");
-  checar(strlen(redeIpEstacao()) > 0, "J02b",
-         "o IP recebido do roteador fica visivel para o operador");
+  // DNS de captura: responde qualquer nome com o IP da maquina. E o que
+  // faz o celular oferecer abrir o painel sozinho ao entrar na rede, em
+  // vez de reclamar que nao ha internet e pular para os dados moveis.
+  nota("DNS na porta %u, dominio \"%s\"", g_dns.porta, g_dns.dominio.c_str());
+  checar(g_dns.ligado && g_dns.porta == 53 && g_dns.dominio == "*", "J03a",
+         "o DNS de captura responde qualquer nome com o IP da maquina");
 
-  // Gravada: religar a maquina tem de voltar sozinha para a rede.
-  nota("no NVS: ssid=\"%s\"", g_nvs.s.count("wssid") ? g_nvs.s["wssid"].c_str() : "(nada)");
-  checar(g_nvs.s.count("wssid") && g_nvs.s["wssid"] == "Oficina 2G" &&
-         g_nvs.s.count("wsenha") && g_nvs.s["wsenha"] == "senhadaoficina",
-         "J02c", "as credenciais vao para a memoria nao volatil");
-
-  reiniciarSistemaMantendoNvs();
-  rodarComWeb(3000);
-  nota("depois de religar: %s, IP %s", redeEstadoTexto(), redeIpEstacao());
-  checar(redeEstado() == EST_CONECTADA, "J02d",
-         "religando, ela volta sozinha para a rede gravada");
-
-  // Esquecer.
-  checar(webPost("/api/rede/esquecer") == 200, "J02e",
-         "POST /api/rede/esquecer e aceito");
-  rodarComWeb(500);
-  nota("depois de esquecer: %s; NVS ssid=\"%s\"", redeEstadoTexto(),
-       g_nvs.s["wssid"].c_str());
-  checar(redeEstado() == EST_DESLIGADA && g_nvs.s["wssid"].empty(), "J02f",
-         "esquecer apaga a rede e deixa so o ponto de acesso proprio");
-}
-
-static void teste_J03_varredura_nao_derruba_o_braco() {
-  secao("J03  A varredura de redes pode derrubar o braco?");
-  prepararVizinhanca();
-  reiniciarSistema();
-  prepararRoboCalibrado();
-
-  // Este e o ponto perigoso da funcao inteira. A varredura do ESP32 tira
-  // o radio do canal do ponto de acesso por segundos. Se ela fosse
-  // SINCRONA dentro da tarefa web, o servidor pararia de responder, o
-  // heartbeat do operador venceria em TIMEOUT_CONEXAO_MS e o supervisor
-  // cortaria movimento e arco -- um botao de tela derrubando a maquina.
-  const uint32_t t0 = g_millis;
-  const int cod = webPost("/api/rede/varrer");
-  nota("varredura pedida: HTTP %d, devolveu em %u ms, varrendo=%d",
-       cod, g_millis - t0, (int)redeVarrendo());
-  checar(cod == 200 && redeVarrendo() && (g_millis - t0) == 0, "J03a",
-         "a varredura comeca e o handler devolve na hora, sem bloquear");
-
-  // Enquanto ela roda (o mock leva 2 s), o servidor tem de continuar
-  // atendendo: e o que mantem o heartbeat vivo.
-  uint32_t respostas = 0;
-  for (int i = 0; i < 30; i++) {
-    rodarComWeb(100);
-    if (webGet("/api/status") == 200) respostas++;
-  }
-  nota("durante a varredura o servidor respondeu %u de 30 pedidos de status",
-       respostas);
-  checar(respostas == 30, "J03b",
-         "o servidor continua respondendo durante a varredura");
-  checar(modoAtual != MODO_FALHA && movimentoLiberado, "J03c",
-         "o movimento nao e cortado por perda de conexao");
-
-  rodarComWeb(500);
-  nota("%u redes na lista (5 encontradas: uma duplicada e uma oculta)",
-       (unsigned)redeVizinhasN());
-  for (uint8_t i = 0; i < redeVizinhasN(); i++)
-    nota("  %-16s %4d dBm  canal %2u  %s", redeVizinhas()[i].ssid,
-         (int)redeVizinhas()[i].rssi, (unsigned)redeVizinhas()[i].canal,
-         redeVizinhas()[i].aberta ? "aberta" : "com senha");
-  checar(redeVizinhasN() == 3, "J03d",
-         "SSID repetido em outro canal e rede oculta nao entram na lista");
-  checar(redeVizinhasN() == 3 && redeVizinhas()[0].rssi >= redeVizinhas()[1].rssi &&
-         redeVizinhas()[1].rssi >= redeVizinhas()[2].rssi, "J03e",
-         "a lista sai da mais forte para a mais fraca");
-}
-
-static void teste_J04_recusas_de_rede() {
-  secao("J04  O que a rota de rede recusa");
-  prepararVizinhanca();
-  reiniciarSistema();
-  prepararRoboCalibrado();
-
-  checar(webPost("/api/rede/conectar?ssid=&senha=12345678") == 400, "J04a",
-         "sem escolher rede e recusado");
-  const int curta = webPost("/api/rede/conectar?ssid=Oficina%202G&senha=123");
-  nota("senha de 3 caracteres: HTTP %d -- \"%s\"", curta, webCorpo());
-  checar(curta == 400, "J04b",
-         "senha com menos de 8 caracteres e recusada antes de ir ao radio");
-
-  // Rede aberta: senha vazia e legitima.
-  WiFi.senhaCerta = "";
-  checar(webPost("/api/rede/conectar?ssid=Convidados&senha=") == 200, "J04c",
-         "rede aberta e aceita com senha vazia");
-  rodarComWeb(3000);
-
-  // Fora do manual, nada.
-  enviarComando(CMD_GRAVAR_INICIAR);
-  rodarComWeb(60);
-  const int ocupado = webPost("/api/rede/conectar?ssid=Oficina%202G&senha=senhadaoficina");
-  nota("em modo %d: HTTP %d -- \"%s\"", (int)modoAtual, ocupado, webCorpo());
-  checar(modoAtual != MODO_MANUAL && ocupado == 400, "J04d",
-         "trocar de rede com o robo fora do manual e recusado");
-  checar(webPost("/api/rede/varrer") == 400, "J04e",
-         "procurar redes com o robo fora do manual tambem");
-
-  // SSID com aspas e nome valido de rede. Se ele vazar cru no JSON, a
-  // pagina inteira para de ler o estado da rede.
-  reiniciarSistema();
-  WiFi.vizinhanca.clear();
-  WiFi.vizinhanca.push_back(RedeMock{"casa \"do\" ze", -50, 6, 1});
-  WiFi.senhaCerta = "12345678";
-  webPost("/api/rede/conectar?ssid=casa%20%22do%22%20ze&senha=12345678");
-  rodarComWeb(2000);
-  webPost("/api/rede/varrer");
-  rodarComWeb(3000);
-  webGet("/api/rede");
-  const std::string j1 = webCorpo();
-  webGet("/api/rede/lista");
-  const std::string j2 = webCorpo();
-  nota("/api/rede:       %s", j1.c_str());
-  nota("/api/rede/lista: %s", j2.c_str());
-  checar(j1.find("\\\"do\\\"") != std::string::npos &&
-         j2.find("\\\"do\\\"") != std::string::npos, "J04f",
-         "aspas no nome da rede saem escapadas nos dois JSON");
+  const uint32_t antes = g_dns.pedidos;
+  rodarComWeb(50);
+  checar(g_dns.pedidos > antes, "J03b",
+         "e ele e atendido no laco da tarefa de rede, sem bloquear nada");
 }
 
 // =====================================================================
@@ -2771,10 +2659,9 @@ int main() {
   teste_I02_ziguezague_na_borda();
   teste_I03_velocidade_entre_trechos();
 
-  teste_J01_ponto_de_acesso_sempre_ligado();
-  teste_J02_entrar_na_rede();
-  teste_J03_varredura_nao_derruba_o_braco();
-  teste_J04_recusas_de_rede();
+  teste_J01_wifi_proprio();
+  teste_J02_endereco_do_painel();
+  teste_J03_qualquer_endereco_cai_no_painel();
 
 
 
