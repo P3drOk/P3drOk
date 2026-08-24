@@ -69,6 +69,30 @@ void encoderReconfigurar();
 // tela. "Sem resposta" sem os bytes crus e uma palavra sem prova.
 void encoderUltimoQuadro(char* destino, size_t tam);
 
+// ---------------------------------------------------------------------
+// Autoteste DENTRO do sistema rodando.
+//
+// O programa de bancada (ferramentas/teste_rs485) prova a fiacao com o
+// ESP32 sozinho na placa. Isso nao responde a pergunta que importa
+// quando o sistema nao le: sera que aqui dentro, com Wi-Fi, servidor
+// web, cartao e as interrupcoes dos motores no mesmo nucleo, a linha
+// ainda funciona? So medindo aqui dentro.
+//
+// Faz, em sequencia:
+//   1. ECO -- deixa o receptor ligado enquanto transmite e ve se os
+//      proprios bytes voltam. Se voltarem, ESP32 <-> MAX485 esta bom
+//      DENTRO do sistema, e o que sobra e o barramento ou o tempo.
+//   2. SONDAGEM -- pergunta pelo registrador 0 nas funcoes 3 e 4, que e
+//      como o programa de bancada acha o driver. Ate a EXCECAO serve:
+//      ela prova que o driver esta ai e respondeu.
+//   3. A pergunta de verdade, com o registrador configurado.
+//
+// Sai um relatorio de texto, com os bytes crus de cada passo.
+// ---------------------------------------------------------------------
+void encoderPedirTeste();                        // core 1 / web: so pede
+void encoderRelatorio(char* destino, size_t tam);
+bool encoderTesteRodando();
+
 #ifdef ROBOCNC_TESTE
 // O banco bombeia a tarefa a mao, como faz com a do cartao.
 void encoderCicloTeste();

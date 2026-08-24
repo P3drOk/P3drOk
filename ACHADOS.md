@@ -1414,6 +1414,43 @@ recarrega, e confirma que ela ganha. Depois aperta o botão novo,
 medido nesta máquina — e que fica *gravado*, senão o defeito voltaria no
 próximo boot.
 
+## R37 · O autoteste do sketch, por dentro do sistema  ✅  `L11`
+
+O operador gravou e a tela disse **"sem resposta"** — zero bytes de
+volta. A essa altura já não dava para continuar deduzindo: o programa de
+bancada prova a fiação com o ESP32 **sozinho na placa**, e a pergunta que
+importa é se a linha funciona *aqui dentro*, com tudo mais rodando.
+
+Então o autoteste veio para dentro do firmware, no botão **"Testar a
+linha agora"**. Três passos, com os bytes crus de cada um:
+
+1. **Eco** — deixa o receptor ligado enquanto transmite e vê se os
+   próprios bytes voltam. **Não precisa do driver ligado.** Se voltarem,
+   ESP32↔MAX485 está bom dentro do sistema e o que sobra é o barramento
+   ou o tempo. Se não, o problema nem chegou no par A/B.
+2. **Sondagem** do registrador 0 nas funções 3 e 4 — é como o programa de
+   bancada acha o driver. Até **exceção** é prova de vida.
+3. A pergunta de verdade, com o registrador configurado.
+
+Roda na tarefa do encoder, no núcleo 0: mexe no modo da UART e nos pinos
+do transceptor, e fazer isso de outro núcleo por baixo de uma leitura em
+andamento corromperia o quadro. `L11d` confere que, terminado o teste, a
+leitura normal volta sozinha — um diagnóstico que deixa a máquina pior
+não serve.
+
+### O mock que virou hardware de verdade
+
+A primeira versão do `L11` tinha um `g_uart.eco = true` que o banco
+ligava à mão. Ele ficou ligado durante a sondagem, os nossos próprios
+bytes voltaram na frente da resposta do escravo, e o cenário reprovou.
+
+Era o banco mentindo, mas apontando para algo real: **o eco não é um
+botão, é consequência do que o firmware faz com o pino RE.** O mock
+passou a olhar o pino (`g_pinSaida[pinoRe] == LOW`) e a respeitar o modo
+RS485 meio-duplex, onde o periférico desliga a recepção ao transmitir e
+não há eco por mais que o RE esteja em baixo. Terceira vez que a regra da
+rodada 7 se paga.
+
 ## R36 · O que ainda decide o caso
 
 O quadro cru (R31) já está na tela. Ele parte o que sobrou em dois, e os
@@ -1428,5 +1465,5 @@ dois pedem consertos opostos:
 
 | banco | rodada 12 | agora |
 |-------|-----------|-------|
-| firmware | 171 / 0 | **181 / 0** |
+| firmware | 171 / 0 | **187 / 0** |
 | interface | 93 / 0 | **93 / 0** |

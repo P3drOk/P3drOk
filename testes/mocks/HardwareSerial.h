@@ -8,6 +8,8 @@
 // Assinaturas iguais as do core do ESP32. Ver testes/mocks/LEIA-ME.md.
 #pragma once
 #include "Arduino.h"
+#include "driver/uart.h"
+#include "Arduino.h"
 #include <deque>
 #include <vector>
 
@@ -51,7 +53,11 @@ class HardwareSerial {
     if (fila.empty()) return -1;
     const int c = fila.front(); fila.pop_front(); return c;
   }
-  size_t write(const uint8_t* b, size_t n) { responder(b, n); return n; }
+  size_t write(const uint8_t* b, size_t n) {
+    if (ecoAgora()) { for (size_t i = 0; i < n; i++) fila.push_back(b[i]); }
+    responder(b, n);
+    return n;
+  }
   size_t write(uint8_t b) { return write(&b, 1); }
   void flush() {}
 
@@ -61,11 +67,27 @@ class HardwareSerial {
   int8_t        pinRx = -1, pinTx = -1;
   bool          aberta = false;
   EscravoModbus escravo[2];
+  // O MAX485 devolve pelo RO o que sai pelo DI sempre que o receptor
+  // estiver ligado durante a transmissao -- e o receptor esta ligado
+  // quando o RE esta em BAIXO. Nao e um botao do banco: e consequencia
+  // do que o firmware faz com o pino, e por isso o mock olha o pino.
+  //
+  // A excecao e o modo RS485 meio-duplex por hardware: ali o proprio
+  // periferico desliga a recepcao enquanto transmite, e nao ha eco por
+  // mais que o RE esteja em baixo.
+  bool moduloLigado = false;   // ha um MAX485 no barramento
+  int  pinoRe       = -1;      // qual pino e o RE (o banco informa)
 
   static HardwareSerial* atual;
 
  private:
   std::deque<uint8_t> fila;
+
+  bool ecoAgora() const {
+    if (!moduloLigado || pinoRe < 0 || pinoRe >= 64) return false;
+    if (g_uartIdf.modo == UART_MODE_RS485_HALF_DUPLEX) return false;
+    return g_pinSaida[pinoRe] == 0;      // RE em baixo = recebendo
+  }
 
   static uint16_t crc16(const uint8_t* b, size_t n) {
     uint16_t crc = 0xFFFF;

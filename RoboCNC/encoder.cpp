@@ -2,6 +2,8 @@
 #include <HardwareSerial.h>
 #include <driver/uart.h>
 #include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 // A UART2 e a mesma que o objeto rs abre; o numero precisa bater para o
 // modo RS485 por hardware cair no periferico certo.
@@ -296,6 +298,144 @@ static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
 // O encoder conta no eixo do MOTOR; o comandado tambem esta em passos de
 // motor. A reducao mecanica leva os dois para o mesmo lugar: graus da
 // junta.
+// =====================================================================
+//  Autoteste dentro do sistema rodando. Ver encoder.h.
+// =====================================================================
+static volatile bool pedidoTeste  = false;
+static volatile bool testeRodando = false;
+static char relatorio[520] = "nenhum teste rodado ainda";
+
+static void anexar(size_t& p, const char* fmt, ...) {
+  if (p + 2 >= sizeof(relatorio)) return;
+  va_list ap;
+  va_start(ap, fmt);
+  const int n = vsnprintf(relatorio + p, sizeof(relatorio) - p, fmt, ap);
+  va_end(ap);
+  if (n > 0) p += (size_t)n;
+  if (p >= sizeof(relatorio)) p = sizeof(relatorio) - 1;
+}
+
+static void anexarHex(size_t& p, const uint8_t* b, size_t n) {
+  for (size_t k = 0; k < n && p + 4 < sizeof(relatorio); k++)
+    anexar(p, " %02X", b[k]);
+}
+
+// Manda um quadro OUVINDO O PROPRIO ECO: o receptor fica ligado enquanto
+// transmitimos, entao o que sai pelo DI volta pelo RO. Nao depende de
+// haver ninguem do outro lado -- prova a ligacao ESP32 <-> MAX485.
+static size_t trocarComEco(const uint8_t* saida, size_t nSaida,
+                           uint8_t* entrada, size_t maxEntrada) {
+  // O eco so existe com o receptor ligado durante a transmissao, o que o
+  // modo por hardware justamente impede. Aqui o controle volta a ser
+  // nosso pelo tempo do teste.
+  uart_set_mode(ENC_UART_NUM, UART_MODE_UART);
+  pinMode(PIN_RS485_DE, OUTPUT);
+
+  while (rs.available()) rs.read();
+  digitalWrite(PIN_RS485_RE, LOW);      // ouvindo, inclusive a nos mesmos
+  digitalWrite(PIN_RS485_DE, HIGH);
+  delayMicroseconds(50);
+  rs.write(saida, nSaida);
+  rs.flush();
+  delayMicroseconds(usPorChar() * 2);
+  digitalWrite(PIN_RS485_DE, LOW);
+
+  size_t n = 0;
+  const uint32_t inicio = millis();
+  while ((int32_t)(millis() - inicio) < 60 && n < maxEntrada) {
+    if (rs.available()) { entrada[n++] = (uint8_t)rs.read(); continue; }
+    if (n) break;
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  return n;
+}
+
+// Uma pergunta crua, sem interpretar: so mostra o que voltou.
+static void sondar(size_t& p, const char* rotulo, uint8_t id, uint8_t func,
+                   uint16_t reg, uint16_t quantos) {
+  uint8_t q[8];
+  q[0] = id; q[1] = func;
+  q[2] = (uint8_t)(reg >> 8); q[3] = (uint8_t)(reg & 0xFF);
+  q[4] = (uint8_t)(quantos >> 8); q[5] = (uint8_t)(quantos & 0xFF);
+  const uint16_t c = crc16(q, 6);
+  q[6] = (uint8_t)(c & 0xFF); q[7] = (uint8_t)(c >> 8);
+
+  uint8_t r[16];
+  const size_t n = trocar(q, 8, r, sizeof(r));
+
+  anexar(p, "%s ->", rotulo);
+  anexarHex(p, q, 8);
+  if (!n) { anexar(p, "  <- SILENCIO\n"); return; }
+  anexar(p, "  <-");
+  anexarHex(p, r, n);
+  const uint16_t cc = crc16(r, n - 2);
+  const bool crcOk = n >= 4 && r[n - 2] == (uint8_t)(cc & 0xFF) &&
+                               r[n - 1] == (uint8_t)(cc >> 8);
+  if (!crcOk) {
+    anexar(p, "  CRC NAO BATE (velocidade ou paridade perto, mas errada)\n");
+  } else if (r[1] & 0x80) {
+    // Excecao e boa noticia: o driver esta ai e falou.
+    anexar(p, "  EXCECAO %u -- O DRIVER RESPONDEU, so a pergunta e que nao serve\n",
+           (unsigned)(n > 2 ? r[2] : 0));
+  } else {
+    anexar(p, "  RESPOSTA BOA\n");
+  }
+}
+
+static void executarTeste() {
+  testeRodando = true;
+  size_t p = 0;
+  relatorio[0] = '\0';
+
+  const uint8_t id = configEncoder.id[0];
+  anexar(p, "%lu bps  %s  id %u\n", (unsigned long)configEncoder.baud,
+         configEncoder.paridade == 1 ? "8E1"
+       : configEncoder.paridade == 2 ? "8O1" : "8N1", (unsigned)id);
+
+  // 1. Eco. Nao precisa do driver ligado.
+  {
+    const uint8_t padrao[6] = {0x55, 0xAA, 0x00, 0xFF, 0x5A, 0xA5};
+    uint8_t volta[16];
+    const size_t n = trocarComEco(padrao, sizeof(padrao), volta, sizeof(volta));
+    const bool igual = (n == sizeof(padrao)) &&
+                       (memcmp(padrao, volta, n) == 0);
+    anexar(p, "eco  ->");
+    anexarHex(p, padrao, sizeof(padrao));
+    anexar(p, "  <-");
+    if (!n) anexar(p, " nada");
+    else    anexarHex(p, volta, n);
+    anexar(p, igual ? "  MODULO OK\n"
+                    : "  ECO FALHOU -- entre o ESP32 e o MAX485\n");
+  }
+
+  // Volta a linha para o modo configurado antes de falar com o driver.
+  abrirLinha();
+  modoEscuta();
+
+  // 2. Sondagem: o registrador 0 e como o programa de bancada acha o
+  //    driver. Ate a excecao serve de prova de vida.
+  sondar(p, "f3 r0  ", id, 3, 0, 1);
+  sondar(p, "f4 r0  ", id, 4, 0, 1);
+
+  // 3. A pergunta de verdade.
+  char rot[16];
+  snprintf(rot, sizeof(rot), "f%u r%u ", (unsigned)configEncoder.funcao,
+           (unsigned)configEncoder.reg[0]);
+  sondar(p, rot, id, configEncoder.funcao, configEncoder.reg[0],
+         configEncoder.trintaEDois ? 2 : 1);
+
+  testeRodando = false;
+}
+
+void encoderPedirTeste() { pedidoTeste = true; }
+bool encoderTesteRodando() { return testeRodando; }
+
+void encoderRelatorio(char* destino, size_t tam) {
+  if (!destino || tam == 0) return;
+  strncpy(destino, relatorio, tam - 1);
+  destino[tam - 1] = '\0';
+}
+
 // ---------------------------------------------------------------------
 static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   const Junta& j = (i == 0) ? J1 : J2;
@@ -392,8 +532,19 @@ static void ciclo() {
     pedidoReabrir = false;
     if (linhaAberta) { rs.end(); delay(5); linhaAberta = false; }
   }
-  if (!configEncoder.ativo) return;
   if (!linhaAberta) { abrirLinha(); modoEscuta(); }
+
+  // O teste roda AQUI, na tarefa do encoder: ele mexe no modo da UART e
+  // nos pinos do transceptor, e fazer isso de outro nucleo por baixo de
+  // uma leitura em andamento corromperia o quadro.
+  if (pedidoTeste) {
+    pedidoTeste = false;
+    executarTeste();
+    proximaEm = millis();
+    return;
+  }
+
+  if (!configEncoder.ativo) return;
 
   const uint16_t per = (configEncoder.periodoMs < ENC_PERIODO_MIN_MS)
                      ? ENC_PERIODO_MIN_MS : configEncoder.periodoMs;

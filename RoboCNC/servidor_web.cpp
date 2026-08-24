@@ -691,6 +691,25 @@ static void handleEncoderPadroes() {
   enfileirar(CMD_APLICAR_ENCODER);
 }
 
+// Autoteste da linha, DENTRO do sistema rodando. So pede; quem executa e
+// a tarefa do encoder, no core 0 -- ela mexe no modo da UART e nos pinos
+// do transceptor, e fazer isso daqui por baixo de uma leitura em
+// andamento corromperia o quadro.
+static void handleEncoderTestar() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  encoderPedirTeste();
+  server.send(200, "text/plain", "testando a linha");
+}
+
+static void handleEncoderTeste() {
+  registrarContatoOperador();
+  char rel[560];
+  encoderRelatorio(rel, sizeof(rel));
+  server.send(200, "text/plain",
+              encoderTesteRodando() ? "testando a linha..." : rel);
+}
+
 static void handleEncoderZerar() {
   registrarContatoOperador();
   enfileirar(CMD_ENCODER_ZERAR, argL("j", 0));
@@ -917,6 +936,8 @@ void servidorIniciar() {
   server.on("/api/encoder",        HTTP_GET,  handleEncoder);
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);
+  server.on("/api/encoder/testar", HTTP_POST, handleEncoderTestar);
+  server.on("/api/encoder/teste",  HTTP_GET,  handleEncoderTeste);
   server.on("/api/encoder/zerar",  HTTP_POST, handleEncoderZerar);
 
   server.onNotFound(handleNaoEncontrado);

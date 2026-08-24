@@ -267,6 +267,37 @@ quando o eixo gira. Os dados vivos estão na função 4.
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
 "nunca foi configurado" e cai no padrão medido.
 
+### "Sem resposta": o autoteste dentro do sistema
+
+O programa de bancada (`ferramentas/teste_rs485`) prova a fiação com o
+ESP32 **sozinho na placa**. Isso não responde à pergunta que importa
+quando o sistema não lê: *aqui dentro*, com Wi-Fi, servidor web, cartão e
+as interrupções dos motores no mesmo núcleo, a linha ainda funciona?
+
+O botão **"Testar a linha agora"**, na aba Encoder, roda o mesmo
+autoteste por dentro do firmware. Sai um relatório assim:
+
+```
+19200 bps  8N1  id 1
+eco  -> 55 AA 00 FF 5A A5  <- 55 AA 00 FF 5A A5  MODULO OK
+f3 r0   -> 01 03 00 00 00 01 84 0A  <- 01 83 02 C0 F1  EXCECAO 2 -- O DRIVER RESPONDEU
+f4 r0   -> 01 04 00 00 00 01 31 CA  <- SILENCIO
+f4 r5   -> 01 04 00 05 00 02 21 CB  <- 01 04 04 30 AF 00 02 …  RESPOSTA BOA
+```
+
+Leia de cima para baixo:
+
+| linha | o que decide |
+|---|---|
+| **eco** | os próprios bytes voltam? Deixa o receptor ligado enquanto transmite, então **não precisa do driver ligado**. Voltou = ESP32↔MAX485 bom *dentro do sistema*, e o que sobra é o barramento ou o tempo. Não voltou = o problema nem chegou no par A/B |
+| **f3 r0 / f4 r0** | é assim que o programa de bancada acha o driver. Até **EXCEÇÃO** é boa notícia: prova que ele está aí e respondeu, só a pergunta é que não serve |
+| **última linha** | a pergunta de verdade, com o registrador configurado |
+
+O teste roda na tarefa do encoder, no núcleo 0 — ele mexe no modo da UART
+e nos pinos do transceptor, e fazer isso de outro núcleo por baixo de uma
+leitura em andamento corromperia o quadro. Terminado, a leitura normal
+volta sozinha.
+
 ### Quem baixa o DE do MAX485
 
 Entre o último bit sair pelo fio e o firmware baixar o DE existe cerca de

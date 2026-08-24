@@ -160,6 +160,8 @@ static void reiniciarSistema() {
   g_uart.escravo[0] = EscravoModbus{};
   g_uart.escravo[1] = EscravoModbus{};
   g_uart.escravo[1].existe = false;
+  g_uart.moduloLigado = false;
+  g_uart.pinoRe       = -1;
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -2993,6 +2995,60 @@ static void teste_L10_configuracao_velha_no_nvs() {
          "e, como toda configuracao, so em manual");
 }
 
+// ---------------------------------------------------------------------
+// "Sem resposta" e o fim da linha para quem so tem a tela: nao da para
+// saber se o problema e o modulo, o barramento ou o endereco. O programa
+// de bancada resolve isso, mas ele roda com o ESP32 SOZINHO na placa --
+// e a pergunta que importa e se a linha funciona AQUI DENTRO, com tudo
+// mais rodando. Este e o mesmo autoteste, por dentro do sistema.
+// ---------------------------------------------------------------------
+static void teste_L11_autoteste_dentro_do_sistema() {
+  secao("L11  Autoteste da linha RS485 dentro do sistema rodando");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(5, true, 4242);
+
+  // O modulo existe e esta ligado: o eco passa a ser consequencia do que
+  // o firmware faz com o RE, nao um botao do banco.
+  g_uart.moduloLigado = true;
+  g_uart.pinoRe       = PIN_RS485_RE;
+  webPost("/api/encoder/testar");
+  rodarComWeb(600);
+
+  webGet("/api/encoder/teste");
+  const char* rel = webCorpo();
+  nota("%s", rel);
+  checar(strstr(rel, "MODULO OK") != nullptr, "L11a",
+         "o eco prova a ligacao ESP32<->MAX485 aqui dentro, nao so na bancada");
+  checar(strstr(rel, "f3 r0") != nullptr && strstr(rel, "f4 r0") != nullptr,
+         "L11b",
+         "sonda o registrador 0 nas duas funcoes, que e como se acha o driver");
+  checar(strstr(rel, "RESPOSTA BOA") != nullptr, "L11c",
+         "e mostra o resultado da pergunta de verdade, com os bytes");
+
+  // Depois do teste a leitura normal tem que voltar sozinha: um
+  // diagnostico que deixa a maquina pior nao serve.
+  rodarComWeb(600);
+  nota("depois do teste: %lu leituras", (unsigned long)encoderLer(1).leituras);
+  checar(encoderLer(1).valido, "L11d",
+         "terminado o teste, a leitura normal volta sozinha");
+
+  // Modulo desligado do ESP32: o eco falha, e o relatorio diz ONDE.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(5, true, 4242);
+  g_uart.moduloLigado = false;      // modulo desligado do ESP32
+  g_uart.escravo[0].mudo = true;
+  webPost("/api/encoder/testar");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "ECO FALHOU") != nullptr, "L11e",
+         "sem eco, o relatorio aponta o trecho ESP32<->MAX485");
+  checar(strstr(webCorpo(), "SILENCIO") != nullptr, "L11f",
+         "e o silencio do driver aparece separado do problema do modulo");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3213,6 +3269,7 @@ int main() {
   teste_L08_driver_que_so_le_um_registrador();
   teste_L09_de_pelo_hardware();
   teste_L10_configuracao_velha_no_nvs();
+  teste_L11_autoteste_dentro_do_sistema();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

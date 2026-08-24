@@ -768,6 +768,20 @@ h4:first-child{margin-top:0}
             graus da junta, nos ultimos instantes. Linha reta em zero quer dizer
             que o braco foi para onde foi mandado. <b>Degrau ou deriva quer dizer
             passo perdido</b> &mdash; e o valor nao volta sozinho.</div>
+            <button class="b mini" id="btEncTestar">Testar a linha agora</button>
+            <div class="pq2" id="qEncTestar"></div>
+            <div class="res" id="encRel">--</div>
+            <div class="nt">O mesmo autoteste do programa de bancada, so que
+            <b>aqui dentro</b>, com Wi-Fi, cartao e os motores rodando &mdash; que
+            e onde o problema aparece. Leia de cima para baixo:
+            <br><b>eco</b> &mdash; os proprios bytes voltam? Se sim, a ligacao
+            ESP32&harr;MAX485 esta boa <i>dentro do sistema</i> e o que sobra e o
+            barramento. Se nao, o problema nem chegou no par A/B.
+            <br><b>f3 r0</b> e <b>f4 r0</b> &mdash; e assim que se acha o driver.
+            Ate <b>EXCECAO</b> e boa noticia: quer dizer que ele esta ai e
+            respondeu, so a pergunta e que nao serve.
+            <br>A ultima linha e a pergunta de verdade, com o registrador que
+            esta configurado.</div>
             <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
             <div class="pq2" id="qEncZerar"></div>
             <div class="res" id="encEstado">--</div>
@@ -2311,6 +2325,21 @@ $("btEncSalvar").onclick=function(){
 $("btEncPadroes").onclick=function(){
   post("/api/encoder/padroes").then(function(){
     encCarregou=false;encHist[0]=[];encHist[1]=[];});
+};
+$("btEncTestar").onclick=function(){
+  $("encRel").textContent="testando a linha...";
+  post("/api/encoder/testar").then(function(){
+    /* o teste roda na tarefa do encoder; da um tempo e busca o resultado */
+    let tentativas=0;
+    const buscar=function(){
+      fetch("/api/encoder/teste").then(function(r){return r.text();})
+        .then(function(t){
+          $("encRel").textContent=t;
+          if(/testando/.test(t) && ++tentativas<12) setTimeout(buscar,400);
+        }).catch(function(){});
+    };
+    setTimeout(buscar,500);
+  });
 };
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){

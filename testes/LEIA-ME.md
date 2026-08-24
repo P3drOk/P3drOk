@@ -12,7 +12,7 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/SD.h`, `mocks/FS.h`, `mocks/SPI.h` | sistema de arquivos em memória, com cartão ausente e escrita falhando |
 | `mocks/WiFi.h` | só para o `.ino` compilar |
 | `mocks/driver/uart.h` | as chamadas do IDF que pedem RS485 meio-duplex por hardware, guardando o que foi pedido |
-| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro**: tabela de registradores de verdade (um ou dois por pergunta), encena mudo, exceção, CRC ruim e driver que **recusa** a leitura dupla |
+| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro** (e o eco do MAX485, que segue o pino RE de verdade): tabela de registradores de verdade (um ou dois por pergunta), encena mudo, exceção, CRC ruim e driver que **recusa** a leitura dupla |
 | `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler |
 
 `servidor_web.cpp` **entra** no banco. Os dois defeitos que o operador sentiu na
@@ -101,6 +101,7 @@ no próprio `checar(...)`.
 | L08 | driver que só responde um registrador por pergunta também é lido, sozinho |
 | L09 | o DE é baixado pelo periférico (RS485 meio-duplex), e dá para voltar ao GPIO |
 | L10 | configuração de encoder de uma versão anterior ganha do padrão novo — e o botão que desfaz |
+| L11 | autoteste da linha RS485 dentro do sistema rodando: eco, sondagem e a pergunta de verdade |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 
