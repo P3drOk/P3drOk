@@ -182,7 +182,10 @@ static bool lerRegs(uint8_t i, uint16_t reg, uint16_t quantos,
   q[6] = (uint8_t)(c & 0xFF);
   q[7] = (uint8_t)(c >> 8);
 
-  uint8_t r[16];
+  // Um bloco de 8 registradores volta com 3 + 16 + 2 = 21 bytes. O
+  // buffer tem de caber no maior pedido que este modulo faz, senao a
+  // resposta boa e cortada e vira "formato inesperado".
+  uint8_t r[32];
   const size_t n = trocar(q, 8, r, sizeof(r));
 
   portENTER_CRITICAL(&travaEnc);
@@ -302,6 +305,8 @@ static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
 //  Autoteste dentro do sistema rodando. Ver encoder.h.
 // =====================================================================
 static volatile bool pedidoTeste  = false;
+static volatile uint8_t pedidoCaca = 0;      // 1 = marcar, 2 = comparar
+static const uint16_t CACA_MAX = 256;        // a faixa que o T3D usa
 static volatile bool testeRodando = false;
 static char relatorio[520] = "nenhum teste rodado ainda";
 
@@ -427,7 +432,102 @@ static void executarTeste() {
   testeRodando = false;
 }
 
+// ---------------------------------------------------------------------
+// Cacada do registrador da posicao, dentro do sistema.
+//
+// Le a faixa toda, o operador move o braco, le de novo e mostra o que
+// mudou. E o unico jeito honesto de achar isto: o mapa Modbus do T3D nao
+// esta publicado, e o registrador que anda junto com o eixo e a posicao
+// -- os outros nao andam.
+// ---------------------------------------------------------------------
+static uint16_t cacaValor[CACA_MAX];
+static bool     cacaTem[CACA_MAX];
+static bool     cacaMarcada = false;
+
+static uint16_t lerFaixa(uint16_t* destino, bool* tem) {
+  uint16_t lidos = 0;
+  for (uint16_t a = 0; a < CACA_MAX; a += 8) {
+    uint16_t bloco[8];
+    uint8_t motivo = MOTIVO_OK;
+    if (!lerRegs(0, a, 8, bloco, motivo)) continue;
+    for (uint8_t k = 0; k < 8; k++) { destino[a + k] = bloco[k]; tem[a + k] = true; }
+    lidos = (uint16_t)(lidos + 8);
+  }
+  return lidos;
+}
+
+static void cacarMarcar() {
+  testeRodando = true;
+  for (uint16_t i = 0; i < CACA_MAX; i++) cacaTem[i] = false;
+  const uint16_t n = lerFaixa(cacaValor, cacaTem);
+  cacaMarcada = (n > 0);
+
+  size_t p = 0;
+  relatorio[0] = '\0';
+  if (!n) {
+    anexar(p, "nenhum registrador respondeu na faixa 0..%u.\n"
+              "Confira endereco, velocidade e funcao -- ou rode o teste da linha.",
+           (unsigned)(CACA_MAX - 1));
+  } else {
+    anexar(p, "%u registradores anotados (funcao %u, id %u).\n\n"
+              "AGORA MOVA O BRACO -- de mao mesmo, bastante -- e aperte\n"
+              "\"Comparar agora\".",
+           (unsigned)n, (unsigned)configEncoder.funcao,
+           (unsigned)configEncoder.id[0]);
+  }
+  testeRodando = false;
+}
+
+static void cacarComparar() {
+  testeRodando = true;
+  size_t p = 0;
+  relatorio[0] = '\0';
+
+  if (!cacaMarcada) {
+    anexar(p, "marque o estado inicial primeiro.");
+    testeRodando = false;
+    return;
+  }
+
+  static uint16_t depois[CACA_MAX];
+  static bool     temDepois[CACA_MAX];
+  for (uint16_t i = 0; i < CACA_MAX; i++) temDepois[i] = false;
+  lerFaixa(depois, temDepois);
+
+  uint8_t  mudaram = 0;
+  uint16_t campeao = 0;
+  int32_t  maiorVar = 0;
+
+  anexar(p, "registrador   antes -> depois   variou\n");
+  for (uint16_t i = 0; i < CACA_MAX; i++) {
+    if (!cacaTem[i] || !temDepois[i] || cacaValor[i] == depois[i]) continue;
+    const int32_t d = (int32_t)depois[i] - (int32_t)cacaValor[i];
+    if (mudaram < 12)
+      anexar(p, "  %u (0x%02X)   %u -> %u   %+ld\n", (unsigned)i, (unsigned)i,
+             (unsigned)cacaValor[i], (unsigned)depois[i], (long)d);
+    if (d > maiorVar || -d > maiorVar) {
+      maiorVar = d > 0 ? d : -d;
+      campeao  = i;
+    }
+    mudaram++;
+  }
+
+  if (!mudaram) {
+    anexar(p, "\nNENHUM registrador mudou. O braco chegou a se mover? Se sim,\n"
+              "a posicao pode estar fora da faixa 0..%u, ou na outra funcao\n"
+              "Modbus (troque 3 por 4 e repita).", (unsigned)(CACA_MAX - 1));
+  } else {
+    anexar(p, "\n%u mudaram. O que variou MAIS e a palavra BAIXA da posicao;\n"
+              "o vizinho de cima, que variou pouco, e a ALTA.\n\n"
+              "Palpite: registrador %u, palavra baixa primeiro.\n"
+              "Ponha esse numero em \"registrador\" da junta 1 e salve.",
+           (unsigned)mudaram, (unsigned)campeao);
+  }
+  testeRodando = false;
+}
+
 void encoderPedirTeste() { pedidoTeste = true; }
+void encoderPedirCacada(bool comparar) { pedidoCaca = comparar ? 2 : 1; }
 bool encoderTesteRodando() { return testeRodando; }
 
 void encoderRelatorio(char* destino, size_t tam) {
@@ -543,6 +643,13 @@ static void ciclo() {
     proximaEm = millis();
     return;
   }
+  if (pedidoCaca) {
+    const uint8_t o = pedidoCaca;
+    pedidoCaca = 0;
+    if (o == 1) cacarMarcar(); else cacarComparar();
+    proximaEm = millis();
+    return;
+  }
 
   if (!configEncoder.ativo) return;
 
@@ -622,6 +729,13 @@ void encoderReiniciarTeste() {
     falhasSeguidas[i] = 0;
   }
   nEnvio = nResposta = juntaDoQuadro = 0;
+  // No ESP32 o boot zera isto sozinho; aqui as globais sobrevivem ao
+  // setup(), e uma cacada marcada num cenario valeria no seguinte.
+  pedidoTeste  = false;
+  pedidoCaca   = 0;
+  testeRodando = false;
+  cacaMarcada  = false;
+  strcpy(relatorio, "nenhum teste rodado ainda");
 }
 #endif
 

@@ -2773,7 +2773,7 @@ static void teste_L06_a_maquina_do_operador() {
        (unsigned)configEncoder.funcao, (unsigned)configEncoder.reg[0],
        configEncoder.baixaPrimeiro ? "palavra baixa primeiro" : "palavra alta primeiro",
        (double)configEncoder.contagensPorVolta[0]);
-  checar(configEncoder.funcao == 4 && configEncoder.reg[0] == 5 &&
+  checar(configEncoder.funcao == 3 && configEncoder.reg[0] == 90 &&
          configEncoder.baixaPrimeiro && configEncoder.trintaEDois,
          "L06a", "o padrao sai igual ao que foi medido na maquina");
 
@@ -2790,15 +2790,14 @@ static void teste_L06_a_maquina_do_operador() {
   // O caso concreto: os numeros que o driver do operador devolveu.
   reiniciarSistema();
   prepararRoboCalibrado();
-  prepararEncoder(5, true, 143535);      // 2 * 65536 + 12463
-  g_uart.escravo[0].funcao = 4;
-  encoderPendente = configEncoder;
-  encoderPendente.funcao = 4;
-  enviarComando(CMD_APLICAR_ENCODER);
+  // Os numeros exatos da cacada na maquina do operador: registrador 90
+  // valia 61346 com o 91 em 0, e depois de girar o eixo a mao passou a
+  // 39440 com o 91 em 1.
+  prepararEncoder(90, true, 61346);
   rodarComWeb(400);
   const int32_t lido1 = encoderLer(1).bruto;
 
-  g_uart.escravo[0].posicao = 283363;    // 4 * 65536 + 21219, depois de girar
+  g_uart.escravo[0].posicao = 104976;    // 1 * 65536 + 39440
   rodarComWeb(400);
   const int32_t lido2 = encoderLer(1).bruto;
 
@@ -2806,8 +2805,15 @@ static void teste_L06_a_maquina_do_operador() {
        (long)lido1, (long)lido2, (long)(lido2 - lido1));
   nota("com encoder de 17 bits isso e %.3f volta do motor",
        (double)(lido2 - lido1) / 131072.0);
-  checar(lido1 == 143535 && lido2 == 283363, "L06c",
+  checar(lido1 == 61346 && lido2 == 104976, "L06c",
          "os numeros que o driver devolveu na bancada sao remontados iguais");
+
+  // A montagem errada nao pode dar quase certo: tem que dar absurdo, que
+  // e como o operador reconhece o engano na tela.
+  const int32_t trocado = (int32_t)(((uint32_t)39440 << 16) | 1u);
+  nota("montando ao contrario daria %ld -- 1,4 bilhao para tras", (long)trocado);
+  checar(trocado != lido2, "L06d",
+         "palavra alta primeiro daria um numero que nao e giro nenhum");
 }
 
 // ---------------------------------------------------------------------
@@ -3049,6 +3055,67 @@ static void teste_L11_autoteste_dentro_do_sistema() {
          "e o silencio do driver aparece separado do problema do modulo");
 }
 
+// ---------------------------------------------------------------------
+// O mapa Modbus do T3D nao esta publicado. O registrador da posicao se
+// acha de um jeito so: ler tudo, mover o eixo, e ver o que andou junto.
+// Isso estava so no programa de bancada; agora esta na maquina.
+// ---------------------------------------------------------------------
+static void teste_L12_cacar_o_registrador() {
+  secao("L12  Achar o registrador da posicao sem manual nenhum");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 61346);      // os numeros da maquina do operador
+
+  webPost("/api/encoder/cacar");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "MOVA O BRACO") != nullptr, "L12a",
+         "marcado o estado inicial, o sistema diz o que fazer em seguida");
+
+  // O operador gira o eixo a mao: e exatamente o que o driver do
+  // operador mostrou, 61346 -> 104976.
+  g_uart.escravo[0].posicao = 104976;
+  webPost("/api/encoder/cacar?comparar=1");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "90") != nullptr, "L12b",
+         "o registrador que andou junto com o eixo aparece na lista");
+  checar(strstr(webCorpo(), "Palpite: registrador 90") != nullptr, "L12c",
+         "e o sistema aponta qual dos dois e a palavra baixa, sem o operador deduzir");
+
+  // Eixo parado: dizer "achei" seria pior que dizer "nao achei".
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 61346);
+  webPost("/api/encoder/cacar");
+  rodarComWeb(900);
+  webPost("/api/encoder/cacar?comparar=1");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "NENHUM registrador mudou") != nullptr, "L12d",
+         "sem mover o braco, o sistema diz que nao achou em vez de chutar");
+
+  // Comparar sem marcar nao pode inventar resultado.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 61346);
+  webPost("/api/encoder/cacar?comparar=1");
+  rodarComWeb(600);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "marque o estado inicial") != nullptr, "L12e",
+         "comparar sem ter marcado explica o que falta");
+
+  // E a leitura normal volta sozinha depois de tudo.
+  rodarComWeb(600);
+  nota("depois da cacada: %lu leituras", (unsigned long)encoderLer(1).leituras);
+  checar(encoderLer(1).valido, "L12f",
+         "terminada a cacada, a leitura normal volta sozinha");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3270,6 +3337,7 @@ int main() {
   teste_L09_de_pelo_hardware();
   teste_L10_configuracao_velha_no_nvs();
   teste_L11_autoteste_dentro_do_sistema();
+  teste_L12_cacar_o_registrador();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

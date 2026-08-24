@@ -93,6 +93,12 @@ void encoderPedirTeste();                        // core 1 / web: so pede
 void encoderRelatorio(char* destino, size_t tam);
 bool encoderTesteRodando();
 
+// Cacada do registrador da posicao. Duas etapas: marcar o estado da
+// faixa toda, o operador mover o braco, e comparar. O que andou junto
+// com o eixo e a posicao -- e o unico jeito honesto de achar isso num
+// driver cujo mapa Modbus nao esta publicado. Sai no mesmo relatorio.
+void encoderPedirCacada(bool comparar);
+
 #ifdef ROBOCNC_TESTE
 // O banco bombeia a tarefa a mao, como faz com a do cartao.
 void encoderCicloTeste();

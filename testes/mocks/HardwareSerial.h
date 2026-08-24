@@ -83,6 +83,13 @@ class HardwareSerial {
  private:
   std::deque<uint8_t> fila;
 
+  // Valor parado de um endereco que nao e a posicao. Precisa ser sempre
+  // o mesmo para o mesmo endereco: a cacada compara duas leituras, e um
+  // valor que mudasse sozinho apareceria como se fosse o encoder.
+  static uint16_t parametro(uint16_t a) {
+    return (uint16_t)(((uint32_t)a * 2654435761u) >> 20) & 0x3FFF;
+  }
+
   bool ecoAgora() const {
     if (!moduloLigado || pinoRe < 0 || pinoRe >= 64) return false;
     if (g_uartIdf.modo == UART_MODE_RS485_HALF_DUPLEX) return false;
@@ -147,15 +154,24 @@ class HardwareSerial {
         empurrar(r, true);
         return;
       }
-      if (qtd < 1 || qtd > 2 || reg < e.regBase || reg + qtd > e.regBase + 2) {
-        r = {e.id, (uint8_t)(q[1] | 0x80), 2};   // endereco ilegal
+      if (qtd < 1 || qtd > 8) {
+        r = {e.id, (uint8_t)(q[1] | 0x80), 3};
         empurrar(r, true);
         return;
       }
 
+      // Um driver de verdade responde a TABELA INTEIRA, nao so aos dois
+      // registradores que o firmware costuma pedir: no log da maquina do
+      // operador os 256 enderecos responderam. Quase todos sao parametro
+      // parado; so o par da posicao anda quando o eixo gira. E essa a
+      // diferenca que a cacada procura, entao o mock precisa te-la.
       r = {e.id, e.funcao, (uint8_t)(qtd * 2)};
       for (uint16_t k = 0; k < qtd; k++) {
-        const uint16_t v = palavra[(reg - e.regBase) + k];
+        const uint16_t a = (uint16_t)(reg + k);
+        uint16_t v;
+        if (a == e.regBase)          v = palavra[0];
+        else if (a == e.regBase + 1) v = palavra[1];
+        else                         v = parametro(a);
         r.push_back((uint8_t)(v >> 8));
         r.push_back((uint8_t)(v & 0xFF));
       }

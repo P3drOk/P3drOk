@@ -671,7 +671,7 @@ function checar(ok, texto, extra) {
     baud: document.getElementById('encBaud').value,
     on:   document.getElementById('encAtivo').classList.contains('on'),
   }));
-  checar(cfg.reg1 === '4096' && cfg.baud === '19200' && cfg.on,
+  checar(cfg.reg1 === '90' && cfg.baud === '19200' && cfg.on,
          'Encoder: a configuracao vinda do robo preenche os campos',
          'reg ' + cfg.reg1 + ', ' + cfg.baud + ' bps');
 

@@ -710,6 +710,14 @@ static void handleEncoderTeste() {
               encoderTesteRodando() ? "testando a linha..." : rel);
 }
 
+// Cacada do registrador: marcar, o operador move o braco, comparar.
+static void handleEncoderCacar() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  encoderPedirCacada(argL("comparar", 0) != 0);
+  server.send(200, "text/plain", "procurando");
+}
+
 static void handleEncoderZerar() {
   registrarContatoOperador();
   enfileirar(CMD_ENCODER_ZERAR, argL("j", 0));
@@ -938,6 +946,7 @@ void servidorIniciar() {
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);
   server.on("/api/encoder/testar", HTTP_POST, handleEncoderTestar);
   server.on("/api/encoder/teste",  HTTP_GET,  handleEncoderTeste);
+  server.on("/api/encoder/cacar",  HTTP_POST, handleEncoderCacar);
   server.on("/api/encoder/zerar",  HTTP_POST, handleEncoderZerar);
 
   server.onNotFound(handleNaoEncontrado);

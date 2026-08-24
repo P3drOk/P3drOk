@@ -782,6 +782,16 @@ h4:first-child{margin-top:0}
             respondeu, so a pergunta e que nao serve.
             <br>A ultima linha e a pergunta de verdade, com o registrador que
             esta configurado.</div>
+            <button class="b mini" id="btEncCacar">Procurar o registrador</button>
+            <button class="b mini" id="btEncComparar">Comparar agora</button>
+            <div class="pq2" id="qEncCacar"></div>
+            <div class="nt">Nao existe manual do mapa Modbus do T3D. O jeito
+            honesto de achar o registrador da posicao e este: aperte
+            <b>Procurar o registrador</b>, depois <b>mova o braco a mao,
+            bastante</b>, e aperte <b>Comparar agora</b>. O registrador que
+            andou junto com o eixo e a posicao &mdash; os outros nao andam. O
+            que variar <b>mais</b> e a palavra baixa; o vizinho de cima, que
+            variou pouco, e a alta.</div>
             <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
             <div class="pq2" id="qEncZerar"></div>
             <div class="res" id="encEstado">--</div>
@@ -2326,20 +2336,30 @@ $("btEncPadroes").onclick=function(){
   post("/api/encoder/padroes").then(function(){
     encCarregou=false;encHist[0]=[];encHist[1]=[];});
 };
+/* A cacada e o teste escrevem no mesmo relatorio: e sempre "o que a
+   linha respondeu por ultimo". */
+const encBuscarRel=function(){
+  let tentativas=0;
+  const buscar=function(){
+    fetch("/api/encoder/teste").then(function(r){return r.text();})
+      .then(function(t){
+        $("encRel").textContent=t;
+        if(/testando|procurando/.test(t) && ++tentativas<25) setTimeout(buscar,500);
+      }).catch(function(){});
+  };
+  setTimeout(buscar,600);
+};
 $("btEncTestar").onclick=function(){
   $("encRel").textContent="testando a linha...";
-  post("/api/encoder/testar").then(function(){
-    /* o teste roda na tarefa do encoder; da um tempo e busca o resultado */
-    let tentativas=0;
-    const buscar=function(){
-      fetch("/api/encoder/teste").then(function(r){return r.text();})
-        .then(function(t){
-          $("encRel").textContent=t;
-          if(/testando/.test(t) && ++tentativas<12) setTimeout(buscar,400);
-        }).catch(function(){});
-    };
-    setTimeout(buscar,500);
-  });
+  post("/api/encoder/testar").then(encBuscarRel);
+};
+$("btEncCacar").onclick=function(){
+  $("encRel").textContent="lendo a faixa toda...";
+  post("/api/encoder/cacar").then(encBuscarRel);
+};
+$("btEncComparar").onclick=function(){
+  $("encRel").textContent="comparando...";
+  post("/api/encoder/cacar?comparar=1").then(encBuscarRel);
 };
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){

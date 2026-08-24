@@ -1467,3 +1467,78 @@ dois pedem consertos opostos:
 |-------|-----------|-------|
 | firmware | 171 / 0 | **187 / 0** |
 | interface | 93 / 0 | **93 / 0** |
+
+---
+
+# Rodada 14 — o registrador, achado de verdade
+
+O operador mandou o log completo do programa de bancada, que ele mesmo
+ampliou com um modo de **caçada** (lê tudo, gira o eixo, compara). Esse
+log fecha a questão do endereço.
+
+## R38 · Registrador 90 na função 3, e não 5 na função 4  ✅  `L06`
+
+A caçada girou o eixo à mão e comparou os 256 registradores da função 3:
+
+```
+0x005A (90)   61346 ->  39440   (variou -21906)
+0x005B (91)       0 ->      1   (variou +1)
+```
+
+Um varia muito, o vizinho varia ±1: é o par de 32 bits. Montando com a
+**palavra baixa primeiro**, 61 346 → 104 976 = **+43 630 contagens**, ou
+1/3 de volta num encoder de 17 bits. Ao contrário, o número anda 1,4
+bilhão para trás — que não é giro nenhum. Então **90 = baixa, 91 = alta,
+baixa primeiro**.
+
+**Segunda prova, independente, no mesmo log:** duas varreduras completas
+da função 3, uma atrás da outra, sem tocar em nada. Idênticas em 255
+registradores; diferem **só no 90** (36 998 → 37 000). É o único que anda
+sozinho.
+
+O padrão de fábrica estava em **função 4, registrador 5** — vindo de uma
+leitura anterior que eu interpretei mal. Na função 3 esses mesmos
+endereços valem 50 e 25, parâmetro parado. Corrigido para função 3,
+registrador 90. O `L06c` passou a usar os números exatos da máquina, e o
+`L06d` novo confere que a montagem ao contrário dá absurdo — porque é
+assim que o operador reconhece o engano na tela.
+
+## R39 · A caçada saiu da bancada e entrou na máquina  ✅  `L12`
+
+O modo de caçada é bom demais para ficar só no programa de bancada: é o
+**único jeito honesto** de achar o endereço num driver cujo mapa não está
+publicado. Agora está na aba Encoder, em dois botões:
+
+1. **"Procurar o registrador"** — lê a faixa 0..255 e anota.
+2. o operador move o braço.
+3. **"Comparar agora"** — lista o que mudou e aponta qual é a palavra
+   baixa.
+
+`L12d` confere o caso que mais importa para a confiança: **sem mover o
+braço, o sistema diz "nenhum registrador mudou"** em vez de chutar um
+endereço. E `L12f`, que a leitura normal volta sozinha depois.
+
+## R40 · O mock só servia dois registradores  ✅
+
+A caçada reprovou de cara no banco: o escravo do mock só respondia ao
+endereço exato que o firmware costumava pedir. Um driver de verdade
+responde a **tabela inteira** — no log do operador, os 256 endereços
+responderam, e é justamente por isso que dá para comparar. Sem essa
+fidelidade o `L12` não existiria.
+
+Agora o escravo serve qualquer endereço: valor de parâmetro **estável**
+(derivado do endereço, para que duas leituras seguidas sejam iguais) em
+tudo, menos no par da posição, que anda com o eixo. E `lerRegs` ganhou
+buffer de 32 bytes: um bloco de 8 registradores volta com 21, e o buffer
+de 16 cortava a resposta boa fazendo-a virar "formato inesperado".
+
+Também: o estado da caçada sobrevivia ao `setup()` no banco, e uma
+marcação de um cenário valia no seguinte. Mesma família dos buffers de
+programa e trajetória — zerado junto com o resto.
+
+## Cobertura
+
+| banco | rodada 13 | agora |
+|-------|-----------|-------|
+| firmware | 187 / 0 | **194 / 0** |
+| interface | 93 / 0 | **93 / 0** |

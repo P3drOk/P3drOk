@@ -100,20 +100,38 @@ static const bool ENC_DE_HARDWARE_PADRAO = true;
 // Um barramento, os dois drivers: multiponto, enderecos diferentes.
 static const uint32_t ENC_BAUD_PADRAO    = 19200;
 static const uint8_t  ENC_PARIDADE_PADRAO = 0;      // 0=8N1 1=8E1 2=8O1
-// Padroes medidos na maquina do operador com ferramentas/teste_rs485:
+// Padroes MEDIDOS na maquina do operador com ferramentas/teste_rs485.
 //
-//   funcao 4 (input registers) -- a funcao 3 e a tabela de PARAMETROS,
-//     onde nada muda quando o eixo gira;
-//   registrador 5 = palavra BAIXA, registrador 6 = palavra ALTA;
-//   girando o eixo a mao, a contagem andou 139828 -- 1,07 volta num
-//     encoder de 17 bits (131072 por volta), que e o que fecha.
+// A cacada (modo 7) girou o eixo a mao e comparou os 256 registradores
+// da funcao 3 antes e depois. Mudaram cinco, e dois deles sao o par da
+// posicao:
+//
+//   registrador 90 (0x5A): 61346 -> 39440   (a parte BAIXA, varia muito)
+//   registrador 91 (0x5B):     0 ->     1   (a parte ALTA, varia +1)
+//
+// Montando com a palavra baixa primeiro: 61346 -> 104976, ou seja
+// +43630 contagens numa girada a mao. Com a palavra alta primeiro o
+// numero anda 1,4 bilhao para tras, que nao e giro nenhum. Entao e
+// BAIXA PRIMEIRO, e o par e 90/91.
+//
+// Confirmacao independente, no mesmo log: duas varreduras completas da
+// funcao 3, uma atras da outra, sao identicas em 255 registradores e
+// diferem so no 90 (36998 -> 37000). E o unico que anda sozinho.
+//
+// FUNCAO 3, nao 4. Nesta maquina a posicao viva esta na tabela de
+// holding registers. A funcao 4 tambem responde, mas o par 5/6 dela nao
+// e a posicao -- na funcao 3 esses mesmos enderecos valem 50 e 25, que
+// sao parametro parado.
 //
 // Registrador 0 nunca e posicao: e onde comeca a tabela de parametros.
 // Por isso um 0 guardado no NVS e tratado como "nao configurado" e cai
 // nestes padroes.
-static const uint8_t  ENC_FUNCAO_PADRAO  = 4;       // 3=holding 4=input
-static const uint16_t ENC_REG_PADRAO     = 5;       // palavra baixa da posicao
+static const uint8_t  ENC_FUNCAO_PADRAO  = 3;       // 3=holding 4=input
+static const uint16_t ENC_REG_PADRAO     = 90;      // palavra baixa da posicao
 static const bool     ENC_BAIXA_PRIMEIRO = true;
+// 43630 contagens numa girada a mao da 1/3 de volta num encoder de 17
+// bits, que e o que estes servos usam. Se a leitura andar rapido ou
+// devagar demais em graus, e este numero que se ajusta na tela.
 static const float    ENC_CONTAGENS_PADRAO = 131072.0f;   // encoder de 17 bits
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;

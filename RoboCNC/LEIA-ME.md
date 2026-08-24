@@ -248,20 +248,41 @@ virou o padrão de fábrica:
 |---|---|
 | velocidade | 19200 8N1 |
 | endereço | 1 |
-| **função** | **4 — *input registers*** |
-| **registrador** | **5 (palavra baixa) e 6 (palavra alta)** |
+| **função** | **3 — *holding registers*** |
+| **registrador** | **90 = 0x5A (palavra baixa) e 91 (palavra alta)** |
 | ordem | **palavra baixa primeiro** |
 | contagens por volta | 131072 (encoder de 17 bits) |
 
-Como se sabe que é esse: girando o eixo à mão, o par 5/6 passou de
-143 535 para 283 363 — **139 828 contagens**, ou 1,067 volta num encoder
-de 17 bits. É exatamente o que uma volta à mão parece. Os registradores
-20 e 34 são espelhos do mesmo contador.
+**Como se sabe que é esse.** Duas provas independentes, no mesmo log:
 
-**A função importa.** A função 3 (*holding*) é a tabela de parâmetros:
-dá para reconhecer pelos pares simétricos (+250 / −250, +80 / −80) e
-pelo valor de preenchimento repetido dezenas de vezes. Nada ali muda
-quando o eixo gira. Os dados vivos estão na função 4.
+1. A caçada girou o eixo à mão e comparou os 256 registradores antes e
+   depois. Mudaram cinco, e dois formam o par: **90** foi de 61 346 para
+   39 440 (varia muito = palavra baixa) e **91** foi de 0 para 1 (varia
+   ±1 = palavra alta). Montando com a baixa primeiro: 61 346 → 104 976,
+   **+43 630 contagens**, ou 1/3 de volta. Montando ao contrário o número
+   anda 1,4 bilhão para trás — que não é giro nenhum.
+2. Duas varreduras completas seguidas, sem tocar em nada, são idênticas
+   em 255 registradores e diferem **só no 90** (36 998 → 37 000). É o
+   único que anda sozinho.
+
+**A função importa, e nesta máquina é a 3.** A função 4 também responde,
+mas o par 5/6 dela não é a posição — na função 3 esses mesmos endereços
+valem 50 e 25, que são parâmetro parado.
+
+### Achar o registrador sem manual nenhum
+
+O mapa Modbus do T3D não é publicado, então o endereço da posição se acha
+medindo. Isso agora está **na máquina**, não só na bancada:
+
+1. Aba Encoder → **"Procurar o registrador"**. Ele lê a faixa 0..255
+   inteira e anota.
+2. **Mova o braço à mão, bastante.**
+3. **"Comparar agora"**. Sai a lista do que mudou, e o palpite de qual é
+   a palavra baixa.
+
+O registrador que andou junto com o eixo é a posição — os outros não
+andam. Sem movimento ele diz "nenhum registrador mudou" em vez de
+chutar.
 
 **Registrador 0 nunca é a posição** — é o começo da tabela de
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
