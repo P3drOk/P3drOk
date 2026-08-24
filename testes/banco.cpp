@@ -3116,6 +3116,43 @@ static void teste_L12_cacar_o_registrador() {
          "terminada a cacada, a leitura normal volta sozinha");
 }
 
+// ---------------------------------------------------------------------
+// O monitor serial do operador encheu de "/connecttest.txt". E o Windows
+// perguntando se a rede tem internet. Respondendo 404 ele conclui que
+// nao tem, repete a pergunta sem parar, e chega a largar a rede.
+// ---------------------------------------------------------------------
+static void teste_J04_teste_de_rede_do_sistema_operacional() {
+  secao("J04  Windows perguntando se a rede tem internet");
+  reiniciarSistema();
+
+  const int cod = webGet("/connecttest.txt");
+  nota("GET /connecttest.txt -> HTTP %d, Location: \"%s\"",
+       cod, webCabecalho("Location"));
+  checar(cod == 302, "J04a",
+         "a sonda do Windows leva redirecionamento, nao 404");
+  checar(strstr(webCabecalho("Location"), "192.168.4.1") != nullptr, "J04b",
+         "e o destino e o IP da maquina -- o painel abre sozinho na tela");
+
+  // O nome .local dependeria de mDNS, que o Windows so resolve com
+  // Bonjour. Mandar para la seria mandar para lugar nenhum.
+  checar(strstr(webCabecalho("Location"), ".local") == nullptr, "J04c",
+         "nao manda para o nome mDNS, que o Windows nao resolve sozinho");
+
+  // Android e iPhone perguntam de outro jeito, e tem que valer igual.
+  const int a = webGet("/generate_204");
+  const int i = webGet("/hotspot-detect.html");
+  nota("Android /generate_204 -> %d;  iPhone /hotspot-detect.html -> %d", a, i);
+  checar(a == 302 && i == 302, "J04d",
+         "Android e iPhone tambem, senao so o Windows abre o painel sozinho");
+
+  // Rota que nao e sonda continua sendo 404 com log: esconder tudo seria
+  // trocar uma enxurrada por um silencio que engana.
+  const int q = webGet("/api/coisa-que-nao-existe");
+  nota("rota inventada -> HTTP %d", q);
+  checar(q == 404, "J04e",
+         "rota de verdade inexistente continua 404, para o defeito aparecer");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3346,6 +3383,7 @@ int main() {
   teste_J01_wifi_proprio();
   teste_J02_endereco_do_painel();
   teste_J03_qualquer_endereco_cai_no_painel();
+  teste_J04_teste_de_rede_do_sistema_operacional();
 
 
 

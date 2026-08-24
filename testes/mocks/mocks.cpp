@@ -64,3 +64,6 @@ int webGet(const std::string& alvo) {
 const char* webCorpo() {
   return WebServer::atual ? WebServer::atual->respCorpo.c_str() : "";
 }
+const char* webCabecalho(const char* nome) {
+  return WebServer::atual ? WebServer::atual->cabecalho(nome) : "";
+}

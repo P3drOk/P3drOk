@@ -76,11 +76,51 @@ static void handleRaiz() {
                 (PGM_P)PAGINA_HTML_GZ, PAGINA_HTML_GZ_LEN);
 }
 
-// Qualquer rota desconhecida vira log: se o navegador chegar no ESP32 e
-// pedir algo inesperado, isso aparece no monitor serial em vez de sumir.
+// Windows, Android e iPhone testam a rede assim que entram nela: pedem um
+// endereco conhecido e esperam uma resposta especifica. Como a maquina
+// responde a QUALQUER nome (o DNS de captura), essas perguntas caem aqui.
+//
+// Responder 404 e o pior dos mundos: o sistema conclui "esta rede nao tem
+// internet", fica repetindo a pergunta de segundos em segundos -- foi a
+// enxurrada de "/connecttest.txt" no monitor serial -- e, no Windows,
+// chega a largar a rede sozinho.
+//
+// Um redirecionamento resolve os dois lados: o sistema entende que e uma
+// rede com portal, e ABRE O PAINEL sozinho na tela do operador. Ele nao
+// precisa nem saber o que e 192.168.4.1.
+static bool ehTesteDeRede(const char* u) {
+  static const char* const SONDAS[] = {
+    "/connecttest.txt", "/ncsi.txt", "/fwlink",              // Windows
+    "/generate_204", "/gen_204",                             // Android
+    "/hotspot-detect.html", "/library/test/success.html",    // iOS
+    "/success.txt", "/canonical.html",                       // Firefox
+    "/redirect", "/kindle-wifi/wifistub.html",               // outros
+  };
+  for (const char* p : SONDAS) if (strcmp(u, p) == 0) return true;
+  return false;
+}
+
 static void handleNaoEncontrado() {
+  const String uri = server.uri();
+  const char*  u   = uri.c_str();
+
+  if (ehTesteDeRede(u)) {
+    // O destino e o IP, nao o nome: "robo2dof.local" depende de mDNS, que
+    // o Windows so resolve com Bonjour instalado. O IP sempre funciona, e
+    // e justamente o Windows que mais insiste nesta pergunta.
+    char destino[40];
+    snprintf(destino, sizeof(destino), "http://%u.%u.%u.%u/",
+             (unsigned)WIFI_AP_IP[0], (unsigned)WIFI_AP_IP[1],
+             (unsigned)WIFI_AP_IP[2], (unsigned)WIFI_AP_IP[3]);
+    server.sendHeader("Location", destino);
+    // Sem log: e justamente a pergunta que se repete sozinha, e a
+    // enxurrada esconde no monitor serial o que importa.
+    server.send(302, "text/plain", "");
+    return;
+  }
+
   Serial.print("[WEB] Rota desconhecida: ");
-  Serial.println(server.uri().c_str());
+  Serial.println(u);
   server.send(404, "text/plain", "rota inexistente");
 }
 

@@ -102,6 +102,7 @@ no próprio `checar(...)`.
 | L09 | o DE é baixado pelo periférico (RS485 meio-duplex), e dá para voltar ao GPIO |
 | L10 | configuração de encoder de uma versão anterior ganha do padrão novo — e o botão que desfaz |
 | L11 | autoteste da linha RS485 dentro do sistema rodando: eco, sondagem e a pergunta de verdade |
+| J04 | sondas de captive portal do Windows/Android/iPhone abrem o painel em vez de dar 404 |
 | L12 | achar o registrador da posição movendo o braço, sem manual — e não chutar quando nada se move |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).

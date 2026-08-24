@@ -288,6 +288,22 @@ chutar.
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
 "nunca foi configurado" e cai no padrão medido.
 
+### O diagnóstico sai no monitor serial também
+
+O operador acompanha a máquina pelo monitor serial — é lá que ele roda o
+programa de bancada. Então o diagnóstico do encoder sai lá também, sem
+precisar abrir o painel:
+
+```
+[ENC] Modbus em 19200 bps, funcao 3, registrador 90, id 1, DE por hardware
+[ENC] Junta 2 nao ligada (registrador 0).
+[ENC] junta 1 sem leitura -- junta 1  2 registradores  -> 01 03 00 5A 00 02 …   <- (silencio)
+[ENC] junta 1 lendo: bruto 104976
+```
+
+Uma linha a cada 5 s enquanto estiver falhando (para não virar
+enxurrada), e uma linha quando voltar a ler.
+
 ### "Sem resposta": o autoteste dentro do sistema
 
 O programa de bancada (`ferramentas/teste_rs485`) prova a fiação com o
@@ -481,6 +497,29 @@ Rede de terceiro não vale latência no controle de uma máquina que se
 move. Em `WIFI_AP` puro o rádio nunca sai do canal.
 
 O código está no histórico do git, se um dia fizer sentido voltar.
+
+### O painel abre sozinho ao entrar na rede
+
+Windows, Android e iPhone testam a rede assim que entram nela: pedem um
+endereço conhecido (`/connecttest.txt`, `/generate_204`,
+`/hotspot-detect.html`…) e esperam uma resposta específica. Como a
+máquina responde a qualquer nome, essas perguntas chegam aqui.
+
+Responder 404 era o pior dos mundos: o sistema conclui *"esta rede não
+tem internet"*, repete a pergunta de segundos em segundos — foi a
+enxurrada de `/connecttest.txt` no monitor serial — e o Windows chega a
+largar a rede sozinho.
+
+Agora essas sondas levam um **redirecionamento para 192.168.4.1**. O
+sistema entende que é uma rede com portal e **abre o painel sozinho** na
+tela. O operador não precisa nem saber o que é um IP.
+
+O destino é o número, não `robo2dof.local`: o nome depende de mDNS, que o
+Windows só resolve com o Bonjour instalado — e é justamente o Windows que
+mais insiste nessa pergunta.
+
+Rota inexistente que **não** é sonda continua dando 404 com log. Esconder
+tudo seria trocar uma enxurrada por um silêncio que engana.
 
 ## Primeira partida
 ## Primeira partida

@@ -537,6 +537,33 @@ void encoderRelatorio(char* destino, size_t tam) {
 }
 
 // ---------------------------------------------------------------------
+// O operador acompanha a maquina pelo monitor serial -- e la que ele roda
+// o programa de bancada. Se a leitura falhar, o diagnostico tem de sair
+// LA TAMBEM, e nao so numa aba do painel: contador de falha nao ensina
+// nada, os bytes ensinam. Uma linha a cada 5 s, para nao virar enxurrada.
+static void avisarNoSerial(uint8_t i, bool ok) {
+  static uint32_t ultimoAviso[2] = {0, 0};
+  static bool     estavaBem[2]   = {false, false};
+
+  if (ok) {
+    if (!estavaBem[i]) {
+      estavaBem[i] = true;
+      Serial.print("[ENC] junta "); Serial.print(i + 1);
+      Serial.print(" lendo: bruto "); Serial.println((long)leitura[i].bruto);
+    }
+    return;
+  }
+  estavaBem[i] = false;
+  const uint32_t agora = millis();
+  if (ultimoAviso[i] && (uint32_t)(agora - ultimoAviso[i]) < 5000) return;
+  ultimoAviso[i] = agora;
+
+  char quadro[120];
+  encoderUltimoQuadro(quadro, sizeof(quadro));
+  Serial.print("[ENC] junta "); Serial.print(i + 1);
+  Serial.print(" sem leitura -- "); Serial.println(quadro);
+}
+
 static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   const Junta& j = (i == 0) ? J1 : J2;
   const float  cv  = configEncoder.contagensPorVolta[i];
@@ -671,6 +698,7 @@ static void ciclo() {
   uint8_t motivo = MOTIVO_OK;
   const bool ok = lerPosicao(vez, bruto, motivo);
   publicar(vez, ok, bruto, motivo);
+  avisarNoSerial(vez, ok);
   vez = (uint8_t)(1 - vez);
 }
 
@@ -696,8 +724,12 @@ void encoderIniciar() {
     modoEscuta();
     Serial.print("[ENC] Modbus em "); Serial.print(configEncoder.baud);
     Serial.print(" bps, funcao "); Serial.print(configEncoder.funcao);
-    Serial.print(", juntas nos enderecos "); Serial.print(configEncoder.id[0]);
-    Serial.print(" e "); Serial.println(configEncoder.id[1]);
+    Serial.print(", registrador "); Serial.print(configEncoder.reg[0]);
+    Serial.print(", id "); Serial.print(configEncoder.id[0]);
+    Serial.print(", DE por "); Serial.println(configEncoder.deHardware
+                                              ? "hardware" : "GPIO");
+    if (configEncoder.reg[1] == 0)
+      Serial.println("[ENC] Junta 2 nao ligada (registrador 0).");
   } else {
     Serial.println("[ENC] Leitura de encoder desligada.");
   }

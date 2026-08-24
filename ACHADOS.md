@@ -1542,3 +1542,81 @@ programa e trajetória — zerado junto com o resto.
 |-------|-----------|-------|
 | firmware | 187 / 0 | **194 / 0** |
 | interface | 93 / 0 | **93 / 0** |
+
+---
+
+# Rodada 15 — o log do firmware finalmente falou
+
+O operador mandou um log que comeca com o **firmware rodando**, e nao com
+o programa de bancada. Duas coisas ali.
+
+## R41 · A enxurrada de `/connecttest.txt`  ✅  `J04`
+
+```
+[WEB] Rota desconhecida: /connecttest.txt      (doze vezes)
+[MSG] Conexao perdida: movimento e solda interrompidos
+```
+
+Isso e o **Windows perguntando se a rede tem internet**. Todo sistema faz:
+Windows pede `/connecttest.txt`, Android `/generate_204`, iPhone
+`/hotspot-detect.html`. Como a maquina responde a qualquer nome (o DNS de
+captura da rodada 8), a pergunta cai no `onNotFound`.
+
+Responder **404 era o pior dos mundos**: o sistema conclui "esta rede nao
+tem internet", repete a pergunta de segundos em segundos — a enxurrada —
+e o Windows chega a largar a rede sozinho. O `[MSG] Conexao perdida` logo
+depois nao e coincidencia.
+
+Agora essas sondas levam **302 para 192.168.4.1**. O sistema entende que e
+uma rede com portal e **abre o painel sozinho** na tela: o operador nao
+precisa nem saber o que e um IP.
+
+O destino e o numero, nao `robo2dof.local` — o nome depende de mDNS, que o
+Windows so resolve com Bonjour, e e justamente o Windows que mais insiste.
+`J04e` confere que rota inexistente que **nao** e sonda continua 404 com
+log: esconder tudo seria trocar uma enxurrada por um silencio que engana.
+
+## R42 · O diagnostico estava no lugar errado  ✅
+
+Eu tinha posto o quadro cru e o autoteste **no painel**. Mas o operador
+acompanha a maquina pelo **monitor serial** — e la que ele roda o programa
+de bancada, e e de la que vem todo log que ele me manda. Pedir que ele
+abrisse o painel para ler o diagnostico era pedir que trocasse de
+ferramenta no meio da investigacao.
+
+Agora sai nos dois lugares:
+
+```
+[ENC] Modbus em 19200 bps, funcao 3, registrador 90, id 1, DE por hardware
+[ENC] Junta 2 nao ligada (registrador 0).
+[ENC] junta 1 sem leitura -- junta 1  2 registradores  -> 01 03 00 5A 00 02 …   <- (silencio)
+[ENC] junta 1 lendo: bruto 104976
+```
+
+Uma linha a cada 5 s enquanto falha, uma quando volta a ler. A linha de
+boot passou a dizer **registrador e modo do DE**, que sao exatamente os
+dois ajustes em disputa.
+
+## R43 · Terceira confirmacao do registrador  ✅
+
+A cacada nova do operador, com o eixo em outra posicao:
+
+```
+0x005A (90)   37178 -> 13957   (variou -23221)
+0x005B (91)       0 ->     1   (variou +1)
+```
+
+Mesmo par, mesmo comportamento. O padrao da rodada 14 esta certo.
+
+## R44 · O mock descartava cabecalho  ✅
+
+`sendHeader` do mock nao guardava nada. Um redirecionamento passaria por
+"resposta vazia" e o `J04` nao teria como ver para onde o navegador foi
+mandado. Quarta vez que a regra da rodada 7 se paga.
+
+## Cobertura
+
+| banco | rodada 14 | agora |
+|-------|-----------|-------|
+| firmware | 194 / 0 | **199 / 0** |
+| interface | 93 / 0 | **93 / 0** |

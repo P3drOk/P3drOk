@@ -42,7 +42,17 @@ class WebServer {
     respCodigo = codigo; respTipo = tipo ? tipo : "";
     respCorpo = String(""); respBytes = n;
   }
-  void sendHeader(const char*, const char*, bool = false) {}
+  // O core guarda o cabecalho e manda junto com a resposta. Descartar
+  // aqui deixaria um redirecionamento passar por "resposta vazia" no
+  // banco, e o teste nao veria para onde o navegador foi mandado.
+  void sendHeader(const char* nome, const char* valor, bool = false) {
+    cabecalhos[nome] = valor ? valor : "";
+  }
+  const char* cabecalho(const char* nome) {
+    auto it = cabecalhos.find(nome);
+    return it == cabecalhos.end() ? "" : it->second.c_str();
+  }
+  std::map<std::string, std::string> cabecalhos;
 
   bool   hasArg(const char* nome) { return args.count(nome ? nome : "") > 0; }
   String arg(const char* nome) {
@@ -76,6 +86,7 @@ class WebServer {
   // formulario). Devolve o codigo HTTP; 0 = rota inexistente.
   int pedir(int metodo, const std::string& alvo, const char* corpo = nullptr) {
     args.clear();
+    cabecalhos.clear();
     respCodigo = 0; respCorpo = String(""); respBytes = 0;
     const size_t i = alvo.find('?');
     uriAtual = alvo.substr(0, i == std::string::npos ? alvo.size() : i);
@@ -122,3 +133,4 @@ class WebServer {
 int         webPost(const std::string& alvo, const char* corpo = nullptr);
 int         webGet (const std::string& alvo);
 const char* webCorpo();
+const char* webCabecalho(const char* nome);
