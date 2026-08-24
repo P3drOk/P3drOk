@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Confere se LIGACOES.md concorda com RoboCNC/config.h.
+"""Confere se LIGACOES.md concorda com Robo2dof/config.h.
 
 Documento de fiacao que mente e pior que documento nenhum: o operador
 liga o fio no pino errado. Isto roda junto com o banco de testes.
@@ -7,7 +7,7 @@ liga o fio no pino errado. Isto roda junto com o banco de testes.
 import re, sys, pathlib
 
 raiz = pathlib.Path(__file__).resolve().parent.parent
-cfg = (raiz / "RoboCNC" / "config.h").read_text(encoding="utf-8")
+cfg = (raiz / "Robo2dof" / "config.h").read_text(encoding="utf-8")
 doc = (raiz / "LIGACOES.md").read_text(encoding="utf-8")
 
 pinos = dict(re.findall(r"^#define\s+(PIN_[A-Z0-9_]+)\s+(\d+)", cfg, re.M))

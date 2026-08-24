@@ -1,6 +1,6 @@
-# RoboCNC 2DOF — ligações do ESP32
+# Robo2dof — ligações do ESP32
 
-Referência de bancada. Tudo que está aqui sai de `RoboCNC/config.h` — se
+Referência de bancada. Tudo que está aqui sai de `Robo2dof/config.h` — se
 você mudar um `#define` lá, mude aqui também.
 
 **Placa alvo:** ESP32 DevKit v1 (30 ou 38 pinos), chip ESP32-WROOM-32.
@@ -75,7 +75,7 @@ esquecer e o robô servir uma interface diferente da do repositório.
 Pinos deliberadamente **livres**: 4, 15, 21, 22, 32, 33.
 Pinos que o firmware **não usa e você também não deve**: 0, 12, 6–11.
 
-Conferido contra `RoboCNC/config.h`. O banco de testes reprova se a
+Conferido contra `Robo2dof/config.h`. O banco de testes reprova se a
 tabela e o `config.h` divergirem (`./testes/compilar.sh`).
 
 ---

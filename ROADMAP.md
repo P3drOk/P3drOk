@@ -1,6 +1,6 @@
 # O que este software é hoje, e o que falta
 
-Documento de avaliação do RoboCNC 2DOF. Escrito a pedido: *"quanto valerá
+Documento de avaliação do Robo2dof. Escrito a pedido: *"quanto valerá
 um software desse do jeito em que está, e quais melhorias posso fazer
 ainda"*.
 

@@ -26,7 +26,7 @@ bool    progAdicionarPonto(long p1, long p2, const char** motivo);
 bool    progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo);
 bool    progRemoverPonto(uint8_t indice);
 
-#ifdef ROBOCNC_TESTE
+#ifdef ROBO2DOF_TESTE
 // So para o banco: em que fase da maquina de estados o programa esta.
 uint8_t progFaseTeste();
 #endif

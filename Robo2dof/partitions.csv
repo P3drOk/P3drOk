@@ -1,4 +1,4 @@
-# Layout de particoes do RoboCNC 2DOF.
+# Layout de particoes do Robo2dof.
 #
 # O Arduino ESP32 usa ESTE arquivo quando ele esta na pasta do sketch,
 # no lugar do que estiver escolhido em Tools > Partition Scheme. Assim a

@@ -11,7 +11,7 @@ mkdir -p testes/saida/ui
 python3 testes/gerar_pagina_gz.py --conferir
 PORTA=${PORTA:-8099}
 
-python3 testes/interface/servidor_falso.py RoboCNC/pagina_web.h "$PORTA" >/tmp/robocnc-ui.log 2>&1 &
+python3 testes/interface/servidor_falso.py Robo2dof/pagina_web.h "$PORTA" >/tmp/robo2dof-ui.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null || true' EXIT
 

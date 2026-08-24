@@ -1,2 +1,2 @@
 // O .ino compilado como unidade de traducao propria.
-#include "RoboCNC.ino"
+#include "Robo2dof.ino"

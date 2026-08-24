@@ -24,7 +24,12 @@ struct EscravoModbus {
   uint8_t  id       = 1;
   uint8_t  funcao   = 3;
   uint16_t regBase  = 0x1000;   // onde a posicao mora
-  int32_t  posicao  = 0;        // contagem do encoder
+  int32_t  posicao  = 0;        // contagem do encoder no instante posicaoT0
+  // Um eixo de verdade gira ENTRE as leituras, nao em degraus quando o
+  // teste manda. Sem isto, tres leituras dentro do mesmo passo dao delta
+  // zero e velocidade zero -- e o banco reprovaria um calculo correto.
+  int32_t  velocidade = 0;      // contagens por segundo (0 = parado)
+  uint32_t posicaoT0  = 0;      // instante a que 'posicao' se refere
   bool     baixaPrimeiro = false;
   bool     mudo     = false;    // encena driver que nao responde
   uint8_t  excecao  = 0;        // se != 0, responde excecao
@@ -41,6 +46,20 @@ struct EscravoModbus {
   uint16_t ruidoReg   = 0xFFFF;   // 0xFFFF = nenhum
   uint16_t ruidoValor = 0;
   uint32_t perguntas = 0;
+
+  // Onde o eixo esta AGORA, andando desde posicaoT0 na velocidade dada.
+  int32_t posicaoAgora() const {
+    if (!velocidade) return posicao;
+    const int32_t dt = (int32_t)(g_millis - posicaoT0);
+    return posicao + (int32_t)((int64_t)velocidade * dt / 1000);
+  }
+  // Poe o eixo a girar a partir de onde ele esta neste instante.
+  void girar(int32_t contagensPorSegundo) {
+    posicao    = posicaoAgora();
+    posicaoT0  = g_millis;
+    velocidade = contagensPorSegundo;
+  }
+  void parar() { girar(0); }
 };
 
 class HardwareSerial {
@@ -151,8 +170,9 @@ class HardwareSerial {
       // duas de uma vez, tem que dar a mesma coisa -- e por isso o
       // escravo do banco e uma tabela de registradores de verdade, e nao
       // um caso especial para cada pergunta.
-      const uint16_t alta  = (uint16_t)(((uint32_t)e.posicao >> 16) & 0xFFFF);
-      const uint16_t baixa = (uint16_t)((uint32_t)e.posicao & 0xFFFF);
+      const int32_t  pos   = e.posicaoAgora();
+      const uint16_t alta  = (uint16_t)(((uint32_t)pos >> 16) & 0xFFFF);
+      const uint16_t baixa = (uint16_t)((uint32_t)pos & 0xFFFF);
       const uint16_t palavra[2] = { e.baixaPrimeiro ? baixa : alta,
                                     e.baixaPrimeiro ? alta  : baixa };
 

@@ -1,4 +1,4 @@
-# RoboCNC v6 — relatório de anomalias
+# Robo2dof v6 — relatório de anomalias
 
 Análise do firmware + banco de testes executável (`testes/`), que compila os
 módulos reais contra mocks de Arduino/FastAccelStepper/NVS/FreeRTOS e roda
@@ -53,7 +53,7 @@ quando `enviarComando()` falha, em vez de `200 ok`.
 ### S1.2 · O botão de emergência físico não impede o rearme dos servos  `A08`  ✅
 
 ```c
-// RoboCNC.ino:288
+// Robo2dof.ino:288
 if (estop && !emergenciaAtiva) { ...; servosHabilitar(false); }
 else if (!estop && emergenciaAtiva) { emergenciaAtiva = false; }
 ```
@@ -130,7 +130,7 @@ está na lista de pendências do LEIA-ME.
 ### S1.4 · Queda de conexão durante a solda congela o programa em vez de pará-lo  `A05`  ✅
 
 ```c
-// RoboCNC.ino:300 — supervisionar(), ramo semConexao
+// Robo2dof.ino:300 — supervisionar(), ramo semConexao
 if (modoAtual == MODO_REPRODUZINDO) trajPararReproducao();
 if (modoAtual == MODO_GRAVANDO)     trajPararGravacao();
 // falta:  if (progRodando()) progParar();
@@ -193,7 +193,7 @@ cenário é recusada.
 ### S1.6 · "Ir para o ponto" não revalida a postura  `A06`  ✅
 
 ```c
-// RoboCNC.ino:198 — CMD_IR_PARA_PONTO
+// Robo2dof.ino:198 — CMD_IR_PARA_PONTO
 const Ponto& p = progLista()[c.a];
 moverCoordenado(p.p1, p.p2, velAuto);   // sem posturaValida()
 ```
@@ -329,7 +329,7 @@ Cinco transições de estado dependem de `isRunning()` virar `true` **no mesmo
 ciclo** em que `moveTo()` foi chamado:
 
 ```
-RoboCNC.ino:433     MODO_POSICIONANDO
+Robo2dof.ino:433     MODO_POSICIONANDO
 programa.cpp:232    FASE_INDO_INICIO, FASE_DESLOCANDO, FASE_ABRINDO_ARCO
 calibracao.cpp:159  CAL_J1_VOLTA_NEG e os outros três retornos ao zero
 ```
@@ -454,7 +454,7 @@ passe por eles (ver S1.4) deixa o valor 4× ativo — inclusive para o jog manua
 | `trajetoria.cpp` | reprodução exige servos e valida a aproximação |
 | `programa.cpp` | execução exige servos (ensaio incluído); valida aproximação e cada deslocamento |
 | `calibracao.cpp` | exige servos; curso mínimo em graus; cancelamento restaura a origem |
-| `RoboCNC.ino` | `pararTudo()`; `irParaPassos()`; emergência por nível; `pedidoParada` no topo do `loop()`; config aplicada só em manual |
+| `Robo2dof.ino` | `pararTudo()`; `irParaPassos()`; emergência por nível; `pedidoParada` no topo do `loop()`; config aplicada só em manual |
 | `servidor_web.cpp` | `handleParar()` fora da fila; `enfileirar()` com 503; config via área de preparo com `exigirManual()` |
 | `pagina_web.h` | formulário recarrega após restaurar padrões |
 | `testes/` | A07/A08/A11/A14 reescritos para verificar a recusa; **A15** novo: regressão ponta a ponta |
@@ -1780,3 +1780,83 @@ E o `.ino` do programa de bancada continua sendo conferido com
 |-------|-----------|-------|
 | firmware | 200 / 0 | **200 / 0** |
 | interface | 93 / 0 | **107 / 0** |
+
+---
+
+# Rodada 18 — o monitor do operador, e o nome
+
+O operador escreveu um monitor de encoder proprio, que funciona na
+bancada dele, e pediu para trazer para o sistema.
+
+## R53 · Os derivados vao para o FIRMWARE, nao para o navegador  ✅  `L13`
+
+Velocidade, RPM, sentido, delta, passos acumulados, inversoes e faixa
+percorrida. O monitor dele calcula tudo no laco principal; aqui isso mora
+na tarefa do encoder.
+
+A razao e a regua: a tarefa le a **20 Hz** e o painel consulta a **4 Hz**.
+Calcular velocidade no navegador seria medir com uma regua cinco vezes
+mais grossa que a disponivel, e perder toda a variacao entre consultas.
+Quem tem os instantes de verdade e quem le.
+
+Tres coisas que o monitor dele nao tinha e que mudam o resultado:
+
+- **Zona morta de 3 contagens no sentido.** Um encoder de 17 bits treme um
+  ou dois passos parado. Sem zona morta esse tremor vira "inverteu"
+  dezenas de vezes por segundo, e o contador de inversoes -- que serve
+  para achar folga -- nao vale nada. `L13h` confere.
+- **Sem leitura, a velocidade zera.** Manter a ultima faz a tela dizer que
+  o eixo continua girando depois que o fio caiu. `L13i`.
+- **Velocidade em float.** `(delta * 1000) / dt` em inteiro estoura com
+  meio milhao de contagens, que um eixo rapido faz em um segundo.
+
+## R54 · O eixo do mock nao girava entre as leituras  ✅
+
+O `L13` reprovou com `delta 0` e velocidade zero, e o codigo estava
+certo: o mock so mudava de posicao quando o teste mandava, e como tres
+leituras cabem dentro de um passo, a ultima comparacao dava zero. Um eixo
+de verdade gira **entre** as leituras.
+
+O escravo do banco ganhou `girar(contagens_por_segundo)`: a posicao passa
+a ser calculada a partir do relogio. Sem isso o banco reprovaria um
+calculo correto -- que e o pior tipo de teste.
+
+## R55 · Estaticas dentro da funcao, de novo  ✅
+
+"Passos acumulados" apareceu com **129 milhoes** num teste de 32 mil. Duas
+causas, as duas da mesma familia:
+
+1. O instante e o valor da leitura anterior eram `static` **dentro** de
+   `publicar()`. No ESP32 o boot zera; no banco elas sobrevivem ao
+   `setup()`, e o primeiro delta de um cenario saia medido contra o
+   cenario anterior. Foram para escopo de arquivo e entraram no
+   `encoderReiniciarTeste()`.
+2. O ajudante `prepararEncoder()` aplicava a configuracao **antes** de
+   arrumar o escravo, entao o sistema lia outro registrador por um
+   instante e o salto entre esse valor e o primeiro de verdade entrava
+   nos passos acumulados. Ordem invertida.
+
+E, no firmware, `encoderReconfigurar()` passou a zerar os derivados:
+trocar o registrador troca o **significado** do numero.
+
+O terceiro numero errado era do teste, nao do codigo: eu esperava 32 000
+passos, e a resposta certa era 70 600 -- o relogio do banco anda mais que
+a contagem do laco sugere. O teste agora ancora a expectativa na **faixa
+que o proprio encoder registrou** (ida e volta = dois cursos), em vez de
+um valor cravado.
+
+## R56 · RoboCNC vira Robo2dof  ✅
+
+A pasta do sketch, o `.ino`, o `#define` do banco (`ROBO2DOF_TESTE`), os
+caminhos dos scripts, o manifesto do painel e os documentos. `git mv`
+preserva o historico dos arquivos.
+
+O nome do **repositorio** no GitHub e outra coisa, e so o dono muda, nas
+configuracoes do repositorio.
+
+## Cobertura
+
+| banco | rodada 17 | agora |
+|-------|-----------|-------|
+| firmware | 200 / 0 | **210 / 0** |
+| interface | 107 / 0 | **112 / 0** |

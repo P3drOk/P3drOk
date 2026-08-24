@@ -8,7 +8,7 @@ import json, re, sys, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
-RAIZ = sys.argv[1] if len(sys.argv) > 1 else "RoboCNC/pagina_web.h"
+RAIZ = sys.argv[1] if len(sys.argv) > 1 else "Robo2dof/pagina_web.h"
 PORTA = int(sys.argv[2]) if len(sys.argv) > 2 else 8099
 
 # Serve exatamente o que o ESP32 serve: os bytes de pagina_web_gz.h com
@@ -86,10 +86,17 @@ def _encoder():
             "j2min": estado["j2min"], "j2max": estado["j2max"],
             "j": [{"ok": True, "bruto": 123456 + _enc["n"] * 7, "ref": 123456,
                    "graus": estado["t1"] - e1, "erro": e1,
-                   "idade": 20, "n": _enc["n"], "falhas": 2, "motivo": 0},
+                   "idade": 20, "n": _enc["n"], "falhas": 2, "motivo": 0,
+                   "delta": 7, "vel": 140.0, "rpm": 0.84, "sent": 1,
+                   "passos": _enc["n"] * 7, "inv": 2,
+                   "bmin": 123456, "bmax": 123456 + _enc["n"] * 7,
+                   "vmax": 220.0, "vmin": -95.0},
                   {"ok": False, "bruto": 0, "ref": 0, "graus": 0.0, "erro": 0.0,
                    "idade": 9999, "n": 0, "falhas": 0,
-                   "motivo": _enc["motivo2"]}],
+                   "motivo": _enc["motivo2"],
+                   "delta": 0, "vel": 0.0, "rpm": 0.0, "sent": 0,
+                   "passos": 0, "inv": 0,
+                   "bmin": 0, "bmax": 0, "vmax": 0.0, "vmin": 0.0}],
             "quadro": "junta 1  2 registradores  -> 01 03 10 00 00 02 C1 0C"
                       "   <- 01 03 04 E2 40 00 01 5B 2E"}
 
@@ -149,8 +156,8 @@ class H(BaseHTTPRequestHandler):
             return self._envia(json.dumps({"tipo": t, "pronto": True,
                                            "arq": LISTA.get(t, [])}))
         if caminho == "/manifest.webmanifest":
-            return self._envia(json.dumps({"name": "RoboCNC 2DOF",
-                                           "short_name": "RoboCNC",
+            return self._envia(json.dumps({"name": "Robo2dof",
+                                           "short_name": "Robo2dof",
                                            "start_url": "/",
                                            "display": "standalone"}),
                                "application/manifest+json")

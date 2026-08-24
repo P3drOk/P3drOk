@@ -1,6 +1,6 @@
-# Banco de testes do RoboCNC
+# Banco de testes do Robo2dof
 
-Roda o firmware **real** no PC. Os módulos de `RoboCNC/` são compilados sem
+Roda o firmware **real** no PC. Os módulos de `Robo2dof/` são compilados sem
 nenhuma alteração; o que é substituído por mock é só o que depende do hardware:
 
 | Mock | O que simula |
@@ -12,7 +12,7 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/SD.h`, `mocks/FS.h`, `mocks/SPI.h` | sistema de arquivos em memória, com cartão ausente e escrita falhando |
 | `mocks/WiFi.h` | só para o `.ino` compilar |
 | `mocks/driver/uart.h` | as chamadas do IDF que pedem RS485 meio-duplex por hardware, guardando o que foi pedido |
-| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro** (e o eco do MAX485, que segue o pino RE de verdade): tabela de registradores de verdade (um ou dois por pergunta), encena mudo, exceção, CRC ruim e driver que **recusa** a leitura dupla |
+| `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro** cujo eixo **gira entre as leituras** (e o eco do MAX485, que segue o pino RE de verdade): tabela de registradores de verdade (um ou dois por pergunta), encena mudo, exceção, CRC ruim e driver que **recusa** a leitura dupla |
 | `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler |
 
 `servidor_web.cpp` **entra** no banco. Os dois defeitos que o operador sentiu na
@@ -103,6 +103,7 @@ no próprio `checar(...)`.
 | L10 | configuração de encoder de uma versão anterior ganha do padrão novo — e o botão que desfaz |
 | L11 | autoteste da linha RS485 dentro do sistema rodando: eco, sondagem e a pergunta de verdade |
 | J04 | sondas de captive portal do Windows/Android/iPhone abrem o painel em vez de dar 404 |
+| L13 | velocidade, RPM, sentido, inversões e passos andados, com o eixo girando de verdade |
 | L12 | achar o registrador movendo o braço **duas vezes no mesmo sentido**; registrador que oscila não é apontado |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
@@ -111,7 +112,7 @@ Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 
 `armazenamento.cpp` roda numa tarefa própria no core 0. No banco não há
 thread: a tarefa é bombeada a mão, um ciclo por milissegundo de simulação
-(`armCicloTeste()`, compilado só com `-DROBOCNC_TESTE`). O mock de
+(`armCicloTeste()`, compilado só com `-DROBO2DOF_TESTE`). O mock de
 sistema de arquivos é instantâneo, então o que se testa é a **lógica** —
 o protocolo de troca entre os núcleos, a validação e a degradação sem
 cartão — e não a latência real de um SD.
@@ -163,7 +164,7 @@ O servidor falso também entrega os bytes comprimidos com
 python3 testes/conferir_ligacoes.py     # roda junto com compilar.sh
 ```
 
-Reprova se `LIGACOES.md` divergir dos pinos de `RoboCNC/config.h`.
+Reprova se `LIGACOES.md` divergir dos pinos de `Robo2dof/config.h`.
 Documento de fiação que mente é pior que documento nenhum: o operador
 liga o fio no pino errado.
 

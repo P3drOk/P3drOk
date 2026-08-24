@@ -51,6 +51,23 @@ struct LeituraEncoder {
   uint32_t leituras;      // contador de sucessos
   uint32_t falhas;        // contador de silencios e CRC ruim
   uint8_t  motivo;        // MotivoEncoder: por que a ultima tentativa falhou
+
+  // ---- derivados, calculados AQUI e nao no navegador ----------------
+  //
+  // A tarefa le a 20 Hz; o painel so consulta a 4 Hz. Calcular
+  // velocidade no navegador seria medir com uma regua cinco vezes mais
+  // grossa que a disponivel, e perder toda variacao entre consultas.
+  // Quem tem os instantes de verdade e quem le.
+  int32_t  delta;         // variacao desde a leitura boa anterior
+  float    velocidade;    // contagens do MOTOR por segundo
+  float    rpm;           // voltas do MOTOR por minuto
+  int8_t   sentido;       // +1 = cresce, -1 = decresce, 0 = parado
+  uint32_t passosTotais;  // soma de |delta|: quanto o eixo andou, no total
+  uint32_t inversoes;     // quantas vezes trocou de sentido
+  int32_t  brutoMin;      // menor e maior contagem vistas desde o zerar
+  int32_t  brutoMax;
+  float    velMax;        // pico de velocidade, nos dois sentidos
+  float    velMin;
 };
 
 void encoderIniciar();                 // cria a tarefa no core 0
@@ -99,7 +116,7 @@ bool encoderTesteRodando();
 // driver cujo mapa Modbus nao esta publicado. Sai no mesmo relatorio.
 void encoderPedirCacada(bool comparar);
 
-#ifdef ROBOCNC_TESTE
+#ifdef ROBO2DOF_TESTE
 // O banco bombeia a tarefa a mao, como faz com a do cartao.
 void encoderCicloTeste();
 void encoderReiniciarTeste();

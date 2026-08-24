@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // =====================================================================
-//  RoboCNC 2DOF - Configuracao central
+//  Robo2dof - Configuracao central
 //  Hardware alvo: ESP32 + 2x driver HLTNC T3D-L20A + servo 80AST-A1C04025
 // =====================================================================
 
@@ -144,6 +144,11 @@ static const uint32_t ENC_TIMEOUT_MS     = 150;     // resposta do driver
 // Sem leitura por este tempo, o valor deixa de ser confiavel e a
 // interface para de mostrar erro calculado em cima de dado velho.
 static const uint32_t ENC_IDADE_MAX_MS   = 1000;
+// Zona morta do SENTIDO, em contagens. Um encoder de 17 bits treme um ou
+// dois passos com o eixo parado; sem zona morta esse tremor viraria
+// "inverteu de sentido" dezenas de vezes por segundo, e o contador de
+// inversoes -- que serve para achar folga de verdade -- nao valeria nada.
+static const int32_t  ENC_PARADO_CONTAGENS = 3;
 
 #ifndef PIN_SD_CS
 #define PIN_SD_CS    5

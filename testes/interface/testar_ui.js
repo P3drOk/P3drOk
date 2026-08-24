@@ -694,6 +694,30 @@ function checar(ok, texto, extra) {
          anal.hz1);
   checar(anal.vo1 !== '--', 'Encoder: as voltas do motor aparecem em numero',
          anal.vo1 + ' voltas');
+
+  // Velocidade, RPM, sentido, passos e inversoes vem PRONTOS do
+  // firmware: ele le a 20 Hz e a pagina consulta a 4 Hz, entao calcular
+  // aqui seria medir com uma regua cinco vezes mais grossa.
+  const der = await t.evaluate(() => ({
+    ve: document.getElementById('anVe1').textContent,
+    rp: document.getElementById('anRp1').textContent,
+    se: document.getElementById('anSe1').textContent,
+    pa: document.getElementById('anPa1').textContent,
+    iv: document.getElementById('anIv1').textContent,
+    fx: document.getElementById('anFx1').textContent,
+    se2: document.getElementById('anSe2').textContent,
+  }));
+  checar(/c\/s$/.test(der.ve) && /rpm$/.test(der.rp),
+         'Encoder: velocidade e RPM medidos pelo encoder aparecem',
+         der.ve + ', ' + der.rp);
+  checar(/cresce|decresce|parado/.test(der.se),
+         'Encoder: o sentido aparece em palavra, nao em numero', der.se);
+  checar(der.pa !== '--' && der.pa !== '0' && der.iv !== '--',
+         'Encoder: passos andados e inversoes aparecem',
+         der.pa + ' passos, ' + der.iv + ' inversoes');
+  checar(der.fx !== '--', 'Encoder: a faixa percorrida aparece', der.fx);
+  checar(der.se2 === '--',
+         'Encoder: junta nao ligada nao ganha sentido inventado', der.se2);
   checar(anal.larg > 100, 'Encoder: o grafico da posicao e dimensionado',
          anal.larg + ' px');
   // A junta 2 nao esta ligada nesta bancada: nao pode inventar estatistica.
@@ -713,7 +737,7 @@ function checar(ok, texto, extra) {
     return capturado ? capturado.text() : null;
   });
   const cabCsv = csv ? csv.split('\n')[0] : '';
-  checar(/ms,bruto1,medido1,comandado1,erro1/.test(cabCsv),
+  checar(/ms,bruto1,medido1,comandado1,erro1,vel1,rpm1/.test(cabCsv),
          'Encoder: o CSV traz bruto, medido, comandado e erro das duas juntas',
          cabCsv);
   checar(csv && csv.trim().split('\n').length > 2,

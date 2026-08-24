@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 mkdir -p testes/saida
 
-FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I RoboCNC -DROBOCNC_TESTE"
+FLAGS="-std=c++17 -O1 -g -Wall -Wextra -Wno-unused-parameter -I testes/mocks -I Robo2dof -DROBO2DOF_TESTE"
 
 # Documento de fiacao que mente e pior que documento nenhum.
 python3 testes/conferir_ligacoes.py
@@ -25,15 +25,15 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     testes/banco.cpp \
     testes/ino_wrapper.cpp \
     testes/mocks/mocks.cpp \
-    RoboCNC/estado.cpp \
-    RoboCNC/cinematica.cpp \
-    RoboCNC/motores.cpp \
-    RoboCNC/solda.cpp \
-    RoboCNC/trajetoria.cpp \
-    RoboCNC/programa.cpp \
-    RoboCNC/calibracao.cpp \
-    RoboCNC/armazenamento.cpp \
-    RoboCNC/servidor_web.cpp \
-    RoboCNC/rede.cpp \
-    RoboCNC/encoder.cpp
+    Robo2dof/estado.cpp \
+    Robo2dof/cinematica.cpp \
+    Robo2dof/motores.cpp \
+    Robo2dof/solda.cpp \
+    Robo2dof/trajetoria.cpp \
+    Robo2dof/programa.cpp \
+    Robo2dof/calibracao.cpp \
+    Robo2dof/armazenamento.cpp \
+    Robo2dof/servidor_web.cpp \
+    Robo2dof/rede.cpp \
+    Robo2dof/encoder.cpp
 exec testes/saida/banco

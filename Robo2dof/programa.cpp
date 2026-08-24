@@ -36,7 +36,7 @@ const Ponto* progLista()       { return pontos; }
 bool         progRodando()     { return fase != FASE_PARADO; }
 bool         progEmEnsaio()    { return ensaio; }
 uint8_t      progIndiceAtual() { return idx; }
-#ifdef ROBOCNC_TESTE
+#ifdef ROBO2DOF_TESTE
 uint8_t      progFaseTeste()   { return (uint8_t)fase; }
 #endif
 

@@ -440,6 +440,16 @@ static void executarTeste() {
 // esta publicado, e o registrador que anda junto com o eixo e a posicao
 // -- os outros nao andam.
 // ---------------------------------------------------------------------
+// Instante e valor da leitura anterior boa: e deles que sai a
+// velocidade. Ficam em escopo de ARQUIVO, nao dentro da funcao, porque
+// encoderReiniciarTeste() precisa zera-los: no ESP32 o boot zera tudo,
+// mas no banco as estaticas sobrevivem ao setup() e o primeiro delta de
+// um cenario sairia medido contra o cenario anterior. Foi assim que
+// "passos acumulados" apareceu com 129 milhoes num teste de 32 mil.
+static uint32_t encUltimoMs[2]   = {0, 0};
+static bool     encTinhaAntes[2] = {false, false};
+static int32_t  encBrutoAntes[2] = {0, 0};
+
 static uint16_t cacaValor[CACA_MAX];   // antes de qualquer giro
 static uint16_t cacaMeio[CACA_MAX];    // depois do primeiro giro
 static bool     cacaTem[CACA_MAX];
@@ -652,6 +662,8 @@ static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   lerSnapshot(s);
   const float comandado = (i == 0) ? s.t1 : s.t2;
 
+  const uint32_t agora = millis();
+
   portENTER_CRITICAL(&travaEnc);
   leitura[i].motivo = motivo;
   if (ok) {
@@ -666,8 +678,56 @@ static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
     } else {
       leitura[i].valido = false;
     }
+
+    // ---- derivados ------------------------------------------------
+    if (encTinhaAntes[i]) {
+      // Subtracao em complemento de dois: a volta do contador de 32 bits
+      // sai certa sozinha, sem caso especial.
+      const int32_t d  = (int32_t)((uint32_t)bruto - (uint32_t)encBrutoAntes[i]);
+      const uint32_t dt = agora - encUltimoMs[i];
+      leitura[i].delta = d;
+
+      if (dt > 0 && dt < 2000) {
+        // Em float: (d * 1000) em inteiro estoura com meio milhao de
+        // contagens, que um eixo rapido faz em um segundo.
+        leitura[i].velocidade = (float)d * 1000.0f / (float)dt;
+        leitura[i].rpm = (cv > 0.5f)
+                       ? leitura[i].velocidade * 60.0f / cv : 0.0f;
+      }
+
+      const int32_t mod = d < 0 ? -d : d;
+      if (mod > ENC_PARADO_CONTAGENS) {
+        const int8_t s = (d > 0) ? 1 : -1;
+        // So conta inversao entre dois movimentos de verdade: parar e
+        // voltar nao e inversao, e tremor tambem nao.
+        if (leitura[i].sentido != 0 && leitura[i].sentido != s)
+          leitura[i].inversoes++;
+        leitura[i].sentido = s;
+        leitura[i].passosTotais += (uint32_t)mod;
+      } else {
+        leitura[i].sentido = 0;
+      }
+
+      if (leitura[i].velocidade > leitura[i].velMax)
+        leitura[i].velMax = leitura[i].velocidade;
+      if (leitura[i].velocidade < leitura[i].velMin)
+        leitura[i].velMin = leitura[i].velocidade;
+    }
+    if (bruto < leitura[i].brutoMin || !encTinhaAntes[i]) leitura[i].brutoMin = bruto;
+    if (bruto > leitura[i].brutoMax || !encTinhaAntes[i]) leitura[i].brutoMax = bruto;
+
+    encTinhaAntes[i] = true;
+    encBrutoAntes[i] = bruto;
+    encUltimoMs[i]   = agora;
   } else {
     leitura[i].falhas++;
+    // Sem leitura nao ha velocidade: manter a ultima faria a tela dizer
+    // que o eixo continua girando depois que o fio caiu.
+    leitura[i].velocidade = 0.0f;
+    leitura[i].rpm        = 0.0f;
+    leitura[i].sentido    = 0;
+    leitura[i].delta      = 0;
+    encTinhaAntes[i] = false;  // a proxima leitura recomeca a contagem de tempo
   }
   portEXIT_CRITICAL(&travaEnc);
 }
@@ -688,6 +748,12 @@ void encoderZerar(uint8_t junta) {
     if (junta == 0 || junta == i + 1) {
       leitura[i].referencia = leitura[i].bruto;
       leitura[i].erro = 0.0f;
+      // Zerar aqui e comecar de novo: acumulado antigo misturado com
+      // referencia nova responde a uma pergunta que ninguem fez.
+      leitura[i].passosTotais = 0;
+      leitura[i].inversoes    = 0;
+      leitura[i].brutoMin = leitura[i].brutoMax = leitura[i].bruto;
+      leitura[i].velMax = leitura[i].velMin = 0.0f;
     }
   }
   portEXIT_CRITICAL(&travaEnc);
@@ -708,6 +774,19 @@ void encoderReconfigurar() {
     // vez de herdar a decisao tomada com a configuracao antiga.
     modoLeitura[i]    = LEITURA_DUPLA;
     falhasSeguidas[i] = 0;
+    // E os derivados recomecam. Trocar o registrador troca o SIGNIFICADO
+    // do numero: comparar a leitura nova com a anterior seria medir a
+    // distancia entre duas coisas diferentes, e sairia um salto de
+    // dezenas de milhoes de contagens que nunca aconteceu.
+    encTinhaAntes[i]  = false;
+    leitura[i].delta        = 0;
+    leitura[i].velocidade   = 0.0f;
+    leitura[i].rpm          = 0.0f;
+    leitura[i].sentido      = 0;
+    leitura[i].passosTotais = 0;
+    leitura[i].inversoes    = 0;
+    leitura[i].velMax = leitura[i].velMin = 0.0f;
+    leitura[i].brutoMin = leitura[i].brutoMax = 0;
   }
   portEXIT_CRITICAL(&travaEnc);
   pedidoReabrir = true;
@@ -810,7 +889,7 @@ void encoderIniciar() {
     Serial.println("[ENC] Leitura de encoder desligada.");
   }
 
-#ifndef ROBOCNC_TESTE
+#ifndef ROBO2DOF_TESTE
   // Prioridade 2, ACIMA da tarefa web (1). O motivo e concreto: entre
   // rs.flush() e baixar o DE ha uma janela de menos de um milissegundo
   // em que a linha ainda esta sendo dirigida por nos. Com a mesma
@@ -824,7 +903,7 @@ void encoderIniciar() {
 #endif
 }
 
-#ifdef ROBOCNC_TESTE
+#ifdef ROBO2DOF_TESTE
 void encoderCicloTeste() { ciclo(); }
 void encoderReiniciarTeste() {
   memset((void*)leitura, 0, sizeof(leitura));
@@ -835,6 +914,9 @@ void encoderReiniciarTeste() {
   for (uint8_t i = 0; i < 2; i++) {
     modoLeitura[i]    = LEITURA_DUPLA;
     falhasSeguidas[i] = 0;
+    encUltimoMs[i]    = 0;
+    encTinhaAntes[i]  = false;
+    encBrutoAntes[i]  = 0;
   }
   nEnvio = nResposta = juntaDoQuadro = 0;
   // No ESP32 o boot zera isto sozinho; aqui as globais sobrevivem ao

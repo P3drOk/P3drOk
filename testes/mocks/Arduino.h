@@ -1,4 +1,4 @@
-// Mock minimo de Arduino.h para rodar o firmware RoboCNC no PC.
+// Mock minimo de Arduino.h para rodar o firmware Robo2dof no PC.
 #pragma once
 #include <cstdint>
 #include <cstdio>

@@ -1,5 +1,5 @@
 // =====================================================================
-//  RoboCNC 2DOF - braco de solda com gravacao de trajetoria
+//  Robo2dof - braco de solda com gravacao de trajetoria
 //
 //  Divisao de trabalho entre os nucleos:
 //    core 0 -> servidor web. So enfileira Comando e le Snapshot.

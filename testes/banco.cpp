@@ -1,5 +1,5 @@
 // =====================================================================
-//  Banco de testes do firmware RoboCNC v6.
+//  Banco de testes do firmware Robo2dof v6.
 //
 //  Compila os modulos REAIS (cinematica, motores, solda, trajetoria,
 //  programa, calibracao, estado e o proprio .ino) contra mocks de
@@ -160,6 +160,7 @@ static void reiniciarSistema() {
   g_uart.escravo[0] = EscravoModbus{};
   g_uart.escravo[1] = EscravoModbus{};
   g_uart.escravo[1].existe = false;
+  g_uart.escravo[0].velocidade = g_uart.escravo[1].velocidade = 0;
   g_uart.moduloLigado = false;
   g_uart.pinoRe       = -1;
   g_millis = 1000;
@@ -1321,7 +1322,7 @@ static void teste_B04_arquivo_corrompido() {
 
   // Cabecalho certo, ponto fora do curso calibrado.
   g_fs.arquivos["/prog/fora.prg"] =
-      "ROBOCNC-PROG 1\nelos=200.000,200.000\npontos=2\n"
+      "ROBO2DOF-PROG 1\nelos=200.000,200.000\npontos=2\n"
       "10.0000 -30.0000 1\n"
       "500.0000 -30.0000 0\n";
   armSolicitar(TAR_CARREGAR_PROG, "fora");
@@ -1456,7 +1457,7 @@ static void teste_B07_config_backup() {
 
   // Arquivo com valor absurdo nao pode passar so por vir do cartao.
   g_fs.arquivos["/cfg/torto.cfg"] =
-      "ROBOCNC-CFG 1\nvelN=9999999\nl1=200\n";
+      "ROBO2DOF-CFG 1\nvelN=9999999\nl1=200\n";
   const uint32_t antes = velNormal;
   armSolicitar(TAR_CARREGAR_CONFIG, "torto");
   esperarCartao();
@@ -2558,6 +2559,20 @@ static void teste_I03_velocidade_entre_trechos() {
 //  L - Encoder por Modbus
 // =====================================================================
 static void prepararEncoder(uint16_t reg, bool baixaPrimeiro, int32_t posicao) {
+  // O ESCRAVO PRIMEIRO. Aplicar a configuracao com o driver ainda
+  // respondendo do endereco antigo faz o sistema ler valor de outro
+  // registrador por um instante -- e a diferenca entre esse valor e o
+  // primeiro valor de verdade vira um salto de dezenas de milhoes de
+  // contagens em "passos acumulados". Nao e defeito do firmware: e o
+  // ajudante do banco encenando uma troca que nao existe na maquina.
+  g_uart.escravo[0] = EscravoModbus{};
+  g_uart.escravo[0].id = 1;
+  g_uart.escravo[0].funcao = 3;
+  g_uart.escravo[0].regBase = reg;
+  g_uart.escravo[0].baixaPrimeiro = baixaPrimeiro;
+  g_uart.escravo[0].posicao = posicao;
+  g_uart.escravo[1].existe = false;    // o segundo driver ainda nao existe
+
   encoderPendente = configEncoder;
   encoderPendente.ativo         = true;
   encoderPendente.baud          = 19200;
@@ -2572,14 +2587,6 @@ static void prepararEncoder(uint16_t reg, bool baixaPrimeiro, int32_t posicao) {
   encoderPendente.contagensPorVolta[1] = 10000.0f;
   enviarComando(CMD_APLICAR_ENCODER);
   rodarComWeb(60);
-
-  g_uart.escravo[0] = EscravoModbus{};
-  g_uart.escravo[0].id = 1;
-  g_uart.escravo[0].funcao = 3;
-  g_uart.escravo[0].regBase = reg;
-  g_uart.escravo[0].baixaPrimeiro = baixaPrimeiro;
-  g_uart.escravo[0].posicao = posicao;
-  g_uart.escravo[1].existe = false;    // o segundo driver ainda nao existe
 }
 
 static void teste_L01_le_o_encoder() {
@@ -2822,6 +2829,22 @@ static void teste_L06_a_maquina_do_operador() {
 // falha sozinho nao diagnostica: o programa de teste de bancada resolve
 // justamente porque mostra os bytes. A tela precisa mostrar o mesmo.
 // ---------------------------------------------------------------------
+// Pega um campo numerico do JSON, so para a nota sair legivel.
+static const char* jsonTrecho2(const char* json, const char* campo) {
+  static char buf[80];
+  char chave[40];
+  snprintf(chave, sizeof(chave), "\"%s\":", campo);
+  const char* p = strstr(json, chave);
+  if (!p) { snprintf(buf, sizeof(buf), "(sem %s)", campo); return buf; }
+  p += strlen(chave);
+  size_t n = 0;
+  while (n < sizeof(buf) - 1 && p[n] && p[n] != ',' && p[n] != '}') { buf[n] = p[n]; n++; }
+  buf[n] = '\0';
+  static char saida[100];
+  snprintf(saida, sizeof(saida), "%s = %s", campo, buf);
+  return saida;
+}
+
 // Pega o valor de um campo de texto do JSON, so para a nota sair legivel.
 static const char* jsonTrecho(const char* json, const char* campo) {
   static char buf[120];
@@ -3137,6 +3160,108 @@ static void teste_L12_cacar_o_registrador() {
 }
 
 // ---------------------------------------------------------------------
+// Velocidade, sentido, RPM e passos acumulados. O operador escreveu um
+// monitor proprio que calcula tudo isso e pediu para trazer para o
+// sistema. Aqui o calculo fica no FIRMWARE e nao no navegador: a tarefa
+// le a 20 Hz e o painel consulta a 4 Hz -- medir no navegador seria usar
+// uma regua cinco vezes mais grossa que a disponivel.
+// ---------------------------------------------------------------------
+static void teste_L13_velocidade_sentido_e_passos() {
+  secao("L13  Velocidade, sentido, RPM e passos acumulados");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 100000);
+  rodarComWeb(300);
+
+  // Eixo parado: nao pode inventar velocidade nem sentido.
+  const LeituraEncoder P = encoderLer(1);
+  nota("parado: velocidade %.1f c/s, sentido %d", (double)P.velocidade, (int)P.sentido);
+  checar(P.sentido == 0 && fabsf(P.velocidade) < 1.0f, "L13a",
+         "com o eixo parado nao ha sentido nem velocidade");
+
+  // Anda para um lado. O eixo tem de estar andando NA HORA da amostra:
+  // mover e depois deixar parado 100 ms faz a ultima leitura ter delta
+  // zero -- que e a resposta certa para um eixo que parou.
+  g_uart.escravo[0].girar(20000);     // 20000 contagens por segundo
+  rodarComWeb(800);
+  const LeituraEncoder A = encoderLer(1);
+  nota("subindo: bruto %ld, leituras %lu, delta %+ld, velocidade %.0f c/s, %.2f rpm, sentido %d",
+       (long)A.bruto, (unsigned long)A.leituras,
+       (long)A.delta, (double)A.velocidade, (double)A.rpm, (int)A.sentido);
+  checar(A.sentido == 1 && A.velocidade > 0, "L13b",
+         "andando para um lado, o sentido e a velocidade acompanham");
+  checar(A.rpm > 0 && A.rpm < A.velocidade, "L13c",
+         "o RPM sai da velocidade dividida pelas contagens por volta");
+
+  // Volta para o outro lado: tem de virar o sentido e contar UMA inversao.
+  const uint32_t invAntes = A.inversoes;
+  g_uart.escravo[0].girar(-20000);    // volta no mesmo passo
+  rodarComWeb(800);
+  g_uart.escravo[0].parar();
+  const LeituraEncoder B = encoderLer(1);
+  nota("descendo: velocidade %.0f c/s, sentido %d, inversoes %lu -> %lu",
+       (double)B.velocidade, (int)B.sentido,
+       (unsigned long)invAntes, (unsigned long)B.inversoes);
+  checar(B.sentido == -1 && B.velocidade < 0, "L13d",
+         "voltando, o sentido inverte e a velocidade fica negativa");
+  checar(B.inversoes == invAntes + 1, "L13e",
+         "e conta UMA inversao, nao uma por leitura");
+
+  // Passos acumulados: somam o caminho andado, nao a diferenca entre
+  // pontas. Foi e voltou 16000 contagens: o total e 32000, nao zero.
+  nota("posicao voltou para %ld (comecou em 100000); passos acumulados %lu",
+       (long)B.bruto, (unsigned long)B.passosTotais);
+  // Foi ate a ponta e voltou: o caminho andado e DOIS cursos, e a
+  // diferenca entre as pontas e perto de zero. O numero esperado sai da
+  // faixa que o proprio encoder registrou, nao de um valor cravado --
+  // assim o teste continua valendo se o relogio do banco mudar de passo.
+  const uint32_t curso = (uint32_t)(B.brutoMax - B.brutoMin);
+  const uint32_t esperado = curso * 2;
+  nota("curso medido %lu, ida e volta esperada %lu",
+       (unsigned long)curso, (unsigned long)esperado);
+  checar(curso > 10000 &&
+         B.passosTotais > esperado * 9 / 10 &&
+         B.passosTotais < esperado * 11 / 10, "L13f",
+         "passos acumulados somam o caminho andado, nao a diferenca entre pontas");
+  const int32_t voltouPara = B.bruto - 100000;
+  checar(voltouPara > -2000 && voltouPara < 2000, "L13g",
+         "e a posicao voltou para perto de onde comecou, provando que era ida e volta");
+
+  // Tremor de um passo com o eixo parado nao pode virar inversao: e o
+  // que faria o contador de inversoes -- que serve para achar folga --
+  // nao valer nada.
+  const uint32_t invEstavel = encoderLer(1).inversoes;
+  g_uart.escravo[0].parar();
+  const int32_t base = g_uart.escravo[0].posicao;
+  for (int k = 0; k < 24; k++) {
+    g_uart.escravo[0].posicao = base + (k % 2);
+    rodarComWeb(30);
+  }
+  nota("tremendo um passo por 12 leituras: inversoes %lu -> %lu",
+       (unsigned long)invEstavel, (unsigned long)encoderLer(1).inversoes);
+  checar(encoderLer(1).inversoes == invEstavel && encoderLer(1).sentido == 0,
+         "L13h", "tremor de um passo e parado, nao inversao");
+
+  // Cabo caindo nao pode deixar a tela dizendo que o eixo continua indo.
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(400);
+  nota("cabo caido: velocidade %.1f, sentido %d",
+       (double)encoderLer(1).velocidade, (int)encoderLer(1).sentido);
+  checar(fabsf(encoderLer(1).velocidade) < 0.01f && encoderLer(1).sentido == 0,
+         "L13i", "sem leitura a velocidade zera, em vez de congelar a ultima");
+
+  // E tudo isso chega na tela.
+  g_uart.escravo[0].mudo = false;
+  rodarComWeb(300);
+  webGet("/api/encoder");
+  nota("%s", jsonTrecho2(webCorpo(), "vel"));
+  checar(strstr(webCorpo(), "\"vel\"") && strstr(webCorpo(), "\"rpm\"") &&
+         strstr(webCorpo(), "\"sent\"") && strstr(webCorpo(), "\"passos\"") &&
+         strstr(webCorpo(), "\"inv\""), "L13j",
+         "velocidade, rpm, sentido, passos e inversoes chegam ao painel");
+}
+
+// ---------------------------------------------------------------------
 // O monitor serial do operador encheu de "/connecttest.txt". E o Windows
 // perguntando se a rede tem internet. Respondendo 404 ele conclui que
 // nao tem, repete a pergunta sem parar, e chega a largar a rede.
@@ -3327,7 +3452,7 @@ static void teste_J03_qualquer_endereco_cai_no_painel() {
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
-  printf("\n\033[1mBANCO DE TESTES - RoboCNC v6\033[0m\n");
+  printf("\n\033[1mBANCO DE TESTES - Robo2dof v6\033[0m\n");
   printf("firmware real + mocks de Arduino/FastAccelStepper/NVS/FreeRTOS\n");
 
   if (getenv("VERBOSE")) g_serialSilencioso = false;
@@ -3395,6 +3520,7 @@ int main() {
   teste_L10_configuracao_velha_no_nvs();
   teste_L11_autoteste_dentro_do_sistema();
   teste_L12_cacar_o_registrador();
+  teste_L13_velocidade_sentido_e_passos();
 
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

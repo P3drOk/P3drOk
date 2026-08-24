@@ -14,7 +14,7 @@ const char PAGINA_HTML[] PROGMEM = R"rawliteral(
 <link rel="apple-touch-icon" href="/icone.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="RoboCNC">
+<meta name="apple-mobile-web-app-title" content="Robo2dof">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Estacao de solda - Robo 2DOF</title>
 <style>
@@ -575,6 +575,12 @@ h4:first-child{margin-top:0}
               <div class="encCel"><span class="rot">bruto</span><b id="anBr1">--</b></div>
               <div class="encCel"><span class="rot">voltas do motor</span><b id="anVo1">--</b></div>
               <div class="encCel"><span class="rot">idade da leitura</span><b id="anId1">--</b></div>
+              <div class="encCel"><span class="rot">velocidade</span><b id="anVe1">--</b></div>
+              <div class="encCel"><span class="rot">RPM do motor</span><b id="anRp1">--</b></div>
+              <div class="encCel"><span class="rot">sentido</span><b id="anSe1">--</b></div>
+              <div class="encCel"><span class="rot">passos andados</span><b id="anPa1">--</b></div>
+              <div class="encCel"><span class="rot">inversoes</span><b id="anIv1">--</b></div>
+              <div class="encCel"><span class="rot">faixa percorrida</span><b id="anFx1">--</b></div>
             </div>
 
             <h4>Numeros da junta 2</h4>
@@ -588,7 +594,21 @@ h4:first-child{margin-top:0}
               <div class="encCel"><span class="rot">bruto</span><b id="anBr2">--</b></div>
               <div class="encCel"><span class="rot">voltas do motor</span><b id="anVo2">--</b></div>
               <div class="encCel"><span class="rot">idade da leitura</span><b id="anId2">--</b></div>
+              <div class="encCel"><span class="rot">velocidade</span><b id="anVe2">--</b></div>
+              <div class="encCel"><span class="rot">RPM do motor</span><b id="anRp2">--</b></div>
+              <div class="encCel"><span class="rot">sentido</span><b id="anSe2">--</b></div>
+              <div class="encCel"><span class="rot">passos andados</span><b id="anPa2">--</b></div>
+              <div class="encCel"><span class="rot">inversoes</span><b id="anIv2">--</b></div>
+              <div class="encCel"><span class="rot">faixa percorrida</span><b id="anFx2">--</b></div>
             </div>
+            <div class="nt"><b>Velocidade, RPM e sentido saem do proprio
+            encoder</b>, medidos pelo firmware entre duas leituras &mdash; nao e
+            a velocidade que o firmware mandou, e a que o eixo fez. Comparar as
+            duas e o jeito de ver escorregamento.
+            <br><b>Passos andados</b> soma o caminho, nao a diferenca entre as
+            pontas: ir e voltar nao da zero, da o dobro. <b>Inversoes</b> conta
+            trocas de sentido de verdade &mdash; tremor de um passo nao conta, e
+            e por isso que esse numero serve para achar folga.</div>
             <div class="nt"><b>Oscilacao</b> e o quanto o erro balanca em torno
             da media. Media alta com oscilacao baixa e desalinhamento &mdash; da
             para corrigir na referencia. Oscilacao alta e folga ou ruido, e
@@ -2435,7 +2455,8 @@ function analisar(d){
     const cv =(i===0)?d.cv1:d.cv2;
 
     if(!reg){
-      ["anN","anF","anHz","anMe","anMx","anSd","anBr","anVo","anId"]
+      ["anN","anF","anHz","anMe","anMx","anSd","anBr","anVo","anId",
+       "anVe","anRp","anSe","anPa","anIv","anFx"]
         .forEach(function(x){anCel(x+k,"--");});
       return;
     }
@@ -2466,6 +2487,17 @@ function analisar(d){
     anCel("anBr"+k,L.ok?String(L.bruto):"--");
     anCel("anVo"+k,(L.ok&&cv>0)?((L.bruto-L.ref)/cv).toFixed(3):"--");
     anCel("anId"+k,L.ok?((L.idade||0)+" ms"):"--");
+
+    /* Derivados: vem prontos do firmware, que tem os instantes de
+       verdade. O navegador so formata. */
+    anCel("anVe"+k,L.ok?Math.round(L.vel||0)+" c/s":"--");
+    anCel("anRp"+k,L.ok?(L.rpm||0).toFixed(1)+" rpm":"--");
+    anCel("anSe"+k,!L.ok?"--":(L.sent>0?"▲ cresce":L.sent<0?"▼ decresce":"parado"));
+    anCel("anPa"+k,String(L.passos||0));
+    anCel("anIv"+k,String(L.inv||0));
+    /* Faixa percorrida: so faz sentido depois de ter andado. */
+    const faixa=(L.bmax||0)-(L.bmin||0);
+    anCel("anFx"+k,faixa>0?String(faixa):"--");
   });
 
   const total=encAmostras.length;
@@ -2492,11 +2524,14 @@ function analisar(d){
 }
 
 function encCsv(){
-  let txt="ms,bruto1,medido1,comandado1,erro1,bruto2,medido2,comandado2,erro2\n";
+  let txt="ms,bruto1,medido1,comandado1,erro1,vel1,rpm1,"+
+          "bruto2,medido2,comandado2,erro2,vel2,rpm2\n";
   encAmostras.forEach(function(a){
     const c=function(v){return v===null?"":v;};
     txt+=a.t+","+c(a.b1)+","+c(a.g1)+","+c(a.c1)+","+c(a.e1)+","+
-             c(a.b2)+","+c(a.g2)+","+c(a.c2)+","+c(a.e2)+"\n";
+             c(a.v1)+","+c(a.r1)+","+
+             c(a.b2)+","+c(a.g2)+","+c(a.c2)+","+c(a.e2)+","+
+             c(a.v2)+","+c(a.r2)+"\n";
   });
   const u=URL.createObjectURL(new Blob([txt],{type:"text/csv"}));
   const a=document.createElement("a");
@@ -2550,8 +2585,10 @@ function encAplicar(d){
     t: Date.now()-encT0,
     b1: L1a.ok?L1a.bruto:null, g1: L1a.ok?L1a.graus:null,
     c1: d.t1, e1: L1a.ok?L1a.erro:null,
+    v1: L1a.ok?L1a.vel:null, r1: L1a.ok?L1a.rpm:null,
     b2: L2a.ok?L2a.bruto:null, g2: L2a.ok?L2a.graus:null,
     c2: d.t2, e2: L2a.ok?L2a.erro:null,
+    v2: L2a.ok?L2a.vel:null, r2: L2a.ok?L2a.rpm:null,
   });
   while(encAmostras.length>ENC_AMOSTRAS)encAmostras.shift();
 

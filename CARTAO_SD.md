@@ -1,6 +1,6 @@
 # O cartão de memória — o que ele é, e o que ele não é
 
-Documento de referência do RoboCNC 2DOF. Responde à pergunta que motivou
+Documento de referência do Robo2dof. Responde à pergunta que motivou
 ele: *"seria possível instalar o sistema no SD também, para ampliar a
 memória?"*
 
@@ -45,7 +45,7 @@ O mesmo vale para RAM: o cartão também não vira `malloc()`. Só a PSRAM
 
 ## 3. Onde você está hoje
 
-Flash de 4 MB no ESP32-WROOM-32, dividida pelo `RoboCNC/partitions.csv`
+Flash de 4 MB no ESP32-WROOM-32, dividida pelo `Robo2dof/partitions.csv`
 que está na pasta do sketch:
 
 | Partição | Tamanho | Para quê |

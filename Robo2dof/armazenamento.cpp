@@ -253,7 +253,7 @@ static bool salvarPrograma(const char* nome) {
   File f = SD.open(caminho, FILE_WRITE);
   if (!f) return false;
 
-  f.println("ROBOCNC-PROG 1");
+  f.println("ROBO2DOF-PROG 1");
   f.printf("nome=%s\n", nome);
   f.printf("elos=%.3f,%.3f\n", stagingElo1, stagingElo2);
   f.printf("pontos=%u\n", (unsigned)stagingN);
@@ -291,9 +291,9 @@ static bool carregarPrograma(const char* nome, char* erro, size_t tamErro) {
     if (k == 0 || linha[0] == '#') continue;
 
     if (!cabecalhoOk) {
-      if (strncmp(linha, "ROBOCNC-PROG", 12) != 0) {
+      if (strncmp(linha, "ROBO2DOF-PROG", 12) != 0) {
         f.close();
-        snprintf(erro, tamErro, "nao e um programa do RoboCNC");
+        snprintf(erro, tamErro, "nao e um programa do Robo2dof");
         return false;
       }
       cabecalhoOk = true;
@@ -374,7 +374,7 @@ static bool carregarTrajetoria(const char* nome, char* erro, size_t tamErro) {
   // Valida o cabecalho ANTES de escrever no buffer vivo: o buffer esta
   // emprestado, e um arquivo torto nao pode virar trajetoria pela metade.
   if (magico != TRJ_MAGICO) {
-    f.close(); snprintf(erro, tamErro, "nao e uma trajetoria do RoboCNC"); return false;
+    f.close(); snprintf(erro, tamErro, "nao e uma trajetoria do Robo2dof"); return false;
   }
   if (n < 2 || n > MAX_WAYPOINTS) {
     f.close(); snprintf(erro, tamErro, "trajetoria com %u pontos", (unsigned)n); return false;
@@ -415,7 +415,7 @@ static bool salvarConfig(const char* nome) {
   File f = SD.open(caminho, FILE_WRITE);
   if (!f) return false;
   const ConfigPendente& c = configPendente;
-  f.println("ROBOCNC-CFG 1");
+  f.println("ROBO2DOF-CFG 1");
   f.printf("velN=%lu\n",  (unsigned long)c.velNormal);
   f.printf("velP=%lu\n",  (unsigned long)c.velPrecisao);
   f.printf("velA=%lu\n",  (unsigned long)c.velAuto);
@@ -465,8 +465,8 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
     linha[k] = '\0';
     if (k == 0 || linha[0] == '#') continue;
     if (!cabecalhoOk) {
-      if (strncmp(linha, "ROBOCNC-CFG", 11) != 0) {
-        f.close(); snprintf(erro, tamErro, "nao e uma configuracao do RoboCNC");
+      if (strncmp(linha, "ROBO2DOF-CFG", 11) != 0) {
+        f.close(); snprintf(erro, tamErro, "nao e uma configuracao do Robo2dof");
         return false;
       }
       cabecalhoOk = true;
@@ -718,7 +718,7 @@ static void armCiclo(uint32_t esperaMs) {
   }
 }
 
-#ifdef ROBOCNC_TESTE
+#ifdef ROBO2DOF_TESTE
 void armCicloTeste() { armCiclo(0); }
 
 // Devolve o modulo ao estado de boot. No robo isso nunca acontece (ha um

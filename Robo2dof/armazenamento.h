@@ -113,7 +113,7 @@ float armStagingElo2();
 // ---------------------------------------------------------------------
 void logEvento(const char* fmt, ...);
 
-#ifdef ROBOCNC_TESTE
+#ifdef ROBO2DOF_TESTE
 // Executa um ciclo da tarefa de cartao no lugar do laco proprio. Existe
 // so para o banco de testes, que roda tudo numa thread so.
 void armCicloTeste();

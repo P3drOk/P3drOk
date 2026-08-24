@@ -1,4 +1,4 @@
-# RoboCNC 2DOF — braço de solda
+# Robo2dof — braço de solda
 
 Firmware ESP32 para braço planar de 2 graus de liberdade com gravação e
 reprodução de trajetória, controle de relé de solda e interface web.
@@ -28,7 +28,7 @@ Isso elimina toda a classe de bugs de concorrência entre os núcleos.
 | `armazenamento.*` | Cartão SD — tarefa própria no core 0                    |
 | `servidor_web.*`  | Rotas HTTP                                              |
 | `pagina_web.h`    | Interface                                               |
-| `RoboCNC.ino`     | Setup, supervisão de segurança, máquina de estados      |
+| `Robo2dof.ino`     | Setup, supervisão de segurança, máquina de estados      |
 
 O cartão segue a mesma regra: **o core 1 nunca toca no SPI do cartão.**
 Gravar num SD leva de dezenas a centenas de milissegundos; dentro do laço
@@ -302,6 +302,44 @@ de chutar.
 **Registrador 0 nunca é a posição** — é o começo da tabela de
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
 "nunca foi configurado" e cai no padrão medido.
+
+### Velocidade, sentido e passos — medidos pelo encoder
+
+O operador escreveu um monitor próprio que calculava velocidade, RPM,
+sentido e passos acumulados a partir da leitura, e pediu para trazer isso
+para o sistema. Está aqui — mas o cálculo mora no **firmware**, não no
+navegador.
+
+A razão é a régua: a tarefa do encoder lê a **20 Hz** e o painel consulta
+a **4 Hz**. Calcular a velocidade no navegador seria medi-la com uma
+régua cinco vezes mais grossa que a disponível, e perder toda a variação
+entre duas consultas. Quem tem os instantes de verdade é quem lê.
+
+| | |
+|---|---|
+| **velocidade** | contagens do motor por segundo, entre duas leituras |
+| **RPM** | a mesma coisa em voltas por minuto |
+| **sentido** | cresce, decresce ou parado |
+| **passos andados** | soma do caminho, não a diferença entre as pontas — ir e voltar não dá zero, dá o dobro |
+| **inversões** | trocas de sentido *de verdade* |
+| **faixa percorrida** | menor e maior contagem desde o último zerar |
+
+Duas decisões que fazem esses números valerem alguma coisa:
+
+- **Zona morta de 3 contagens** (`ENC_PARADO_CONTAGENS`). Um encoder de 17
+  bits treme um ou dois passos com o eixo parado. Sem zona morta esse
+  tremor viraria "inverteu de sentido" dezenas de vezes por segundo, e o
+  contador de inversões — que serve justamente para achar folga — não
+  valeria nada.
+- **Sem leitura, a velocidade zera.** Manter a última faria a tela dizer
+  que o eixo continua girando depois que o fio caiu.
+
+Trocar o registrador **reinicia** os acumulados: o número passa a
+significar outra coisa, e comparar com a amostra anterior seria medir a
+distância entre duas coisas diferentes.
+
+Comparar a velocidade **medida** com a comandada é o jeito de ver
+escorregamento.
 
 ### Análise detalhada
 
@@ -640,7 +678,7 @@ os pontos gravados. Em graus o arquivo continua valendo, e dá para
 escrever um programa no computador com um editor de texto comum:
 
 ```
-ROBOCNC-PROG 1
+ROBO2DOF-PROG 1
 nome=chapa 30x60
 elos=200.000,200.000
 pontos=3

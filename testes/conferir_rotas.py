@@ -20,8 +20,8 @@ import sys
 import pathlib
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-PAGINA = RAIZ / "RoboCNC" / "pagina_web.h"
-SERVIDOR = RAIZ / "RoboCNC" / "servidor_web.cpp"
+PAGINA = RAIZ / "Robo2dof" / "pagina_web.h"
+SERVIDOR = RAIZ / "Robo2dof" / "servidor_web.cpp"
 
 # Rotas que o navegador pede sozinho, sem aparecer em nenhum fetch().
 IMPLICITAS = {"/", "/manifest.webmanifest", "/icone.svg"}

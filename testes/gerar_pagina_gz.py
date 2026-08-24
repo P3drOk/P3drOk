@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gera RoboCNC/pagina_web_gz.h a partir de RoboCNC/pagina_web.h.
+"""Gera Robo2dof/pagina_web_gz.h a partir de Robo2dof/pagina_web.h.
 
 pagina_web.h continua sendo a fonte: e nele que se edita a interface.
 O firmware serve a versao comprimida, o que economiza ~53 kB de flash e
@@ -14,8 +14,8 @@ O banco de testes reprova se o gerado estiver desatualizado.
 import gzip, hashlib, pathlib, sys, textwrap
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-FONTE = RAIZ / "RoboCNC" / "pagina_web.h"
-SAIDA = RAIZ / "RoboCNC" / "pagina_web_gz.h"
+FONTE = RAIZ / "Robo2dof" / "pagina_web.h"
+SAIDA = RAIZ / "Robo2dof" / "pagina_web_gz.h"
 
 
 def extrair_html(texto: str) -> bytes:

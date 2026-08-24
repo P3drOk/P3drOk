@@ -1,5 +1,5 @@
 // =====================================================================
-//  Diagnostico de RS485 / Modbus RTU  --  RoboCNC 2DOF
+//  Diagnostico de RS485 / Modbus RTU  --  Robo2dof
 //
 //  Sketch AVULSO. Nao faz parte do firmware da maquina: grave este
 //  sozinho, com o robo desligado dos motores se quiser.
@@ -987,7 +987,7 @@ static void quadroCru(const String& texto) {
 static void menu() {
   Serial.println();
   Serial.println("=====================================================");
-  Serial.println(" DIAGNOSTICO RS485 / MODBUS RTU -- RoboCNC");
+  Serial.println(" DIAGNOSTICO RS485 / MODBUS RTU -- Robo2dof");
   Serial.println("=====================================================");
   Serial.print(" atual: "); Serial.print(baudAtual);
   Serial.print(" "); Serial.print(PARIDADES[paridadeAtual].nome);
