@@ -1620,3 +1620,73 @@ mandado. Quarta vez que a regra da rodada 7 se paga.
 |-------|-----------|-------|
 | firmware | 194 / 0 | **199 / 0** |
 | interface | 93 / 0 | **93 / 0** |
+
+---
+
+# Rodada 16 — três caçadas, e o par provado
+
+O operador mandou **três caçadas seguidas**, em posições diferentes do
+eixo. Juntas elas fecham a questão de um jeito que nenhuma sozinha fecha.
+
+## R45 · A prova por continuidade  ✅
+
+Montando 90/91 como 32 bits com a palavra baixa primeiro:
+
+| caçada | de | para | variou |
+|---|---|---|---|
+| A | 9 361 | 15 841 | +6 480 |
+| B | 15 842 | 124 571 | +108 729 |
+| C | 124 574 | 42 069 | −82 505 |
+
+**As emendas.** A termina em 15 841 e B começa em 15 842. B termina em
+124 571 e C começa em 124 574. O valor é **contínuo entre caçadas
+separadas** — coincidência não é contínua três vezes.
+
+E o mecanismo aparece: na caçada B o registrador 90 deu a volta (passou
+de 65 535) e o 91 subiu de 0 para 1. Na caçada A, que andou pouco, o 91
+nem se mexeu. É exatamente o que uma palavra baixa e uma alta fazem.
+
+## R46 · 92 e 93 não são posição, e estavam atrapalhando  ✅  `L12`
+
+Nas caçadas apareceram também 92, 93 e 94. Eles enganam porque mudam
+junto com o eixo. Mas o comportamento denuncia: andam **juntos** (os dois
++6, depois os dois −23) e vão para valores negativos (65 530 = −6). É
+**erro de seguimento** e velocidade. A diferença prática: voltam para
+perto de zero quando o eixo para; a posição não volta.
+
+Listar o que mudou e mandar o operador deduzir era jogar esse problema no
+colo dele — e na caçada A o palpite "o que variou mais" teria sido tão
+válido para 92 quanto para 90.
+
+Agora a caçada **prova**, no programa de bancada e no painel: monta cada
+par `r`/`r+1` das duas maneiras e só aponta quando a montagem certa é
+pelo menos **8× mais mansa** que a invertida. Um par que não é de 32 bits
+não passa. `L12g` confere o caso que importa: com a posição parada e
+outro registrador mexendo, **nenhum par é apontado**.
+
+## R47 · Dois modos que faltavam na ferramenta  ✅
+
+- **`8 90` — contagens por volta.** É o único número do encoder que não
+  dá para descobrir olhando, e sem ele a leitura não vira grau. Marca,
+  uma volta completa no eixo do motor, marca de novo. Encaixa no valor
+  redondo mais próximo dentro de 3%: uma volta à mão nunca fecha exata, e
+  é mais provável que a mão tenha ficado torta do que o encoder ter um
+  número quebrado.
+- **`9 90` — CSV da posição** (`ms,contagem,delta`), para colar numa
+  planilha. É assim que se enxerga passo perdido, folga e ruído — coisa
+  que número na tela não mostra.
+
+## R48 · O autoteste mentia no menu logo depois  ✅
+
+O modo 1 passeia por todas as velocidades e **não devolvia a linha como
+estava**: terminava em 115200 8O1, e o menu logo abaixo de "MODULO OK"
+anunciava essa velocidade como se fosse a escolhida. Aparece em todos os
+logs do operador e já tinha mandado a investigação para o lado errado uma
+vez (rodada 11). Agora guarda e restaura.
+
+## Cobertura
+
+| banco | rodada 15 | agora |
+|-------|-----------|-------|
+| firmware | 199 / 0 | **200 / 0** |
+| interface | 93 / 0 | **93 / 0** |

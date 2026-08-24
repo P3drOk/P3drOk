@@ -212,7 +212,13 @@ static void autoteste() {
   Serial.println("ESP32 <-> MAX485.");
   Serial.println();
 
-  const bool guardado = ouvirEco;
+  // O autoteste passeia por todas as velocidades. Sem guardar o que
+  // estava valendo, ele termina deixando a linha na ULTIMA combinacao da
+  // varredura (115200 8O1), e o menu passa a mentir logo depois de dizer
+  // "MODULO OK" -- foi exatamente o que apareceu no log da maquina.
+  const bool     guardado   = ouvirEco;
+  const uint32_t baudGuard  = baudAtual;
+  const uint8_t  parGuard   = paridadeAtual;
   ouvirEco = true;
 
   uint8_t ok = 0, total = 0;
@@ -242,7 +248,11 @@ static void autoteste() {
     }
   }
 
-  ouvirEco = guardado;
+  ouvirEco      = guardado;
+  baudAtual     = baudGuard;
+  paridadeAtual = parGuard;
+  abrirLinha();                 // a linha volta a ser a que o operador escolheu
+
   Serial.println();
   if (ok == total) {
     Serial.println("MODULO OK em todas as velocidades.");
@@ -688,14 +698,194 @@ static void cacar(uint16_t inicio, uint16_t fim) {
   if (!mudaram) {
     Serial.println("Nada mudou nesta faixa. Ou o encoder nao esta aqui, ou");
     Serial.println("o eixo nao girou o bastante. Tente outra faixa ou gire mais.");
-  } else {
-    Serial.print(mudaram); Serial.println(" registrador(es) mudaram.");
     Serial.println();
-    Serial.println("O que variou MUITO e a parte baixa da posicao; o vizinho");
-    Serial.println("que variou pouco (ou nada) e a parte alta. Confirme com o");
-    Serial.println("modo 6 no endereco mais baixo dos dois: gire o eixo e veja");
-    Serial.println("o numero andar junto.");
+    return;
   }
+
+  Serial.print(mudaram); Serial.println(" registrador(es) mudaram.");
+  Serial.println();
+
+  // -------------------------------------------------------------------
+  // Qual deles e a POSICAO?
+  //
+  // Listar o que mudou nao basta: um driver mexe em varias coisas quando
+  // o eixo gira -- erro de seguimento, velocidade, contador de voltas.
+  // No log da maquina apareceram cinco de uma vez, e dois deles (92/93)
+  // andavam JUNTOS, o que confundia.
+  //
+  // O par da posicao tem uma assinatura que nenhum outro tem: montado
+  // como 32 bits com a palavra BAIXA primeiro, o numero anda uma
+  // quantidade que faz sentido para uma girada de mao. Montado ao
+  // contrario, ele salta centenas de milhoes. E so procurar o par r/r+1
+  // em que a montagem certa e MUITO mais mansa que a errada.
+  // -------------------------------------------------------------------
+  uint16_t melhorReg = 0;
+  uint32_t melhorBaixa = 0;
+  bool     achouPar = false;
+
+  for (uint32_t a = inicio; a + 1 <= fim; a++) {
+    const uint16_t i = (uint16_t)(a - inicio);
+    if (!cacaValido[i] || !cacaValido[i + 1]) continue;
+    uint16_t lo1 = 0, hi1 = 0; uint8_t c = 0;
+    if (lerUm((uint16_t)a, lo1, c) != 1) continue;
+    if (lerUm((uint16_t)(a + 1), hi1, c) != 1) continue;
+    const uint16_t lo0 = cacaAntes[i], hi0 = cacaAntes[i + 1];
+    if (lo0 == lo1 && hi0 == hi1) continue;            // este par nao andou
+
+    const int64_t baixaAntes  = ((int64_t)hi0 << 16) | lo0;
+    const int64_t baixaDepois = ((int64_t)hi1 << 16) | lo1;
+    const int64_t altaAntes   = ((int64_t)lo0 << 16) | hi0;
+    const int64_t altaDepois  = ((int64_t)lo1 << 16) | hi1;
+
+    const uint32_t dBaixa = (uint32_t)llabs(baixaDepois - baixaAntes);
+    const uint32_t dAlta  = (uint32_t)llabs(altaDepois  - altaAntes);
+
+    // A montagem certa tem de ser pelo menos 8x mais mansa que a errada.
+    // Um par que nao e de 32 bits nao passa nesse crivo.
+    if (dBaixa == 0 || dBaixa * 8 > dAlta) continue;
+    if (!achouPar || dBaixa > melhorBaixa) {
+      achouPar = true; melhorReg = (uint16_t)a; melhorBaixa = dBaixa;
+    }
+  }
+
+  if (achouPar) {
+    Serial.print("=== O PAR DA POSICAO E ");
+    Serial.print(melhorReg); Serial.print(" (baixa) e ");
+    Serial.print(melhorReg + 1); Serial.println(" (alta) ===");
+    Serial.println("Montado com a palavra BAIXA primeiro, o numero andou");
+    Serial.print(melhorBaixa);
+    Serial.println(" contagens -- coisa de girada de mao.");
+    Serial.println("Montado ao contrario, saltaria centenas de milhoes, que");
+    Serial.println("nao e giro nenhum. E por isso que se sabe qual e qual.");
+    Serial.println();
+    Serial.print("No painel do robo: funcao "); Serial.print((int)funcAtual);
+    Serial.print(", registrador "); Serial.print(melhorReg);
+    Serial.println(", 32 bits, palavra baixa primeiro.");
+    Serial.println();
+    Serial.print("Confira ao vivo com:  6 "); Serial.println(melhorReg);
+    Serial.print("E meca as contagens por volta com:  8 "); Serial.println(melhorReg);
+  } else {
+    Serial.println("Mudou coisa, mas nenhum PAR se comporta como 32 bits.");
+    Serial.println("Pode ser posicao de 16 bits so, ou os registradores que");
+    Serial.println("mudaram sao erro de seguimento e velocidade -- esses");
+    Serial.println("andam juntos e voltam para perto de zero quando o eixo");
+    Serial.println("para. Gire mais e repita: a posicao NAO volta.");
+  }
+  Serial.println();
+}
+
+// =====================================================================
+//  MODO 8 - Medir as CONTAGENS POR VOLTA
+//
+//  E o unico numero do encoder que nao da para descobrir olhando: sem
+//  ele a leitura chega em contagens cruas e nao vira grau nenhum. O
+//  catalogo diz 17 bits (131072), mas catalogo nao e medicao -- e a
+//  engrenagem eletronica do driver pode estar dividindo.
+//
+//  Medir e simples: marca, o operador da UMA VOLTA COMPLETA no eixo do
+//  motor, marca de novo. A diferenca E o numero.
+// =====================================================================
+static bool lerPar32(uint16_t base, int32_t& valor) {
+  uint16_t lo = 0, hi = 0; uint8_t c = 0;
+  if (lerUm(base, lo, c) != 1) return false;
+  if (lerUm((uint16_t)(base + 1), hi, c) != 1) return false;
+  valor = (int32_t)(((uint32_t)hi << 16) | lo);
+  return true;
+}
+
+static void medirContagensPorVolta(uint16_t base) {
+  Serial.println();
+  Serial.println("== CONTAGENS POR VOLTA ==");
+  Serial.print("Par 32 bits em "); Serial.print(base);
+  Serial.print(" / "); Serial.print(base + 1);
+  Serial.println(", palavra baixa primeiro.");
+  Serial.println();
+  abrirLinha();
+
+  int32_t antes = 0;
+  if (!lerPar32(base, antes)) {
+    Serial.println("Nao consegui ler esse par. Confira o endereco e a funcao.");
+    Serial.println();
+    return;
+  }
+  Serial.print("Marcado em "); Serial.println((long)antes);
+  Serial.println();
+  Serial.println(">>> De UMA VOLTA COMPLETA no eixo do MOTOR, no sentido");
+  Serial.println(">>> que faz o numero CRESCER, e aperte qualquer tecla.");
+  Serial.println(">>> (marque o eixo com fita para saber onde fechou)");
+  while (!Serial.available()) { }
+  while (Serial.available()) Serial.read();
+
+  int32_t depois = 0;
+  if (!lerPar32(base, depois)) {
+    Serial.println("Perdi a leitura no meio. Repita.");
+    Serial.println();
+    return;
+  }
+
+  const int32_t d = depois - antes;
+  Serial.print("Agora em "); Serial.print((long)depois);
+  Serial.print("  ->  uma volta = "); Serial.print((long)(d < 0 ? -d : d));
+  Serial.println(" contagens.");
+  Serial.println();
+
+  const int32_t m = d < 0 ? -d : d;
+  if (m < 100) {
+    Serial.println("Muito pouco para ser uma volta. O eixo girou mesmo?");
+  } else {
+    // Encaixa no valor redondo mais proximo, se estiver perto: e mais
+    // provavel que a volta a mao tenha ficado torta do que o encoder ter
+    // um numero quebrado.
+    const int32_t COMUNS[] = {1024, 2500, 4096, 10000, 16384, 32768, 65536, 131072, 262144, 524288};
+    for (int32_t c : COMUNS) {
+      const int32_t erro = m > c ? m - c : c - m;
+      if ((int64_t)erro * 100 < (int64_t)c * 3) {     // dentro de 3%
+        Serial.print("Isso e praticamente "); Serial.print((long)c);
+        Serial.println(" -- use esse numero redondo, a volta a mao nunca");
+        Serial.println("fecha exata.");
+        break;
+      }
+    }
+    Serial.println();
+    Serial.println("Ponha em \"contagens por volta\" da junta, no painel.");
+    Serial.print("Se voce girou o eixo do motor e a junta tem reducao, o");
+    Serial.println(" painel ja desconta a reducao sozinho.");
+  }
+  Serial.println();
+}
+
+// =====================================================================
+//  MODO 9 - Gravar a posicao em CSV
+//
+//  Despeja "ms,contagem" continuamente. Serve para colar numa planilha e
+//  VER a curva: e assim que se enxerga passo perdido, folga e ruido, que
+//  numero na tela nao mostra.
+// =====================================================================
+static void gravarCsv(uint16_t base) {
+  Serial.println();
+  Serial.println("== CSV DA POSICAO ==");
+  Serial.print("Par "); Serial.print(base); Serial.print("/");
+  Serial.print(base + 1);
+  Serial.println(". Qualquer tecla encerra. Copie tudo para uma planilha.");
+  Serial.println();
+  Serial.println("ms,contagem,delta");
+  abrirLinha();
+
+  const uint32_t t0 = millis();
+  int32_t anterior = 0;
+  bool    primeiro = true;
+
+  while (!Serial.available()) {
+    int32_t v = 0;
+    if (!lerPar32(base, v)) { delay(50); continue; }
+    Serial.print(millis() - t0); Serial.print(",");
+    Serial.print((long)v); Serial.print(",");
+    Serial.println(primeiro ? 0L : (long)(v - anterior));
+    anterior = v; primeiro = false;
+    delay(50);
+  }
+  while (Serial.available()) Serial.read();
+  Serial.println("(fim do CSV)");
   Serial.println();
 }
 
@@ -764,6 +954,8 @@ static void menu() {
   Serial.println(" 6 100          monitorar um registrador ao vivo");
   Serial.println(" 7              cacar o encoder na faixa 0..255");
   Serial.println(" 7 4096 4351    cacar na faixa que voce quiser");
+  Serial.println(" 8 90           medir contagens por volta no par 90/91");
+  Serial.println(" 9 90           gravar a posicao em CSV (para planilha)");
   Serial.println(" b 19200        fixar a velocidade");
   Serial.println(" p 1            paridade: 0=8N1 1=8E1 2=8O1");
   Serial.println(" i 2            fixar o endereco do escravo");
@@ -828,6 +1020,8 @@ void loop() {
       cacar(ini, fim);
       break;
     }
+    case '8': medirContagensPorVolta((uint16_t)numero); break;
+    case '9': gravarCsv((uint16_t)numero); break;
     case 'b': if (numero >= 1200) { baudAtual = (uint32_t)numero; abrirLinha(); } break;
     case 'p': if (numero >= 0 && numero < N_PARIDADES) { paridadeAtual = (uint8_t)numero; abrirLinha(); } break;
     case 'i': if (numero > 0 && numero < 248) idAtual = (uint8_t)numero; break;

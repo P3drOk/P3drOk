@@ -494,21 +494,14 @@ static void cacarComparar() {
   for (uint16_t i = 0; i < CACA_MAX; i++) temDepois[i] = false;
   lerFaixa(depois, temDepois);
 
-  uint8_t  mudaram = 0;
-  uint16_t campeao = 0;
-  int32_t  maiorVar = 0;
-
+  uint8_t mudaram = 0;
   anexar(p, "registrador   antes -> depois   variou\n");
   for (uint16_t i = 0; i < CACA_MAX; i++) {
     if (!cacaTem[i] || !temDepois[i] || cacaValor[i] == depois[i]) continue;
-    const int32_t d = (int32_t)depois[i] - (int32_t)cacaValor[i];
-    if (mudaram < 12)
+    if (mudaram < 10)
       anexar(p, "  %u (0x%02X)   %u -> %u   %+ld\n", (unsigned)i, (unsigned)i,
-             (unsigned)cacaValor[i], (unsigned)depois[i], (long)d);
-    if (d > maiorVar || -d > maiorVar) {
-      maiorVar = d > 0 ? d : -d;
-      campeao  = i;
-    }
+             (unsigned)cacaValor[i], (unsigned)depois[i],
+             (long)((int32_t)depois[i] - (int32_t)cacaValor[i]));
     mudaram++;
   }
 
@@ -516,12 +509,55 @@ static void cacarComparar() {
     anexar(p, "\nNENHUM registrador mudou. O braco chegou a se mover? Se sim,\n"
               "a posicao pode estar fora da faixa 0..%u, ou na outra funcao\n"
               "Modbus (troque 3 por 4 e repita).", (unsigned)(CACA_MAX - 1));
+    testeRodando = false;
+    return;
+  }
+
+  // Qual deles e a POSICAO? Listar o que mudou nao basta: o driver mexe
+  // em varias coisas quando o eixo gira -- erro de seguimento,
+  // velocidade. Na maquina do operador mudaram cinco de uma vez, e dois
+  // deles andavam juntos, o que confundia.
+  //
+  // O par da posicao tem uma assinatura que nenhum outro tem: montado
+  // como 32 bits com a palavra BAIXA primeiro, ele anda uma quantidade
+  // que cabe numa girada de mao; montado ao contrario, salta centenas de
+  // milhoes. Procura-se o par r/r+1 em que a montagem certa e MUITO mais
+  // mansa que a errada.
+  uint16_t melhor = 0;
+  uint32_t melhorD = 0;
+  bool     achou = false;
+  for (uint16_t i = 0; i + 1 < CACA_MAX; i++) {
+    if (!cacaTem[i] || !cacaTem[i + 1] || !temDepois[i] || !temDepois[i + 1]) continue;
+    if (cacaValor[i] == depois[i] && cacaValor[i + 1] == depois[i + 1]) continue;
+
+    const int64_t baixa0 = ((int64_t)cacaValor[i + 1] << 16) | cacaValor[i];
+    const int64_t baixa1 = ((int64_t)depois[i + 1]    << 16) | depois[i];
+    const int64_t alta0  = ((int64_t)cacaValor[i]     << 16) | cacaValor[i + 1];
+    const int64_t alta1  = ((int64_t)depois[i]        << 16) | depois[i + 1];
+
+    const int64_t dB = baixa1 > baixa0 ? baixa1 - baixa0 : baixa0 - baixa1;
+    const int64_t dA = alta1  > alta0  ? alta1  - alta0  : alta0  - alta1;
+
+    if (dB == 0 || dB * 8 > dA) continue;   // nao se comporta como 32 bits
+    if (!achou || (uint32_t)dB > melhorD) {
+      achou = true; melhor = i; melhorD = (uint32_t)dB;
+    }
+  }
+
+  if (achou) {
+    anexar(p, "\n%u mudaram.\n\n"
+              "=== O PAR E %u (baixa) e %u (alta) ===\n"
+              "Baixa primeiro, o numero andou %lu contagens -- girada de mao.\n"
+              "Ao contrario saltaria centenas de milhoes, que nao e giro.\n\n"
+              "Ponha %u em \"registrador\" da junta 1 e salve.",
+           (unsigned)mudaram, (unsigned)melhor, (unsigned)(melhor + 1),
+           (unsigned long)melhorD, (unsigned)melhor);
   } else {
-    anexar(p, "\n%u mudaram. O que variou MAIS e a palavra BAIXA da posicao;\n"
-              "o vizinho de cima, que variou pouco, e a ALTA.\n\n"
-              "Palpite: registrador %u, palavra baixa primeiro.\n"
-              "Ponha esse numero em \"registrador\" da junta 1 e salve.",
-           (unsigned)mudaram, (unsigned)campeao);
+    anexar(p, "\n%u mudaram, mas nenhum PAR se comporta como 32 bits.\n"
+              "Pode ser posicao de 16 bits, ou o que mudou e erro de\n"
+              "seguimento e velocidade -- esses andam juntos e voltam para\n"
+              "perto de zero quando o eixo para. Gire mais e repita: a\n"
+              "posicao NAO volta.", (unsigned)mudaram);
   }
   testeRodando = false;
 }

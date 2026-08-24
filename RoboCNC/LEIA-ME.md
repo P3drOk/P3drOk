@@ -277,12 +277,20 @@ medindo. Isso agora está **na máquina**, não só na bancada:
 1. Aba Encoder → **"Procurar o registrador"**. Ele lê a faixa 0..255
    inteira e anota.
 2. **Mova o braço à mão, bastante.**
-3. **"Comparar agora"**. Sai a lista do que mudou, e o palpite de qual é
-   a palavra baixa.
+3. **"Comparar agora"**. Sai a lista do que mudou e, mais importante, a
+   **prova** de qual par é a posição.
 
-O registrador que andou junto com o eixo é a posição — os outros não
-andam. Sem movimento ele diz "nenhum registrador mudou" em vez de
-chutar.
+Listar o que mudou não basta: o driver mexe em várias coisas quando o
+eixo gira. Nesta máquina mudaram **cinco** registradores de uma vez, e
+dois deles (92 e 93) andavam juntos e iam para valores negativos — isso é
+**erro de seguimento**, não posição. A diferença prática: eles voltam
+para perto de zero quando o eixo para; a posição não volta.
+
+Então o sistema não lista candidatos, ele **prova**: monta cada par
+`r`/`r+1` das duas maneiras e só aponta quando a montagem com a palavra
+baixa primeiro é pelo menos **8× mais mansa** que a invertida. Um par que
+não é de 32 bits não passa nesse crivo. Sem movimento, ou sem par que
+passe, ele diz isso em vez de chutar.
 
 **Registrador 0 nunca é a posição** — é o começo da tabela de
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como

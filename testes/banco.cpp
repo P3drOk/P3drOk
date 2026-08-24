@@ -3082,8 +3082,26 @@ static void teste_L12_cacar_o_registrador() {
   nota("%s", webCorpo());
   checar(strstr(webCorpo(), "90") != nullptr, "L12b",
          "o registrador que andou junto com o eixo aparece na lista");
-  checar(strstr(webCorpo(), "Palpite: registrador 90") != nullptr, "L12c",
-         "e o sistema aponta qual dos dois e a palavra baixa, sem o operador deduzir");
+  checar(strstr(webCorpo(), "O PAR E 90 (baixa) e 91 (alta)") != nullptr, "L12c",
+         "e o sistema PROVA qual par e a posicao, em vez de listar candidatos");
+
+  // Registrador que mexe sozinho mas NAO e posicao (erro de seguimento,
+  // velocidade) nao pode ser apontado como se fosse: na maquina do
+  // operador mudaram cinco de uma vez, e dois deles andavam juntos.
+  // Aqui o par 90/91 nao anda e so um vizinho solto mexe.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 61346);
+  webPost("/api/encoder/cacar");
+  rodarComWeb(900);
+  g_uart.escravo[0].posicao = 61346;          // a posicao NAO mudou
+  g_uart.escravo[0].regBase = 90;
+  webPost("/api/encoder/cacar?comparar=1");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "O PAR E") == nullptr, "L12g",
+         "sem a posicao andar, nenhum par e apontado -- nao chuta");
 
   // Eixo parado: dizer "achei" seria pior que dizer "nao achei".
   reiniciarSistema();
