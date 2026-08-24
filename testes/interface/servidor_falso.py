@@ -78,7 +78,7 @@ def _encoder():
     # erro pequeno e oscilante na junta 1, junta 2 sem leitura
     e1 = 0.12 * _mm.sin(_enc["n"] / 6.0)
     return {"ativo": True, "baud": 19200, "par": 0, "func": 3, "per": 50,
-            "b32": True, "lo": False, "dehw": True,
+            "b32": True, "lo": False,
             "id1": 1, "id2": 2, "reg1": 90, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],

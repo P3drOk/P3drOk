@@ -7,7 +7,6 @@
 #include "ESPmDNS.h"
 #include "DNSServer.h"
 #include "HardwareSerial.h"
-#include "driver/uart.h"
 
 uint32_t g_millis = 0;
 int g_pinModo[64]    = {0};
@@ -53,7 +52,6 @@ int digitalRead(uint8_t p) { return p < 64 ? g_pinEntrada[p] : 1; }
 WebServer* WebServer::atual = nullptr;
 DNSServer* DNSServer::atual = nullptr;
 HardwareSerial* HardwareSerial::atual = nullptr;
-UartIdfMock g_uartIdf;
 
 int webPost(const std::string& alvo, const char* corpo) {
   return WebServer::atual ? WebServer::atual->pedir(HTTP_POST, alvo, corpo) : 0;

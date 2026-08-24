@@ -25,7 +25,6 @@
 #include "ESPmDNS.h"
 #include "DNSServer.h"
 #include "HardwareSerial.h"
-#include "driver/uart.h"
 #include "encoder.h"
 #include "Preferences.h"
 #include "FS.h"
@@ -2866,44 +2865,42 @@ static const char* jsonTrecho(const char* json, const char* campo) {
 // pergunta dupla, o teste passa e o sistema falha -- que foi exatamente
 // o que aconteceu na maquina do operador.
 // ---------------------------------------------------------------------
-static void teste_L08_driver_que_so_le_um_registrador() {
-  secao("L08  Driver que so responde um registrador por pergunta");
+static void teste_L08_uma_pergunta_dois_registradores() {
+  secao("L08  Uma pergunta so, dois registradores");
   reiniciarSistema();
   prepararRoboCalibrado();
-  prepararEncoder(5, true, 143535);          // 2 * 65536 + 12463
-  g_uart.escravo[0].soUmRegistrador = true;
+  prepararEncoder(90, true, 143535);         // 2 * 65536 + 12463
+  rodarComWeb(300);
 
-  // Com a pergunta dupla recusada, as primeiras leituras falham.
-  rodarComWeb(200);
-  nota("logo depois de recusar a pergunta dupla: %lu falhas",
-       (unsigned long)encoderLer(1).falhas);
-
-  // E o sistema tem que descobrir sozinho e passar a perguntar um de
-  // cada vez, sem ninguem mexer em configuracao nenhuma.
-  rodarComWeb(1500);
-  const LeituraEncoder L = encoderLer(1);
-  nota("depois de cair para a forma provada: bruto %ld, %lu leituras",
-       (long)L.bruto, (unsigned long)L.leituras);
-  checar(L.valido && L.bruto == 143535, "L08a",
-         "o driver que so le um registrador por vez tambem e lido, sozinho");
-  checar(L.leituras > 3, "L08b",
-         "e continua sendo lido, nao foi sorte de uma vez");
+  const uint32_t perguntas = g_uart.escravo[0].perguntas;
+  const uint32_t leituras  = encoderLer(1).leituras;
+  nota("%lu leituras em %lu perguntas",
+       (unsigned long)leituras, (unsigned long)perguntas);
+  checar(leituras > 3 && encoderLer(1).bruto == 143535, "L08a",
+         "os 32 bits vem de UMA pergunta, como o monitor do operador faz");
+  // Uma pergunta por leitura, nao duas ou tres. A leitura de dois
+  // registradores de uma vez tambem e ATOMICA: o par sai do mesmo
+  // instante do contador, sem risco de a palavra baixa dar a volta entre
+  // duas perguntas.
+  checar(perguntas <= leituras + 2, "L08b",
+         "uma pergunta por leitura, e o par sai do mesmo instante");
 
   webGet("/api/encoder");
   nota("quadro: %s", jsonTrecho(webCorpo(), "quadro"));
-  checar(strstr(webCorpo(), "1 de cada vez") != nullptr, "L08c",
-         "a tela diz de que jeito esta perguntando, sem abrir o codigo");
+  // 00 5A 00 02 = registrador 90, DOIS registradores.
+  checar(strstr(webCorpo(), "00 5A 00 02") != nullptr, "L08c",
+         "e o quadro na tela mostra os dois registradores sendo pedidos");
 
-  // O valor tem que bater com o do driver que aceita os dois de uma vez:
-  // e a mesma posicao, so a pergunta muda.
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoder(5, true, 143535);
-  rodarComWeb(400);
-  nota("mesmo driver aceitando a pergunta dupla: bruto %ld",
-       (long)encoderLer(1).bruto);
-  checar(encoderLer(1).bruto == 143535, "L08d",
-         "as duas formas de perguntar dao o mesmo numero");
+  // Driver que recusa a pergunta dupla existe. O sistema nao tem um jeito
+  // secreto de contornar isso: ele DIZ que a pergunta foi recusada, que e
+  // o que manda o operador olhar a configuracao em vez de esperar.
+  g_uart.escravo[0].soUmRegistrador = true;
+  rodarComWeb(600);
+  const LeituraEncoder R = encoderLer(1);
+  nota("driver recusando a pergunta dupla: valido=%d, motivo=%u",
+       (int)R.valido, (unsigned)R.motivo);
+  checar(!R.valido && R.motivo == MOTIVO_EXCECAO, "L08d",
+         "driver que recusa a pergunta e reportado, nao contornado em silencio");
 }
 
 static void teste_L07_o_quadro_cru_na_tela() {
@@ -2944,36 +2941,28 @@ static void teste_L07_o_quadro_cru_na_tela() {
 // interrupcoes dos motores no mesmo nucleo, e qualquer um deles pode
 // estica-la. Quem baixa o DE tem que ser o periferico.
 // ---------------------------------------------------------------------
-static void teste_L09_de_pelo_hardware() {
-  secao("L09  Quem baixa o DE do MAX485");
+static void teste_L09_o_de_sobe_de_verdade() {
+  secao("L09  O DE do MAX485 sobe quando falamos, e desce depois");
   reiniciarSistema();
   prepararRoboCalibrado();
+  prepararEncoder(90, true, 999);
+  rodarComWeb(400);
 
-  nota("padrao de fabrica: DE por hardware = %d",
-       (int)configEncoder.deHardware);
-  checar(configEncoder.deHardware, "L09a",
-         "de fabrica o DE e baixado pelo periferico, nao pelo firmware");
-
-  prepararEncoder(0x1000, false, 999);
-  rodarComWeb(300);
-  nota("UART em modo %d (RS485 meio-duplex = %d), RTS no pino %d",
-       g_uartIdf.modo, (int)UART_MODE_RS485_HALF_DUPLEX, g_uartIdf.pinoRts);
-  checar(g_uartIdf.modo == UART_MODE_RS485_HALF_DUPLEX &&
-         g_uartIdf.pinoRts == PIN_RS485_DE, "L09b",
-         "a UART entra em RS485 meio-duplex com o DE como RTS");
-  checar(encoderLer(1).valido, "L09c",
-         "e a leitura continua funcionando desse jeito");
-
-  // Quem tiver fiacao que nao goste do modo por hardware precisa poder
-  // voltar sem regravar firmware.
-  const int cod = webPost("/api/encoder/config?dehw=0");
-  rodarComWeb(300);
-  nota("desmarcando na tela: HTTP %d, modo da UART %d", cod, g_uartIdf.modo);
-  checar(cod == 200 && !configEncoder.deHardware &&
-         g_uartIdf.modo == UART_MODE_UART, "L09d",
-         "da para voltar ao controle por GPIO pela tela, sem regravar");
-  checar(encoderLer(1).valido || encoderLer(1).leituras > 0, "L09e",
-         "e do jeito antigo tambem le");
+  // Se o DE nunca subir, o quadro nao chega a sair no barramento e o
+  // driver nao tem o que responder: silencio absoluto, para sempre. Foi
+  // exatamente isso na maquina do operador enquanto o periferico da UART
+  // cuidava do DE em vez do firmware -- e nenhum cenario pegava, porque
+  // nenhum olhava o pino.
+  nota("DE (pino %d): %lu subidas, agora em %d;  RE em %d",
+       (int)PIN_RS485_DE, (unsigned long)g_subidas[PIN_RS485_DE],
+       g_pinSaida[PIN_RS485_DE], g_pinSaida[PIN_RS485_RE]);
+  checar(g_subidas[PIN_RS485_DE] > 3, "L09a",
+         "o DE sobe a cada pergunta -- sem isso nada sai no barramento");
+  checar(g_pinSaida[PIN_RS485_DE] == LOW, "L09b",
+         "e volta a descer, senao a linha fica presa por nos");
+  checar(g_pinSaida[PIN_RS485_RE] == LOW, "L09c",
+         "e o RE fica em baixo, escutando, quando nao estamos falando");
+  checar(encoderLer(1).valido, "L09d", "e a leitura funciona desse jeito");
 }
 
 // ---------------------------------------------------------------------
@@ -3515,8 +3504,8 @@ int main() {
   teste_L05_so_leitura_e_so_em_manual();
   teste_L06_a_maquina_do_operador();
   teste_L07_o_quadro_cru_na_tela();
-  teste_L08_driver_que_so_le_um_registrador();
-  teste_L09_de_pelo_hardware();
+  teste_L08_uma_pergunta_dois_registradores();
+  teste_L09_o_de_sobe_de_verdade();
   teste_L10_configuracao_velha_no_nvs();
   teste_L11_autoteste_dentro_do_sistema();
   teste_L12_cacar_o_registrador();

@@ -34,11 +34,7 @@ enum MotivoEncoder : uint8_t {
   MOTIVO_SILENCIO,   // ninguem respondeu naquele endereco
   MOTIVO_CRC,        // veio byte, mas corrompido ou de outro escravo
   MOTIVO_EXCECAO,    // o driver respondeu "esse registrador nao existe"
-  MOTIVO_FORMATO,    // respondeu, mas nao no formato pedido
-  // Lendo um registrador de cada vez, a palavra alta mudou entre as duas
-  // perguntas. Nao e defeito: e a contagem virando no meio da leitura, e
-  // a proxima volta do ciclo pega o par inteiro.
-  MOTIVO_VIRADA
+  MOTIVO_FORMATO     // respondeu, mas nao no formato pedido
 };
 
 struct LeituraEncoder {

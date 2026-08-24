@@ -8,7 +8,6 @@
 // Assinaturas iguais as do core do ESP32. Ver testes/mocks/LEIA-ME.md.
 #pragma once
 #include "Arduino.h"
-#include "driver/uart.h"
 #include "Arduino.h"
 #include <deque>
 #include <vector>
@@ -118,7 +117,6 @@ class HardwareSerial {
 
   bool ecoAgora() const {
     if (!moduloLigado || pinoRe < 0 || pinoRe >= 64) return false;
-    if (g_uartIdf.modo == UART_MODE_RS485_HALF_DUPLEX) return false;
     return g_pinSaida[pinoRe] == 0;      // RE em baixo = recebendo
   }
 

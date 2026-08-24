@@ -415,29 +415,43 @@ e nos pinos do transceptor, e fazer isso de outro núcleo por baixo de uma
 leitura em andamento corromperia o quadro. Terminado, a leitura normal
 volta sozinha.
 
-### Quem baixa o DE do MAX485
+### Quem controla o DE e o RE do MAX485
 
-Entre o último bit sair pelo fio e o firmware baixar o DE existe cerca de
-**um milissegundo** em que o transceptor ainda está *segurando* a linha.
-Se o driver responder rápido dentro dessa janela, a resposta colide com o
-nosso próprio transmissor e some — sempre, no mesmo ponto.
+**O firmware, por GPIO**, exatamente como o monitor que funciona na
+máquina do operador:
 
-Num programa sozinho na placa essa janela é respeitada. Aqui dentro há
-Wi-Fi, servidor web, cartão e as interrupções dos geradores de pulso, tudo
-no **mesmo núcleo**, e qualquer um deles pode esticá-la sem aviso. É a
-única diferença entre o sistema e o programa de bancada que nenhuma
-leitura de código consegue descartar.
+```
+DE alto + RE alto  ->  50 us  ->  escreve  ->  flush  ->  1000 us  ->  DE baixo
+```
 
-Por isso o padrão é `ENC_DE_HARDWARE_PADRAO = true`: a UART entra em
-**RS485 meio-duplex**, o DE vira a linha RTS do periférico, e é o
-*hardware* que o baixa no fim do bit de parada. Nenhuma tarefa,
-interrupção ou pausa do Wi-Fi alcança isso. Nesse modo o próprio
-periférico desliga a recepção enquanto transmite, então não há eco para
-descartar e o RE fica sempre ouvindo.
+Houve aqui um modo em que o **periférico da UART** dirigia o DE sozinho
+(RS485 meio-duplex por hardware). Em teoria é melhor: baixa o DE no fim
+exato do último bit, e nenhuma tarefa ou interrupção alcança isso. Na
+máquina do operador **o DE simplesmente não subia** — o quadro não chegava
+a sair no barramento e o driver nunca tinha o que responder. Silêncio
+absoluto, para sempre, que é exatamente o sintoma que ele descreveu.
 
-A chave **"o DE quem baixa é o hardware da UART"**, na aba Encoder,
-desliga isso sem regravar firmware — para o caso de alguma fiação não
-gostar.
+Um mecanismo mais fino que não liga vale menos que um mecanismo grosseiro
+que funciona. Saiu.
+
+O cenário `L09` olha o **pino**: conta as subidas do DE e reprova se ele
+parar de subir. Nenhum cenário anterior olhava, e foi por isso que o
+defeito passou.
+
+### Uma pergunta, dois registradores
+
+A posição de 32 bits vem de **uma** pergunta — como o monitor do operador
+faz. Isso também é **atômico**: as duas palavras saem do mesmo instante do
+contador, sem risco de a palavra baixa dar a volta entre duas perguntas.
+
+Houve aqui um recuo automático para "um registrador por vez", inventado
+quando eu achava que o driver podia recusar a pergunta dupla. O log dele
+desmentiu: os modos 4 e 6 do programa de bancada leem **oito**
+registradores por pergunta e funcionam. O recuo só acrescentava um jeito
+a mais de dar errado, e saiu.
+
+Driver que recuse a pergunta dupla é **reportado** (`registrador
+recusado`), não contornado em silêncio.
 
 ### Atualizei o firmware e parou de ler
 
@@ -451,23 +465,6 @@ tudo de volta em 19200 8N1, função 4, registrador 5, palavra baixa
 primeiro, 131072 contagens, junta 2 não ligada. É o primeiro a tentar
 quando a leitura para depois de uma atualização.
 
-### Duas formas de perguntar a posição de 32 bits
-
-A posição ocupa dois registradores. Dá para pedir os dois **de uma vez**
-(uma pergunta, resposta atômica, mais barata) ou **um de cada vez**
-(duas perguntas). O programa de bancada só usa a segunda — então ela é a
-única comprovada neste driver.
-
-O sistema **não escolhe por adivinhação**: começa na dupla e cai sozinho
-para uma-de-cada-vez se o driver recusar, e volta a tentar a dupla se
-nem essa responder (senão uma máquina com fio partido ficaria presa na
-forma cara). A linha do quadro cru, no fim do painel, diz qual está em
-uso.
-
-Duas perguntas não são atômicas: a palavra baixa pode dar a volta entre
-uma e outra. Por isso a forma simples lê **alta, baixa, alta** e só
-aceita o par quando a palavra alta não mudou no meio.
-
 ### Se não estiver lendo
 
 A célula do medido diz **por quê**, não só "nada":
@@ -480,7 +477,6 @@ A célula do medido diz **por quê**, não só "nada":
 | `quadro corrompido` | veio byte, mas o CRC não fecha — velocidade ou paridade |
 | `registrador recusado` | **o driver está aí e respondeu** "esse registrador não existe". Só o endereço está errado |
 | `formato inesperado` | respondeu, mas não no formato pedido — confira 16/32 bits |
-| `contagem virou no meio` | a palavra alta mudou entre duas perguntas. Não é defeito: o próximo ciclo pega o par inteiro |
 
 **Com um driver só ligado**, a junta 2 nasce com registrador 0 e aparece
 como *não ligada*. Ela não gasta barramento nem conta falha — perguntar
@@ -506,16 +502,14 @@ gira, a leitura morreu.
 
 ### Espera pela resposta
 
-`ENC_TIMEOUT_MS` é **150 ms**, que é a espera que o programa de bancada
-usa para ler registrador nesta máquina. Não é chute nem folga inventada:
-com 60 ms a resposta do T3D chegava depois do prazo e virava "sem
-resposta" — falha em cima de driver bom.
+`ENC_TIMEOUT_MS` é **100 ms**, o mesmo do monitor do operador. Na prática
+a espera acaba muito antes: a leitura sabe quantos bytes a resposta boa
+tem (`3 + 2×N + 2`) e para assim que o quadro fecha.
 
-Enquanto espera o primeiro byte a tarefa **dorme**, em vez de girar em
-`delayMicroseconds`: o núcleo 0 é o mesmo do servidor web, e queimá-lo
-por 150 ms a cada driver lento engasgaria o painel. Depois que o quadro
-começa, volta a olhar de perto — é o silêncio de 3,5 caracteres que marca
-o fim.
+Enquanto espera, a tarefa **dorme** em vez de girar em
+`delayMicroseconds`. O monitor dele pode girar — está sozinho na placa.
+Aqui o núcleo é o mesmo do servidor web, e queimá-lo por 100 ms a cada
+driver que demora engasgaria o painel.
 
 ### Palavra baixa primeiro
 

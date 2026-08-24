@@ -98,8 +98,8 @@ no próprio `checar(...)`.
 | L05 | o módulo nunca escreve, e só se configura em manual |
 | L06 | os números medidos na máquina do operador são remontados iguais |
 | L07 | falhou: o quadro cru na tela diz o porquê, e junta não ligada não é falha |
-| L08 | driver que só responde um registrador por pergunta também é lido, sozinho |
-| L09 | o DE é baixado pelo periférico (RS485 meio-duplex), e dá para voltar ao GPIO |
+| L08 | os 32 bits vêm de **uma** pergunta; driver que recusa é reportado, não contornado |
+| L09 | o **DE sobe** a cada pergunta e desce depois — sem isso nada sai no barramento |
 | L10 | configuração de encoder de uma versão anterior ganha do padrão novo — e o botão que desfaz |
 | L11 | autoteste da linha RS485 dentro do sistema rodando: eco, sondagem e a pergunta de verdade |
 | J04 | sondas de captive portal do Windows/Android/iPhone abrem o painel em vez de dar 404 |

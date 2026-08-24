@@ -696,16 +696,6 @@ h4:first-child{margin-top:0}
             <div class="nt">Muito driver Modbus manda a palavra baixa antes da
             alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
             vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
-            <h4>Controle do transceptor</h4>
-            <div class="tr"><div class="ch" id="encDeHw"><i></i></div>
-              <span>o DE quem baixa e o hardware da UART</span></div>
-            <div class="nt">Entre o ultimo bit sair e o firmware baixar o DE ha
-            cerca de <b>um milissegundo</b> em que o MAX485 ainda esta segurando
-            a linha. Se o driver responder rapido nessa janela, a resposta
-            colide e some. Com esta chave marcada quem baixa o DE e o proprio
-            periferico de UART, no fim do bit de parada &mdash; e nem Wi-Fi, nem
-            cartao, nem as interrupcoes dos motores conseguem atrasar isso.
-            <b>Desmarque so se piorar.</b></div>
             <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
             <div class="pq2" id="qEncSalvar"></div>
             <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
@@ -2228,8 +2218,7 @@ redeAtualizar();
 /* Por que nao esta lendo. Espelha MotivoEncoder em encoder.h -- tela que
    so diz "nada" nao ensina ninguem. */
 const MOTIVO=["ok","aguardando","sem resposta","quadro corrompido",
-              "registrador recusado","formato inesperado",
-              "contagem virou no meio"];
+              "registrador recusado","formato inesperado"];
 const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
 const encHist=[[],[]];
 /* Amostra INTEIRA, nao so o erro: e o que a analise detalhada mostra e o
@@ -2613,7 +2602,6 @@ function encAplicar(d){
     $("encAtivo").className="ch"+(d.ativo?" on":"");
     $("enc32").className  ="ch"+(d.b32?" on":"");
     $("encLo").className  ="ch"+(d.lo?" on":"");
-    $("encDeHw").className="ch"+(d.dehw?" on":"");
     $("encBaud").value=d.baud;$("encPar").value=d.par;
     $("encFunc").value=d.func;$("encPer").value=d.per;
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
@@ -2630,7 +2618,7 @@ function encAtualizar(){
 
 /* As chaves sao locais ate o operador salvar: mudar o formato do valor a
    cada clique reabriria a UART no meio da leitura. */
-["encAtivo","enc32","encLo","encDeHw"].forEach(function(id){
+["encAtivo","enc32","encLo"].forEach(function(id){
   $(id).onclick=function(){$(id).classList.toggle("on");};
 });
 $("btEncSalvar").onclick=function(){
@@ -2638,7 +2626,7 @@ $("btEncSalvar").onclick=function(){
   post("/api/encoder/config?ativo="+on("encAtivo")+
        "&baud="+$("encBaud").value+"&par="+$("encPar").value+
        "&func="+$("encFunc").value+"&per="+$("encPer").value+
-       "&b32="+on("enc32")+"&lo="+on("encLo")+"&dehw="+on("encDeHw")+
+       "&b32="+on("enc32")+"&lo="+on("encLo")+
        "&id1="+$("encId1").value+"&reg1="+$("encReg1").value+"&cv1="+$("encCv1").value+
        "&id2="+$("encId2").value+"&reg2="+$("encReg2").value+"&cv2="+$("encCv2").value)
    .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});

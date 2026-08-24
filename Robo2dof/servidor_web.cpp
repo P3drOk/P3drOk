@@ -649,7 +649,7 @@ static void handleEncoder() {
   char cab[420];
   snprintf(cab, sizeof(cab),
     "{\"ativo\":%s,\"baud\":%lu,\"par\":%u,\"func\":%u,\"per\":%u,"
-    "\"b32\":%s,\"lo\":%s,\"dehw\":%s,"
+    "\"b32\":%s,\"lo\":%s,"
     "\"id1\":%u,\"id2\":%u,\"reg1\":%u,\"reg2\":%u,"
     "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,\"j\":[",
@@ -658,7 +658,6 @@ static void handleEncoder() {
     (unsigned)configEncoder.funcao, (unsigned)configEncoder.periodoMs,
     configEncoder.trintaEDois ? "true" : "false",
     configEncoder.baixaPrimeiro ? "true" : "false",
-    configEncoder.deHardware ? "true" : "false",
     (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
     (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
     configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
@@ -694,7 +693,6 @@ static void handleEncoderConfig() {
   c.periodoMs     = (uint16_t)constrain(argL("per", c.periodoMs), ENC_PERIODO_MIN_MS, 2000);
   c.trintaEDois   = argL("b32", c.trintaEDois ? 1 : 0) != 0;
   c.baixaPrimeiro = argL("lo",  c.baixaPrimeiro ? 1 : 0) != 0;
-  c.deHardware    = argL("dehw", c.deHardware ? 1 : 0) != 0;
   c.id[0]         = (uint8_t) constrain(argL("id1",  c.id[0]), 1, 247);
   c.id[1]         = (uint8_t) constrain(argL("id2",  c.id[1]), 1, 247);
   c.reg[0]        = (uint16_t)constrain(argL("reg1", c.reg[0]), 0, 65535);
@@ -728,7 +726,6 @@ static void handleEncoderPadroes() {
   c.periodoMs       = ENC_PERIODO_PADRAO;
   c.trintaEDois     = true;
   c.baixaPrimeiro   = ENC_BAIXA_PRIMEIRO;
-  c.deHardware      = ENC_DE_HARDWARE_PADRAO;
   c.id[0]  = 1;                c.id[1]  = 2;
   c.reg[0] = ENC_REG_PADRAO;   c.reg[1] = 0;   // junta 2 = nao ligada
   c.contagensPorVolta[0] = ENC_CONTAGENS_PADRAO;

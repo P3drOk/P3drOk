@@ -1860,3 +1860,81 @@ configuracoes do repositorio.
 |-------|-----------|-------|
 | firmware | 200 / 0 | **210 / 0** |
 | interface | 107 / 0 | **112 / 0** |
+
+---
+
+# Rodada 19 — o DE que nunca subia
+
+O operador: *"ate o momento apenas aparece o visual e nada de
+funcionamento ou leitura"*. E pediu o modulo do encoder refeito colado no
+monitor dele, que funciona.
+
+## R57 · O DE nunca subia  ✅  `L09`
+
+Na rodada 13 eu troquei o controle do DE por **RS485 meio-duplex por
+hardware**: o periferico da UART passa a dirigir o DE pela linha RTS e o
+baixa no fim exato do ultimo bit. O raciocinio estava certo — a janela
+entre `flush()` e baixar o DE e mesmo o ponto fraco num sistema com
+Wi-Fi e interrupcoes no mesmo nucleo.
+
+O problema e o que eu fiz com o caminho antigo:
+
+```c
+static void modoTransmissao() {
+  if (configEncoder.deHardware) return;   // <-- nao levanta o DE
+  digitalWrite(PIN_RS485_RE, HIGH);
+  digitalWrite(PIN_RS485_DE, HIGH);
+}
+```
+
+Com o modo por hardware ligado — que era o **padrao que eu deixei** — o
+firmware nao levanta o DE, confiando no periferico. Se `uart_set_pin` /
+`uart_set_mode` nao pegam naquela placa, o DE fica onde estava: **baixo**.
+O MAX485 nunca dirige o barramento, o quadro nao sai no fio, e o driver
+nao tem o que responder. Silencio absoluto, deterministico, para sempre.
+
+Um mecanismo mais fino que nao liga vale menos que um grosseiro que
+funciona. O controle voltou a ser por GPIO, na sequencia exata do monitor
+do operador: `DE+RE alto -> 50 us -> escreve -> flush -> 1000 us -> DE
+baixo`.
+
+**Por que nenhum cenario pegou:** nenhum olhava o pino. Todos olhavam a
+resposta, e o escravo do banco respondia independentemente do DE — porque
+o mock nao tem transceptor. O `L09` novo conta as **subidas do DE** e
+reprova se ele parar de subir.
+
+## R58 · Menos mecanismo, mais leitura  ✅  `L08`
+
+Saiu tambem o recuo automatico para "um registrador por vez" (R28). O log
+do operador ja tinha desmentido a premissa: os modos 4 e 6 do programa de
+bancada leem **oito** registradores por pergunta e funcionam. O recuo so
+acrescentava um jeito a mais de dar errado.
+
+Agora e uma pergunta, dois registradores — e isso tambem e **atomico**,
+sem o problema da palavra baixa dar a volta entre duas perguntas. Driver
+que recuse a pergunta dupla e **reportado**, nao contornado em silencio.
+
+`MOTIVO_VIRADA`, que so existia por causa do recuo, virou estado morto e
+saiu junto.
+
+`ENC_TIMEOUT_MS` voltou para **100 ms**, o do monitor dele. Na pratica a
+espera acaba muito antes: a leitura sabe quantos bytes a resposta boa tem
+e para quando o quadro fecha.
+
+## O que NAO mudou
+
+O registrador padrao continua **90**, nao o 94 do monitor dele. O 94 saiu
+da minha cacada quebrada da rodada 16, que imprimia "No painel do robo:
+registrador 94" — ele copiou a minha recomendacao errada. As tres cacadas
+com continuidade, e o monitor dele mostrando 94 constante em 65535,
+apontam 90. E um campo na tela, se a bancada disser o contrario.
+
+## Cobertura
+
+| banco | rodada 18 | agora |
+|-------|-----------|-------|
+| firmware | 210 / 0 | **209 / 0** |
+| interface | 112 / 0 | **112 / 0** |
+
+(um cenario a menos: o `L08` deixou de testar o recuo removido e passou a
+testar o contrato de uma pergunta so.)

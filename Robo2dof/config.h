@@ -80,22 +80,13 @@
 #define PIN_RS485_RE  26    // receiver enable (ativo em baixo)
 #endif
 
-// Quem levanta e baixa o DE do MAX485.
-//
-// true  = o proprio periferico de UART, no modo RS485 meio-duplex. Ele
-//         baixa o DE no fim do ultimo bit de parada, com precisao de
-//         hardware, e NADA no software atrapalha isso.
-// false = o firmware, por GPIO, com uma espera depois do flush().
-//
-// Por que isto existe: entre o ultimo bit sair e o firmware baixar o DE
-// ha aproximadamente um milissegundo em que o MAX485 ainda esta
-// DIRIGINDO a linha. Se o driver responder dentro dessa janela, a
-// resposta colide e some. Num sketch sozinho na placa a janela e
-// respeitada; aqui dentro ha Wi-Fi, servidor web, cartao e as
-// interrupcoes dos geradores de pulso -- tudo no mesmo nucleo -- e
-// qualquer um deles pode esticar essa janela sem aviso. Por isso o
-// padrao e deixar o hardware fazer.
-static const bool ENC_DE_HARDWARE_PADRAO = true;
+// O DE e o RE do MAX485 sao controlados por GPIO, a mao, exatamente
+// como no monitor que funciona na maquina do operador. Houve aqui um
+// modo em que o periferico da UART dirigia o DE sozinho (RS485
+// meio-duplex por hardware): em teoria e melhor, porque baixa o DE no
+// fim exato do ultimo bit. Na maquina do operador o DE simplesmente nao
+// subia -- o quadro nao saia no barramento e nao havia o que responder.
+// Nao vale a pena um mecanismo mais fino que nao liga.
 
 // Um barramento, os dois drivers: multiponto, enderecos diferentes.
 static const uint32_t ENC_BAUD_PADRAO    = 19200;
@@ -135,12 +126,13 @@ static const bool     ENC_BAIXA_PRIMEIRO = true;
 static const float    ENC_CONTAGENS_PADRAO = 131072.0f;   // encoder de 17 bits
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;
-// Tempo maximo esperando a resposta do driver. 150 ms nao e chute: e a
-// espera que o programa de teste de bancada usa para ler registrador,
-// e com ela o HL-T3DL20A responde. Com 60 ms a resposta chegava
-// depois do prazo e virava "sem resposta" -- falha em cima de
-// driver bom.
-static const uint32_t ENC_TIMEOUT_MS     = 150;     // resposta do driver
+// Tempo maximo esperando a resposta do driver. 100 ms e o que o monitor
+// do operador usa, e com ele o HL-T3DL20A responde. Nao e chute nem
+// folga inventada: e o numero que ja funcionou na maquina dele.
+//
+// Na pratica a espera acaba muito antes: a leitura sabe quantos bytes a
+// resposta boa tem (3 + 2*N + 2) e para assim que o quadro fecha.
+static const uint32_t ENC_TIMEOUT_MS     = 100;     // resposta do driver
 // Sem leitura por este tempo, o valor deixa de ser confiavel e a
 // interface para de mostrar erro calculado em cima de dado velho.
 static const uint32_t ENC_IDADE_MAX_MS   = 1000;

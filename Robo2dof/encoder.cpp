@@ -1,13 +1,8 @@
 #include "encoder.h"
 #include <HardwareSerial.h>
-#include <driver/uart.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-
-// A UART2 e a mesma que o objeto rs abre; o numero precisa bater para o
-// modo RS485 por hardware cair no periferico certo.
-#define ENC_UART_NUM  UART_NUM_2
 
 // UART2. Os pinos SEMPRE vao explicitos no begin(): o padrao da UART2 e
 // GPIO 16 e 17, que neste projeto sao o passo e a direcao da junta 1.
@@ -31,10 +26,6 @@ static uint8_t  ultimaResposta[16];
 static uint8_t  nEnvio = 0, nResposta = 0;
 static uint8_t  juntaDoQuadro = 0;
 
-// Como a posicao de 32 bits e pedida ao driver. Ver lerPosicao().
-enum { LEITURA_DUPLA = 0, LEITURA_SIMPLES = 1 };
-static uint8_t modoLeitura[2]    = { LEITURA_DUPLA, LEITURA_DUPLA };
-static uint8_t falhasSeguidas[2] = { 0, 0 };
 
 // ---------------------------------------------------------------------
 static uint32_t cfgSerial(uint8_t paridade) {
@@ -50,54 +41,46 @@ static uint32_t usPorChar() {
   const uint32_t b = configEncoder.baud ? configEncoder.baud : 19200;
   return (bitsPorChar(configEncoder.paridade) * 1000000UL) / b;
 }
-// Silencio de fim de quadro: 3,5 caracteres, piso de 1750 us.
-static uint32_t usEntreQuadros() {
-  const uint32_t t = (usPorChar() * 7) / 2;
-  return t < 1750 ? 1750 : t;
-}
-
-static void abrirLinha() {
-  // end() seguido de begin() no mesmo instante deixa a UART do ESP32 em
-  // estado indefinido -- o driver de UART do core precisa de um tempo
-  // para largar e retomar os pinos. O sketch de diagnostico que funciona
-  // na bancada tem estas duas pausas; a primeira versao daqui nao tinha,
-  // e a diferenca era exatamente essa.
-  if (linhaAberta) { rs.end(); delay(5); }
-  rs.begin(configEncoder.baud, cfgSerial(configEncoder.paridade),
-           PIN_RS485_RX, PIN_RS485_TX);
-  delay(5);
-
-  if (configEncoder.deHardware) {
-    // O DE vira a linha RTS do periferico, e a UART entra em RS485
-    // meio-duplex: ela levanta o DE ao comecar a transmitir e o baixa no
-    // fim do ultimo bit de parada, sozinha. Nenhuma tarefa, interrupcao
-    // ou pausa do Wi-Fi consegue esticar essa janela.
-    //
-    // Neste modo o proprio periferico desliga a recepcao enquanto
-    // transmite, entao nao ha eco para descartar e o RE pode ficar
-    // sempre em baixo (recebendo).
-    uart_set_pin(ENC_UART_NUM, PIN_RS485_TX, PIN_RS485_RX,
-                 PIN_RS485_DE, UART_PIN_NO_CHANGE);
-    uart_set_mode(ENC_UART_NUM, UART_MODE_RS485_HALF_DUPLEX);
-    digitalWrite(PIN_RS485_RE, LOW);
-  } else {
-    uart_set_mode(ENC_UART_NUM, UART_MODE_UART);
-    pinMode(PIN_RS485_DE, OUTPUT);
-    digitalWrite(PIN_RS485_DE, LOW);
-  }
-  linhaAberta = true;
-}
-
-// Com o DE no hardware nao ha o que fazer aqui: quem levanta e baixa e o
-// periferico, e o RE fica sempre ouvindo.
+// DE alto = nos dirigimos a linha. RE baixo = escutamos. Os niveis sao
+// os do monitor do operador, sem invencao.
 static void modoEscuta() {
-  if (!configEncoder.deHardware) digitalWrite(PIN_RS485_DE, LOW);
+  digitalWrite(PIN_RS485_DE, LOW);
   digitalWrite(PIN_RS485_RE, LOW);
 }
 static void modoTransmissao() {
-  if (configEncoder.deHardware) return;
-  digitalWrite(PIN_RS485_RE, HIGH);
   digitalWrite(PIN_RS485_DE, HIGH);
+  digitalWrite(PIN_RS485_RE, HIGH);
+}
+
+static void abrirLinha() {
+  // IGUAL ao monitor que funciona na maquina do operador:
+  //
+  //     rs.end(); delay(10); rs.begin(...); delay(10);
+  //
+  // end() e chamado SEMPRE, inclusive na primeira vez -- e o que o
+  // codigo dele faz, e a UART2 pode chegar aqui com resto de
+  // configuracao. As duas pausas de 10 ms nao sao superstiçao: o driver
+  // de UART do core precisa de tempo para largar e retomar os pinos.
+  rs.end();
+  delay(10);
+  rs.begin(configEncoder.baud, cfgSerial(configEncoder.paridade),
+           PIN_RS485_RX, PIN_RS485_TX);
+  delay(10);
+
+  // Os dois pinos do transceptor sao NOSSOS, por GPIO. Tinha aqui um
+  // modo em que o periferico da UART dirigia o DE sozinho (RS485
+  // meio-duplex por hardware). Em teoria e melhor -- baixa o DE no fim
+  // exato do ultimo bit. Na pratica, na maquina do operador, o DE nunca
+  // subia: o quadro nao chegava a sair no barramento e o driver nunca
+  // tinha o que responder. Silencio absoluto, para sempre.
+  //
+  // O codigo dele controla os dois pinos a mao e funciona. E assim que
+  // fica.
+  pinMode(PIN_RS485_DE, OUTPUT);
+  pinMode(PIN_RS485_RE, OUTPUT);
+  modoEscuta();
+
+  linhaAberta = true;
 }
 
 // ---------------------------------------------------------------------
@@ -111,54 +94,51 @@ static uint16_t crc16(const uint8_t* b, size_t n) {
   return crc;
 }
 
-// Um ciclo de pergunta e resposta. Devolve os bytes recebidos.
+// ---------------------------------------------------------------------
+// Um ciclo de pergunta e resposta, na mesma sequencia do monitor que
+// funciona na maquina do operador:
+//
+//     limpa a entrada -> DE alto -> 50 us -> escreve -> flush ->
+//     1000 us -> DE baixo -> espera a resposta
+//
+// 'esperados' e quantos bytes a resposta boa tem. O monitor dele nao
+// sabe disso e espera os 100 ms inteiros toda vez; aqui a conta e
+// conhecida (3 + 2*N + 2), entao a leitura termina assim que o quadro
+// fecha. Mais rapido, e sem depender de medir silencio no fio.
+// ---------------------------------------------------------------------
 static size_t trocar(const uint8_t* saida, size_t nSaida,
-                     uint8_t* entrada, size_t maxEntrada) {
+                     uint8_t* entrada, size_t maxEntrada,
+                     size_t esperados = 0) {
   while (rs.available()) rs.read();
 
   modoTransmissao();
-  if (!configEncoder.deHardware) delayMicroseconds(50);
+  delayMicroseconds(50);
   rs.write(saida, nSaida);
   rs.flush();
-  if (!configEncoder.deHardware) {
-    // flush() esvazia a fila, mas o ultimo bit ainda pode estar saindo do
-    // registrador de deslocamento. Baixar DE agora corta o fim do quadro
-    // e o escravo descarta calado. Esperar, por outro lado, deixa a
-    // linha DIRIGIDA por nos por mais um milissegundo -- e se o driver
-    // responder rapido, a resposta colide e some. E este dilema que o
-    // modo por hardware acaba: ele baixa no fim do ultimo bit, e ponto.
-    delayMicroseconds(usPorChar() * 2);
-    modoEscuta();
-  }
+  // flush() espera a fila esvaziar, mas o ultimo bit ainda pode estar
+  // saindo do registrador de deslocamento. Baixar o DE agora corta o fim
+  // do quadro e o escravo descarta calado. O monitor do operador espera
+  // 1000 us fixos aqui, e a essa velocidade e o que da certo.
+  delayMicroseconds(1000);
+  modoEscuta();
 
   size_t n = 0;
   const uint32_t inicio = millis();
-  uint32_t ultimoUs = micros();
 
-  // A subtracao com sinal aguenta a volta do contador de milissegundos;
-  // "millis() < inicio + espera" trava a leitura por 49 dias a cada 49
-  // dias de maquina ligada.
+  // Subtracao com sinal: aguenta a volta do contador de milissegundos.
   while ((int32_t)(millis() - inicio) < (int32_t)ENC_TIMEOUT_MS &&
          n < maxEntrada) {
     if (rs.available()) {
       entrada[n++] = (uint8_t)rs.read();
-      ultimoUs = micros();
+      if (esperados && n >= esperados) break;   // quadro completo
       continue;
     }
-    if (n) {
-      // O quadro ja comecou: acaba em poucos milissegundos, e e o
-      // silencio de 3,5 caracteres que marca o fim. Aqui vale olhar de
-      // perto. Um caractere a 19200 leva 570 us: 50 us nao perde byte.
-      if ((micros() - ultimoUs) > usEntreQuadros()) break;
-      delayMicroseconds(50);
-    } else {
-      // Ainda esperando o PRIMEIRO byte, o que pode levar a espera
-      // inteira. delayMicroseconds e espera OCUPADA: ficar nela queima o
-      // core 0, que e o mesmo do servidor web, e o painel engasga a cada
-      // driver que demora. vTaskDelay entrega o core; a UART tem fila
-      // propria em hardware, entao dormir 1 ms nao perde byte nenhum.
-      vTaskDelay(pdMS_TO_TICKS(1));
-    }
+    // Nada na fila. O monitor dele gira aqui em espera ocupada, porque
+    // esta sozinho na placa. Aqui nao: este nucleo e o mesmo do servidor
+    // web, e queimar 100 ms nele engasga o painel a cada driver que
+    // demora. vTaskDelay entrega o nucleo; a UART tem fila propria em
+    // hardware, entao dormir 1 ms nao perde byte nenhum.
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
   return n;
 }
@@ -186,7 +166,8 @@ static bool lerRegs(uint8_t i, uint16_t reg, uint16_t quantos,
   // buffer tem de caber no maior pedido que este modulo faz, senao a
   // resposta boa e cortada e vira "formato inesperado".
   uint8_t r[32];
-  const size_t n = trocar(q, 8, r, sizeof(r));
+  // Resposta boa: id + funcao + contagem + os dados + CRC.
+  const size_t n = trocar(q, 8, r, sizeof(r), 3 + (size_t)quantos * 2 + 2);
 
   portENTER_CRITICAL(&travaEnc);
   memcpy(ultimoEnvio, q, 8);           nEnvio = 8;
@@ -218,19 +199,16 @@ static bool lerRegs(uint8_t i, uint16_t reg, uint16_t quantos,
 // ---------------------------------------------------------------------
 // Le a posicao de uma junta. Devolve false se nao veio resposta boa.
 //
-// Duas palavras de 16 bits podem vir de duas maneiras:
+// UMA pergunta, dois registradores -- exatamente como o monitor do
+// operador faz. Havia aqui um recuo automatico para "um registrador por
+// vez", inventado quando eu achava que o driver podia nao aceitar a
+// pergunta dupla. O log dele desmentiu isso: os modos 4 e 6 do programa
+// de bancada leem OITO registradores por pergunta e funcionam. O recuo
+// so acrescentava um jeito a mais de dar errado, e saiu.
 //
-//   DUPLA   -- uma pergunta so, "leia 2 registradores". E barata e, o
-//              que importa mais, ATOMICA: as duas palavras saem do mesmo
-//              instante do contador.
-//   SIMPLES -- duas perguntas de um registrador cada. E o que o programa
-//              de teste de bancada faz, e portanto a UNICA forma
-//              provada neste driver.
-//
-// O sistema comeca na dupla e cai para a simples sozinho se o driver nao
-// responder a ela. Foi exatamente essa a diferenca entre o teste que
-// funcionou e o sistema que so dava falha: ninguem nunca tinha pedido
-// dois registradores de uma vez a este driver.
+// A leitura de dois registradores de uma vez tambem e ATOMICA: as duas
+// palavras saem do mesmo instante do contador, e nao ha o problema da
+// palavra baixa dar a volta no meio.
 // ---------------------------------------------------------------------
 static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
   const uint16_t reg = configEncoder.reg[i];
@@ -242,65 +220,16 @@ static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
     return true;
   }
 
-  const bool baixa = configEncoder.baixaPrimeiro;
-
-  if (modoLeitura[i] == LEITURA_DUPLA) {
-    uint16_t p[2];
-    if (lerRegs(i, reg, 2, p, motivo)) {
-      falhasSeguidas[i] = 0;
-      valor = baixa ? (int32_t)(((uint32_t)p[1] << 16) | p[0])
-                    : (int32_t)(((uint32_t)p[0] << 16) | p[1]);
-      return true;
-    }
-    // Silencio pode ser fio. Excecao ou formato e o driver dizendo que
-    // NAO faz leitura de dois registradores -- ai nao adianta insistir.
-    if (motivo == MOTIVO_EXCECAO || motivo == MOTIVO_FORMATO ||
-        ++falhasSeguidas[i] >= 4) {
-      modoLeitura[i]   = LEITURA_SIMPLES;
-      falhasSeguidas[i] = 0;
-    }
-    return false;
-  }
-
-  // Duas perguntas nao sao atomicas: a palavra baixa pode dar a volta
-  // entre uma e outra, e o resultado seria um salto de 65536 contagens
-  // que nao aconteceu. Le a ALTA duas vezes, uma de cada lado da baixa,
-  // e so aceita quando ela nao mudou no meio.
-  const uint16_t regBaixa = baixa ? reg : (uint16_t)(reg + 1);
-  const uint16_t regAlta  = baixa ? (uint16_t)(reg + 1) : reg;
-
-  uint16_t alta1 = 0, palavraBaixa = 0, alta2 = 0;
-  const bool leu = lerRegs(i, regAlta,  1, &alta1, motivo)
-                && lerRegs(i, regBaixa, 1, &palavraBaixa, motivo)
-                && lerRegs(i, regAlta,  1, &alta2, motivo);
-  if (!leu) {
-    // Nem a forma provada respondeu: o problema nao e a pergunta, e o
-    // fio ou o endereco. Volta para a dupla depois de um tempo, senao a
-    // maquina fica presa na forma cara triplicando perguntas no vazio --
-    // e, quando o fio voltar, quem funcionar ganha.
-    if (++falhasSeguidas[i] >= 8) {
-      modoLeitura[i]    = LEITURA_DUPLA;
-      falhasSeguidas[i] = 0;
-    }
-    return false;
-  }
-  falhasSeguidas[i] = 0;
-  if (alta1 != alta2) {
-    // Virou a palavra no meio da leitura. Nao e falha do driver: a
-    // proxima volta do ciclo pega o par inteiro.
-    motivo = MOTIVO_VIRADA;
-    return false;
-  }
-  valor = (int32_t)(((uint32_t)alta1 << 16) | palavraBaixa);
+  uint16_t p[2];
+  if (!lerRegs(i, reg, 2, p, motivo)) return false;
+  // Muito driver Modbus manda a palavra BAIXA primeiro. Errar isto faz a
+  // posicao dar saltos de dezenas de milhares em vez de crescer suave.
+  valor = configEncoder.baixaPrimeiro
+        ? (int32_t)(((uint32_t)p[1] << 16) | p[0])
+        : (int32_t)(((uint32_t)p[0] << 16) | p[1]);
   return true;
 }
 
-// ---------------------------------------------------------------------
-// Converte a contagem em angulo da JUNTA e compara com o comandado.
-//
-// O encoder conta no eixo do MOTOR; o comandado tambem esta em passos de
-// motor. A reducao mecanica leva os dois para o mesmo lugar: graus da
-// junta.
 // =====================================================================
 //  Autoteste dentro do sistema rodando. Ver encoder.h.
 // =====================================================================
@@ -330,19 +259,13 @@ static void anexarHex(size_t& p, const uint8_t* b, size_t n) {
 // haver ninguem do outro lado -- prova a ligacao ESP32 <-> MAX485.
 static size_t trocarComEco(const uint8_t* saida, size_t nSaida,
                            uint8_t* entrada, size_t maxEntrada) {
-  // O eco so existe com o receptor ligado durante a transmissao, o que o
-  // modo por hardware justamente impede. Aqui o controle volta a ser
-  // nosso pelo tempo do teste.
-  uart_set_mode(ENC_UART_NUM, UART_MODE_UART);
-  pinMode(PIN_RS485_DE, OUTPUT);
-
   while (rs.available()) rs.read();
   digitalWrite(PIN_RS485_RE, LOW);      // ouvindo, inclusive a nos mesmos
   digitalWrite(PIN_RS485_DE, HIGH);
   delayMicroseconds(50);
   rs.write(saida, nSaida);
   rs.flush();
-  delayMicroseconds(usPorChar() * 2);
+  delayMicroseconds(1000);              // o mesmo tempo da leitura normal
   digitalWrite(PIN_RS485_DE, LOW);
 
   size_t n = 0;
@@ -772,8 +695,6 @@ void encoderReconfigurar() {
     leitura[i].valido   = false;
     // Configuracao nova, pergunta nova: tenta de novo a forma barata em
     // vez de herdar a decisao tomada com a configuracao antiga.
-    modoLeitura[i]    = LEITURA_DUPLA;
-    falhasSeguidas[i] = 0;
     // E os derivados recomecam. Trocar o registrador troca o SIGNIFICADO
     // do numero: comparar a leitura nova com a anterior seria medir a
     // distancia entre duas coisas diferentes, e sairia um salto de
@@ -881,8 +802,7 @@ void encoderIniciar() {
     Serial.print(" bps, funcao "); Serial.print(configEncoder.funcao);
     Serial.print(", registrador "); Serial.print(configEncoder.reg[0]);
     Serial.print(", id "); Serial.print(configEncoder.id[0]);
-    Serial.print(", DE por "); Serial.println(configEncoder.deHardware
-                                              ? "hardware" : "GPIO");
+    Serial.println();
     if (configEncoder.reg[1] == 0)
       Serial.println("[ENC] Junta 2 nao ligada (registrador 0).");
   } else {
@@ -912,8 +832,6 @@ void encoderReiniciarTeste() {
   proximaEm = 0;
   vez = 0;
   for (uint8_t i = 0; i < 2; i++) {
-    modoLeitura[i]    = LEITURA_DUPLA;
-    falhasSeguidas[i] = 0;
     encUltimoMs[i]    = 0;
     encTinhaAntes[i]  = false;
     encBrutoAntes[i]  = 0;
@@ -946,11 +864,8 @@ void encoderUltimoQuadro(char* destino, size_t tam) {
 
   if (!nE) { snprintf(destino, tam, "nenhuma pergunta enviada ainda"); return; }
 
-  const uint8_t iq = (jq == 2) ? 1 : 0;
   size_t p = 0;
-  p += (size_t)snprintf(destino + p, tam - p, "junta %u  %s  ->", (unsigned)jq,
-                        modoLeitura[iq] == LEITURA_DUPLA
-                          ? "2 registradores" : "1 de cada vez");
+  p += (size_t)snprintf(destino + p, tam - p, "junta %u  ->", (unsigned)jq);
   for (uint8_t k = 0; k < nE && p + 4 < tam; k++)
     p += (size_t)snprintf(destino + p, tam - p, " %02X", env[k]);
   if (p + 6 < tam) p += (size_t)snprintf(destino + p, tam - p, "   <-");
