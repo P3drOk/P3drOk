@@ -3073,48 +3073,50 @@ static void teste_L12_cacar_o_registrador() {
   checar(strstr(webCorpo(), "MOVA O BRACO") != nullptr, "L12a",
          "marcado o estado inicial, o sistema diz o que fazer em seguida");
 
-  // O operador gira o eixo a mao: e exatamente o que o driver do
-  // operador mostrou, 61346 -> 104976.
+  // Primeiro giro.
+  g_uart.escravo[0].posicao = 90000;
+  webPost("/api/encoder/cacar?comparar=1");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "MESMO sentido") != nullptr, "L12b",
+         "um giro so nao conclui: o sistema pede o segundo, e diz por que");
+
+  // Segundo giro, mesmo sentido. 61346 -> 90000 -> 104976.
   g_uart.escravo[0].posicao = 104976;
   webPost("/api/encoder/cacar?comparar=1");
   rodarComWeb(900);
   webGet("/api/encoder/teste");
   nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "90") != nullptr, "L12b",
-         "o registrador que andou junto com o eixo aparece na lista");
   checar(strstr(webCorpo(), "O PAR E 90 (baixa) e 91 (alta)") != nullptr, "L12c",
-         "e o sistema PROVA qual par e a posicao, em vez de listar candidatos");
+         "com os dois giros no mesmo sentido, o par da posicao e provado");
 
-  // Registrador que mexe sozinho mas NAO e posicao (erro de seguimento,
-  // velocidade) nao pode ser apontado como se fosse: na maquina do
-  // operador mudaram cinco de uma vez, e dois deles andavam juntos.
-  // Aqui o par 90/91 nao anda e so um vizinho solto mexe.
+  // ---------------------------------------------------------------
+  // O caso que a versao anterior errava na maquina do operador: um
+  // registrador que vai de 0 para 65535 -- o maior salto da lista, mas
+  // que com sinal e -1 -- e o vizinho pulando para os dois lados. Isso
+  // e erro de seguimento, e nao pode ser apontado como posicao.
+  // ---------------------------------------------------------------
   reiniciarSistema();
   prepararRoboCalibrado();
   prepararEncoder(90, true, 61346);
   webPost("/api/encoder/cacar");
   rodarComWeb(900);
-  g_uart.escravo[0].posicao = 61346;          // a posicao NAO mudou
-  g_uart.escravo[0].regBase = 90;
-  webPost("/api/encoder/cacar?comparar=1");
-  rodarComWeb(900);
-  webGet("/api/encoder/teste");
-  nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "O PAR E") == nullptr, "L12g",
-         "sem a posicao andar, nenhum par e apontado -- nao chuta");
 
-  // Eixo parado: dizer "achei" seria pior que dizer "nao achei".
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoder(90, true, 61346);
-  webPost("/api/encoder/cacar");
+  // A posicao NAO anda; o vizinho ruidoso oscila entre os dois giros.
+  g_uart.escravo[0].ruidoReg = 94;
+  g_uart.escravo[0].ruidoValor = 65535;      // -1
+  webPost("/api/encoder/cacar?comparar=1");
   rodarComWeb(900);
+  g_uart.escravo[0].ruidoValor = 30;         // voltou para o outro lado
   webPost("/api/encoder/cacar?comparar=1");
   rodarComWeb(900);
   webGet("/api/encoder/teste");
   nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "NENHUM registrador mudou") != nullptr, "L12d",
-         "sem mover o braco, o sistema diz que nao achou em vez de chutar");
+  checar(strstr(webCorpo(), "O PAR E") == nullptr, "L12d",
+         "registrador que oscila nao e apontado como posicao, por maior que seja o salto");
+  checar(strstr(webCorpo(), "MESMO LADO") != nullptr, "L12e",
+         "e o relatorio explica o crivo, em vez de so dizer que nao achou");
 
   // Comparar sem marcar nao pode inventar resultado.
   reiniciarSistema();
@@ -3124,13 +3126,13 @@ static void teste_L12_cacar_o_registrador() {
   rodarComWeb(600);
   webGet("/api/encoder/teste");
   nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "marque o estado inicial") != nullptr, "L12e",
+  checar(strstr(webCorpo(), "marque o estado inicial") != nullptr, "L12f",
          "comparar sem ter marcado explica o que falta");
 
   // E a leitura normal volta sozinha depois de tudo.
   rodarComWeb(600);
   nota("depois da cacada: %lu leituras", (unsigned long)encoderLer(1).leituras);
-  checar(encoderLer(1).valido, "L12f",
+  checar(encoderLer(1).valido, "L12g",
          "terminada a cacada, a leitura normal volta sozinha");
 }
 

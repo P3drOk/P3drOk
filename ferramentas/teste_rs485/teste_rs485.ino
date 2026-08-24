@@ -633,6 +633,10 @@ static void monitorar(uint16_t endereco) {
 // =====================================================================
 static const uint16_t MAX_CACA = 512;
 static uint16_t cacaAntes[MAX_CACA];
+// Leitura do MEIO, depois do primeiro giro. Sem ela nao da para saber se
+// um registrador anda SEMPRE PARA O MESMO LADO quando o eixo anda sempre
+// para o mesmo lado -- e e so isso que separa posicao de ruido.
+static uint16_t cacaMeio[MAX_CACA];
 static uint8_t  cacaValido[MAX_CACA];
 
 static void cacar(uint16_t inicio, uint16_t fim) {
@@ -660,7 +664,22 @@ static void cacar(uint16_t inicio, uint16_t fim) {
   }
 
   Serial.println();
-  Serial.println(">>> GIRE O EIXO A MAO, bastante, e aperte qualquer tecla.");
+  Serial.println(">>> GIRE O EIXO A MAO, num SO sentido, e aperte uma tecla.");
+  while (!Serial.available()) { }
+  while (Serial.available()) Serial.read();
+
+  // Segunda leitura, guardada para o crivo do sentido mais abaixo.
+  for (uint32_t a = inicio; a <= fim; a++) {
+    const uint16_t i = (uint16_t)(a - inicio);
+    if (!cacaValido[i]) continue;
+    uint16_t v = 0; uint8_t c = 0;
+    if (lerUm((uint16_t)a, v, c) == 1) cacaMeio[i] = v;
+    else cacaValido[i] = 0;
+  }
+
+  Serial.println();
+  Serial.println(">>> Agora gire MAIS, no MESMO sentido, e aperte de novo.");
+  Serial.println("    (e este segundo giro que separa a posicao do ruido)");
   while (!Serial.available()) { }
   while (Serial.available()) Serial.read();
 
@@ -690,7 +709,16 @@ static void cacar(uint16_t inicio, uint16_t fim) {
     Serial.print(v);
     Serial.print("   (variou ");
     Serial.print(d);
-    Serial.println(")");
+    Serial.print(")");
+    // Com sinal, quando faz diferenca. 65535 nao e um salto de +65535:
+    // e -1. Sem esta coluna, erro de seguimento parece encoder.
+    if (antes >= 32768 || v >= 32768) {
+      Serial.print("   com sinal: ");
+      Serial.print((int)(int16_t)antes);
+      Serial.print(" -> ");
+      Serial.print((int)(int16_t)v);
+    }
+    Serial.println();
     mudaram++;
   }
 
@@ -719,34 +747,54 @@ static void cacar(uint16_t inicio, uint16_t fim) {
   // contrario, ele salta centenas de milhoes. E so procurar o par r/r+1
   // em que a montagem certa e MUITO mais mansa que a errada.
   // -------------------------------------------------------------------
+  //
+  // O CRIVO: girei sempre para o MESMO LADO, entao a posicao tem de ter
+  // andado sempre para o mesmo lado. Duas vezes.
+  //
+  // Isto e o que separa a posicao do resto, e nenhum criterio de
+  // "quem variou mais" faz isso. Na maquina do operador o registrador
+  // 94 foi de 0 para 65535 -- que parece o maior salto de todos, mas com
+  // sinal e -1, e o vizinho 95 pulava para os dois lados. Era erro de
+  // seguimento, e a ferramenta apontou ele. Erro de seguimento OSCILA;
+  // posicao nao.
+  //
   uint16_t melhorReg = 0;
-  uint32_t melhorBaixa = 0;
+  int64_t  melhorAndou = 0;
   bool     achouPar = false;
 
   for (uint32_t a = inicio; a + 1 <= fim; a++) {
     const uint16_t i = (uint16_t)(a - inicio);
     if (!cacaValido[i] || !cacaValido[i + 1]) continue;
-    uint16_t lo1 = 0, hi1 = 0; uint8_t c = 0;
-    if (lerUm((uint16_t)a, lo1, c) != 1) continue;
-    if (lerUm((uint16_t)(a + 1), hi1, c) != 1) continue;
-    const uint16_t lo0 = cacaAntes[i], hi0 = cacaAntes[i + 1];
-    if (lo0 == lo1 && hi0 == hi1) continue;            // este par nao andou
+    uint16_t lo2 = 0, hi2 = 0; uint8_t c = 0;
+    if (lerUm((uint16_t)a, lo2, c) != 1) continue;
+    if (lerUm((uint16_t)(a + 1), hi2, c) != 1) continue;
 
-    const int64_t baixaAntes  = ((int64_t)hi0 << 16) | lo0;
-    const int64_t baixaDepois = ((int64_t)hi1 << 16) | lo1;
-    const int64_t altaAntes   = ((int64_t)lo0 << 16) | hi0;
-    const int64_t altaDepois  = ((int64_t)lo1 << 16) | hi1;
+    const uint32_t v0 = ((uint32_t)cacaAntes[i + 1] << 16) | cacaAntes[i];
+    const uint32_t v1 = ((uint32_t)cacaMeio [i + 1] << 16) | cacaMeio [i];
+    const uint32_t v2 = ((uint32_t)hi2 << 16) | lo2;
 
-    const uint32_t dBaixa = (uint32_t)llabs(baixaDepois - baixaAntes);
-    const uint32_t dAlta  = (uint32_t)llabs(altaDepois  - altaAntes);
+    // Diferenca em complemento de dois: a volta da palavra baixa sai
+    // certa sozinha, sem caso especial.
+    const int32_t d1 = (int32_t)(v1 - v0);
+    const int32_t d2 = (int32_t)(v2 - v1);
+    if (d1 == 0 || d2 == 0) continue;                  // parou: nao e posicao
+    if ((d1 > 0) != (d2 > 0)) continue;                // voltou: e ruido
 
-    // A montagem certa tem de ser pelo menos 8x mais mansa que a errada.
-    // Um par que nao e de 32 bits nao passa nesse crivo.
-    if (dBaixa == 0 || dBaixa * 8 > dAlta) continue;
-    if (!achouPar || dBaixa > melhorBaixa) {
-      achouPar = true; melhorReg = (uint16_t)a; melhorBaixa = dBaixa;
+    // Montagem invertida tem de ser MUITO pior, senao o par nao e de 32
+    // bits de verdade -- e so dois registradores vizinhos quaisquer.
+    const uint32_t t0 = ((uint32_t)cacaAntes[i] << 16) | cacaAntes[i + 1];
+    const uint32_t t2 = ((uint32_t)lo2 << 16) | hi2;
+    const int64_t  dCerto  = (int64_t)d1 + d2;
+    const int64_t  dTorto  = (int64_t)(int32_t)(t2 - t0);
+    const int64_t  mCerto  = dCerto < 0 ? -dCerto : dCerto;
+    const int64_t  mTorto  = dTorto < 0 ? -dTorto : dTorto;
+    if (mCerto * 8 > mTorto) continue;
+
+    if (!achouPar || mCerto > melhorAndou) {
+      achouPar = true; melhorReg = (uint16_t)a; melhorAndou = mCerto;
     }
   }
+  const uint32_t melhorBaixa = (uint32_t)melhorAndou;
 
   if (achouPar) {
     Serial.print("=== O PAR DA POSICAO E ");
@@ -754,9 +802,11 @@ static void cacar(uint16_t inicio, uint16_t fim) {
     Serial.print(melhorReg + 1); Serial.println(" (alta) ===");
     Serial.println("Montado com a palavra BAIXA primeiro, o numero andou");
     Serial.print(melhorBaixa);
-    Serial.println(" contagens -- coisa de girada de mao.");
-    Serial.println("Montado ao contrario, saltaria centenas de milhoes, que");
-    Serial.println("nao e giro nenhum. E por isso que se sabe qual e qual.");
+    Serial.println(" contagens, SEMPRE PARA O MESMO LADO nos dois giros.");
+    Serial.println("E isso que separa posicao de ruido: erro de seguimento e");
+    Serial.println("velocidade oscilam, voltam para perto de zero. Posicao");
+    Serial.println("nao volta. Montado ao contrario, saltaria centenas de");
+    Serial.println("milhoes, que nao e giro nenhum.");
     Serial.println();
     Serial.print("No painel do robo: funcao "); Serial.print((int)funcAtual);
     Serial.print(", registrador "); Serial.print(melhorReg);
@@ -765,11 +815,11 @@ static void cacar(uint16_t inicio, uint16_t fim) {
     Serial.print("Confira ao vivo com:  6 "); Serial.println(melhorReg);
     Serial.print("E meca as contagens por volta com:  8 "); Serial.println(melhorReg);
   } else {
-    Serial.println("Mudou coisa, mas nenhum PAR se comporta como 32 bits.");
-    Serial.println("Pode ser posicao de 16 bits so, ou os registradores que");
-    Serial.println("mudaram sao erro de seguimento e velocidade -- esses");
-    Serial.println("andam juntos e voltam para perto de zero quando o eixo");
-    Serial.println("para. Gire mais e repita: a posicao NAO volta.");
+    Serial.println("Mudou coisa, mas nenhum PAR andou para o MESMO LADO nos");
+    Serial.println("dois giros. Isso e a assinatura de erro de seguimento e");
+    Serial.println("velocidade: eles oscilam e voltam para perto de zero.");
+    Serial.println("Repita girando SEMPRE PARA O MESMO LADO, e bastante --");
+    Serial.println("a posicao nao volta, e ai ela aparece sozinha.");
   }
   Serial.println();
 }

@@ -440,9 +440,10 @@ static void executarTeste() {
 // esta publicado, e o registrador que anda junto com o eixo e a posicao
 // -- os outros nao andam.
 // ---------------------------------------------------------------------
-static uint16_t cacaValor[CACA_MAX];
+static uint16_t cacaValor[CACA_MAX];   // antes de qualquer giro
+static uint16_t cacaMeio[CACA_MAX];    // depois do primeiro giro
 static bool     cacaTem[CACA_MAX];
-static bool     cacaMarcada = false;
+static uint8_t  cacaEtapa = 0;         // 0 = nada, 1 = marcado, 2 = meio lido
 
 static uint16_t lerFaixa(uint16_t* destino, bool* tem) {
   uint16_t lidos = 0;
@@ -460,7 +461,7 @@ static void cacarMarcar() {
   testeRodando = true;
   for (uint16_t i = 0; i < CACA_MAX; i++) cacaTem[i] = false;
   const uint16_t n = lerFaixa(cacaValor, cacaTem);
-  cacaMarcada = (n > 0);
+  cacaEtapa = n ? 1 : 0;
 
   size_t p = 0;
   relatorio[0] = '\0';
@@ -470,11 +471,31 @@ static void cacarMarcar() {
            (unsigned)(CACA_MAX - 1));
   } else {
     anexar(p, "%u registradores anotados (funcao %u, id %u).\n\n"
-              "AGORA MOVA O BRACO -- de mao mesmo, bastante -- e aperte\n"
+              "AGORA MOVA O BRACO, num SO sentido, e aperte\n"
               "\"Comparar agora\".",
            (unsigned)n, (unsigned)configEncoder.funcao,
            (unsigned)configEncoder.id[0]);
   }
+  testeRodando = false;
+}
+
+// Segunda leitura. Ela sozinha nao conclui nada -- serve para o crivo do
+// sentido, que e o que separa posicao de ruido.
+static void cacarMeio() {
+  testeRodando = true;
+  bool tem[CACA_MAX];
+  for (uint16_t i = 0; i < CACA_MAX; i++) tem[i] = false;
+  lerFaixa(cacaMeio, tem);
+  for (uint16_t i = 0; i < CACA_MAX; i++) if (!tem[i]) cacaTem[i] = false;
+  cacaEtapa = 2;
+
+  size_t p = 0;
+  relatorio[0] = '\0';
+  anexar(p, "Primeiro giro anotado.\n\n"
+            "AGORA GIRE MAIS, no MESMO sentido, e aperte\n"
+            "\"Comparar agora\" de novo.\n\n"
+            "E este segundo giro que separa a posicao do ruido: erro de\n"
+            "seguimento e velocidade oscilam, a posicao nao volta.");
   testeRodando = false;
 }
 
@@ -483,11 +504,12 @@ static void cacarComparar() {
   size_t p = 0;
   relatorio[0] = '\0';
 
-  if (!cacaMarcada) {
+  if (cacaEtapa == 0) {
     anexar(p, "marque o estado inicial primeiro.");
     testeRodando = false;
     return;
   }
+  if (cacaEtapa == 1) { testeRodando = false; cacarMeio(); return; }
 
   static uint16_t depois[CACA_MAX];
   static bool     temDepois[CACA_MAX];
@@ -523,41 +545,59 @@ static void cacarComparar() {
   // que cabe numa girada de mao; montado ao contrario, salta centenas de
   // milhoes. Procura-se o par r/r+1 em que a montagem certa e MUITO mais
   // mansa que a errada.
+  // O CRIVO: o operador girou sempre para o MESMO LADO, entao a posicao
+  // andou sempre para o mesmo lado -- nos dois giros.
+  //
+  // Nenhum criterio de "quem variou mais" faz isso, e foi assim que a
+  // versao anterior errou na maquina do operador: o registrador 94 foi de
+  // 0 para 65535, o maior salto da lista, mas com sinal isso e -1, e o
+  // vizinho 95 pulava para os dois lados. Era erro de seguimento.
+  // Erro de seguimento OSCILA; posicao nao volta.
   uint16_t melhor = 0;
   uint32_t melhorD = 0;
   bool     achou = false;
   for (uint16_t i = 0; i + 1 < CACA_MAX; i++) {
     if (!cacaTem[i] || !cacaTem[i + 1] || !temDepois[i] || !temDepois[i + 1]) continue;
-    if (cacaValor[i] == depois[i] && cacaValor[i + 1] == depois[i + 1]) continue;
 
-    const int64_t baixa0 = ((int64_t)cacaValor[i + 1] << 16) | cacaValor[i];
-    const int64_t baixa1 = ((int64_t)depois[i + 1]    << 16) | depois[i];
-    const int64_t alta0  = ((int64_t)cacaValor[i]     << 16) | cacaValor[i + 1];
-    const int64_t alta1  = ((int64_t)depois[i]        << 16) | depois[i + 1];
+    const uint32_t v0 = ((uint32_t)cacaValor[i + 1] << 16) | cacaValor[i];
+    const uint32_t v1 = ((uint32_t)cacaMeio [i + 1] << 16) | cacaMeio [i];
+    const uint32_t v2 = ((uint32_t)depois   [i + 1] << 16) | depois   [i];
 
-    const int64_t dB = baixa1 > baixa0 ? baixa1 - baixa0 : baixa0 - baixa1;
-    const int64_t dA = alta1  > alta0  ? alta1  - alta0  : alta0  - alta1;
+    // Complemento de dois: a volta da palavra baixa sai certa sozinha.
+    const int32_t d1 = (int32_t)(v1 - v0);
+    const int32_t d2 = (int32_t)(v2 - v1);
+    if (d1 == 0 || d2 == 0) continue;              // parou: nao e posicao
+    if ((d1 > 0) != (d2 > 0)) continue;            // voltou: e ruido
 
-    if (dB == 0 || dB * 8 > dA) continue;   // nao se comporta como 32 bits
-    if (!achou || (uint32_t)dB > melhorD) {
-      achou = true; melhor = i; melhorD = (uint32_t)dB;
+    // E a montagem invertida tem de ser muito pior, senao nao sao duas
+    // metades de um numero so, e sim dois vizinhos quaisquer.
+    const uint32_t t0 = ((uint32_t)cacaValor[i] << 16) | cacaValor[i + 1];
+    const uint32_t t2 = ((uint32_t)depois[i]    << 16) | depois[i + 1];
+    const int64_t  dCerto = (int64_t)d1 + d2;
+    const int64_t  dTorto = (int64_t)(int32_t)(t2 - t0);
+    const int64_t  mCerto = dCerto < 0 ? -dCerto : dCerto;
+    const int64_t  mTorto = dTorto < 0 ? -dTorto : dTorto;
+    if (mCerto * 8 > mTorto) continue;
+
+    if (!achou || (uint32_t)mCerto > melhorD) {
+      achou = true; melhor = i; melhorD = (uint32_t)mCerto;
     }
   }
 
   if (achou) {
     anexar(p, "\n%u mudaram.\n\n"
               "=== O PAR E %u (baixa) e %u (alta) ===\n"
-              "Baixa primeiro, o numero andou %lu contagens -- girada de mao.\n"
-              "Ao contrario saltaria centenas de milhoes, que nao e giro.\n\n"
+              "Andou %lu contagens, SEMPRE PARA O MESMO LADO nos dois giros.\n"
+              "E isso que separa posicao de ruido.\n\n"
               "Ponha %u em \"registrador\" da junta 1 e salve.",
            (unsigned)mudaram, (unsigned)melhor, (unsigned)(melhor + 1),
            (unsigned long)melhorD, (unsigned)melhor);
   } else {
-    anexar(p, "\n%u mudaram, mas nenhum PAR se comporta como 32 bits.\n"
-              "Pode ser posicao de 16 bits, ou o que mudou e erro de\n"
-              "seguimento e velocidade -- esses andam juntos e voltam para\n"
-              "perto de zero quando o eixo para. Gire mais e repita: a\n"
-              "posicao NAO volta.", (unsigned)mudaram);
+    anexar(p, "\n%u mudaram, mas nenhum PAR andou para o MESMO LADO nos\n"
+              "dois giros. Essa e a assinatura de erro de seguimento e\n"
+              "velocidade: oscilam e voltam para perto de zero.\n"
+              "Repita girando SEMPRE para o mesmo lado, e bastante.",
+           (unsigned)mudaram);
   }
   testeRodando = false;
 }
@@ -802,7 +842,7 @@ void encoderReiniciarTeste() {
   pedidoTeste  = false;
   pedidoCaca   = 0;
   testeRodando = false;
-  cacaMarcada  = false;
+  cacaEtapa    = 0;
   strcpy(relatorio, "nenhum teste rodado ainda");
 }
 #endif

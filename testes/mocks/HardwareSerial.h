@@ -33,6 +33,13 @@ struct EscravoModbus {
   // o programa de bancada nunca pediu dois de uma vez, entao ninguem
   // provou que o T3D aceita. Com isto o banco exercita esse driver.
   bool     soUmRegistrador = false;
+  // Um registrador que mexe sem ser posicao: erro de seguimento,
+  // velocidade. Existe de verdade e engana a cacada -- na maquina do
+  // operador o 94 ia de 0 para 65535 (que com sinal e -1) e o 95 pulava
+  // para os dois lados. Sem isto no mock, o crivo do sentido nao teria
+  // como ser testado.
+  uint16_t ruidoReg   = 0xFFFF;   // 0xFFFF = nenhum
+  uint16_t ruidoValor = 0;
   uint32_t perguntas = 0;
 };
 
@@ -171,6 +178,7 @@ class HardwareSerial {
         uint16_t v;
         if (a == e.regBase)          v = palavra[0];
         else if (a == e.regBase + 1) v = palavra[1];
+        else if (a == e.ruidoReg)    v = e.ruidoValor;
         else                         v = parametro(a);
         r.push_back((uint8_t)(v >> 8));
         r.push_back((uint8_t)(v & 0xFF));

@@ -50,11 +50,36 @@ button,input{font:inherit;color:inherit}
 .app{display:grid;grid-template-rows:auto 1fr;height:100%;min-width:0;overflow:hidden}
 .corpo{display:grid;grid-template-columns:1fr 400px;gap:10px;padding:10px;
  min-height:0;overflow:hidden}
+
+/* ---------- coluna do Encoder ----------
+   Em tela larga ela e uma TERCEIRA coluna, sempre aberta: a leitura do
+   encoder existe para ser acompanhada enquanto se mexe no resto, e
+   trocar de aba para olhar o erro e perder o momento em que ele
+   acontece. Abaixo de 1300px nao ha largura honesta para tres colunas,
+   e ela volta a ser uma aba como as outras. */
+.dockEnc{display:none}
+@media(min-width:1301px){
+  .corpo{grid-template-columns:380px minmax(0,1fr) 400px}
+  .dockEnc{display:block;overflow-y:auto;overscroll-behavior:contain;
+   min-width:0;padding-right:2px}
+  .dockEnc #pnEnc{display:block}
+  /* Fica aberta em qualquer aba, inclusive na "mesa". */
+  .dockEnc .et{margin-bottom:9px}
+  /* Sem o botao de aba: a coluna ja esta na tela. */
+  .abas button[data-aba="enc"],
+  .abasTopo button[data-aba="enc"]{display:none}
+}
 /* Itens de grid nao encolhem abaixo do conteudo sem min-width:0.
    Sem isso o painel empurra a pagina e vaza na horizontal no celular. */
 .corpo>*{min-width:0}
 @media(max-width:1020px){
   .corpo{grid-template-columns:minmax(0,1fr);grid-template-rows:38vh 1fr}
+}
+@media(max-width:1300px){
+  /* Volta a ser aba: aparece so quando escolhida, como as outras. */
+  .dockEnc{display:block;min-width:0;overflow-y:auto}
+  body[data-aba="enc"] .coluna{display:none}
+  body:not([data-aba="enc"]) .dockEnc{display:none}
 }
 @media(max-width:560px){
   .corpo{padding:7px;gap:7px}
@@ -368,6 +393,23 @@ h4:first-child{margin-top:0}
  font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;
  color:var(--letra3);text-transform:uppercase}
 .encGrade{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+/* Tabela das amostras: rola sozinha, para nao empurrar a coluna toda.
+   Numero em fonte mono, senao coluna de digito nao alinha e comparar
+   duas linhas vira trabalho. */
+.tabAmostras{max-height:190px;overflow-y:auto;overscroll-behavior:contain;
+ border:1px solid var(--linha);border-radius:4px;margin-bottom:9px;
+ background:var(--painel)}
+.tabAmostras table{width:100%;border-collapse:collapse;font-family:var(--mono);
+ font-size:10.5px}
+.tabAmostras th{position:sticky;top:0;background:var(--face);z-index:1;
+ padding:5px 6px;text-align:right;color:var(--letra3);font-weight:600;
+ letter-spacing:.05em;border-bottom:1px solid var(--linha)}
+.tabAmostras th:first-child{text-align:left}
+.tabAmostras td{padding:3px 6px;text-align:right;color:var(--letra2);
+ border-bottom:1px solid var(--linha)}
+.tabAmostras td:first-child{text-align:left;color:var(--letra3)}
+.tabAmostras tr:last-child td{border-bottom:none}
+.tabAmostras td.ruim{color:var(--brasa)}
 .encCel{background:var(--painel);border:1px solid var(--linha);border-radius:4px;
  padding:8px 6px;text-align:center;min-width:0}
 .encCel .rot{display:block;font-family:var(--mono);font-size:8.5px;
@@ -460,6 +502,212 @@ h4:first-child{margin-top:0}
   </header>
 
   <div class="corpo">
+
+    <!-- ===================== ENCODER (coluna propria) =====================
+         Em tela larga ele nao e uma aba: fica aberto ao lado, porque a
+         leitura do encoder e para ser ACOMPANHADA enquanto se mexe no
+         resto. Trocar de aba para olhar o erro e perder justamente o
+         momento em que ele acontece. No celular, onde nao ha largura
+         para duas colunas, volta a ser aba. -->
+    <aside class="dockEnc" id="dockEnc">
+      <section class="pane" id="pnEnc">
+        <div class="et aberta">
+          <div class="cab"><div class="mk">&#9711;</div>
+            <div class="tx"><div class="tt">Encoder dos drivers</div>
+            <span class="sb" id="sbEnc">desligado</span></div></div>
+          <div class="dentro">
+            <div class="rodas">
+              <div class="roda"><canvas id="cvR1"></canvas>
+                <span class="rot">junta 1</span></div>
+              <div class="roda"><canvas id="cvR2"></canvas>
+                <span class="rot">junta 2</span></div>
+            </div>
+            <div class="nt">O ponteiro grosso e onde o <b>encoder</b> diz que o
+            eixo esta; o fino e onde o firmware <b>mandou</b> ele estar. A
+            abertura entre os dois e o erro. O disco pequeno no centro gira
+            junto com o eixo do motor &mdash; se ele para de girar enquanto o
+            braco anda, a leitura morreu.</div>
+            <div class="encGrade">
+              <div class="encCel"><span class="rot">junta 1 comandado</span><b id="eC1">--</b></div>
+              <div class="encCel"><span class="rot">junta 1 medido</span><b id="eM1">--</b></div>
+              <div class="encCel err"><span class="rot">junta 1 erro</span><b id="eE1">--</b></div>
+              <div class="encCel"><span class="rot">junta 2 comandado</span><b id="eC2">--</b></div>
+              <div class="encCel"><span class="rot">junta 2 medido</span><b id="eM2">--</b></div>
+              <div class="encCel err"><span class="rot">junta 2 erro</span><b id="eE2">--</b></div>
+            </div>
+            <div class="grafico"><canvas id="cvEnc"></canvas>
+              <div class="legenda">
+                <div class="lg g1"><i></i>erro junta 1</div>
+                <div class="lg g2"><i></i>erro junta 2</div>
+              </div>
+            </div>
+            <div class="nt">O grafico mostra <b>comandado menos medido</b>, em
+            graus da junta, nos ultimos instantes. Linha reta em zero quer dizer
+            que o braco foi para onde foi mandado. <b>Degrau ou deriva quer dizer
+            passo perdido</b> &mdash; e o valor nao volta sozinho.</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9636;</div>
+            <div class="tx"><div class="tt">Analise detalhada</div>
+            <span class="sb" id="sbAnal">tudo que foi captado</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="grafico"><canvas id="cvPos"></canvas>
+              <div class="legenda">
+                <div class="lg g1"><i></i>junta 1 medida</div>
+                <div class="lg g2"><i></i>junta 2 medida</div>
+              </div>
+            </div>
+            <div class="nt">Aqui e a <b>posicao medida</b> em si, nao o erro.
+            Uma rampa limpa e movimento bom; degrau vertical sem o braco ter
+            andado e leitura falhando; linha reta com o braco andando e leitura
+            morta.</div>
+
+            <h4>Numeros da junta 1</h4>
+            <div class="encGrade tres">
+              <div class="encCel"><span class="rot">leituras</span><b id="anN1">--</b></div>
+              <div class="encCel"><span class="rot">falhas</span><b id="anF1">--</b></div>
+              <div class="encCel"><span class="rot">por segundo</span><b id="anHz1">--</b></div>
+              <div class="encCel"><span class="rot">erro medio</span><b id="anMe1">--</b></div>
+              <div class="encCel"><span class="rot">pior erro</span><b id="anMx1">--</b></div>
+              <div class="encCel"><span class="rot">oscilacao</span><b id="anSd1">--</b></div>
+              <div class="encCel"><span class="rot">bruto</span><b id="anBr1">--</b></div>
+              <div class="encCel"><span class="rot">voltas do motor</span><b id="anVo1">--</b></div>
+              <div class="encCel"><span class="rot">idade da leitura</span><b id="anId1">--</b></div>
+            </div>
+
+            <h4>Numeros da junta 2</h4>
+            <div class="encGrade tres">
+              <div class="encCel"><span class="rot">leituras</span><b id="anN2">--</b></div>
+              <div class="encCel"><span class="rot">falhas</span><b id="anF2">--</b></div>
+              <div class="encCel"><span class="rot">por segundo</span><b id="anHz2">--</b></div>
+              <div class="encCel"><span class="rot">erro medio</span><b id="anMe2">--</b></div>
+              <div class="encCel"><span class="rot">pior erro</span><b id="anMx2">--</b></div>
+              <div class="encCel"><span class="rot">oscilacao</span><b id="anSd2">--</b></div>
+              <div class="encCel"><span class="rot">bruto</span><b id="anBr2">--</b></div>
+              <div class="encCel"><span class="rot">voltas do motor</span><b id="anVo2">--</b></div>
+              <div class="encCel"><span class="rot">idade da leitura</span><b id="anId2">--</b></div>
+            </div>
+            <div class="nt"><b>Oscilacao</b> e o quanto o erro balanca em torno
+            da media. Media alta com oscilacao baixa e desalinhamento &mdash; da
+            para corrigir na referencia. Oscilacao alta e folga ou ruido, e
+            corrigir a referencia nao resolve.</div>
+
+            <h4>Ultimas amostras</h4>
+            <div class="tabAmostras"><table id="tabEnc"><tbody></tbody></table></div>
+            <button class="b mini" id="btEncCsv">Baixar tudo em CSV</button>
+            <div class="pq2" id="qEncCsv"></div>
+            <div class="nt">O CSV traz <b>toda</b> a janela guardada, nao so o
+            que cabe na tabela: instante, bruto, medido, comandado e erro das
+            duas juntas. E para abrir na planilha e olhar a curva com calma.</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9993;</div>
+            <div class="tx"><div class="tt">Diagnostico da linha</div>
+            <span class="sb">quando nao esta lendo</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <button class="b mini" id="btEncTestar">Testar a linha agora</button>
+            <div class="pq2" id="qEncTestar"></div>
+            <div class="res" id="encRel">--</div>
+            <div class="nt">O mesmo autoteste do programa de bancada, so que
+            <b>aqui dentro</b>, com Wi-Fi, cartao e os motores rodando &mdash; que
+            e onde o problema aparece. Leia de cima para baixo:
+            <br><b>eco</b> &mdash; os proprios bytes voltam? Se sim, a ligacao
+            ESP32&harr;MAX485 esta boa <i>dentro do sistema</i> e o que sobra e o
+            barramento. Se nao, o problema nem chegou no par A/B.
+            <br><b>f3 r0</b> e <b>f4 r0</b> &mdash; e assim que se acha o driver.
+            Ate <b>EXCECAO</b> e boa noticia: quer dizer que ele esta ai e
+            respondeu, so a pergunta e que nao serve.
+            <br>A ultima linha e a pergunta de verdade, com o registrador que
+            esta configurado.</div>
+            <button class="b mini" id="btEncCacar">Procurar o registrador</button>
+            <button class="b mini" id="btEncComparar">Comparar agora</button>
+            <div class="pq2" id="qEncCacar"></div>
+            <div class="nt">Nao existe manual do mapa Modbus do T3D. O jeito
+            honesto de achar o registrador da posicao e este: aperte
+            <b>Procurar o registrador</b>, depois <b>mova o braco a mao,
+            bastante</b>, e aperte <b>Comparar agora</b>. O registrador que
+            andou junto com o eixo e a posicao &mdash; os outros nao andam. O
+            que variar <b>mais</b> e a palavra baixa; o vizinho de cima, que
+            variou pouco, e a alta.</div>
+            <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
+            <div class="pq2" id="qEncZerar"></div>
+            <div class="res" id="encEstado">--</div>
+            <div class="nt">Ultima conversa no fio, byte a byte &mdash; a
+            mesma coisa que o programa de teste de bancada mostra. Se depois
+            da seta de volta vier <b>(silencio)</b>, ninguem respondeu: veja
+            fio A/B, o DE/RE e o <b>endereco</b>. Se vierem bytes mas a
+            leitura nao vale, o driver respondeu outra coisa: veja a
+            <b>funcao</b> e o <b>registrador</b>.</div>
+            <div class="res" id="encQuadro">--</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9881;</div>
+            <div class="tx"><div class="tt">Ligacao Modbus</div>
+            <span class="sb">endereco, registrador, formato</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="tr"><div class="ch" id="encAtivo"><i></i></div>
+              <span>ler o encoder pelos drivers</span></div>
+            <h4>Barramento</h4>
+            <div class="cp"><label>Velocidade</label><input type="number" id="encBaud" min="1200"><span class="un">bps</span></div>
+            <div class="cp"><label>Paridade</label>
+              <select id="encPar"><option value="0">8N1</option><option value="1">8E1</option><option value="2">8O1</option></select></div>
+            <div class="cp"><label>Funcao Modbus</label>
+              <select id="encFunc"><option value="3">3 &middot; holding</option><option value="4">4 &middot; input</option></select></div>
+            <div class="cp"><label>Periodo de leitura</label><input type="number" id="encPer" min="20" max="2000" step="10"><span class="un">ms</span></div>
+            <h4>Junta 1</h4>
+            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId1" min="1" max="247"></div>
+            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg1" min="0" max="65535"></div>
+            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv1" min="1"></div>
+            <h4>Junta 2</h4>
+            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
+            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
+            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
+            <h4>Formato do valor</h4>
+            <div class="tr"><div class="ch" id="enc32"><i></i></div>
+              <span>posicao em 32 bits (dois registradores)</span></div>
+            <div class="tr"><div class="ch" id="encLo"><i></i></div>
+              <span>palavra baixa vem primeiro</span></div>
+            <div class="nt">Muito driver Modbus manda a palavra baixa antes da
+            alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
+            vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
+            <h4>Controle do transceptor</h4>
+            <div class="tr"><div class="ch" id="encDeHw"><i></i></div>
+              <span>o DE quem baixa e o hardware da UART</span></div>
+            <div class="nt">Entre o ultimo bit sair e o firmware baixar o DE ha
+            cerca de <b>um milissegundo</b> em que o MAX485 ainda esta segurando
+            a linha. Se o driver responder rapido nessa janela, a resposta
+            colide e some. Com esta chave marcada quem baixa o DE e o proprio
+            periferico de UART, no fim do bit de parada &mdash; e nem Wi-Fi, nem
+            cartao, nem as interrupcoes dos motores conseguem atrasar isso.
+            <b>Desmarque so se piorar.</b></div>
+            <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
+            <div class="pq2" id="qEncSalvar"></div>
+            <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
+            <div class="pq2" id="qEncPadroes"></div>
+            <div class="nt">Configuracao salva por uma <b>versao anterior</b> do
+            firmware continua valendo depois de atualizar &mdash; o que esta
+            gravado ganha do padrao novo. Se voce atualizou e a leitura parou,
+            este botao e o primeiro a tentar: ele volta tudo para o que foi
+            medido nesta maquina (19200 8N1, funcao 4, registrador 5, palavra
+            baixa primeiro, 131072 contagens).</div>
+            <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
+            drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
+            estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
+            ou tente um endereco aqui e olhe o grafico &mdash; o certo acompanha o
+            eixo quando voce move o braco.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================== AJUSTES =========================== -->
+    </aside>
+
     <section class="quadro">
       <div class="tela">
         <canvas id="cv"></canvas>
@@ -733,138 +981,6 @@ h4:first-child{margin-top:0}
       </section>
 
       <!-- =========================== ENCODER =========================== -->
-      <section class="pane" id="pnEnc">
-        <div class="et aberta">
-          <div class="cab"><div class="mk">&#9711;</div>
-            <div class="tx"><div class="tt">Encoder dos drivers</div>
-            <span class="sb" id="sbEnc">desligado</span></div></div>
-          <div class="dentro">
-            <div class="rodas">
-              <div class="roda"><canvas id="cvR1"></canvas>
-                <span class="rot">junta 1</span></div>
-              <div class="roda"><canvas id="cvR2"></canvas>
-                <span class="rot">junta 2</span></div>
-            </div>
-            <div class="nt">O ponteiro grosso e onde o <b>encoder</b> diz que o
-            eixo esta; o fino e onde o firmware <b>mandou</b> ele estar. A
-            abertura entre os dois e o erro. O disco pequeno no centro gira
-            junto com o eixo do motor &mdash; se ele para de girar enquanto o
-            braco anda, a leitura morreu.</div>
-            <div class="encGrade">
-              <div class="encCel"><span class="rot">junta 1 comandado</span><b id="eC1">--</b></div>
-              <div class="encCel"><span class="rot">junta 1 medido</span><b id="eM1">--</b></div>
-              <div class="encCel err"><span class="rot">junta 1 erro</span><b id="eE1">--</b></div>
-              <div class="encCel"><span class="rot">junta 2 comandado</span><b id="eC2">--</b></div>
-              <div class="encCel"><span class="rot">junta 2 medido</span><b id="eM2">--</b></div>
-              <div class="encCel err"><span class="rot">junta 2 erro</span><b id="eE2">--</b></div>
-            </div>
-            <div class="grafico"><canvas id="cvEnc"></canvas>
-              <div class="legenda">
-                <div class="lg g1"><i></i>erro junta 1</div>
-                <div class="lg g2"><i></i>erro junta 2</div>
-              </div>
-            </div>
-            <div class="nt">O grafico mostra <b>comandado menos medido</b>, em
-            graus da junta, nos ultimos instantes. Linha reta em zero quer dizer
-            que o braco foi para onde foi mandado. <b>Degrau ou deriva quer dizer
-            passo perdido</b> &mdash; e o valor nao volta sozinho.</div>
-            <button class="b mini" id="btEncTestar">Testar a linha agora</button>
-            <div class="pq2" id="qEncTestar"></div>
-            <div class="res" id="encRel">--</div>
-            <div class="nt">O mesmo autoteste do programa de bancada, so que
-            <b>aqui dentro</b>, com Wi-Fi, cartao e os motores rodando &mdash; que
-            e onde o problema aparece. Leia de cima para baixo:
-            <br><b>eco</b> &mdash; os proprios bytes voltam? Se sim, a ligacao
-            ESP32&harr;MAX485 esta boa <i>dentro do sistema</i> e o que sobra e o
-            barramento. Se nao, o problema nem chegou no par A/B.
-            <br><b>f3 r0</b> e <b>f4 r0</b> &mdash; e assim que se acha o driver.
-            Ate <b>EXCECAO</b> e boa noticia: quer dizer que ele esta ai e
-            respondeu, so a pergunta e que nao serve.
-            <br>A ultima linha e a pergunta de verdade, com o registrador que
-            esta configurado.</div>
-            <button class="b mini" id="btEncCacar">Procurar o registrador</button>
-            <button class="b mini" id="btEncComparar">Comparar agora</button>
-            <div class="pq2" id="qEncCacar"></div>
-            <div class="nt">Nao existe manual do mapa Modbus do T3D. O jeito
-            honesto de achar o registrador da posicao e este: aperte
-            <b>Procurar o registrador</b>, depois <b>mova o braco a mao,
-            bastante</b>, e aperte <b>Comparar agora</b>. O registrador que
-            andou junto com o eixo e a posicao &mdash; os outros nao andam. O
-            que variar <b>mais</b> e a palavra baixa; o vizinho de cima, que
-            variou pouco, e a alta.</div>
-            <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
-            <div class="pq2" id="qEncZerar"></div>
-            <div class="res" id="encEstado">--</div>
-            <div class="nt">Ultima conversa no fio, byte a byte &mdash; a
-            mesma coisa que o programa de teste de bancada mostra. Se depois
-            da seta de volta vier <b>(silencio)</b>, ninguem respondeu: veja
-            fio A/B, o DE/RE e o <b>endereco</b>. Se vierem bytes mas a
-            leitura nao vale, o driver respondeu outra coisa: veja a
-            <b>funcao</b> e o <b>registrador</b>.</div>
-            <div class="res" id="encQuadro">--</div>
-          </div>
-        </div>
-
-        <div class="et">
-          <div class="cab"><div class="mk">&#9881;</div>
-            <div class="tx"><div class="tt">Ligacao Modbus</div>
-            <span class="sb">endereco, registrador, formato</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            <div class="tr"><div class="ch" id="encAtivo"><i></i></div>
-              <span>ler o encoder pelos drivers</span></div>
-            <h4>Barramento</h4>
-            <div class="cp"><label>Velocidade</label><input type="number" id="encBaud" min="1200"><span class="un">bps</span></div>
-            <div class="cp"><label>Paridade</label>
-              <select id="encPar"><option value="0">8N1</option><option value="1">8E1</option><option value="2">8O1</option></select></div>
-            <div class="cp"><label>Funcao Modbus</label>
-              <select id="encFunc"><option value="3">3 &middot; holding</option><option value="4">4 &middot; input</option></select></div>
-            <div class="cp"><label>Periodo de leitura</label><input type="number" id="encPer" min="20" max="2000" step="10"><span class="un">ms</span></div>
-            <h4>Junta 1</h4>
-            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId1" min="1" max="247"></div>
-            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg1" min="0" max="65535"></div>
-            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv1" min="1"></div>
-            <h4>Junta 2</h4>
-            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
-            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
-            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
-            <h4>Formato do valor</h4>
-            <div class="tr"><div class="ch" id="enc32"><i></i></div>
-              <span>posicao em 32 bits (dois registradores)</span></div>
-            <div class="tr"><div class="ch" id="encLo"><i></i></div>
-              <span>palavra baixa vem primeiro</span></div>
-            <div class="nt">Muito driver Modbus manda a palavra baixa antes da
-            alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
-            vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
-            <h4>Controle do transceptor</h4>
-            <div class="tr"><div class="ch" id="encDeHw"><i></i></div>
-              <span>o DE quem baixa e o hardware da UART</span></div>
-            <div class="nt">Entre o ultimo bit sair e o firmware baixar o DE ha
-            cerca de <b>um milissegundo</b> em que o MAX485 ainda esta segurando
-            a linha. Se o driver responder rapido nessa janela, a resposta
-            colide e some. Com esta chave marcada quem baixa o DE e o proprio
-            periferico de UART, no fim do bit de parada &mdash; e nem Wi-Fi, nem
-            cartao, nem as interrupcoes dos motores conseguem atrasar isso.
-            <b>Desmarque so se piorar.</b></div>
-            <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
-            <div class="pq2" id="qEncSalvar"></div>
-            <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
-            <div class="pq2" id="qEncPadroes"></div>
-            <div class="nt">Configuracao salva por uma <b>versao anterior</b> do
-            firmware continua valendo depois de atualizar &mdash; o que esta
-            gravado ganha do padrao novo. Se voce atualizou e a leitura parou,
-            este botao e o primeiro a tentar: ele volta tudo para o que foi
-            medido nesta maquina (19200 8N1, funcao 4, registrador 5, palavra
-            baixa primeiro, 131072 contagens).</div>
-            <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
-            drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
-            estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
-            ou tente um endereco aqui e olhe o grafico &mdash; o certo acompanha o
-            eixo quando voce move o braco.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- =========================== AJUSTES =========================== -->
       <section class="pane" id="pnAjuste">
         <div class="et aberta" id="e1" data-e="1">
           <div class="cab"><div class="mk">1</div>
@@ -2096,9 +2212,16 @@ const MOTIVO=["ok","aguardando","sem resposta","quadro corrompido",
               "contagem virou no meio"];
 const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
 const encHist=[[],[]];
+/* Amostra INTEIRA, nao so o erro: e o que a analise detalhada mostra e o
+   que vai para o CSV. Guardar so o erro obrigaria a olhar duas telas
+   para responder "o erro subiu porque o braco andou ou porque a leitura
+   falhou?" -- que e a primeira pergunta de sempre. */
+const encAmostras=[];
+let encT0=0;
 let encD=null, encCarregou=false;
 
 const cvEnc=$("cvEnc"), ctEnc=cvEnc?cvEnc.getContext("2d"):null;
+const cvPos=$("cvPos"), ctPos=cvPos?cvPos.getContext("2d"):null;
 
 /* ---------------------------------------------------------------------
    As duas rodinhas.
@@ -2193,13 +2316,14 @@ function rodaPintar(i,d){
 }
 
 
-function encMedir(){
-  if(!cvEnc)return;
-  const d=window.devicePixelRatio||1,r=cvEnc.parentElement.getBoundingClientRect();
+function medirTela(cv,ct){
+  if(!cv||!ct)return;
+  const d=window.devicePixelRatio||1,r=cv.parentElement.getBoundingClientRect();
   if(r.width<2||r.height<2)return;
-  cvEnc.width=Math.round(r.width*d);cvEnc.height=Math.round(r.height*d);
-  ctEnc.setTransform(d,0,0,d,0,0);
+  cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);
+  ct.setTransform(d,0,0,d,0,0);
 }
+function encMedir(){ medirTela(cvEnc,ctEnc); medirTela(cvPos,ctPos); }
 addEventListener("resize",encMedir);
 
 function encPintar(){
@@ -2245,6 +2369,143 @@ function encPintar(){
   });
 }
 
+/* ---------------------------------------------------------------------
+   Grafico da POSICAO MEDIDA.
+
+   O grafico de erro nao responde "o erro subiu porque o braco andou ou
+   porque a leitura falhou?". Este responde: rampa limpa e movimento;
+   degrau vertical sem o braco ter andado e leitura falhando; linha reta
+   com o braco andando e leitura morta.
+   --------------------------------------------------------------------- */
+function posPintar(){
+  if(!ctPos||!cvPos.width)return;
+  const C=paleta();
+  const dp=window.devicePixelRatio||1;
+  const w=cvPos.width/dp,h=cvPos.height/dp;
+  ctPos.clearRect(0,0,w,h);
+  ctPos.fillStyle=C.papel;ctPos.fillRect(0,0,w,h);
+  if(encAmostras.length<2)return;
+
+  /* Escala pelos dois eixos juntos: comparar as juntas na mesma regua e
+     metade do valor do grafico. */
+  let lo=Infinity,hi=-Infinity;
+  encAmostras.forEach(function(a){
+    [a.g1,a.g2].forEach(function(v){
+      if(v===null)return;
+      if(v<lo)lo=v; if(v>hi)hi=v;});});
+  if(!isFinite(lo)){lo=-1;hi=1;}
+  if(hi-lo<0.5){const m=(hi+lo)/2;lo=m-0.25;hi=m+0.25;}
+  const folga=(hi-lo)*0.1; lo-=folga; hi+=folga;
+
+  ctPos.strokeStyle="rgba("+C.grade+",.45)";ctPos.lineWidth=1;
+  ctPos.fillStyle=C.letra3;
+  ctPos.font="9px ui-monospace,Menlo,monospace";ctPos.textAlign="left";
+  for(let k=0;k<=4;k++){
+    const y=10+(h-20)*k/4, v=hi-(hi-lo)*k/4;
+    ctPos.beginPath();ctPos.moveTo(40,y);ctPos.lineTo(w-6,y);ctPos.stroke();
+    ctPos.fillText(v.toFixed(1)+"°",4,y+3);
+  }
+
+  const n=encAmostras.length;
+  [["g1",C.arco],["g2",C.quente]].forEach(function(par){
+    ctPos.strokeStyle=par[1];ctPos.lineWidth=1.8;
+    ctPos.beginPath();
+    let caneta=false;
+    encAmostras.forEach(function(a,i){
+      const v=a[par[0]];
+      if(v===null){caneta=false;return;}   /* buraco fica buraco, nao vira reta */
+      const x=40+(w-46)*i/(n-1);
+      const y=10+(h-20)*(hi-v)/(hi-lo);
+      if(caneta)ctPos.lineTo(x,y);else{ctPos.moveTo(x,y);caneta=true;}
+    });
+    ctPos.stroke();
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Estatisticas e tabela.
+   --------------------------------------------------------------------- */
+function anCel(id,txt){const b=$(id);if(b)b.textContent=txt;}
+
+function analisar(d){
+  const j=d.j||[];
+  [0,1].forEach(function(i){
+    const L=j[i]||{}, k=i+1, campo=i===0?"e1":"e2";
+    const reg=(i===0)?d.reg1:d.reg2;
+    const cv =(i===0)?d.cv1:d.cv2;
+
+    if(!reg){
+      ["anN","anF","anHz","anMe","anMx","anSd","anBr","anVo","anId"]
+        .forEach(function(x){anCel(x+k,"--");});
+      return;
+    }
+    anCel("anN"+k,String(L.n||0));
+    anCel("anF"+k,String(L.falhas||0));
+
+    /* Leituras por segundo medidas na janela, nao o periodo pedido: o
+       que importa e o que a linha ESTA dando, nao o que foi configurado. */
+    const dt=encAmostras.length>1
+      ?(encAmostras[encAmostras.length-1].t-encAmostras[0].t)/1000:0;
+    const nJan=encAmostras.filter(function(a){return a[campo]!==null;}).length;
+    anCel("anHz"+k,dt>0.5?(nJan/dt).toFixed(1)+"/s":"--");
+
+    const vals=encAmostras.map(function(a){return a[campo];})
+                          .filter(function(v){return v!==null;});
+    if(vals.length){
+      const soma=vals.reduce(function(a,b){return a+b;},0);
+      const med=soma/vals.length;
+      let pior=0; vals.forEach(function(v){if(Math.abs(v)>Math.abs(pior))pior=v;});
+      const varia=vals.reduce(function(a,v){return a+(v-med)*(v-med);},0)/vals.length;
+      anCel("anMe"+k,(med>=0?"+":"")+med.toFixed(3)+"°");
+      anCel("anMx"+k,(pior>=0?"+":"")+pior.toFixed(3)+"°");
+      anCel("anSd"+k,Math.sqrt(varia).toFixed(3)+"°");
+    }else{
+      anCel("anMe"+k,"--");anCel("anMx"+k,"--");anCel("anSd"+k,"--");
+    }
+
+    anCel("anBr"+k,L.ok?String(L.bruto):"--");
+    anCel("anVo"+k,(L.ok&&cv>0)?((L.bruto-L.ref)/cv).toFixed(3):"--");
+    anCel("anId"+k,L.ok?((L.idade||0)+" ms"):"--");
+  });
+
+  const total=encAmostras.length;
+  $("sbAnal").textContent = total
+    ? total+" amostras guardadas" : "tudo que foi captado";
+
+  /* Tabela: as ultimas, mais novas em cima. Mais que isso o operador nao
+     le, e o CSV leva tudo. */
+  const tb=$("tabEnc").tBodies[0];
+  let html="<tr><th>t</th><th>bruto 1</th><th>med 1</th><th>erro 1</th>"+
+           "<th>med 2</th><th>erro 2</th></tr>";
+  const ini=Math.max(0,total-40);
+  for(let i=total-1;i>=ini;i--){
+    const a=encAmostras[i];
+    const f=function(v,casas){return v===null?"--":v.toFixed(casas||2);};
+    const ruim1=a.e1!==null&&Math.abs(a.e1)>0.5?" class=\"ruim\"":"";
+    const ruim2=a.e2!==null&&Math.abs(a.e2)>0.5?" class=\"ruim\"":"";
+    html+="<tr><td>"+(a.t/1000).toFixed(1)+"s</td>"+
+          "<td>"+(a.b1===null?"--":a.b1)+"</td>"+
+          "<td>"+f(a.g1)+"</td><td"+ruim1+">"+f(a.e1)+"</td>"+
+          "<td>"+f(a.g2)+"</td><td"+ruim2+">"+f(a.e2)+"</td></tr>";
+  }
+  tb.innerHTML=html;
+}
+
+function encCsv(){
+  let txt="ms,bruto1,medido1,comandado1,erro1,bruto2,medido2,comandado2,erro2\n";
+  encAmostras.forEach(function(a){
+    const c=function(v){return v===null?"":v;};
+    txt+=a.t+","+c(a.b1)+","+c(a.g1)+","+c(a.c1)+","+c(a.e1)+","+
+             c(a.b2)+","+c(a.g2)+","+c(a.c2)+","+c(a.e2)+"\n";
+  });
+  const u=URL.createObjectURL(new Blob([txt],{type:"text/csv"}));
+  const a=document.createElement("a");
+  a.href=u; a.download="encoder.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u);},1000);
+  $("qEncCsv").textContent=encAmostras.length+" amostras baixadas";
+}
+
 function encCelula(id,texto,ruim){
   const b=$(id);if(!b)return;
   b.textContent=texto;
@@ -2281,6 +2542,19 @@ function encAplicar(d){
     }
     while(encHist[i].length>ENC_AMOSTRAS)encHist[i].shift();
   });
+
+  /* Amostra inteira, para a analise detalhada e para o CSV. */
+  if(!encT0)encT0=Date.now();
+  const L1a=j[0]||{}, L2a=j[1]||{};
+  encAmostras.push({
+    t: Date.now()-encT0,
+    b1: L1a.ok?L1a.bruto:null, g1: L1a.ok?L1a.graus:null,
+    c1: d.t1, e1: L1a.ok?L1a.erro:null,
+    b2: L2a.ok?L2a.bruto:null, g2: L2a.ok?L2a.graus:null,
+    c2: d.t2, e2: L2a.ok?L2a.erro:null,
+  });
+  while(encAmostras.length>ENC_AMOSTRAS)encAmostras.shift();
+
   window.__encN=encHist[0].length;   /* o banco de interface confere */
 
   const L1=j[0]||{},L2=j[1]||{};
@@ -2308,7 +2582,7 @@ function encAplicar(d){
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
   }
-  encMedir();encPintar();
+  encMedir();encPintar();posPintar();analisar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
 
@@ -2330,11 +2604,11 @@ $("btEncSalvar").onclick=function(){
        "&b32="+on("enc32")+"&lo="+on("encLo")+"&dehw="+on("encDeHw")+
        "&id1="+$("encId1").value+"&reg1="+$("encReg1").value+"&cv1="+$("encCv1").value+
        "&id2="+$("encId2").value+"&reg2="+$("encReg2").value+"&cv2="+$("encCv2").value)
-   .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];});
+   .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
 };
 $("btEncPadroes").onclick=function(){
   post("/api/encoder/padroes").then(function(){
-    encCarregou=false;encHist[0]=[];encHist[1]=[];});
+    encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
 };
 /* A cacada e o teste escrevem no mesmo relatorio: e sempre "o que a
    linha respondeu por ultimo". */
@@ -2349,6 +2623,7 @@ const encBuscarRel=function(){
   };
   setTimeout(buscar,600);
 };
+$("btEncCsv").onclick=encCsv;
 $("btEncTestar").onclick=function(){
   $("encRel").textContent="testando a linha...";
   post("/api/encoder/testar").then(encBuscarRel);
@@ -2363,7 +2638,7 @@ $("btEncComparar").onclick=function(){
 };
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){
-    encHist[0]=[];encHist[1]=[];});
+    encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
 };
 
 /* ---------- status ---------- */

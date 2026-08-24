@@ -280,21 +280,55 @@ medindo. Isso agora está **na máquina**, não só na bancada:
 3. **"Comparar agora"**. Sai a lista do que mudou e, mais importante, a
    **prova** de qual par é a posição.
 
-Listar o que mudou não basta: o driver mexe em várias coisas quando o
-eixo gira. Nesta máquina mudaram **cinco** registradores de uma vez, e
-dois deles (92 e 93) andavam juntos e iam para valores negativos — isso é
-**erro de seguimento**, não posição. A diferença prática: eles voltam
-para perto de zero quando o eixo para; a posição não volta.
+São **dois giros**, e a razão é o que separa este método de um palpite.
 
-Então o sistema não lista candidatos, ele **prova**: monta cada par
-`r`/`r+1` das duas maneiras e só aponta quando a montagem com a palavra
-baixa primeiro é pelo menos **8× mais mansa** que a invertida. Um par que
-não é de 32 bits não passa nesse crivo. Sem movimento, ou sem par que
-passe, ele diz isso em vez de chutar.
+Listar o que mudou não basta: o driver mexe em várias coisas quando o
+eixo gira. Nesta máquina mudaram até **cinco** registradores de uma vez.
+Os vizinhos 92, 93 e 94 enganam de verdade — chegam a dar o *maior* salto
+da lista. Mas o salto é aparência: o `94` foi de `0` para `65535`, que
+sem sinal parece +65535 e **com sinal é −1**.
+
+O crivo é o sentido: **você girou sempre para o mesmo lado, então a
+posição andou sempre para o mesmo lado — nas duas vezes.** Erro de
+seguimento e velocidade oscilam e voltam para perto de zero; a posição
+não volta. Nenhum critério de "quem variou mais" faz essa distinção, e
+foi assim que uma versão anterior desta caçada apontou o par errado.
+
+Além disso o par tem de se comportar como 32 bits: montado com a palavra
+baixa primeiro tem de ser pelo menos **8× mais manso** que invertido.
+Sem movimento, ou sem par que passe no crivo, o sistema diz isso em vez
+de chutar.
 
 **Registrador 0 nunca é a posição** — é o começo da tabela de
 parâmetros. Um 0 guardado no NVS por uma versão anterior é tratado como
 "nunca foi configurado" e cai no padrão medido.
+
+### Análise detalhada
+
+A seção **Análise detalhada** guarda a janela inteira de amostras — não só
+o erro — e mostra:
+
+| | |
+|---|---|
+| **gráfico da posição medida** | a leitura em si, não o erro. Rampa limpa é movimento bom; degrau vertical sem o braço ter andado é leitura falhando; linha reta com o braço andando é leitura morta. Buraco na leitura fica buraco no traço, não vira reta |
+| **leituras por segundo** | medida na janela, não o período configurado — o que importa é o que a linha *está* dando |
+| **erro médio** e **oscilação** | média alta com oscilação baixa é desalinhamento, e se corrige na referência. Oscilação alta é folga ou ruído, e mexer na referência não resolve |
+| **bruto** e **voltas do motor** | a contagem crua e o que ela significa em voltas |
+| **tabela das amostras** | as últimas 40, mais novas em cima, com erro acima de meio grau em vermelho |
+| **CSV** | a janela **inteira** — instante, bruto, medido, comandado e erro das duas juntas — para abrir na planilha |
+
+Junta sem registrador não ganha estatística: aparece `--`, não zero.
+
+### Onde a aba fica
+
+No **computador** o Encoder não é uma aba: é uma **coluna à esquerda que
+fica aberta o tempo todo**, ao lado da mesa e do painel. A leitura do
+encoder existe para ser acompanhada *enquanto* se mexe no resto — trocar
+de aba para olhar o erro é perder justamente o momento em que ele
+acontece. Por isso o botão de aba dele some no computador.
+
+No **celular** não há largura honesta para três colunas, e ele volta a
+ser uma aba como as outras.
 
 ### O diagnóstico sai no monitor serial também
 

@@ -1690,3 +1690,93 @@ vez (rodada 11). Agora guarda e restaura.
 |-------|-----------|-------|
 | firmware | 199 / 0 | **200 / 0** |
 | interface | 93 / 0 | **93 / 0** |
+
+---
+
+# Rodada 17 — a caçada que eu quebrei, e o painel que ficou aberto
+
+## R49 · Eu troquei um palpite por uma resposta confiante e errada  ✅  `L12`
+
+Na rodada 16 fiz a caçada "provar" o par em vez de listar candidatos.
+Na máquina do operador ela apontou **94/95**. Está errado.
+
+O log dele mostra o porquê, duas linhas abaixo:
+
+```
+0x005A (90)   62928 -> 52971  (variou  -9957)
+0x005E (94)       0 -> 65535  (variou +65535)   <- o maior salto da lista
+```
+
+E o monitor logo em seguida, no par apontado:
+
+```
+reg 94 = 65535 o tempo todo        (constante = -1)
+reg 95 = 0, 5, 42, 0, 65527, ...   (pula para os dois lados)
+```
+
+`0 -> 65535` **não é** um salto de +65535: é **−1**. Meu critério
+ranqueava pelo maior salto lido **sem sinal**, então a menor variação
+possível do barramento virou a maior da lista. Trocar "aqui estão os
+candidatos" por "é este aqui" só vale se o "este aqui" estiver certo —
+uma resposta confiante e errada é pior que a lista.
+
+**O critério novo é o sentido.** O operador gira sempre para o mesmo
+lado, então a posição anda sempre para o mesmo lado — e agora são **dois
+giros**, com uma leitura no meio. Um par só é apontado se andou na mesma
+direção nas duas vezes. Erro de seguimento e velocidade oscilam e voltam
+para perto de zero; posição não volta. A diferença é subtração em
+complemento de dois, que ainda resolve a volta da palavra baixa sozinha.
+
+`L12d` encena exatamente o caso do operador: um registrador que vai a
+`65535` e depois volta, com a posição parada. Nenhum par é apontado.
+
+A lista também passou a mostrar o valor **com sinal** quando o número
+passa de 32768. Só essa coluna já teria evitado o engano.
+
+## R50 · A coluna do Encoder, aberta  ✅
+
+Pedido do operador: *"a aba do encoder deve ser do outro lado da tela de
+modo a poder ficar aberta"*. Ele está certo pelo motivo certo — a leitura
+do encoder existe para ser acompanhada **enquanto** se mexe no resto, e
+trocar de aba para olhar o erro é perder o momento em que ele acontece.
+
+Acima de 1300 px a `.corpo` vira três colunas
+(`380px | mesa | 400px`) e o Encoder mora na primeira, sempre aberto. O
+botão de aba dele some: a coluna já está na tela. Abaixo disso não há
+largura honesta para três colunas, e ele volta a ser aba.
+
+## R51 · Análise detalhada  ✅
+
+O painel guardava só o **erro**. Isso não responde a primeira pergunta de
+sempre: *"o erro subiu porque o braço andou ou porque a leitura falhou?"*.
+Agora guarda a amostra inteira, e mostra:
+
+- **gráfico da posição medida** — buraco na leitura fica buraco no traço,
+  não vira reta;
+- **leituras por segundo medidas** na janela, não o período configurado;
+- **erro médio** e **oscilação** — média alta com oscilação baixa é
+  desalinhamento e se corrige na referência; oscilação alta é folga ou
+  ruído, e a referência não resolve;
+- tabela das últimas 40 amostras, e **CSV com a janela inteira**.
+
+Junta sem registrador mostra `--`, não zero: estatística inventada sobre
+um driver que não existe é pior que espaço em branco.
+
+## R52 · Dois testes que dependiam de posição na tela  ✅
+
+Os testes de interface abriam a seção do Encoder **pelo índice**
+(`i === 0`, `i === 1`). Acrescentar seções novas quebrou os dois, e o
+segundo derrubou a suíte inteira com um `TimeoutError` que não tinha nada
+a ver com o que ele testava. Agora abrem **pelo conteúdo** (a seção que
+contém o campo, a seção que contém o botão): mexer no painel não pode
+quebrar um teste que não é sobre isso.
+
+E o `.ino` do programa de bancada continua sendo conferido com
+`-Wall -Wextra` contra um shim de Arduino antes de sair daqui.
+
+## Cobertura
+
+| banco | rodada 16 | agora |
+|-------|-----------|-------|
+| firmware | 200 / 0 | **200 / 0** |
+| interface | 93 / 0 | **107 / 0** |

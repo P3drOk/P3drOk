@@ -237,6 +237,25 @@ function checar(ok, texto, extra) {
   checar(mesaAinda, 'trocar de aba no computador nao esconde a mesa de tracado');
   await q.screenshot({ path: SAIDA + '/computador-2-programa.png' });
 
+  // A coluna do Encoder fica ABERTA enquanto se usa o resto: e para isso
+  // que ela saiu da barra de abas. Trocar de aba para olhar o erro seria
+  // perder justamente o momento em que ele acontece.
+  for (const aba of ['mover', 'prog', 'ajuste']) {
+    await q.locator('#abasTopo button[data-aba="' + aba + '"]').click();
+    await q.waitForTimeout(220);
+    const vis = await q.locator('#cvEnc').isVisible();
+    checar(vis, 'Encoder: a coluna continua aberta com a aba ' + aba + ' escolhida');
+  }
+  const botaoEnc = await q.evaluate(() => {
+    const b = document.querySelector('#abasTopo button[data-aba="enc"]');
+    return b ? getComputedStyle(b).display !== 'none' : false;
+  });
+  checar(!botaoEnc,
+         'Encoder: sem botao de aba no computador -- a coluna ja esta na tela');
+  await q.screenshot({ path: SAIDA + '/computador-4-encoder-fixo.png' });
+  await q.locator('#abasTopo button[data-aba="mover"]').click();
+  await q.waitForTimeout(200);
+
   await q.locator('#zTema').click();
   await q.waitForTimeout(300);
   await q.screenshot({ path: SAIDA + '/computador-3-tema-escuro.png' });
@@ -646,6 +665,71 @@ function checar(ok, texto, extra) {
   checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
          enc.w + ' px');
 
+  // ---- analise detalhada ----
+  await t.evaluate(() => {
+    const alvo = document.getElementById('tabEnc').closest('.et');
+    document.querySelectorAll('#pnEnc .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(1400);
+  const anal = await t.evaluate(() => ({
+    linhas: document.querySelectorAll('#tabEnc tbody tr').length,
+    n1:  document.getElementById('anN1').textContent,
+    hz1: document.getElementById('anHz1').textContent,
+    me1: document.getElementById('anMe1').textContent,
+    sd1: document.getElementById('anSd1').textContent,
+    vo1: document.getElementById('anVo1').textContent,
+    n2:  document.getElementById('anN2').textContent,
+    larg: document.getElementById('cvPos').width,
+    sub: document.getElementById('sbAnal').textContent,
+  }));
+  // 1 linha e so o cabecalho: sem amostra a tabela nao prova nada.
+  checar(anal.linhas > 1, 'Encoder: a tabela lista as amostras captadas',
+         (anal.linhas - 1) + ' amostras na tabela');
+  checar(/°$/.test(anal.me1) && /°$/.test(anal.sd1),
+         'Encoder: erro medio e oscilacao saem em graus',
+         'medio ' + anal.me1 + ', oscilacao ' + anal.sd1);
+  checar(/\/s$/.test(anal.hz1),
+         'Encoder: leituras por segundo sao MEDIDAS, nao o periodo pedido',
+         anal.hz1);
+  checar(anal.vo1 !== '--', 'Encoder: as voltas do motor aparecem em numero',
+         anal.vo1 + ' voltas');
+  checar(anal.larg > 100, 'Encoder: o grafico da posicao e dimensionado',
+         anal.larg + ' px');
+  // A junta 2 nao esta ligada nesta bancada: nao pode inventar estatistica.
+  checar(anal.n2 === '--',
+         'Encoder: junta nao ligada nao ganha estatistica inventada', anal.n2);
+  checar(/amostras/.test(anal.sub),
+         'Encoder: o cabecalho da secao diz quantas amostras ha', anal.sub);
+
+  // CSV: a pagina do robo roda num navegador de verdade, entao o download
+  // funciona -- mas o que importa e o CONTEUDO ter todas as colunas.
+  const csv = await t.evaluate(() => {
+    let capturado = null;
+    const criar = URL.createObjectURL;
+    URL.createObjectURL = function (b) { capturado = b; return criar.call(URL, b); };
+    document.getElementById('btEncCsv').click();
+    URL.createObjectURL = criar;
+    return capturado ? capturado.text() : null;
+  });
+  const cabCsv = csv ? csv.split('\n')[0] : '';
+  checar(/ms,bruto1,medido1,comandado1,erro1/.test(cabCsv),
+         'Encoder: o CSV traz bruto, medido, comandado e erro das duas juntas',
+         cabCsv);
+  checar(csv && csv.trim().split('\n').length > 2,
+         'Encoder: e traz as amostras, nao so o cabecalho',
+         csv ? (csv.trim().split('\n').length - 1) + ' linhas' : 'nada');
+
+  // No CELULAR nao ha largura honesta para duas colunas: o Encoder volta
+  // a ser uma aba como as outras, e some quando outra aba esta aberta.
+  await t.evaluate(() => irAba('mover'));
+  await t.waitForTimeout(200);
+  const somiu = await t.evaluate(() =>
+    getComputedStyle(document.getElementById('dockEnc')).display === 'none');
+  checar(somiu, 'Encoder: no celular ele e aba, e sai da tela nas outras');
+  await t.evaluate(() => irAba('enc'));
+  await t.waitForTimeout(250);
+
   const rodas = await t.evaluate(() => {
     const a = document.getElementById('cvR1'), b = document.getElementById('cvR2');
     // Pixel nao transparente no meio = alguem desenhou o mostrador.
@@ -663,8 +747,13 @@ function checar(ok, texto, extra) {
   checar(nAmostras >= 2, 'Encoder: o grafico acumula historico do erro',
          nAmostras + ' amostras');
 
-  await t.evaluate(() => document.querySelectorAll('#pnEnc .et')
-    .forEach((x, i) => x.classList.toggle('aberta', i === 1)));
+  // Abre a secao PELO CONTEUDO, nao pelo indice: acrescentar uma secao
+  // nova no painel nao pode quebrar um teste que nao e sobre ela.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('encReg1').closest('.et');
+    document.querySelectorAll('#pnEnc .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
   await t.waitForTimeout(300);
   const cfg = await t.evaluate(() => ({
     reg1: document.getElementById('encReg1').value,
@@ -685,8 +774,11 @@ function checar(ok, texto, extra) {
          salvou || 'nada');
 
   rotas = [];
-  await t.evaluate(() => document.querySelectorAll('#pnEnc .et')
-    .forEach((x, i) => x.classList.toggle('aberta', i === 0)));
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btEncZerar').closest('.et');
+    document.querySelectorAll('#pnEnc .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
   await t.waitForTimeout(300);
   await t.locator('#btEncZerar').click();
   await t.waitForTimeout(300);
