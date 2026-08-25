@@ -312,6 +312,13 @@ body.semNotas .nt{display:none}
 .nt b{color:var(--letra);font-weight:600}
 .perigo{font-size:11.5px;background:var(--face);border-left:3px solid var(--quente);border-top:1px solid var(--linha);border-right:1px solid var(--linha);border-bottom:1px solid var(--linha);color:var(--letra);
  padding:10px 11px;border-radius:3px;margin-bottom:10px;line-height:1.55}
+/* Estado do modo aprendizado. Precisa ser visivel de longe: quando ele
+   esta ligado o braco esta SOLTO, e isso nao pode depender de o operador
+   estar olhando para a letra miuda. */
+.aprEst{font-family:var(--mono);font-size:10.5px;color:var(--fraca);
+ background:var(--face);border:1px solid var(--linha);border-radius:3px;
+ padding:7px 10px;margin-bottom:9px}
+.aprEst.on{color:var(--arco);border-color:var(--arco2);font-weight:600}
 .res{font-family:var(--mono);font-size:10.5px;color:var(--arco);background:var(--face);
  border:1px solid var(--linha);border-radius:3px;padding:8px 10px;margin-bottom:9px;
  line-height:1.6}
@@ -975,6 +982,27 @@ body.semNotas .nt{display:none}
             <span class="sb" id="sb2">nenhum ponto</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
             <div class="nt"><b>Cordao reto numa chapa:</b> leve a ponta ate o inicio do cordao e grave o ponto 1. Leve ate o fim e grave o ponto 2. Ligue a chave do trecho 1&rarr;2. Pronto.</div>
+
+            <h4>Modo aprendizado</h4>
+            <div class="perigo">Com o braco solto ele desce pelo proprio peso.
+            Apoie a ponta com a mao <b>antes</b> de entrar no modo, e nao entre
+            com a peca embaixo da ponteira.</div>
+            <button class="b pri" id="btApr">Entrar no modo aprendizado</button>
+            <div class="pq2" id="qApr"></div>
+            <div class="aprEst" id="aprEst">desligado</div>
+            <div class="nt">No aprendizado o braco fica <b>solto</b> e voce leva
+            a ponteira com a mao: encosta no inicio do cordao e grava, leva ate
+            o fim e grava. O encoder acompanha o braco solto, entao o ponto
+            gravado e onde a ponta esta <b>de verdade</b> &mdash; nao onde o
+            firmware acha que ela esta.<br><br>
+            <b>Botao da ponteira</b>, quando instalado: segure 1,5 s para entrar
+            ou sair, toque rapido para gravar o ponto onde a ponta esta.<br><br>
+            O braco so e solto quando as <b>duas</b> juntas tem zero absoluto
+            ensinado (painel <b>Encoder &rarr; Zero absoluto</b>). Sem isso o
+            modo funciona igual, mas com torque: voce posiciona pelas setas e
+            grava do mesmo jeito.<br><br>
+            Ao sair, o torque <b>nao</b> volta sozinho &mdash; habilitar servo e
+            sempre acao sua.</div>
             <div id="lista"></div>
             <button class="b mini" id="btLimpar">Apagar programa</button>
           </div>
@@ -1419,6 +1447,7 @@ $("cOk").onclick=function(){
 };
 $("cNao").onclick    =function(){post("/api/calib/cancelar");};
 $("btGravar").onclick=function(){post("/api/ponto/gravar").then(lerPontos);};
+$("btApr").onclick=function(){post("/api/aprender?on="+(D.apr?0:1));};
 $("btLimpar").onclick=function(){
   if(confirm("Apagar todos os pontos do programa?"))post("/api/prog/limpar").then(lerPontos);};
 $("btEnsaio").onclick=function(){
@@ -3259,6 +3288,20 @@ function aplicar(d){
     (d.progN+" pontos · "+nq+" cordao(oes)"+(nRuim?" · "+nRuim+" trecho(s) com problema":""));
   acao("Gravar", d.modo==="FALHA" ? "sistema em falha: rearme os servos primeiro"
        : d.modo!=="MANUAL" ? "grave pontos com o robo parado: "+(RM[d.modo]||d.modo) : "");
+
+  /* Aprendizado. Quando esta ligado o braco esta solto: o estado tem de
+     aparecer sem o operador ter de procurar. */
+  $("btApr").textContent=d.apr?"Sair do modo aprendizado":"Entrar no modo aprendizado";
+  $("btApr").className="b "+(d.apr?"rod":"pri");
+  $("aprEst").className="aprEst"+(d.apr?" on":"");
+  $("aprEst").textContent=d.apr
+    ? ((d.aprSolto?"APRENDENDO · braco solto":"APRENDENDO · com torque, use as setas")
+       +" · "+d.aprN+" ponto"+(d.aprN===1?"":"s")+" nesta sessao")
+    : (d.aprBotao?"desligado · botao da ponteira instalado":"desligado");
+  acao("Apr", d.apr ? ""
+       : d.modo!=="MANUAL" ? "so a partir do modo manual: "+(RM[d.modo]||d.modo)
+       : (!d.cal1||!d.cal2) ? "calibre as juntas antes de ensinar pontos"
+       : d.movendo ? "espere o braco parar" : "");
   $("btPrec").textContent="Precisao: "+(d.precisao?"ligada":"desligada");
 
   $("btEnsaio").textContent=(rodando&&d.ensaio)?"Parar ensaio":"Executar ensaio";

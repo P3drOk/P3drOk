@@ -52,6 +52,7 @@ estado = {
     "suav": 120, "afer1": 0, "afer2": 0,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 458.33, "ppg2": 111.11,
     "l1": 450.0, "l2": 400.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
+    "aprBotao": False, "apr": False, "aprSolto": False, "aprN": 0,
     "msg": "Pronto. Habilite os servos para comecar",
 }
 PONTOS = {"conferido": True, "pts": [

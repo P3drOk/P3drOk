@@ -27,6 +27,7 @@
 #include "HardwareSerial.h"
 #include "encoder.h"
 #include "correcao.h"
+#include "aprender.h"
 #include "Preferences.h"
 #include "FS.h"
 #include <string>
@@ -202,6 +203,7 @@ static void reiniciarSistema() {
   armReiniciarTeste();
   encoderReiniciarTeste();
   correcaoReiniciarTeste();
+  aprenderReiniciarTeste();
   // O barramento RS485 tambem e estado: um cenario que terminou com o
   // driver mudo deixava o seguinte gastando o tempo esgotado de cada
   // leitura, e o relogio do banco corria mais rapido que o movimento.
@@ -679,6 +681,31 @@ static void teste_A09_serial_no_loop() {
 // =====================================================================
 //  A10 - Tamanho do JSON de status
 // =====================================================================
+// Nomes de campo de um JSON plano, na ordem em que aparecem.
+static std::string chavesDoJson(const std::string& js) {
+  std::string fora;
+  size_t p = 0;
+  while ((p = js.find('"', p)) != std::string::npos) {
+    const size_t f = js.find('"', p + 1);
+    if (f == std::string::npos) break;
+    // Chave e o que vem imediatamente antes de ':'.
+    if (f + 1 < js.size() && js[f + 1] == ':') {
+      fora += js.substr(p + 1, f - p - 1);
+      fora += ' ';
+      // Pula o valor, para nao confundir texto de mensagem com chave.
+      size_t v = f + 2;
+      if (v < js.size() && js[v] == '"') {
+        v = js.find('"', v + 1);
+        if (v == std::string::npos) break;
+      }
+      p = v + 1;
+      continue;
+    }
+    p = f + 1;
+  }
+  return fora;
+}
+
 static void teste_A10_json_status() {
   secao("A10  Buffer do JSON de /api/status");
 
@@ -699,8 +726,11 @@ static void teste_A10_json_status() {
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
     "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
+    "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,\"afer1\":%ld,\"afer2\":%ld,"
+    "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
+    "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
@@ -711,17 +741,38 @@ static void teste_A10_json_status() {
     999.9f, "false","false","false",
     180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
     999999UL, 999.999f, 999999UL, 999.999f,
+    "false","false", 255u, -2000000L, -2000000L,
+    40u,
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
     9999.9f, 9999.9f, 90.0f, -9999.9f, 9999.9f,
+    "false","false","false", 255u,
     msg);
 
-  checar(n < 1024, "A10", "o JSON de status precisa caber no buffer de 1024 bytes");
-  nota("pior caso medido: %d bytes. Buffer declarado em servidor_web.cpp: 1024.", n);
-  if (n >= 1024) {
+  checar(n < 1152, "A10a", "o JSON de status precisa caber no buffer de 1152 bytes");
+  nota("pior caso medido: %d bytes. Buffer declarado em servidor_web.cpp: 1152.", n);
+  if (n >= 1152) {
     nota("snprintf trunca sem erro: a resposta sai como JSON invalido, o");
     nota("r.json() do navegador lanca excecao, o contador 'quedas' sobe e a");
     nota("interface anuncia 'sem comunicacao' com o robo funcionando.");
   }
+
+  // A copia acima e o pior caso; ela so vale enquanto tiver os MESMOS
+  // campos do handler de verdade. Ja ficou para tras uma vez -- cinco
+  // campos novos no firmware e nenhum aqui -- e um guarda que mede um
+  // formato velho mede folga que nao existe.
+  reiniciarSistema();
+  webGet("/api/status");
+  const std::string vivo = webCorpo();
+  const std::string chavesVivas = chavesDoJson(vivo);
+  const std::string chavesCopia = chavesDoJson(json);
+  if (chavesVivas != chavesCopia) {
+    nota("vivo : %s", chavesVivas.c_str());
+    nota("copia: %s", chavesCopia.c_str());
+  }
+  checar(chavesVivas == chavesCopia, "A10b",
+         "a copia do pior caso tem os mesmos campos do /api/status de verdade");
+  checar(!vivo.empty() && vivo[vivo.size() - 1] == '}', "A10c",
+         "e a resposta viva fecha em '}' -- JSON truncado quebra a interface inteira");
 }
 
 // =====================================================================
@@ -3739,6 +3790,387 @@ static void teste_N03_o_que_impede_de_ir() {
          "esquecer devolve a maquina ao jeito antigo, sem regravar firmware");
 }
 
+// =====================================================================
+//  M05 - Seguir o eixo movido a mao, e quando NAO seguir
+// =====================================================================
+static void teste_M05_seguir_o_eixo_solto() {
+  secao("M05  Braco movido a mao: quando a contagem segue e quando nao");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=0");
+  rodarComWeb(200);
+
+  // 1. Servos DESLIGADOS: o braco esta solto, e a contagem tem de seguir.
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(100);
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cv  = configEncoder.contagensPorVolta[0];
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao = encoderLer(1).referencia
+                            + (int32_t)lroundf(12.0f * red / 360.0f * cv);
+  rodarComWeb(400);
+  nota("solto e empurrado ate 12 graus: contagem %.2f graus",
+       (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 12.0f) < 0.5f, "M05a",
+         "com o torque desligado a contagem segue o eixo movido a mao");
+
+  // 2. Servos LIGADOS e a mesma divergencia: NAO pode seguir.
+  //    Com torque, o motor esta segurando a posicao -- se o eixo saiu do
+  //    lugar mesmo assim, isso e PERDA DE PASSO. Seguir a contagem ali
+  //    esconderia o defeito, e o assentamento nunca traria o braco de
+  //    volta: seria trocar uma correcao por um disfarce.
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(200);
+  const float antes = passosParaGraus(J1, posicaoJ1());
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao = encoderLer(1).referencia
+                            + (int32_t)lroundf(20.0f * red / 360.0f * cv);
+  rodarComWeb(600);
+  nota("com torque, encoder pulou para 20 graus: contagem %.2f -> %.2f graus",
+       (double)antes, (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - antes) < 0.3f, "M05b",
+         "com torque ligado a contagem NAO segue: divergencia ali e perda de passo, nao mao");
+
+  // 3. Sem zero ensinado nao ha do que a leitura ser medida: nao segue.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(100);
+  const float antes3 = passosParaGraus(J1, posicaoJ1());
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao = 900000;
+  rodarComWeb(500);
+  nota("sem zero ensinado: contagem %.2f -> %.2f graus",
+       (double)antes3, (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - antes3) < 0.3f, "M05c",
+         "sem zero ensinado a contagem fica quieta: a leitura crua nao e angulo");
+}
+
+// =====================================================================
+//  P - O botao de aprendizado: ensinar o caminho com a mao
+// =====================================================================
+// O pedido do operador: segurar o botao solta o braco, ele leva a
+// ponteira ate um canto e clica, leva ate o outro e clica. O programa
+// nasce da peca.
+//
+// So funciona porque o encoder e absoluto: motor solto anda sem que
+// nenhum pulso saia no fio, e sem o encoder a contagem ficaria parada --
+// todos os pontos sairiam gravados no mesmo lugar.
+// ---------------------------------------------------------------------
+
+// Aperta e solta o botao com o tempo pedido, deixando o filtro de repique
+// assentar dos dois lados.
+static void botao(uint32_t msApertado) {
+  g_pinEntrada[PIN_APRENDER] = LOW;
+  rodarComWeb(msApertado);
+  g_pinEntrada[PIN_APRENDER] = HIGH;
+  rodarComWeb(120);
+}
+
+// Contato mecanico de verdade repica: alterna nivel por alguns
+// milissegundos antes de assentar. Sem filtro, UM toque viraria varios
+// pontos -- e o operador so descobriria isso na hora de soldar.
+static void botaoComRepique(uint32_t msApertado) {
+  for (int i = 0; i < 6; i++) {
+    g_pinEntrada[PIN_APRENDER] = (i % 2) ? HIGH : LOW;
+    rodarComWeb(3);
+  }
+  g_pinEntrada[PIN_APRENDER] = LOW;
+  rodarComWeb(msApertado);
+  for (int i = 0; i < 6; i++) {
+    g_pinEntrada[PIN_APRENDER] = (i % 2) ? LOW : HIGH;
+    rodarComWeb(3);
+  }
+  g_pinEntrada[PIN_APRENDER] = HIGH;
+  rodarComWeb(120);
+}
+
+// Contagem crua do encoder correspondente a um angulo da junta k.
+static int32_t brutoDe(uint8_t k, float graus) {
+  const Junta& j = (k == 1) ? J1 : J2;
+  const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+  const float cv  = configEncoder.contagensPorVolta[k - 1];
+  return encoderLer(k).referencia + (int32_t)lroundf(graus * red / 360.0f * cv);
+}
+
+// O braco sendo levado com a mao: o eixo vai para o angulo pedido e
+// nenhum pulso sai no fio. E exatamente o que o driver desligado faz.
+static void levarComAMao(float g1, float g2) {
+  g_uart.escravo[0].parar();
+  g_uart.escravo[1].parar();
+  g_uart.escravo[0].posicao = brutoDe(1, g1);
+  g_uart.escravo[1].posicao = brutoDe(2, g2);
+  rodarComWeb(400);      // tempo de o seguidor ver e acertar a contagem
+}
+
+// As DUAS juntas no barramento, cada uma no seu endereco, e o zero
+// absoluto ensinado nas duas. E o que o modo exige para soltar o braco.
+static void prepararEncoderDasDuasJuntas() {
+  for (uint8_t i = 0; i < 2; i++) {
+    g_uart.escravo[i] = EscravoModbus{};
+    g_uart.escravo[i].id = (uint8_t)(i + 1);
+    g_uart.escravo[i].funcao = 3;
+    g_uart.escravo[i].regBase = 90;
+    g_uart.escravo[i].baixaPrimeiro = true;
+    g_uart.escravo[i].posicao = 500000;
+  }
+  encoderPendente = configEncoder;
+  encoderPendente.ativo         = true;
+  encoderPendente.baud          = 19200;
+  encoderPendente.paridade      = 0;
+  encoderPendente.funcao        = 3;
+  encoderPendente.periodoMs     = ENC_PERIODO_MIN_MS;
+  encoderPendente.trintaEDois   = true;
+  encoderPendente.baixaPrimeiro = true;
+  encoderPendente.id[0]  = 1;  encoderPendente.id[1]  = 2;
+  encoderPendente.reg[0] = 90; encoderPendente.reg[1] = 90;
+  encoderPendente.contagensPorVolta[0] = 10000.0f;
+  encoderPendente.contagensPorVolta[1] = 10000.0f;
+  enviarComando(CMD_APLICAR_ENCODER);
+  rodarComWeb(300);
+
+  // O operador leva o braco ao esquadro e declara: as duas em 0 grau.
+  webPost("/api/zero/ensinar?j=1&g=0");
+  rodarComWeb(150);
+  webPost("/api/zero/ensinar?j=2&g=0");
+  rodarComWeb(150);
+}
+
+static void teste_P01_ensinar_com_a_mao() {
+  secao("P01  Segurar o botao, levar a ponta com a mao, clicar em cada canto");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  nota("antes: modo aprendizado=%d, servos=%d, pontos=%u",
+       (int)aprenderResumo().ativo, (int)servosLigados,
+       (unsigned)progQuantidade());
+
+  // 1. Segurar o botao.
+  botao(APRENDER_SEGURAR_MS + 300);
+  ResumoAprender a = aprenderResumo();
+  nota("depois de segurar: ativo=%d solto=%d servos=%d -- \"%s\"",
+       (int)a.ativo, (int)a.bracoSolto, (int)servosLigados, ultimaMensagem);
+  checar(a.ativo, "P01a",
+         "segurar o botao entra no modo aprendizado");
+  checar(a.bracoSolto && !servosLigados, "P01b",
+         "e o torque cai: o braco fica solto para o operador levar com a mao");
+
+  // 2. Levar a ponta ate o primeiro canto -- com a mao, sem pulso nenhum.
+  const long pulsosAntes = (long)J1.motor->pulsosGerados;
+  levarComAMao(20.0f, -15.0f);
+  nota("levado a mao ate 20/-15: contagem %.2f / %.2f graus; pulsos gerados %ld",
+       (double)passosParaGraus(J1, posicaoJ1()),
+       (double)passosParaGraus(J2, posicaoJ2()),
+       (long)J1.motor->pulsosGerados - pulsosAntes);
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 20.0f) < 0.5f &&
+         fabsf(passosParaGraus(J2, posicaoJ2()) + 15.0f) < 0.5f, "P01c",
+         "o sistema SABE onde a mao levou o braco -- o encoder acerta a contagem");
+  checar((long)J1.motor->pulsosGerados - pulsosAntes == 0, "P01d",
+         "e nenhum pulso saiu no fio: quem moveu foi a mao, nao o firmware");
+
+  // 3. Clique: grava o ponto onde a ponta esta.
+  botao(150);
+  nota("primeiro clique: %u ponto(s) -- \"%s\"",
+       (unsigned)progQuantidade(), ultimaMensagem);
+  checar(progQuantidade() == 1, "P01e",
+         "toque curto grava o ponto onde a ponta esta");
+
+  // 4. Segundo canto, segundo clique.
+  levarComAMao(-25.0f, 30.0f);
+  botao(150);
+  nota("segundo clique: %u ponto(s); ponto 2 em %.1f / %.1f graus",
+       (unsigned)progQuantidade(),
+       (double)passosParaGraus(J1, progLista()[1].p1),
+       (double)passosParaGraus(J2, progLista()[1].p2));
+  checar(progQuantidade() == 2, "P01f",
+         "e o segundo toque grava o segundo ponto");
+  checar(fabsf(passosParaGraus(J1, progLista()[1].p1) + 25.0f) < 0.6f &&
+         fabsf(passosParaGraus(J2, progLista()[1].p2) - 30.0f) < 0.6f, "P01g",
+         "o ponto gravado e onde a MAO deixou a ponta, nao onde o firmware achava");
+  checar(fabsf(passosParaGraus(J1, progLista()[0].p1) - 20.0f) < 0.6f, "P01h",
+         "e os dois pontos sao diferentes: o programa saiu do caminho de verdade");
+
+  // 5. Segurar de novo: sai. O torque NAO volta sozinho.
+  botao(APRENDER_SEGURAR_MS + 300);
+  a = aprenderResumo();
+  nota("depois de segurar de novo: ativo=%d servos=%d -- \"%s\"",
+       (int)a.ativo, (int)servosLigados, ultimaMensagem);
+  checar(!a.ativo, "P01i",
+         "segurar de novo sai do modo aprendizado");
+  checar(!servosLigados, "P01j",
+         "e o torque NAO volta sozinho: habilitar servo continua sendo acao do operador");
+}
+
+static void teste_P02_um_toque_e_um_ponto() {
+  secao("P02  Um toque e um ponto: repique de contato nao vira programa");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  botao(APRENDER_SEGURAR_MS + 300);
+  levarComAMao(10.0f, 10.0f);
+
+  botaoComRepique(150);
+  nota("um toque com contato repicando: %u ponto(s)", (unsigned)progQuantidade());
+  checar(progQuantidade() == 1, "P02a",
+         "contato que repica ainda grava UM ponto so");
+
+  // Toque sem sair do modo, com o braco parado no mesmo lugar: o ponto e
+  // aceito de novo (dois pontos no mesmo lugar sao do operador decidir),
+  // mas nao pode virar meia duzia.
+  botaoComRepique(150);
+  nota("segundo toque: %u ponto(s)", (unsigned)progQuantidade());
+  checar(progQuantidade() == 2, "P02b",
+         "e o toque seguinte grava exatamente mais um");
+}
+
+static void teste_P03_toque_fora_do_modo() {
+  secao("P03  Toque fora do modo aprendizado nao pode gravar nada");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  botao(150);
+  nota("toque com o modo desligado: %u ponto(s) -- \"%s\"",
+       (unsigned)progQuantidade(), ultimaMensagem);
+  checar(progQuantidade() == 0, "P03a",
+         "botao encostado sem querer nao enche o programa de pontos");
+  checar(strstr(ultimaMensagem, "Segure") != nullptr, "P03b",
+         "e a mensagem ensina o gesto em vez de deixar o operador no escuro");
+
+  // Botao PRESO no boot (fio em curto, botao emperrado) nao pode valer
+  // como gesto: sem esta guarda a maquina entraria em aprendizado sozinha
+  // e soltaria o braco na hora de ligar.
+  g_pinEntrada[PIN_APRENDER] = LOW;
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  rodarComWeb(3000);
+  nota("botao preso desde o boot: ativo=%d, servos=%d",
+       (int)aprenderResumo().ativo, (int)servosLigados);
+  checar(!aprenderResumo().ativo, "P03c",
+         "botao preso no boot nao entra em aprendizado sozinho");
+  g_pinEntrada[PIN_APRENDER] = HIGH;
+}
+
+static void teste_P04_sem_encoder_nao_solta_o_braco() {
+  secao("P04  Sem encoder acompanhando, o braco NAO e solto");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  // A bancada do operador hoje: so a junta 1 no barramento.
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=0");
+  rodarComWeb(200);
+
+  botao(APRENDER_SEGURAR_MS + 300);
+  const ResumoAprender a = aprenderResumo();
+  nota("junta 2 fora do barramento: ativo=%d solto=%d servos=%d -- \"%s\"",
+       (int)a.ativo, (int)a.bracoSolto, (int)servosLigados, ultimaMensagem);
+  checar(a.ativo, "P04a",
+         "o modo entra assim mesmo: com torque ele funciona igual, so muda quem carrega o braco");
+  checar(!a.bracoSolto && servosLigados, "P04b",
+         "mas o torque NAO cai: junta que ninguem mede cairia e gravaria ponto torto");
+  checar(strstr(ultimaMensagem, "torque") != nullptr, "P04c",
+         "e a tela diz por que, em vez de o operador achar que o botao falhou");
+
+  // Gravar continua funcionando -- e essa e a razao de nao recusar.
+  botao(150);
+  nota("toque com torque: %u ponto(s)", (unsigned)progQuantidade());
+  checar(progQuantidade() == 1, "P04d",
+         "e o toque grava ponto do mesmo jeito");
+}
+
+static void teste_P05_o_que_encerra_o_aprendizado() {
+  secao("P05  O que encerra o aprendizado sem o operador pedir");
+
+  // 1. Sair do modo manual.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  botao(APRENDER_SEGURAR_MS + 300);
+  levarComAMao(10.0f, 10.0f);
+  botao(150);
+  levarComAMao(-10.0f, -10.0f);
+  botao(150);
+
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(100);
+  enviarComando(CMD_PROG_EXECUTAR, 1);       // ensaio
+  rodarComWeb(200);
+  nota("programa em execucao: modo=%d, aprendizado ativo=%d -- \"%s\"",
+       (int)modoAtual, (int)aprenderResumo().ativo, ultimaMensagem);
+  checar(!aprenderResumo().ativo, "P05a",
+         "sair do modo manual encerra o aprendizado: ninguem ensina com o braco executando");
+
+  // E o toque durante a execucao nao grava nada.
+  const uint8_t antes = progQuantidade();
+  botao(150);
+  nota("toque com o programa rodando: %u -> %u ponto(s)",
+       (unsigned)antes, (unsigned)progQuantidade());
+  checar(progQuantidade() == antes, "P05b",
+         "e um toque durante a execucao nao mexe no programa");
+
+  // 2. Emergencia.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  botao(APRENDER_SEGURAR_MS + 300);
+  checar(aprenderResumo().ativo, "P05c", "aprendizado ligado antes do botao vermelho");
+
+  g_pinEntrada[PIN_ESTOP] = LOW;
+  rodarComWeb(200);
+  nota("emergencia: ativo=%d -- \"%s\"", (int)aprenderResumo().ativo, ultimaMensagem);
+  checar(!aprenderResumo().ativo, "P05d",
+         "o botao vermelho encerra o aprendizado junto com todo o resto");
+  g_pinEntrada[PIN_ESTOP] = HIGH;
+  rodarComWeb(200);
+}
+
+static void teste_P06_pela_tela_tambem() {
+  secao("P06  Quem nao instalou o botao usa a tela, e o estado aparece la");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  const int cod = webPost("/api/aprender?on=1");
+  rodarComWeb(200);
+  nota("POST /api/aprender?on=1 -> HTTP %d; ativo=%d solto=%d",
+       cod, (int)aprenderResumo().ativo, (int)aprenderResumo().bracoSolto);
+  checar(cod == 200 && aprenderResumo().ativo, "P06a",
+         "da para entrar no aprendizado pela tela, sem botao fisico nenhum");
+
+  webGet("/api/status");
+  const std::string js = webCorpo();
+  const size_t onde = js.find("\"aprBotao\"");
+  nota("status: %s", js.substr(onde == std::string::npos ? 0 : onde, 62).c_str());
+  checar(js.find("\"apr\":true") != std::string::npos &&
+         js.find("\"aprSolto\":true") != std::string::npos, "P06b",
+         "e o status diz que o braco esta solto -- a tela nao precisa adivinhar");
+
+  // Gravar pela tela dentro do modo conta na sessao, igual ao botao.
+  levarComAMao(12.0f, 12.0f);
+  webPost("/api/ponto/gravar");
+  rodarComWeb(200);
+  nota("gravar pela tela: sessao=%u ponto(s), programa=%u",
+       (unsigned)aprenderResumo().gravados, (unsigned)progQuantidade());
+  checar(aprenderResumo().gravados == 1 && progQuantidade() == 1, "P06c",
+         "gravar pela tela dentro do modo passa pelo mesmo caminho do botao");
+
+  webPost("/api/aprender?on=0");
+  rodarComWeb(200);
+  checar(!aprenderResumo().ativo, "P06d", "e sair pela tela tambem funciona");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3967,9 +4399,16 @@ int main() {
   teste_M02_nao_retoca_quando_nao_deve();
   teste_M03_desligado_e_parada();
   teste_M04_travamento_nao_dispara_a_toa();
+  teste_M05_seguir_o_eixo_solto();
   teste_N01_ensinar_e_recuperar();
   teste_N02_ir_ao_zero_ao_ligar();
   teste_N03_o_que_impede_de_ir();
+  teste_P01_ensinar_com_a_mao();
+  teste_P02_um_toque_e_um_ponto();
+  teste_P03_toque_fora_do_modo();
+  teste_P04_sem_encoder_nao_solta_o_braco();
+  teste_P05_o_que_encerra_o_aprendizado();
+  teste_P06_pela_tela_tambem();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

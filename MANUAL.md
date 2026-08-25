@@ -186,7 +186,8 @@ escreve registrador):
 | `rede.h/.cpp` | ponto de acesso, mDNS, DNS de captura |
 | `servidor_web.cpp` | todas as rotas HTTP |
 | `encoder.h/.cpp` | mestre Modbus, tarefa própria no núcleo 0 |
-| `correcao.h/.cpp` | assentamento de posição pelo encoder |
+| `correcao.h/.cpp` | assentamento de posição pelo encoder, seguir o eixo solto, zero absoluto |
+| `aprender.h/.cpp` | modo aprendizado e o botão físico da ponteira |
 | `pagina_web.h` | a interface inteira, um arquivo — **é aqui que se edita** |
 | `pagina_web_gz.h` | gerado; `testes/gerar_pagina_gz.py` refaz |
 
@@ -344,6 +345,59 @@ qual trecho e por quê — inclusive quando o ponto é alcançável mas o
 > inversa reescolhia o cotovelo a cada 1,5 mm e o braço fazia uma
 > circunferência no meio da reta. Está em `ACHADOS.md`, achado A13.
 
+### 5.4.1 Modo aprendizado: ensinar o caminho com a mão
+
+Módulo `aprender.h/.cpp`. Um botão físico na ponteira (GPIO 32) com dois
+gestos, e o mesmo modo disponível na tela para quem não instalou o botão.
+
+| gesto | o que faz |
+|---|---|
+| **segurar 1,5 s** | entra ou sai do modo aprendizado |
+| **toque curto** | grava o ponto onde a ponta está agora |
+
+Dentro do modo, se der para soltar o braço, o torque cai e você leva a
+ponteira com a mão: encosta no início do cordão e toca, leva até o fim e
+toca. O programa nasce da peça, não da tela.
+
+**O que faz isso ser possível.** Motor solto anda sem que nenhum pulso
+saia no fio — a contagem do firmware ficaria parada e todo ponto sairia
+gravado no mesmo lugar. Quem resolve é `seguirEixoSolto()`
+(`correcao.h`), que acerta a contagem pelo encoder absoluto enquanto o
+braço está solto. É por isso que o modo depende do encoder, e não de
+mais um sensor.
+
+**Quando o braço NÃO é solto.** Só quando as duas juntas estão no
+barramento com o zero absoluto ensinado. O SON é um fio só para os dois
+drivers: soltar por causa da junta 1 solta a 2 junto, e uma junta que
+cai sem ninguém medindo grava ponto torto sem avisar. Faltando isso o
+modo entra assim mesmo, com torque — você posiciona pelas setas e grava
+igual. A tela diz qual dos dois está valendo.
+
+**As regras duras:**
+
+1. Só a partir do modo `MANUAL`, com o braço parado e as juntas
+   calibradas — ponto de programa é um par de ângulos, e sem calibração
+   não há ângulo.
+2. O arco é desligado ao entrar. Ninguém ensina caminho soldando.
+3. Sair do modo manual (executar, reproduzir, calibrar, falha) encerra o
+   aprendizado. O botão vermelho também.
+4. **O torque não volta sozinho na saída.** Habilitar servo é ação
+   explícita do operador em todo o resto do sistema, e aqui — com a mão
+   dele dentro da área do braço — mais ainda.
+5. Botão preso desde o boot não vale como gesto: sem isso um fio em
+   curto soltaria o braço na hora de ligar.
+6. Contato mecânico repica; o filtro de 40 ms garante **um toque, um
+   ponto**. Sem ele um toque viraria meia dúzia de pontos, e o operador
+   só descobriria na hora de soldar.
+
+> Com o braço solto ele desce pelo próprio peso. Apoie a ponta antes de
+> entrar no modo.
+
+Banco de testes: cenários **P01 a P06** (o gesto, o repique, o toque
+fora do modo, o botão preso no boot, o caso sem encoder, o que encerra o
+modo, e a mesma coisa pela tela) e **M05** (quando a contagem segue o
+eixo movido à mão — e quando não segue).
+
 ### 5.5 Leitura do encoder
 
 Aba/coluna **Encoder**. No computador ela fica **aberta o tempo todo** ao
@@ -408,6 +462,17 @@ desvio (1°), tentativas (3). Tudo desligável.
 **Vigilância**: com o eixo parado, se o erro passar do limite por mais de
 um segundo, o painel avisa. Não mexe no motor — só conta e avisa.
 
+**Braço movido à mão** (`seguirEixoSolto()`): com o torque **desligado**
+o braço está solto e o encoder é a única coisa que sabe onde ele foi
+parar. A contagem é acertada pela leitura, e "movi com a mão" passa a
+dar o mesmo resultado que "mandei ir".
+
+> **Só com o torque desligado.** Com servo ligado o motor segura a
+> posição: se o eixo saiu do lugar mesmo assim, isso é **perda de
+> passo**, não movimento à mão. Seguir a contagem ali esconderia o
+> defeito e o assentamento nunca traria o braço de volta — seria trocar
+> uma correção por um disfarce. Cenário **M05** do banco.
+
 ### 5.7 Solda
 
 Relé com proteções: não liga sem servos, não fica ligado com o braço
@@ -465,6 +530,7 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/zero/config` | o que fazer ao ligar a máquina |
 | `POST /api/zero/ensinar` | ensina a referência absoluta de uma junta |
 | `POST /api/zero/esquecer` | volta a ligar como antes |
+| `POST /api/aprender` | entra/sai do modo aprendizado (`on=1`, `on=0`, `on=-1` alterna) |
 | `GET  /api/sd/*`, `POST /api/sd/*` | cartão |
 | `GET  /api/rede` | por onde chegar no painel |
 

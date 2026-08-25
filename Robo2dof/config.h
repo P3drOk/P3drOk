@@ -36,6 +36,37 @@
 #define PIN_ESTOP         27
 
 // ---------------------------------------------------------------------
+// BOTAO DE APRENDIZADO (o botao da ponteira)
+//
+// Um botao so, com dois gestos:
+//
+//   TOQUE CURTO   grava o ponto onde a ponta esta agora.
+//   SEGURAR 1,5 s entra ou sai do modo aprendizado.
+//
+// No modo aprendizado os servos ficam DESLIGADOS: o braco fica solto e o
+// operador leva a ponteira com a mao. O encoder acompanha, entao o ponto
+// gravado e onde a ponta REALMENTE esta -- nao onde o firmware acha.
+//
+// Por isso o aprendizado exige o zero absoluto ensinado: sem ele o
+// encoder nao tem do que a posicao ser medida, e o botao gravaria pontos
+// baseados numa contagem que ninguem acertou.
+//
+// GPIO 32: entrada comum, sem funcao de strapping, sem briga com nada
+// deste projeto. Ligue o botao entre o pino e o GND -- o pull-up e
+// interno, e nivel BAIXO quer dizer apertado.
+#ifndef PIN_APRENDER
+#define PIN_APRENDER      32
+#endif
+// Mude para true depois de instalar o botao. Com false o firmware nem
+// olha o pino -- entrada solta le ruido, e ruido aqui gravaria ponto
+// sozinho no meio de um programa.
+#ifndef APRENDER_BOTAO_INSTALADO
+#define APRENDER_BOTAO_INSTALADO  false
+#endif
+static const uint16_t APRENDER_SEGURAR_MS = 1500;  // segurar = trocar de modo
+static const uint16_t APRENDER_DEBOUNCE_MS = 40;
+
+// ---------------------------------------------------------------------
 // CARTAO MICRO SD (modulo adaptador TF de 6 pinos, SPI)
 // ---------------------------------------------------------------------
 // O modulo pequeno de 6 pinos (o azul com os quatro resistores 103) e
@@ -410,6 +441,10 @@ enum TipoComando : uint8_t {
   CMD_INVERTER_EIXO,    // a = junta, b = 0/1: para que lado o eixo gira
   CMD_APLICAR_ENCODER,  // grava encoderPendente e reconfigura o Modbus
   CMD_ENCODER_ZERAR,    // a = junta (0 = as duas): marca a contagem atual
+
+  // Modo aprendizado: o braco solto e o botao da ponteira gravando
+  // pontos. a = 0 sai, 1 entra, -1 alterna. Ver aprender.h.
+  CMD_APRENDER,
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

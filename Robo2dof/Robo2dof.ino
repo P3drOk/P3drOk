@@ -20,6 +20,7 @@
 #include "rede.h"
 #include "encoder.h"
 #include "correcao.h"
+#include "aprender.h"
 #include <math.h>
 
 static bool     emergenciaAtiva  = false;
@@ -89,11 +90,19 @@ static const char* NOME_CMD[] = {
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
-  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","INVERTER_EIXO",
-  "APLICAR_ENCODER","ENCODER_ZERAR","JOG_XY",
+  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","AFERIR_ENCODER",
+  "ENSINAR_ZERO","ESQUECER_ZERO","INVERTER_EIXO",
+  "APLICAR_ENCODER","ENCODER_ZERAR","APRENDER","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
+
+// Esta lista e indexada por c.tipo sem nenhuma conferencia de faixa: um
+// comando novo no enum sem o nome correspondente aqui faz o log ler
+// ponteiro fora do vetor -- e o crash aparece longe da causa, na
+// primeira vez que aquele comando for usado. Ja aconteceu.
+static_assert(sizeof(NOME_CMD) / sizeof(NOME_CMD[0]) == CMD_ARQ_SALVAR_CONFIG + 1,
+              "NOME_CMD ficou fora de sincronia com TipoComando");
 
 // ---------------------------------------------------------------------
 // Encerramento unico. Todo caminho de parada passa por aqui: a parada do
@@ -271,6 +280,10 @@ static void processarComando(const Comando& c) {
         definirMensagem("Grave pontos com o robo parado, no modo manual");
         break;
       }
+      // No aprendizado o caminho e o mesmo do botao fisico: a contagem
+      // da sessao e o motivo da recusa tem de sair iguais, venha o toque
+      // do dedo ou da tela.
+      if (aprenderAtivo()) { aprenderGravarPonto(); break; }
       const char* motivo = nullptr;
       if (!progAdicionarPonto(posicaoJ1(), posicaoJ2(), &motivo)) {
         definirMensagem("Ponto recusado: %s", motivo ? motivo : "erro");
@@ -435,6 +448,16 @@ static void processarComando(const Comando& c) {
       definirMensagem("Encoder zerado na posicao atual");
       break;
 
+    case CMD_APRENDER: {
+      const bool entrar = (c.a < 0) ? !aprenderAtivo() : (c.a != 0);
+      if (!entrar) { aprenderSair(nullptr); break; }
+      const char* motivo = nullptr;
+      if (!aprenderEntrar(&motivo)) {
+        definirMensagem("Aprendizado recusado: %s", motivo ? motivo : "erro");
+      }
+      break;
+    }
+
     case CMD_INVERTER_EIXO: {
       // Sentido do eixo. Vale em manual e TAMBEM na primeira etapa da
       // calibracao: e ali que o operador descobre que o braco vai para o
@@ -598,6 +621,10 @@ static void supervisionar() {
     if (!emergenciaAtiva) {
       emergenciaAtiva = true;
       pararTudo("EMERGENCIA acionada no botao fisico");
+      // O botao vermelho encerra tudo, inclusive o aprendizado: depois
+      // dele a maquina tem de estar num estado que ninguem precise
+      // adivinhar.
+      aprenderSair("EMERGENCIA acionada: aprendizado encerrado");
       logEvento("EMERGENCIA acionada no botao fisico");
     }
     if (servosLigados) servosHabilitar(false);
@@ -725,6 +752,11 @@ void setup() {
   // Encoder por Modbus: tarefa propria no core 0, so leitura.
   encoderIniciar();
 
+  // Botao de aprendizado. Com APRENDER_BOTAO_INSTALADO=false nem o pino
+  // e configurado: entrada solta le ruido, e ruido aqui gravaria ponto
+  // sozinho no meio de um programa.
+  aprenderIniciar();
+
   // Ocupacao do flash no boot. A pasta do sketch traz um partitions.csv
   // com 3 MB de app; se alguem gravar com a particao errada, isto
   // aparece antes de o problema virar "trava do nada".
@@ -826,6 +858,11 @@ void loop() {
   }
 
   zeroAtualizar();
+  // A ordem importa: seguirEixoSolto() acerta a contagem com o braco
+  // solto ANTES de o botao poder gravar um ponto neste mesmo ciclo.
+  // Invertida, o primeiro ponto de cada toque sairia da contagem velha.
+  seguirEixoSolto();
+  aprenderAtualizar();
   correcaoVigiar();
   publicar();
   vTaskDelay(pdMS_TO_TICKS(1));

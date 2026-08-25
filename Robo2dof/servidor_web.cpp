@@ -8,6 +8,7 @@
 #include "rede.h"
 #include "encoder.h"
 #include "correcao.h"
+#include "aprender.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -138,7 +139,12 @@ static void handleStatus() {
   if (s.calib >= CAL_J1_NEG && s.calib <= CAL_J1_VOLTA_POS) eixoCalib = 1;
   if (s.calib >= CAL_J2_NEG && s.calib <= CAL_J2_VOLTA_POS) eixoCalib = 2;
 
-  char json[1024];
+  // Estado do aprendizado vai no status, e nao numa rota propria: a
+  // tela precisa saber que o braco esta solto TODO ciclo, e nao so
+  // quando alguem abre o painel do encoder.
+  const ResumoAprender ra = aprenderResumo();
+
+  char json[1152];
   snprintf(json, sizeof(json),
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
     "\"p1\":%ld,\"p2\":%ld,\"t1\":%.2f,\"t2\":%.2f,\"x\":%.1f,\"y\":%.1f,"
@@ -154,6 +160,7 @@ static void handleStatus() {
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
+    "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
@@ -181,6 +188,8 @@ static void handleStatus() {
     (unsigned)MAX_PONTOS,
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
+    ra.instalado ? "true" : "false", ra.ativo ? "true" : "false",
+    ra.bracoSolto ? "true" : "false", (unsigned)ra.gravados,
     s.mensagem);
 
   server.send(200, "application/json", json);
@@ -803,6 +812,17 @@ static void handleEsquecerZero() {
   enfileirar(CMD_ESQUECER_ZERO, argL("j", 0));
 }
 
+// ---------------------------------------------------------------------
+// Modo aprendizado. O handler NAO chama aprenderEntrar(): entrar corta o
+// torque dos servos, e torque e do core 1. Aqui so se enfileira.
+static void handleAprender() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long on = argL("on", -1);
+  if (on < -1 || on > 1) { erro("valor invalido"); return; }
+  enfileirar(CMD_APRENDER, on);
+}
+
 static void handleCorrecao() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -1109,6 +1129,7 @@ void servidorIniciar() {
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);
   server.on("/api/correcao",       HTTP_POST, handleCorrecao);
+  server.on("/api/aprender",       HTTP_POST, handleAprender);
   server.on("/api/aferir/encoder", HTTP_POST, handleAferirEncoder);
   server.on("/api/travamento/ok",  HTTP_POST, handleTravamentoOk);
   server.on("/api/zero/config",    HTTP_POST, handleZeroConfig);

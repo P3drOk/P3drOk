@@ -515,6 +515,67 @@ function checar(ok, texto, extra) {
          avisos.txt || 'nenhum aviso na lista');
   await t.screenshot({ path: SAIDA + '/celular-5-trecho-ruim.png' });
 
+  // ------------------------------------------------------------------
+  // Modo aprendizado. Quando ele esta ligado o BRACO ESTA SOLTO -- isso
+  // nao pode depender de o operador estar olhando para a letra miuda,
+  // nem sumir da tela de quem nao instalou o botao da ponteira.
+  // ------------------------------------------------------------------
+  rotas = [];
+  await t.locator('#btApr').click();
+  await t.waitForTimeout(350);
+  const chamouApr = rotas.find(x => x.split('?')[0] === '/api/aprender');
+  checar(!!chamouApr && /on=1/.test(chamouApr),
+         'Aprendizado: o botao da tela pede para ENTRAR no modo',
+         chamouApr || 'nada');
+
+  await t.request.post(BASE + '/teste/estado',
+    { data: { apr: true, aprSolto: true, aprN: 2, aprBotao: true } });
+  await t.waitForTimeout(600);
+  const aprLigado = await t.evaluate(() => ({
+    bt:  document.getElementById('btApr').textContent.trim(),
+    est: document.getElementById('aprEst').textContent.trim(),
+    on:  document.getElementById('aprEst').classList.contains('on'),
+  }));
+  checar(/solto/i.test(aprLigado.est) && aprLigado.on,
+         'Aprendizado: com o modo ligado a tela diz que o braco esta SOLTO',
+         aprLigado.est);
+  checar(/2 pontos/.test(aprLigado.est),
+         'Aprendizado: e conta os pontos gravados nesta sessao', aprLigado.est);
+  checar(/Sair/.test(aprLigado.bt),
+         'Aprendizado: o botao vira "sair" -- um botao so, dois estados',
+         aprLigado.bt);
+
+  rotas = [];
+  await t.locator('#btApr').click();
+  await t.waitForTimeout(350);
+  const saiuApr = rotas.find(x => x.split('?')[0] === '/api/aprender');
+  checar(!!saiuApr && /on=0/.test(saiuApr),
+         'Aprendizado: e o mesmo botao pede para SAIR', saiuApr || 'nada');
+
+  // Com torque (junta sem zero ensinado) a tela nao pode dizer "solto".
+  await t.request.post(BASE + '/teste/estado', { data: { aprSolto: false } });
+  await t.waitForTimeout(600);
+  const comTorque = await t.evaluate(() =>
+    document.getElementById('aprEst').textContent.trim());
+  checar(/torque/i.test(comTorque) && !/solto/i.test(comTorque),
+         'Aprendizado: sem encoder acompanhando, a tela diz que e COM torque',
+         comTorque);
+
+  // Fora do modo manual o botao trava dizendo o porque.
+  await t.request.post(BASE + '/teste/estado',
+    { data: { apr: false, modo: 'EXECUTANDO' } });
+  await t.waitForTimeout(600);
+  const aprBloq = await t.evaluate(() => ({
+    dis: document.getElementById('btApr').disabled,
+    motivo: document.getElementById('qApr').textContent.trim(),
+  }));
+  checar(aprBloq.dis && aprBloq.motivo.length > 0,
+         'Aprendizado: fora do manual o botao trava e diz o motivo',
+         aprBloq.motivo || 'MUDO');
+  await t.request.post(BASE + '/teste/estado',
+    { data: { modo: 'MANUAL', aprN: 0, aprBotao: false } });
+  await t.waitForTimeout(500);
+
   // Curso calibrado: barra por junta e area desenhada na mesa.
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(300);

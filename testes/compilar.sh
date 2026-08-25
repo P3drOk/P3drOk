@@ -17,10 +17,10 @@ python3 testes/conferir_rotas.py
 # interface diferente da que esta no repositorio.
 python3 testes/gerar_pagina_gz.py --conferir
 
-# O banco compila com o botao de emergencia "instalado" para exercitar
-# esse ramo. O config.h de producao mantem ESTOP_FISICO_INSTALADO=false
-# ate o botao existir de verdade.
-g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
+# O banco compila com o botao de emergencia e o de aprendizado
+# "instalados" para exercitar esses ramos. O config.h de producao mantem
+# os dois em false ate os botoes existirem de verdade na maquina.
+g++ $FLAGS -DESTOP_FISICO_INSTALADO=true -DAPRENDER_BOTAO_INSTALADO=true \
     -o testes/saida/banco \
     testes/banco.cpp \
     testes/ino_wrapper.cpp \
@@ -36,5 +36,6 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     Robo2dof/servidor_web.cpp \
     Robo2dof/rede.cpp \
     Robo2dof/encoder.cpp \
-    Robo2dof/correcao.cpp
+    Robo2dof/correcao.cpp \
+    Robo2dof/aprender.cpp
 exec testes/saida/banco

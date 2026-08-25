@@ -2090,9 +2090,76 @@ claro, laterais escuras), a base e um cilindro, as juntas tem disco, e a
 mesa e uma superficie com gradiente em vez de linhas soltas no vazio. A
 sombra sob cada junta e o que faz a altura se ler.
 
+## R68 · Seguir o eixo movido a mao -- e a regra que impede o disfarce  ✅
+
+Com os servos desligados o braco fica solto e nenhum pulso sai no fio: a
+contagem do firmware ficava para tras e "movi com a mao" nao dava o mesmo
+resultado que "mandei ir". `seguirEixoSolto()` acerta a contagem pela
+leitura do encoder.
+
+A regra que importa e a negativa: **servo ligado, nao segue**. Com torque
+o motor esta segurando a posicao; se o eixo saiu do lugar mesmo assim,
+isso e perda de passo, e quem cuida disso e o assentamento. Seguir a
+contagem ali esconderia o defeito e o assentamento nunca traria o braco
+de volta -- seria trocar uma correcao por um disfarce. `M05a`/`M05b`, e
+`M05c` para o caso sem zero ensinado, em que a leitura crua nao e angulo.
+
+## R69 · O botao da ponteira: ensinar o caminho com a mao  ✅
+
+Modulo `aprender.h/.cpp`. Um botao, dois gestos: segurar 1,5 s entra ou
+sai do modo aprendizado, toque curto grava o ponto onde a ponta esta.
+Dentro do modo o torque cai e o operador leva a ponteira com a mao.
+
+So funciona por cima do R68: sem o seguidor, cada ponto sairia gravado no
+mesmo lugar.
+
+Tres decisoes que valem registro:
+
+- **O braco so e solto quando as DUAS juntas sao acompanhadas.** O SON e
+  um fio unico para os dois drivers -- nao existe soltar so uma. Uma
+  junta solta e nao medida cai pelo proprio peso e grava ponto certo num
+  eixo e errado no outro, o que e pior do que errado nos dois, porque
+  parece plausivel. Faltando isso, o modo entra com torque em vez de ser
+  recusado: com torque ele funciona igual, so muda quem carrega o braco.
+  `P04`.
+- **O torque nao volta na saida.** Habilitar servo e acao explicita em
+  todo o resto do sistema, e aqui -- com a mao do operador dentro da area
+  do braco -- mais ainda. `P01j`.
+- **Botao preso desde o boot nao vale gesto.** Sem essa guarda um fio em
+  curto soltaria o braco na hora de ligar. `P03c`.
+
+O filtro de repique nao e detalhe: contato mecanico repica por alguns
+milissegundos, e sem filtro um toque viraria meia duzia de pontos -- que
+o operador so descobriria na hora de soldar. `P02` aperta o botao
+alternando nivel seis vezes e exige exatamente um ponto.
+
+## R70 · NOME_CMD fora de sincronia com o enum  ✅
+
+Defeito real, meu, achado ao ligar o comando novo. Tres comandos foram
+acrescentados a `TipoComando` numa rodada anterior sem os nomes
+correspondentes em `NOME_CMD[]` -- que e indexado por `c.tipo` **sem
+conferencia de faixa**. Os tres ultimos comandos (os de arquivo) liam
+ponteiro fora do vetor no `Serial.printf` do log, e o travamento
+apareceria longe da causa: na primeira vez que alguem salvasse um
+programa no cartao.
+
+Nenhum cenario pegou porque o log e efeito colateral, nao resultado. A
+correcao nao e so completar a lista: um `static_assert` amarra o tamanho
+do vetor ao ultimo valor do enum, e agora o erro e de **compilacao**.
+
+## R71 · O guarda do JSON de status media um formato velho  ✅
+
+Mesma familia do R70, no banco. O cenario `A10` guarda o pior caso do
+`snprintf` de `/api/status` contra uma **copia** do formato -- e a copia
+tinha ficado cinco campos para tras. Um guarda que mede um formato velho
+mede folga que nao existe.
+
+Agora `A10b` compara as chaves da copia com as chaves da resposta viva:
+campo novo no firmware sem campo novo na copia reprova na hora.
+
 ## Cobertura
 
 | banco | rodada 20 | agora |
 |-------|-----------|-------|
-| firmware | 229 / 0 | **241 / 0** |
-| interface | 121 / 0 | **125 / 0** |
+| firmware | 229 / 0 | **273 / 0** |
+| interface | 121 / 0 | **132 / 0** |

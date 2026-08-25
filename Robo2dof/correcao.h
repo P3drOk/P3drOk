@@ -131,6 +131,26 @@ struct ResumoZero {
   float   graus[2];     // onde o encoder disse que estava, ao ligar
   char    motivo[48];
 };
+// =====================================================================
+//  SEGUIR O EIXO MOVIDO A MAO
+//
+//  Com os servos DESLIGADOS o braco fica solto e o operador o leva com a
+//  mao -- para ensinar um ponto, para tirar da frente, para conferir uma
+//  peca. O eixo anda e nenhum pulso saiu no fio, entao a contagem do
+//  firmware fica para tras.
+//
+//  O encoder ve. Este seguidor acerta a contagem enquanto o braco esta
+//  solto, e e o que faz "movi com a mao" e "mandei ir" darem o mesmo
+//  resultado.
+//
+//  SO COM OS SERVOS DESLIGADOS. Com servo ligado o motor segura a
+//  posicao: se o eixo saiu do lugar mesmo assim, isso e PERDA DE PASSO,
+//  nao movimento a mao. Seguir ali esconderia o defeito e o assentamento
+//  nunca traria o braco de volta -- seria trocar uma correcao por um
+//  disfarce.
+// =====================================================================
+void       seguirEixoSolto();    // core 1: chamada do loop
+
 void       zeroAtualizar();      // core 1: chamada do loop
 ResumoZero zeroResumo();
 

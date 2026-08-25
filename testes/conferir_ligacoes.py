@@ -22,6 +22,7 @@ ESPERADO = {
     "PIN_ALARME_J1": "Driver J1 · ALM",
     "PIN_ALARME_J2": "Driver J2 · ALM",
     "PIN_ESTOP":     "Botão de emergência",
+    "PIN_APRENDER":  "Botão de aprendizado",
     "PIN_SD_CS":     "microSD · CS",
     "PIN_SD_SCK":    "microSD · SCK",
     "PIN_SD_MOSI":   "microSD · MOSI",

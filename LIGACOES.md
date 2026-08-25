@@ -67,6 +67,7 @@ esquecer e o robô servir uma interface diferente da do repositório.
 | 35 | **entrada** | Driver J2 · ALM | pull-up externo 10 k obrigatório |
 | **2** → 26 | saída | Relé de solda | vem de fábrica no **2** (LED, bancada). Troque para **26** na máquina real · **§5** |
 | 27 | entrada | Botão de emergência | `INPUT_PULLUP`, contato NC |
+| 32 | entrada | Botão de aprendizado | `INPUT_PULLUP`, botão entre o pino e o GND |
 | 5  | saída | microSD · CS | pull-up interno, seguro no boot |
 | 14 | saída | microSD · SCK | |
 | 13 | saída | microSD · MOSI | |
@@ -247,7 +248,53 @@ jog fica bloqueado até soltar.
 
 ---
 
-## 7. LED de status
+## 7. Botão de aprendizado (o botão da ponteira)
+
+Um botão simples, **normalmente aberto**, entre o pino e o GND. O
+pull-up é interno, então nível BAIXO quer dizer apertado.
+
+```
+ESP32 GPIO32 ──► [botão NA] ──► GND
+```
+
+Dois gestos no mesmo botão:
+
+| | |
+|---|---|
+| toque curto | grava o ponto onde a ponta está |
+| segurar 1,5 s | entra ou sai do modo aprendizado |
+
+No modo aprendizado os servos ficam **desligados**: o braço fica solto e
+você leva a ponteira com a mão. O encoder acompanha, então o ponto
+gravado é onde a ponta **realmente** está.
+
+> **O braço desce pelo próprio peso quando solta.** Apoie a ponta com a
+> mão antes de entrar no modo, e não entre com a peça embaixo da
+> ponteira.
+
+O braço só é solto quando **as duas** juntas estão no barramento com o
+zero absoluto ensinado. O SON é um fio só para os dois drivers: soltar
+por causa da junta 1 solta a 2 junto, e uma junta que cai sem ninguém
+medindo grava ponto torto sem avisar. Faltando isso, o modo entra assim
+mesmo — com torque, e você posiciona pelas setas.
+
+Leve o fio do botão junto com o cabo da tocha, com o par trançado ou
+blindado: ele passa perto da fonte de solda, e ruído nesse fio grava
+ponto sozinho. Se puder, ponha 100 nF entre o pino e o GND junto ao
+ESP32.
+
+> Só habilite `APRENDER_BOTAO_INSTALADO` em `config.h` **depois** de
+> instalar o botão. Com o pino solto o ESP32 lê ruído — e ruído aqui
+> grava ponto no meio de um programa.
+
+O modo também funciona sem o botão: **Programa → Ensinar o caminho →
+Modo aprendizado**, na tela. O botão é comodidade, não pré-requisito.
+
+Coberto pelo banco de testes, cenários **P01 a P06**.
+
+---
+
+## 8. LED de status
 
 `PIN_LED_STATUS` vem em `255`, que significa **desligado**. Isso é
 necessário enquanto o relé estiver no GPIO 2, senão os dois brigam pelo
@@ -261,7 +308,7 @@ Depois de mover o relé para o 26, você pode apontar o LED para o 2:
 
 ---
 
-## 8. Aterramento
+## 9. Aterramento
 
 A regra que evita queimar a eletrônica inteira:
 
@@ -277,7 +324,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 
 ---
 
-## 9. Ordem de energização na primeira vez
+## 10. Ordem de energização na primeira vez
 
 1. Só o ESP32, sem drivers e sem solda. Confira no monitor serial
    (115200) que o Wi-Fi subiu:
@@ -300,7 +347,7 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 
 ---
 
-## 10. Se algo não funciona
+## 11. Se algo não funciona
 
 | Sintoma | Onde olhar |
 |---------|------------|

@@ -105,6 +105,20 @@ no próprio `checar(...)`.
 | J04 | sondas de captive portal do Windows/Android/iPhone abrem o painel em vez de dar 404 |
 | L13 | velocidade, RPM, sentido, inversões e passos andados, com o eixo girando de verdade |
 | L12 | achar o registrador movendo o braço **duas vezes no mesmo sentido**; registrador que oscila não é apontado |
+| M01 | chegou ao alvo: o encoder confere e o sistema retoca |
+| M02 | as seis situações em que o assentamento **não** pode mexer no motor |
+| M03 | desligar o assentamento, e a parada de emergência no meio dele |
+| M04 | o vigia de travamento não grita sem motivo, e se cala sem leitura |
+| M05 | braço movido à mão: a contagem segue com o torque desligado — e **não segue** com ele ligado |
+| N01 | ensinar o zero absoluto uma vez; a máquina se acha ao ligar, sem fim de curso |
+| N02 | ir a 0° ao ligar, e o intertravamento dos servos que impede |
+| N03 | o que impede a ida automática: zero não ensinado, encoder mudo, zero esquecido |
+| P01 | segurar o botão, levar a ponta com a mão, clicar em cada canto |
+| P02 | um toque é **um** ponto: repique de contato não vira programa |
+| P03 | toque fora do modo não grava; botão preso no boot não vale gesto |
+| P04 | sem encoder acompanhando as duas juntas, o braço **não** é solto |
+| P05 | sair do modo manual e a emergência encerram o aprendizado |
+| P06 | o mesmo modo pela tela, e o estado no `/api/status` |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

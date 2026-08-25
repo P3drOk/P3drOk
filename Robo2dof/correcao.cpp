@@ -338,6 +338,39 @@ void zeroAtualizar() {
 }
 
 // =====================================================================
+//  Seguir o eixo movido a mao. Ver correcao.h.
+// =====================================================================
+void seguirEixoSolto() {
+  // Regra unica e dura: servo ligado, nao segue. Com servo ligado uma
+  // divergencia e perda de passo, e quem cuida disso e o assentamento.
+  if (servosLigados) return;
+  if (motoresEmMovimento()) return;
+  if (correcaoEmCurso()) return;
+
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    Junta& j = (k == 1) ? J1 : J2;
+
+    // Sem zero ensinado a leitura nao tem do que ser medida.
+    if (!configZero.ensinado[i]) continue;
+    if (configEncoder.reg[i] == 0) continue;
+    if (j.passosPorGrau <= 0.0f) continue;
+
+    const LeituraEncoder L = encoderLer(k);
+    if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) continue;
+
+    const float conta = passosParaGraus(j, (k == 1) ? posicaoJ1() : posicaoJ2());
+    const float dif = L.graus - conta;
+    // Zona morta: encoder de 17 bits treme, e reescrever a contagem a
+    // cada tremor encheria o barramento de nada. Dois decimos de grau e
+    // menos que qualquer movimento de mao.
+    if (fabsf(dif) < 0.2f) continue;
+
+    ajustarContagem(j, grausParaPassos(j, L.graus));
+  }
+}
+
+// =====================================================================
 //  Travamento
 // =====================================================================
 static Travamento trav = {false, 0, 0};
