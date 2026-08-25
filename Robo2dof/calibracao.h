@@ -54,6 +54,31 @@ void calibReferenciar();
 // foram. Sai a resolucao real daquele eixo.
 // ---------------------------------------------------------------------
 void aferirMarcar(uint8_t junta);
+
+// AFERIR A ENGRENAGEM ELETRONICA PELO ENCODER, sem transferidor.
+//
+// A resolucao de uma junta e:
+//
+//     passosPorGrau = passosPorVolta * reducao / 360
+//
+// Dois numeros, e cada um erra de um jeito. A REDUCAO e mecanica: esta
+// no redutor, o operador sabe qual comprou, e o encoder do servo NAO
+// consegue medi-la -- ele conta no eixo do MOTOR, antes do redutor.
+//
+// Ja a ENGRENAGEM ELETRONICA (passosPorVolta) e um parametro do driver,
+// e e o que mais se erra: troca-se o driver, refaz-se um parametro, e o
+// numero declarado aqui deixa de bater com o que o driver faz. O
+// sintoma e o braco andar menos (ou mais) do que a tela diz, sem nada
+// apontar para o culpado.
+//
+// Isso o encoder mede sozinho: manda-se um tanto conhecido de PASSOS e
+// pergunta-se ao encoder quantas VOLTAS DO MOTOR aconteceram.
+//
+//     passosPorVolta = passos andados / voltas do motor
+//
+// Some um dos dois numeros da conta. A reducao continua sendo declarada
+// por quem montou a maquina -- mas com um numero a menos para errar.
+bool aferirPelosEncoder(uint8_t junta);
 bool aferirAplicar(uint8_t junta, float grausReais);
 long aferirPassosDesde(uint8_t junta);   // quanto andou desde a marca
 void calibAtualizar();   // chamar a cada ciclo do loop

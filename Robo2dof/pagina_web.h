@@ -230,9 +230,17 @@ h4:first-child{margin-top:0}
  background:var(--arco);border-radius:1px;transition:left .12s}
 .fxB.perto i{background:var(--brasa)}
 .fxB u{position:absolute;top:0;bottom:0;background:rgba(185,28,28,.20)}
-.jb{background:var(--face);border:1px solid var(--linha);border-radius:3px;height:56px;
- font-size:19px;cursor:pointer;user-select:none;touch-action:none;color:var(--letra2)}
-.jb:active,.jb.press{background:var(--arco);color:#0c1530;border-color:var(--arco)}
+.jb{background:var(--face);border:1px solid var(--linha);border-radius:5px;height:56px;
+ font-size:26px;line-height:1;cursor:pointer;user-select:none;touch-action:none;
+ color:var(--letra2);transition:background .08s,color .08s,border-color .08s;
+ box-shadow:0 1px 0 rgba(255,255,255,.5) inset}
+.jb:hover{color:var(--arco);border-color:var(--arco2)}
+.jb:active,.jb.press{background:var(--arco);color:#fff;border-color:var(--arco);
+ box-shadow:none;transform:translateY(1px)}
+/* O rotulo do sentido vive no botao, nao so no title: no celular nao ha
+   ponteiro, e title nunca aparece. */
+.jb small{display:block;font-size:8px;letter-spacing:.08em;margin-top:3px;
+ font-family:var(--mono);opacity:.75}
 
 .lista{border:1px solid var(--linha);border-radius:3px;overflow:hidden;margin-bottom:8px}
 .p{display:flex;align-items:center;gap:9px;padding:9px 10px;background:var(--face);
@@ -275,6 +283,17 @@ h4:first-child{margin-top:0}
  border-radius:2px;padding:8px 9px;font-family:var(--mono);font-size:12px;color:var(--letra)}
 .cp .un{font-family:var(--mono);font-size:9px;color:var(--letra3);width:34px}
 .nt{font-size:11.5px;color:var(--letra2);margin:0 0 10px;line-height:1.55}
+/* As explicacoes ensinam quem esta comecando e atrapalham quem ja opera
+   todo dia: elas ocupam mais coluna que os controles. O botao "?" no
+   cabecalho esconde todas de uma vez, e a escolha fica gravada. Esconder
+   nao e apagar -- um clique traz tudo de volta. */
+body.semNotas .nt{display:none}
+.ajd{background:var(--face);border:1px solid var(--linha);border-radius:3px;
+ width:30px;height:30px;flex:0 0 auto;cursor:pointer;color:var(--letra3);
+ font-family:var(--mono);font-size:13px;font-weight:600;margin-left:10px}
+.ajd:hover{color:var(--arco);border-color:var(--arco2)}
+.ajd.on{background:var(--arco);border-color:var(--arco);color:#fff}
+@media(max-width:560px){.ajd{width:26px;height:26px;font-size:11px;margin-left:6px}}
 /* Motivo de um botao estar fora de acao. Nada de botao morto e mudo. */
 .pq2{display:none;font-size:11px;color:var(--quente);margin:-5px 0 10px;
  line-height:1.5;padding-left:2px}
@@ -491,6 +510,7 @@ h4:first-child{margin-top:0}
   <header class="placa">
     <div class="nome">ROBO<b>2DOF</b></div>
     <div class="mod">ESTACAO DE SOLDA<br>2 EIXOS · SERVO AC</div>
+    <button class="ajd" id="btAjuda" title="Mostrar ou esconder as explicacoes">?</button>
     <div class="lamps">
       <div class="lp" id="lModo"><i class="olho"></i><span id="lModoT">--</span></div>
       <div class="lp" id="lServo"><i class="olho"></i><span>servo</span></div>
@@ -559,6 +579,11 @@ h4:first-child{margin-top:0}
               <div class="encCel"><span class="rot">avisos</span><b id="crAlerta">--</b></div>
             </div>
             <div class="res" id="crMotivo">--</div>
+            <div id="crTrav" style="display:none">
+              <div class="res" id="crTravTxt"></div>
+              <button class="b mini" id="btTravOk">Resolvido, limpar o aviso</button>
+              <div class="pq2" id="qTravOk"></div>
+            </div>
             <div class="nt">Quando o braco chega, o encoder diz onde ele
             <b>realmente</b> parou e o sistema da um retoque curto se precisar.
             E isto que faz <b>sair de uma posicao e voltar cair no mesmo
@@ -836,14 +861,14 @@ h4:first-child{margin-top:0}
 
             <h4>Passo a passo</h4>
             <div class="eixo">
-              <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;</button>
+              <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;<small>ANTI-HOR</small></button>
               <div class="id"><span class="rot">junta 1</span><div class="fx" id="fx1"></div></div>
-              <button class="jb" data-j="1" data-d="-1" title="horario">&#8635;</button>
+              <button class="jb" data-j="1" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
             <div class="eixo">
-              <button class="jb" data-j="2" data-d="1" title="anti-horario">&#8634;</button>
+              <button class="jb" data-j="2" data-d="1" title="anti-horario">&#8634;<small>ANTI-HOR</small></button>
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
-              <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;</button>
+              <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
             <div class="nt">Junta e coisa que <b>gira</b>: &#8634; e anti-horario,
             &#8635; e horario, olhando o eixo de cima. Seta para os lados nao
@@ -1119,6 +1144,17 @@ h4:first-child{margin-top:0}
             <div class="cp"><label>2 &middot; Girou de verdade</label><input type="number" id="afG" min="0.1" step="0.5"><span class="un">°</span></div>
             <button class="b pri mini" id="btAfAplicar">3 &middot; Gravar a reducao medida</button>
             <div class="pq2" id="qAfAplicar"></div>
+            <h4>Ou sem transferidor, pelo encoder</h4>
+            <button class="b mini" id="btAfEnc">Aferir pelo encoder</button>
+            <div class="pq2" id="qAfEnc"></div>
+            <div class="nt">Marque o inicio, gire o eixo <b>bastante</b> (pelo
+            menos um quarto de volta do motor) e aperte aqui. O encoder conta as
+            voltas do motor e a conta sai sozinha &mdash; sem transferidor.
+            <br>Repare no que ele mede: a <b>engrenagem eletronica</b> do driver,
+            que e o numero que mais se erra. A <b>reducao mecanica</b> continua
+            sendo a que voce declarou, porque o encoder conta no eixo do motor,
+            <b>antes</b> do redutor, e nao tem como enxerga-la. Some um dos dois
+            numeros da conta, nao os dois.</div>
             <div class="nt">Aferir muda so a resolucao daquele eixo. Os limites de
             curso ja gravados continuam valendo em graus, entao vale conferir a
             calibracao depois.</div>
@@ -1368,6 +1404,12 @@ function afEstado(){
       : ap===0 ? "marque o inicio e gire o eixo primeiro"
       : !(g>0) ? "digite quantos graus o eixo girou de verdade"
       : porQueNaoMove(D,false));
+  /* Aferir pelo encoder tem outra exigencia: um quarto de volta do
+     MOTOR, nao um angulo medido. Explicar isso no proprio botao evita o
+     "apertei e nao aconteceu nada". */
+  acao("AfEnc", !D.modo ? "sem contato com o robo"
+      : ap===0 ? "marque o inicio e gire o eixo primeiro"
+      : porQueNaoMove(D,false));
   $("afConta").textContent = ap===0
     ? "sem marca: aperte \"Marcar o inicio aqui\", gire o eixo com o jog e volte"
     : ap+" pulsos desde a marca"+
@@ -1386,6 +1428,10 @@ $("afJ").onchange=function(){$("afG").value="";afEstado();};
 $("btAfMarcar").onclick=function(){
   $("afG").value="";afEstado();
   post("/api/aferir/marcar?j="+$("afJ").value);
+};
+$("btAfEnc").onclick=function(){
+  post("/api/aferir/encoder?j="+$("afJ").value)
+   .then(function(){carregou=false;$("afG").value="";});
 };
 $("btAfAplicar").onclick=function(){
   const g=parseFloat($("afG").value);
@@ -2723,6 +2769,21 @@ function corrAplicar(d){
   anCel("crOk",String(d.crOk||0)+(d.crFalha?(" / "+d.crFalha+" nao"):""));
   anCel("crAlerta",String(d.crAlerta||0));
   $("crMotivo").textContent=d.crMotivo||"--";
+
+  /* Travamento fica na tela ATE o operador dizer que resolveu. Um aviso
+     que some sozinho e um aviso que ninguem leu -- e este quer dizer que
+     o eixo estava forcando contra alguma coisa. */
+  const trav=$("crTrav");
+  if(d.trvOn){
+    trav.style.display="";
+    $("crTravTxt").textContent=
+      "JUNTA "+d.trvJ+" TRAVOU\n"+
+      "O comando andou e o eixo nao. Encostou no batente, o acoplamento "+
+      "soltou, ou o driver desarmou.\nO eixo foi parado: nao ficou forcando.";
+  }else{
+    trav.style.display="none";
+  }
+  if(d.trvN)$("sbCorr").textContent="travou "+d.trvN+"x";
   $("sbCorr").textContent = !d.crOn ? "desligado"
     : (d.crEst===5||d.crEst===4) ? "atencao" : est;
   if(!corrCarregou){
@@ -2737,6 +2798,7 @@ function corrAplicar(d){
 ["crOnCh","crVigCh"].forEach(function(id){
   $(id).onclick=function(){$(id).classList.toggle("on");};
 });
+$("btTravOk").onclick=function(){post("/api/travamento/ok");};
 $("btCorrSalvar").onclick=function(){
   const on=function(id){return $(id).classList.contains("on")?1:0;};
   post("/api/correcao?on="+on("crOnCh")+"&vig="+on("crVigCh")+
@@ -3162,7 +3224,11 @@ function tick(){
      WebServer atende uma conexao por vez e cada requisicao a mais
      concorre com o heartbeat do jog. */
   if(abaAtual==="arq")sdAtualizar(false);
-  if(abaAtual==="enc")encAtualizar();
+  /* Consulta quando o painel do encoder esta NA TELA, nao quando a aba
+     esta escolhida. No computador ele virou coluna fixa e nao ha mais
+     aba "enc" para escolher -- amarrar a consulta a aba deixava a coluna
+     sempre aberta mostrando dado do momento em que a pagina carregou. */
+  if($("pnEnc")&&$("pnEnc").offsetParent)encAtualizar();
   fetch("/api/status").then(function(r){return r.json();}).then(function(d){
     quedas=0;aplicar(d);
   }).catch(function(){
@@ -3450,6 +3516,27 @@ sdAtualizar(true);
    acima, 'desOn' e o proprio botao de desenho ainda nao existem, e
    restaurar cedo demais quebraria a pagina inteira. */
 try{ if(localStorage.getItem("vista3d")==="1")$("z3D").onclick(); }catch(e){}
+
+/* Explicacoes: escondidas ou nao, a escolha fica gravada. Fica no fim
+   porque o botao precisa existir antes. */
+(function(){
+  const b=$("btAjuda");
+  if(!b)return;
+  const por=function(esconder){
+    document.body.classList.toggle("semNotas",esconder);
+    b.classList.toggle("on",!esconder);
+    b.title=esconder?"Mostrar as explicacoes":"Esconder as explicacoes";
+    try{localStorage.setItem("notas",esconder?"0":"1");}catch(e){}
+    /* A mesa e os graficos medem o espaco que sobrou: sem remedir, eles
+       ficam do tamanho de antes do texto sumir. */
+    if(typeof medir==="function")medir();
+    if(typeof encMedir==="function")encMedir();
+  };
+  b.onclick=function(){por(!document.body.classList.contains("semNotas"));};
+  let guardado="1";
+  try{guardado=localStorage.getItem("notas")||"1";}catch(e){}
+  por(guardado==="0");
+})();
 
 </script>
 </body>

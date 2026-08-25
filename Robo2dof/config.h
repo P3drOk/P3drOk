@@ -399,6 +399,10 @@ enum TipoComando : uint8_t {
   CMD_REFERENCIAR,      // o braco esta na posicao de referencia: sincroniza a contagem
   CMD_AFERIR_MARCAR,    // a = junta: marca a contagem atual como inicio da medida
   CMD_AFERIR_APLICAR,   // a = junta, f1 = graus realmente percorridos
+  // Afere a engrenagem eletronica pelo ENCODER, sem transferidor: o
+  // encoder conta as voltas do motor e a conta sai sozinha. A reducao
+  // mecanica continua sendo declarada -- o encoder esta antes dela.
+  CMD_AFERIR_ENCODER,   // a = junta
   CMD_INVERTER_EIXO,    // a = junta, b = 0/1: para que lado o eixo gira
   CMD_APLICAR_ENCODER,  // grava encoderPendente e reconfigura o Modbus
   CMD_ENCODER_ZERAR,    // a = junta (0 = as duas): marca a contagem atual

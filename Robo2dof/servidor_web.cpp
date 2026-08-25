@@ -645,6 +645,7 @@ static void handleEncoder() {
   Snapshot s;
   lerSnapshot(s);
   const ResumoCorrecao rc = correcaoResumo();
+  const Travamento     tv = correcaoTravamento();
 
   String out;
   out.reserve(1500);
@@ -656,6 +657,7 @@ static void handleEncoder() {
     "\"crAlr\":%.2f,\"crTent\":%u,"
     "\"crEst\":%u,\"crN\":%u,\"crOk\":%lu,\"crFalha\":%lu,"
     "\"crAlerta\":%lu,\"crMotivo\":\"%s\","
+    "\"trvOn\":%s,\"trvJ\":%u,\"trvN\":%lu,"
     "\"id1\":%u,\"id2\":%u,\"reg1\":%u,\"reg2\":%u,"
     "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,\"j\":[",
@@ -671,6 +673,7 @@ static void handleEncoder() {
     (unsigned)rc.estado, (unsigned)rc.tentativas,
     (unsigned long)rc.totalOk, (unsigned long)rc.totalDesistiu,
     (unsigned long)correcaoAlertas(), rc.motivo,
+    tv.ativo ? "true" : "false", (unsigned)tv.junta, (unsigned long)tv.total,
     (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
     (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
     configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
@@ -730,6 +733,22 @@ static void handleEncoderConfig() {
 // isso. Este e o botao que desfaz.
 // Assentamento pelo encoder. Parametro que mexe em movimento so muda com
 // o robo parado -- e o core 1 confere de novo na hora de aplicar.
+// Aferir a engrenagem eletronica pelo encoder, sem transferidor.
+static void handleAferirEncoder() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long j = argL("j", 0);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+  enfileirar(CMD_AFERIR_ENCODER, j);
+}
+
+// Limpa o aviso de travamento depois que o operador resolveu.
+static void handleTravamentoOk() {
+  registrarContatoOperador();
+  correcaoLimparTravamento();
+  ok();
+}
+
 static void handleCorrecao() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -1036,6 +1055,8 @@ void servidorIniciar() {
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);
   server.on("/api/correcao",       HTTP_POST, handleCorrecao);
+  server.on("/api/aferir/encoder", HTTP_POST, handleAferirEncoder);
+  server.on("/api/travamento/ok",  HTTP_POST, handleTravamentoOk);
   server.on("/api/encoder/testar", HTTP_POST, handleEncoderTestar);
   server.on("/api/encoder/teste",  HTTP_GET,  handleEncoderTeste);
   server.on("/api/encoder/cacar",  HTTP_POST, handleEncoderCacar);

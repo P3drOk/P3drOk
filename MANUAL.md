@@ -234,11 +234,57 @@ medido.
 > corresponder à máquina. Trocar a montagem, afrouxar o acoplamento ou
 > mexer na redução invalida a calibração — recalibre.
 
+#### O encoder simplifica duas coisas na calibração
+
+**1. Aferir a engrenagem eletrônica sem transferidor.**
+
+A resolução de uma junta é `passosPorGrau = passosPorVolta × redução / 360`.
+São dois números, e cada um erra de um jeito:
+
+| | |
+|---|---|
+| **redução** | é mecânica, está no redutor, você sabe qual comprou — e o encoder **não consegue medi-la**, porque conta no eixo do *motor*, antes do redutor |
+| **engrenagem eletrônica** (`passosPorVolta`) | é parâmetro do driver, e é o que mais se erra: troca-se o driver, refaz-se um parâmetro, e o número declarado deixa de bater |
+
+O sintoma de errar a engrenagem eletrônica é o braço andar menos (ou
+mais) do que a tela diz, sem nada apontar o culpado.
+
+Isso o encoder mede sozinho: **Marcar o início → girar bastante → Aferir
+pelo encoder**. Ele conta as voltas do motor e a conta sai. Some um dos
+dois números da equação; a redução continua sendo declarada por quem
+montou a máquina.
+
+**2. Detecção de travamento.**
+
+Antes do encoder, encostar no batente era invisível para o firmware: ele
+continuava contando pulsos, o driver continuava recebendo, e o motor
+ficava **forçando contra o ferro**.
+
+Agora isso é mensurável: comando andando + medido parado = o eixo
+encostou em alguma coisa (ou o acoplamento soltou, ou o driver desarmou).
+O sistema **para o eixo** e avisa. O aviso fica na tela até você dizer que
+resolveu — aviso que some sozinho é aviso que ninguém leu.
+
+É deliberadamente conservador, porque um falso positivo pararia o braço
+no meio de um cordão:
+
+| | |
+|---|---|
+| só julga com o comando **claramente** andando | perto de zero a conta não distingue parado de travado — e parado não está forçando nada |
+| exige o medido **claramente** parado | menos de um quinto do esperado |
+| por **meio segundo** | a leitura vem a 20 Hz: menos que isso seria julgar com duas ou três amostras |
+| **sem leitura, se cala** | cabo solto no encoder não pode parar o braço no meio de um cordão |
+
 ### 5.3 Mesa de traçado
 
 Vista de cima, em milímetros de verdade. Mostra o braço, o alcance, o
 curso calibrado, o programa e a trajetória gravada. Dá para **desenhar o
 caminho com o dedo** e transformar o traço em programa.
+
+**Explicações ocultáveis** (botão `?` no cabeçalho): as notas em cinza
+ensinam quem está começando e atrapalham quem opera todo dia — elas
+ocupam mais coluna que os controles. O `?` esconde todas de uma vez, os
+controles ficam, e a escolha é gravada.
 
 **Vista 3D** (botão `3D`): a mesma máquina de outro ângulo, com a altura
 dos elos e a ferramenta descendo até a peça. Serve para enxergar a
@@ -377,6 +423,8 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/encoder/cacar` | caçada do registrador |
 | `POST /api/encoder/zerar` | zera a contagem aqui |
 | `POST /api/correcao` | assentamento pelo encoder |
+| `POST /api/aferir/encoder` | afere a engrenagem eletrônica pelo encoder |
+| `POST /api/travamento/ok` | limpa o aviso de travamento |
 | `GET  /api/sd/*`, `POST /api/sd/*` | cartão |
 | `GET  /api/rede` | por onde chegar no painel |
 

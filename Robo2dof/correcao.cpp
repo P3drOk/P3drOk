@@ -197,6 +197,68 @@ void correcaoAtualizar() {
   dizer("retocando");
 }
 
+// =====================================================================
+//  Travamento
+// =====================================================================
+static Travamento trav = {false, 0, 0};
+
+Travamento correcaoTravamento() { return trav; }
+void correcaoLimparTravamento() { trav.ativo = false; trav.junta = 0; }
+
+// Quanto o eixo DEVERIA estar andando, em contagens do encoder por
+// segundo, para a velocidade de pulso que esta saindo agora.
+static float esperadoContagensPorSeg(uint8_t k) {
+  const Junta& j = (k == 1) ? J1 : J2;
+  const float hz = (k == 1) ? velocidadeJ1Hz() : velocidadeJ2Hz();
+  const float cv = configEncoder.contagensPorVolta[k - 1];
+  if (j.passosPorVolta == 0) return 0.0f;
+  // passos/s -> voltas do motor/s -> contagens/s
+  return fabsf(hz) / (float)j.passosPorVolta * cv;
+}
+
+static void vigiarTravamento() {
+  static uint32_t desde[2] = {0, 0};
+  const uint32_t agora = millis();
+
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    const Junta& j = (k == 1) ? J1 : J2;
+
+    // Sem leitura, sem julgamento: um cabo solto no encoder nao pode
+    // parar o braco no meio de um cordao.
+    if (configEncoder.reg[i] == 0) { desde[i] = 0; continue; }
+    const LeituraEncoder L = encoderLer(k);
+    if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) { desde[i] = 0; continue; }
+
+    const float esperado = esperadoContagensPorSeg(k);
+    // So julga quando o comando esta CLARAMENTE andando. Perto de zero a
+    // conta nao distingue eixo parado de eixo travado, e nao precisa:
+    // eixo parado nao esta forcando contra nada.
+    if (esperado < 200.0f || j.passosPorVolta == 0) { desde[i] = 0; continue; }
+
+    // Medido claramente parado: menos de um quinto do esperado.
+    if (fabsf(L.velocidade) > esperado * 0.2f) { desde[i] = 0; continue; }
+
+    if (!desde[i]) { desde[i] = agora; continue; }
+    // Meio segundo dando pulso sem o eixo responder. A leitura vem a 20
+    // Hz: menos que isso seria julgar com duas ou tres amostras.
+    if ((uint32_t)(agora - desde[i]) > 500) {
+      desde[i] = 0;
+      if (!trav.ativo) {
+        trav.ativo = true;
+        trav.junta = k;
+        trav.total++;
+        // Parar o eixo e a acao, nao o aviso: continuar forcando contra o
+        // batente aquece o servo e torce a mecanica.
+        jogZerar();
+        pararSuave();
+        definirMensagem("Junta %u travada: o comando anda e o eixo nao. "
+                        "Encostou no batente?", (unsigned)k);
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------
 // Vigilancia. Nao mexe no motor: so conta e avisa.
 // ---------------------------------------------------------------------
@@ -206,6 +268,7 @@ uint32_t correcaoAlertas() { return alertas; }
 
 void correcaoVigiar() {
   if (!configCorrecao.vigiar) return;
+  vigiarTravamento();
 
   // Enquanto o eixo anda, comandado e medido divergem de propria conta:
   // o encoder ve onde o eixo ESTA e o firmware conta onde ele MANDOU
@@ -246,5 +309,6 @@ void correcaoReiniciarTeste() {
   esperaAte = 0;
   alvo1Original = alvo2Original = 0;
   alertas = 0;
+  trav.ativo = false; trav.junta = 0; trav.total = 0;
 }
 #endif

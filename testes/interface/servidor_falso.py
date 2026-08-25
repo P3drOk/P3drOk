@@ -72,7 +72,8 @@ import math as _mm
 # reg2 = 0 e a bancada do operador: um driver so, junta 2 nao ligada. O
 # banco troca isso por /teste/encoder para ver tambem a junta ligada que
 # nao responde -- os dois casos escrevem coisas diferentes na tela.
-_enc = {"n": 0, "reg2": 0, "motivo2": 1}
+_enc = {"n": 0, "reg2": 0, "motivo2": 1,
+        "trvOn": False, "trvJ": 0, "trvN": 0}
 def _encoder():
     _enc["n"] += 1
     # erro pequeno e oscilante na junta 1, junta 2 sem leitura
@@ -83,6 +84,7 @@ def _encoder():
             "crAlr": 1.00, "crTent": 3,
             "crEst": 3, "crN": 1, "crOk": 12, "crFalha": 1, "crAlerta": 0,
             "crMotivo": "posicao conferida pelo encoder",
+            "trvOn": _enc["trvOn"], "trvJ": _enc["trvJ"], "trvN": _enc["trvN"],
             "id1": 1, "id2": 2, "reg1": 90, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],

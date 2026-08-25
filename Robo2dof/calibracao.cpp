@@ -3,6 +3,7 @@
 #include "motores.h"
 #include "cinematica.h"
 #include "solda.h"
+#include "encoder.h"
 
 bool calibAtiva() { return estadoCalib != CAL_INATIVO; }
 
@@ -77,13 +78,102 @@ void calibCancelar() {
 static long  marcaPassos[2] = {0, 0};
 static bool  marcaFeita[2]  = {false, false};
 
+// Contagem do encoder no instante da marca. Guardada junto com os passos
+// para que aferirPelosEncoder() possa comparar as duas coisas.
+static int32_t marcaEncoder[2] = {0, 0};
+static bool    marcaEncoderBoa[2] = {false, false};
+
 void aferirMarcar(uint8_t junta) {
   if (junta != 1 && junta != 2) return;
   const uint8_t i = junta - 1;
   marcaPassos[i] = (junta == 1) ? posicaoJ1() : posicaoJ2();
   marcaFeita[i]  = true;
-  definirMensagem("Junta %u marcada. Mova o eixo, meca com transferidor e informe os graus",
-                  (unsigned)junta);
+
+  // Se o encoder estiver lendo, a marca guarda a contagem dele tambem --
+  // e ai da para aferir sem transferidor nenhum.
+  const LeituraEncoder L = encoderLer(junta);
+  marcaEncoderBoa[i] = L.valido && L.idadeMs <= ENC_IDADE_MAX_MS;
+  marcaEncoder[i]    = L.bruto;
+
+  if (marcaEncoderBoa[i])
+    definirMensagem("Junta %u marcada. Mova o eixo bastante e afira -- "
+                    "com transferidor, ou pelo encoder", (unsigned)junta);
+  else
+    definirMensagem("Junta %u marcada. Mova o eixo, meca com transferidor e informe os graus",
+                    (unsigned)junta);
+}
+
+// ---------------------------------------------------------------------
+bool aferirPelosEncoder(uint8_t junta) {
+  if (junta != 1 && junta != 2) return false;
+  const uint8_t i = junta - 1;
+  Junta& j = (junta == 1) ? J1 : J2;
+
+  if (!marcaFeita[i]) {
+    definirMensagem("Marque o inicio antes de aferir a junta %u", (unsigned)junta);
+    return false;
+  }
+  if (!marcaEncoderBoa[i]) {
+    definirMensagem("A junta %u nao tinha leitura do encoder quando foi marcada",
+                    (unsigned)junta);
+    return false;
+  }
+  if (motoresEmMovimento()) {
+    definirMensagem("Espere o braco parar para aferir");
+    return false;
+  }
+
+  const LeituraEncoder L = encoderLer(junta);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) {
+    definirMensagem("Sem leitura do encoder na junta %u agora", (unsigned)junta);
+    return false;
+  }
+
+  const float cv = configEncoder.contagensPorVolta[i];
+  if (cv < 1.0f) {
+    definirMensagem("Informe as contagens por volta do encoder antes de aferir");
+    return false;
+  }
+
+  const long  passos = labs(aferirPassosDesde(junta));
+  // Complemento de dois: a volta do contador de 32 bits sai certa sozinha.
+  const int32_t dCont = (int32_t)((uint32_t)L.bruto - (uint32_t)marcaEncoder[i]);
+  const float voltas  = fabsf((float)dCont) / cv;
+
+  // Medida curta mede mais o ruido que a engrenagem. Um quarto de volta
+  // do motor ja da margem de sobra para o erro de leitura sumir.
+  if (voltas < 0.25f || passos < 100) {
+    definirMensagem("Movimento curto demais: %.2f volta do motor em %ld passos. Mova mais",
+                    (double)voltas, passos);
+    return false;
+  }
+
+  const float ppv = (float)passos / voltas;
+  // Engrenagem eletronica fora de qualquer faixa plausivel quer dizer que
+  // alguma outra coisa esta errada -- registrador do encoder, contagens
+  // por volta, acoplamento. Gravar isso estragaria a maquina em silencio.
+  if (ppv < 100.0f || ppv > 500000.0f) {
+    definirMensagem("Resultado implausivel (%.0f passos/volta): confira o encoder",
+                    (double)ppv);
+    return false;
+  }
+
+  const uint32_t antes = j.passosPorVolta;
+  j.passosPorVolta = (uint32_t)lroundf(ppv);
+  // A reducao continua sendo a declarada: o encoder conta ANTES do
+  // redutor e nao tem como enxerga-la.
+  j.passosPorGrau = (float)j.passosPorVolta * j.reducao / 360.0f;
+
+  recalcularResolucao();
+  salvarConfiguracoes();
+  aplicarVelocidadeManual();
+  aplicarAceleracao();
+  marcaFeita[i] = false;
+
+  definirMensagem("Junta %u: %lu passos/volta pelo encoder (era %lu), reducao %.3f mantida",
+                  (unsigned)junta, (unsigned long)j.passosPorVolta,
+                  (unsigned long)antes, (double)j.reducao);
+  return true;
 }
 
 long aferirPassosDesde(uint8_t junta) {

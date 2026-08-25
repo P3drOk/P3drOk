@@ -1938,3 +1938,77 @@ apontam 90. E um campo na tela, se a bancada disser o contrario.
 
 (um cenario a menos: o `L08` deixou de testar o recuo removido e passou a
 testar o contrato de uma pergunta so.)
+
+---
+
+# Rodada 20 — a calibração com encoder, e a coluna que não atualizava
+
+## R59 · Aferir a engrenagem eletrônica sem transferidor  ✅
+
+`passosPorGrau = passosPorVolta × redução / 360`. Dois números, e o
+encoder só alcança um: ele conta no eixo do **motor**, antes do redutor,
+então a **redução** continua sendo declarada por quem montou a máquina.
+
+Mas a **engrenagem eletrônica** ele mede sozinho — e é justamente a que
+mais se erra: troca-se o driver, refaz-se um parâmetro, e o número
+declarado deixa de bater com o que o driver faz, sem nada apontar o
+culpado.
+
+Marca, gira, `aferirPelosEncoder()`: passos andados ÷ voltas do motor. Um
+número a menos para errar. Recusa medida curta (menos de um quarto de
+volta mede mais o ruído que a engrenagem) e resultado implausível — gravar
+uma resolução absurda estragaria a máquina em silêncio.
+
+## R60 · Travamento: o eixo foi mandado andar e não andou  ✅  `L03`, `M04`
+
+Antes, encostar no batente era invisível para o firmware: ele continuava
+contando pulsos e o motor ficava forçando contra o ferro. Agora é
+mensurável, e o sistema **para o eixo**.
+
+Denunciar sem parar seria contar o acidente em vez de evitá-lo.
+
+Metade do trabalho foi fazer o vigia **não** disparar à toa — um falso
+positivo para o braço no meio de um cordão e estraga a peça. Quatro
+condições, e `M04` testa as três negativas: movimento normal não acusa,
+eixo parado não acusa (parado não está forçando nada), e **sem leitura o
+vigia se cala** (cabo solto no encoder não pode parar o braço).
+
+O `L03c` mudou de expectativa por causa disso, e para melhor: ele
+verificava que o erro *crescia* com o eixo preso. Agora o erro cresce
+menos, porque o sistema para o eixo antes — e `L03d`/`L03e` verificam
+exatamente isso.
+
+## R61 · A coluna sempre aberta nunca atualizava no computador  ✅
+
+Defeito meu, da rodada 17. A consulta ao encoder era:
+
+```js
+if(abaAtual==="enc")encAtualizar();
+```
+
+Quando a coluna virou fixa no computador, o botão de aba dela sumiu — e
+`abaAtual` nunca mais pode valer `"enc"` ali. Resultado: a coluna ficava
+aberta na tela mostrando o dado do instante em que a página carregou.
+
+Agora consulta quando o painel **está na tela**, não quando a aba está
+escolhida. O teste novo compara o contador de leituras depois de um
+segundo: se ele não anda, reprova.
+
+## R62 · As explicações viraram opcionais  ✅
+
+As notas em cinza ensinam quem começa e atrapalham quem opera todo dia:
+elas ocupavam mais coluna que os controles. O `?` no cabeçalho esconde
+todas de uma vez.
+
+O teste confere as duas metades: as notas somem **e os controles
+continuam todos lá**. Esconder texto é uma coisa; esconder botão é outra.
+
+Com elas escondidas, "Ir para um ângulo" passou a caber na tela sem
+rolar.
+
+## Cobertura
+
+| banco | rodada 19 | agora |
+|-------|-----------|-------|
+| firmware | 223 / 0 | **229 / 0** |
+| interface | 115 / 0 | **121 / 0** |

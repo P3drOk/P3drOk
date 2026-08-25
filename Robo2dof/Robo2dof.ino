@@ -382,6 +382,11 @@ static void processarComando(const Comando& c) {
       else definirMensagem("Afira com o robo parado no modo manual");
       break;
 
+    case CMD_AFERIR_ENCODER:
+      if (modoAtual == MODO_MANUAL) aferirPelosEncoder((uint8_t)c.a);
+      else definirMensagem("Afira com o robo parado no modo manual");
+      break;
+
     case CMD_APLICAR_ENCODER:
       // Reabrir a UART e regravar o NVS com o braco andando nao e
       // perigoso, mas nao ha motivo: o encoder e leitura, e o operador

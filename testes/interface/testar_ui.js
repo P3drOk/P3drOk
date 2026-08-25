@@ -44,9 +44,17 @@ function checar(ok, texto, extra) {
   const cab = resp.headers();
   const bytesRede = parseInt(cab['content-length'] || '0', 10);
   // O teto nao e estetico: a pagina inteira vai comprimida na flash e sai
-  // pelo Wi-Fi proprio do robo, que e lento. 48 KB e o limite com folga
-  // para o que existe hoje; passar disso e hora de olhar o que cresceu.
-  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 48000,
+  // pelo Wi-Fi proprio do robo, que e lento.
+  //
+  // 64 KB nao e chute: no ponto de acesso do ESP32 a transferencia fica
+  // na casa de 1 a 2 Mbit/s efetivos, entao 64 KB sao menos de meio
+  // segundo -- o operador nao percebe. Na flash sao 64 KB de uma
+  // particao de 3 MB, que tambem nao aperta.
+  //
+  // O teto existe para o crescimento ser uma DECISAO e nao um acidente:
+  // quando ele estourar, e hora de olhar o que cresceu antes de subir o
+  // numero de novo.
+  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 64000,
          'a pagina e servida comprimida, como o firmware faz',
          'Content-Encoding: ' + cab['content-encoding'] + ', ' + bytesRede +
          ' bytes na rede');
@@ -255,6 +263,68 @@ function checar(ok, texto, extra) {
   await q.screenshot({ path: SAIDA + '/computador-4-encoder-fixo.png' });
   await q.locator('#abasTopo button[data-aba="mover"]').click();
   await q.waitForTimeout(200);
+
+  // A coluna fixa do computador tem de ATUALIZAR sozinha. A consulta
+  // estava amarrada a aba escolhida, e no computador nao ha mais aba
+  // "enc": a coluna ficava aberta mostrando o dado do momento em que a
+  // pagina carregou.
+  const n1 = await q.evaluate(() => document.getElementById('anN1').textContent);
+  await q.waitForTimeout(1200);
+  const n2 = await q.evaluate(() => document.getElementById('anN1').textContent);
+  checar(n1 !== n2,
+         'Encoder: a coluna fixa se atualiza sozinha, sem a aba estar escolhida',
+         n1 + ' -> ' + n2);
+
+  // Travamento: o aviso so aparece quando ha travamento, e fica na tela
+  // ate o operador dizer que resolveu. Aviso que some sozinho e aviso
+  // que ninguem leu -- e este quer dizer eixo forcando contra ferro.
+  await q.evaluate(() => {
+    const alvo = document.getElementById('crTrav').closest('.et');
+    document.querySelectorAll('#pnEnc .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await q.waitForTimeout(300);
+  const semTrav = await q.locator('#crTrav').isVisible();
+  await q.request.post(BASE + '/teste/encoder',
+                       { data: { trvOn: true, trvJ: 2, trvN: 1 } });
+  await q.waitForTimeout(2000);
+  const comTrav = await q.evaluate(() => ({
+    vis: !!document.getElementById('crTrav').offsetParent,
+    txt: document.getElementById('crTravTxt').textContent,
+  }));
+  checar(!semTrav && comTrav.vis,
+         'Encoder: o aviso de travamento so aparece quando ha travamento');
+  checar(/JUNTA 2 TRAVOU/.test(comTrav.txt),
+         'Encoder: e diz qual junta, e o que pode ter acontecido',
+         comTrav.txt.split('\n')[0]);
+  await q.request.post(BASE + '/teste/encoder',
+                       { data: { trvOn: false, trvJ: 0, trvN: 0 } });
+  await q.waitForTimeout(700);
+
+  // As explicacoes ensinam quem comeca e atrapalham quem opera todo dia.
+  // O "?" esconde todas, e a escolha fica gravada. Esconder nao pode
+  // apagar: um clique traz tudo de volta.
+  const notasAntes = await q.locator('#pnMover .nt').first().isVisible();
+  await q.locator('#btAjuda').click();
+  await q.waitForTimeout(250);
+  const notasDepois = await q.locator('#pnMover .nt').first().isVisible();
+  checar(notasAntes && !notasDepois,
+         'Painel: o "?" esconde as explicacoes de uma vez');
+  // Os controles NAO podem sumir junto: esconder texto e uma coisa,
+  // esconder botao e outra.
+  const controles = await q.evaluate(() => ({
+    joy: !!document.getElementById('joy').offsetParent,
+    prec: !!document.getElementById('btPrec').offsetParent,
+    jb: document.querySelectorAll('#pnMover .jb').length,
+  }));
+  checar(controles.joy && controles.prec && controles.jb === 4,
+         'Painel: e os controles continuam todos la',
+         controles.jb + ' botoes de passo, joystick e precisao visiveis');
+  await q.screenshot({ path: SAIDA + '/computador-6-sem-notas.png' });
+  await q.locator('#btAjuda').click();
+  await q.waitForTimeout(250);
+  const voltaram = await q.locator('#pnMover .nt').first().isVisible();
+  checar(voltaram, 'Painel: e um clique traz as explicacoes de volta');
 
   // Vista 3D: e a MESMA maquina, vista de outro angulo. A vista de cima
   // continua sendo a de trabalho (e nela que se desenha e se escolhe

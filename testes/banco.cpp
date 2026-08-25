@@ -2741,8 +2741,20 @@ static void teste_L03_erro_de_posicao() {
   nota("com o eixo preso: comandado %.2f, medido %.2f, erro %.2f",
        (double)passosParaGraus(J1, posicaoJ1()), (double)perdeu.graus,
        (double)perdeu.erro);
-  checar(perdeu.erro > 9.0f, "L03c",
+  checar(perdeu.erro > 1.0f, "L03c",
          "eixo preso enquanto o comando anda: o erro denuncia os graus perdidos");
+
+  // E, desde que existe vigilancia de travamento, o erro nao cresce ate
+  // o fim do movimento: o sistema PARA o eixo. Continuar dando pulso
+  // contra o batente aquece o servo e torce a mecanica -- denunciar sem
+  // parar seria contar o acidente em vez de evitar.
+  const Travamento t = correcaoTravamento();
+  nota("travamento: ativo=%d, junta %u, total %lu",
+       (int)t.ativo, (unsigned)t.junta, (unsigned long)t.total);
+  checar(t.ativo && t.junta == 1, "L03d",
+         "e o sistema acusa o travamento, em vez de so mostrar o erro crescendo");
+  checar(!motoresEmMovimento(), "L03e",
+         "e para o eixo: nao fica forcando contra o batente");
 }
 
 static void teste_L04_driver_mudo_e_excecao() {
@@ -3505,6 +3517,51 @@ static void teste_M03_desligado_e_parada() {
          "a parada de emergencia cancela o retoque: nada anda depois do botao");
 }
 
+// ---------------------------------------------------------------------
+// Um falso positivo aqui para o braco no meio de um cordao e estraga a
+// peca. Este cenario e sobre o vigia NAO disparar -- que e a metade que
+// decide se ele pode ficar ligado numa maquina que solda.
+// ---------------------------------------------------------------------
+static void teste_M04_travamento_nao_dispara_a_toa() {
+  secao("M04  O vigia de travamento nao pode gritar sem motivo");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  // 1. Movimento normal, eixo acompanhando: nem um alarme.
+  irComPerda(30, 10, 0.0f);
+  nota("movimento normal: travamentos %lu",
+       (unsigned long)correcaoTravamento().total);
+  checar(!correcaoTravamento().ativo && correcaoTravamento().total == 0, "M04a",
+         "movimento normal nao acusa travamento");
+
+  // 2. Eixo parado nao pode acusar: eixo parado nao esta forcando nada.
+  rodarComWeb(2000);
+  checar(correcaoTravamento().total == 0, "M04b",
+         "e eixo parado tambem nao -- parado nao esta forcando contra nada");
+
+  // 3. Sem leitura do encoder, o vigia se cala. Um cabo solto no encoder
+  //    nao pode parar o braco no meio de um cordao.
+  g_espelharEixo = false;
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(1500);
+  const long alvo = grausParaPassos(J1, 45.0f);
+  moverCoordenado(alvo, posicaoJ2(), 30.0f);
+  uint32_t t = 0;
+  while (motoresEmMovimento() && t < 6000) { rodarComWeb(20); t += 20; }
+  nota("cabo do encoder caido: travamentos %lu; o braco chegou em %.1f grau",
+       (unsigned long)correcaoTravamento().total,
+       (double)passosParaGraus(J1, posicaoJ1()));
+  checar(correcaoTravamento().total == 0, "M04c",
+         "sem leitura o vigia se cala: cabo solto no encoder nao para o braco");
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 45.0f) < 1.0f, "M04d",
+         "e o movimento chega ao fim normalmente");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3732,6 +3789,7 @@ int main() {
   teste_M01_assentar_no_fim_do_movimento();
   teste_M02_nao_retoca_quando_nao_deve();
   teste_M03_desligado_e_parada();
+  teste_M04_travamento_nao_dispara_a_toa();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

@@ -79,6 +79,32 @@ ResumoCorrecao correcaoResumo();
 void correcaoVigiar();
 uint32_t correcaoAlertas();
 
+// =====================================================================
+//  TRAVAMENTO: o eixo foi mandado andar e nao andou
+//
+//  Antes do encoder, encostar no batente era invisivel para o firmware:
+//  ele continuava contando pulsos, o driver continuava recebendo, e o
+//  motor ficava forcando contra o ferro. A calibracao existe justamente
+//  para o operador ensinar onde o batente esta -- e enquanto ele ensina,
+//  e ele quem tem de perceber a batida no olho e no ouvido.
+//
+//  Com o encoder isso e mensuravel: comandado andando + medido parado =
+//  o eixo encostou em alguma coisa (ou perdeu o acoplamento, ou o driver
+//  desarmou). O sistema para o eixo e diz.
+//
+//  E deliberadamente CONSERVADOR. Um falso positivo para o braco no meio
+//  de um cordao, o que estraga a peca -- entao so acusa quando o
+//  comandado esta claramente andando e o medido esta claramente parado,
+//  por tempo de sobra.
+// =====================================================================
+struct Travamento {
+  bool     ativo;        // ha travamento agora
+  uint8_t  junta;        // 1 ou 2
+  uint32_t total;        // quantos desde o boot
+};
+Travamento correcaoTravamento();
+void correcaoLimparTravamento();
+
 #ifdef ROBO2DOF_TESTE
 void correcaoReiniciarTeste();
 #endif
