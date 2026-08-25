@@ -79,6 +79,10 @@ def _encoder():
     e1 = 0.12 * _mm.sin(_enc["n"] / 6.0)
     return {"ativo": True, "baud": 19200, "par": 0, "func": 3, "per": 50,
             "b32": True, "lo": False,
+            "crOn": True, "crVig": True, "crTol": 0.10, "crMax": 3.00,
+            "crAlr": 1.00, "crTent": 3,
+            "crEst": 3, "crN": 1, "crOk": 12, "crFalha": 1, "crAlerta": 0,
+            "crMotivo": "posicao conferida pelo encoder",
             "id1": 1, "id2": 2, "reg1": 90, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],

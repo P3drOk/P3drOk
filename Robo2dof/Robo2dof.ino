@@ -19,6 +19,7 @@
 #include "servidor_web.h"
 #include "rede.h"
 #include "encoder.h"
+#include "correcao.h"
 #include <math.h>
 
 static bool     emergenciaAtiva  = false;
@@ -67,6 +68,10 @@ static bool irParaPassos(long p1, long p2) {
   }
 
   moverCoordenado(p1, p2, velAuto);
+  // Movimento novo, assentamento novo: sem isto o "ja terminei" do
+  // movimento anterior valeria para este, e a correcao rodaria uma vez
+  // so na vida da maquina.
+  correcaoNovoMovimento();
   modoAtual = MODO_POSICIONANDO;
   return true;
 }
@@ -111,6 +116,10 @@ static void pararTudo(const char* motivo) {
   if (trajGravando())     trajPararGravacao();
   if (trajReproduzindo()) trajPararReproducao();
   if (calibAtiva())       calibCancelar();
+  // O retoque do encoder e movimento: parada de emergencia para ele
+  // junto com todo o resto, senao o braco daria mais um passo depois do
+  // botao vermelho.
+  correcaoCancelar();
 
   pararSuave();
   aplicarAceleracao();
@@ -738,10 +747,28 @@ void loop() {
 
     case MODO_POSICIONANDO:
       if (!motoresEmMovimento()) {
+        // Chegou pela conta de passos. Antes de liberar o jog, o encoder
+        // diz onde o braco REALMENTE parou, e o sistema da um retoque se
+        // precisar. E isto que faz sair de uma posicao e voltar cair no
+        // mesmo lugar, em vez de acumular desvio a cada viagem.
+        //
+        // Continua em POSICIONANDO enquanto assenta: em MANUAL o jog
+        // estaria liberado, e o operador brigaria com o retoque.
+        if (correcaoResumo().estado == CORR_PARADA) correcaoIniciar();
+        correcaoAtualizar();
+        if (correcaoEmCurso()) break;
+
         aplicarVelocidadeManual();
         aplicarAceleracao();
         modoAtual = MODO_MANUAL;
-        definirMensagem("Posicionamento concluido");
+        const ResumoCorrecao rc = correcaoResumo();
+        if (rc.estado == CORR_PRONTA && rc.tentativas > 0)
+          definirMensagem("Posicionado e conferido pelo encoder (%u retoque%s)",
+                          (unsigned)rc.tentativas, rc.tentativas == 1 ? "" : "s");
+        else if (rc.estado == CORR_DESISTIU || rc.estado == CORR_RECUSADA)
+          definirMensagem("Posicionamento concluido -- %s", rc.motivo);
+        else
+          definirMensagem("Posicionamento concluido");
       }
       break;
 
@@ -760,6 +787,7 @@ void loop() {
       break;
   }
 
+  correcaoVigiar();
   publicar();
   vTaskDelay(pdMS_TO_TICKS(1));
 }

@@ -7,6 +7,7 @@
 #include "calibracao.h"
 #include "rede.h"
 #include "encoder.h"
+#include "correcao.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -643,13 +644,18 @@ static void handleEncoder() {
   registrarContatoOperador();
   Snapshot s;
   lerSnapshot(s);
+  const ResumoCorrecao rc = correcaoResumo();
 
   String out;
-  out.reserve(1100);
-  char cab[420];
+  out.reserve(1500);
+  char cab[700];
   snprintf(cab, sizeof(cab),
     "{\"ativo\":%s,\"baud\":%lu,\"par\":%u,\"func\":%u,\"per\":%u,"
     "\"b32\":%s,\"lo\":%s,"
+    "\"crOn\":%s,\"crVig\":%s,\"crTol\":%.2f,\"crMax\":%.2f,"
+    "\"crAlr\":%.2f,\"crTent\":%u,"
+    "\"crEst\":%u,\"crN\":%u,\"crOk\":%lu,\"crFalha\":%lu,"
+    "\"crAlerta\":%lu,\"crMotivo\":\"%s\","
     "\"id1\":%u,\"id2\":%u,\"reg1\":%u,\"reg2\":%u,"
     "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,\"j\":[",
@@ -658,6 +664,13 @@ static void handleEncoder() {
     (unsigned)configEncoder.funcao, (unsigned)configEncoder.periodoMs,
     configEncoder.trintaEDois ? "true" : "false",
     configEncoder.baixaPrimeiro ? "true" : "false",
+    configCorrecao.ativa  ? "true" : "false",
+    configCorrecao.vigiar ? "true" : "false",
+    configCorrecao.toleranciaGraus, configCorrecao.maxCorrecaoGraus,
+    configCorrecao.alertaGraus, (unsigned)configCorrecao.tentativas,
+    (unsigned)rc.estado, (unsigned)rc.tentativas,
+    (unsigned long)rc.totalOk, (unsigned long)rc.totalDesistiu,
+    (unsigned long)correcaoAlertas(), rc.motivo,
     (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
     (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
     configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
@@ -715,6 +728,40 @@ static void handleEncoderConfig() {
 // Quem atualizou de uma versao que apontava para outro registrador fica
 // perguntando no lugar errado para sempre, sem nada na tela dizendo
 // isso. Este e o botao que desfaz.
+// Assentamento pelo encoder. Parametro que mexe em movimento so muda com
+// o robo parado -- e o core 1 confere de novo na hora de aplicar.
+static void handleCorrecao() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+
+  ConfigCorrecao c = configCorrecao;
+  c.ativa            = argL("on",   c.ativa  ? 1 : 0) != 0;
+  c.vigiar           = argL("vig",  c.vigiar ? 1 : 0) != 0;
+  c.toleranciaGraus  = argF("tol",  c.toleranciaGraus);
+  c.maxCorrecaoGraus = argF("max",  c.maxCorrecaoGraus);
+  c.alertaGraus      = argF("alr",  c.alertaGraus);
+  c.tentativas       = (uint8_t)constrain(argL("tent", c.tentativas), 1, 10);
+
+  // Numeros fora de faixa aqui viram retoque gigante no motor. A porta
+  // recusa em vez de deixar o core 1 receber lixo.
+  if (c.toleranciaGraus < 0.01f || c.toleranciaGraus > 5.0f) {
+    erro("tolerancia deve ficar entre 0,01 e 5 graus"); return;
+  }
+  if (c.maxCorrecaoGraus < c.toleranciaGraus || c.maxCorrecaoGraus > 15.0f) {
+    erro("o teto do retoque deve ficar entre a tolerancia e 15 graus"); return;
+  }
+  if (c.alertaGraus < 0.05f || c.alertaGraus > 30.0f) {
+    erro("o aviso deve ficar entre 0,05 e 30 graus"); return;
+  }
+
+  configCorrecao = c;
+  salvarConfiguracoes();
+  definirMensagem("Assentamento %s: tolerancia %.2f grau, teto %.2f grau",
+                  c.ativa ? "ligado" : "desligado",
+                  (double)c.toleranciaGraus, (double)c.maxCorrecaoGraus);
+  ok();
+}
+
 static void handleEncoderPadroes() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -988,6 +1035,7 @@ void servidorIniciar() {
   server.on("/api/encoder",        HTTP_GET,  handleEncoder);
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);
+  server.on("/api/correcao",       HTTP_POST, handleCorrecao);
   server.on("/api/encoder/testar", HTTP_POST, handleEncoderTestar);
   server.on("/api/encoder/teste",  HTTP_GET,  handleEncoderTeste);
   server.on("/api/encoder/cacar",  HTTP_POST, handleEncoderCacar);

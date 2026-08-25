@@ -26,6 +26,7 @@
 #include "DNSServer.h"
 #include "HardwareSerial.h"
 #include "encoder.h"
+#include "correcao.h"
 #include "Preferences.h"
 #include "FS.h"
 #include <string>
@@ -64,6 +65,42 @@ static void nota(const char* fmt, ...) {
 // ---------------------------------------------------------------------
 static const float DT_MS = 1.0f;
 
+// O encoder ve o EIXO FISICO, e o eixo so anda quando pulso sai no fio.
+// Nao adianta espelhar posicaoJ1(): setCurrentPosition() muda a CONTAGEM
+// sem mover o eixo, e e justamente isso que o assentamento faz no fim.
+// Espelhar a contagem esconderia o defeito que este cenario procura.
+static long g_perdaPassos = 0;     // passos que o eixo perdeu (escorregou)
+// So os cenarios de assentamento ligam o espelho. Os outros cravam a
+// posicao do escravo a mao, e um espelho sempre ligado atropelaria todos.
+static bool g_espelharEixo = false;
+
+static void espelharEixoNoEncoder() {
+  if (!g_espelharEixo || !J1.motor) return;
+  const long fisico = (long)J1.motor->pulsosGerados - g_perdaPassos;
+  const float cv  = configEncoder.contagensPorVolta[0];
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  // passos do motor -> voltas do motor -> contagens do encoder.
+  const float voltasMotor = (J1.passosPorGrau > 0.0f)
+      ? ((float)fisico / J1.passosPorGrau) * red / 360.0f : 0.0f;
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao = encoderLer(1).referencia
+                            + (int32_t)lroundf(voltasMotor * cv);
+}
+
+// Encena perda de passo: o eixo fica para tras do que foi comandado.
+static void perderPassos(float graus) {
+  g_perdaPassos += lroundf(graus * J1.passosPorGrau);
+}
+
+// Onde o EIXO parou de verdade, em graus da junta. E este numero que o
+// operador ve na peca -- nao a contagem de passos, que e so a conta que o
+// firmware faz.
+static float eixoFisicoGraus() {
+  if (!J1.motor || J1.passosPorGrau <= 0.0f) return 0.0f;
+  const long fisico = (long)J1.motor->pulsosGerados - g_perdaPassos;
+  return (float)fisico / J1.passosPorGrau + J1.grausHome;
+}
+
 static void rodar(uint32_t ms) {
   for (uint32_t i = 0; i < ms; i++) {
     g_millis += (uint32_t)DT_MS;
@@ -77,13 +114,22 @@ static void rodar(uint32_t ms) {
     // Idem para a tarefa de rede: no ESP32 ela vive dentro de
     // tarefaRede(), que o mock de FreeRTOS nao executa.
     redeAtender();
+    espelharEixoNoEncoder();
     encoderCicloTeste();
   }
 }
 // Simula o navegador vivo: heartbeat HTTP a cada 200 ms.
 static void rodarComWeb(uint32_t ms) {
+  // O heartbeat segue o RELOGIO, nao a contagem de voltas. Um ciclo do
+  // banco nao custa 1 ms: leitura de encoder que da tempo esgotado custa
+  // 100 ms de relogio simulado, e contar voltas deixaria o vigia de
+  // conexao disparar no meio de um cenario que nada tem a ver com isso.
+  static uint32_t ultimoHb = 0;
   for (uint32_t i = 0; i < ms; i++) {
-    if (i % 200 == 0) registrarContatoOperador();
+    if (!ultimoHb || (uint32_t)(g_millis - ultimoHb) >= 150) {
+      registrarContatoOperador();
+      ultimoHb = g_millis;
+    }
     rodar(1);
   }
 }
@@ -151,6 +197,7 @@ static void reiniciarSistema() {
   g_fs  = FsMock();
   armReiniciarTeste();
   encoderReiniciarTeste();
+  correcaoReiniciarTeste();
   // O barramento RS485 tambem e estado: um cenario que terminou com o
   // driver mudo deixava o seguinte gastando o tempo esgotado de cada
   // leitura, e o relogio do banco corria mais rapido que o movimento.
@@ -162,6 +209,8 @@ static void reiniciarSistema() {
   g_uart.escravo[0].velocidade = g_uart.escravo[1].velocidade = 0;
   g_uart.moduloLigado = false;
   g_uart.pinoRe       = -1;
+  g_perdaPassos       = 0;
+  g_espelharEixo      = false;
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -3287,6 +3336,175 @@ static void teste_J04_teste_de_rede_do_sistema_operacional() {
          "rota de verdade inexistente continua 404, para o defeito aparecer");
 }
 
+// Manda o braco para um angulo, encena a perda no meio do caminho, e
+// espera o movimento (e o assentamento) terminarem.
+static int irComPerda(float t1, float t2, float perdaGraus) {
+  const int cod = webPost((std::string("/api/mover?t1=") + std::to_string((int)t1) +
+           "&t2=" + std::to_string((int)t2)).c_str());
+  rodarComWeb(60);
+  if (perdaGraus != 0.0f) perderPassos(perdaGraus);
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < 8000) { rodarComWeb(20); t += 20; }
+  return cod;
+}
+
+// =====================================================================
+//  M - Assentamento pelo encoder (correcao de posicao)
+// =====================================================================
+// O incomodo do operador: "saio de uma posicao e volto, e ela nao e mais
+// a mesma". Sem assentamento o erro de um movimento entra no proximo e o
+// desvio cresce sem nunca voltar.
+//
+// Metade destes cenarios prova que a correcao FUNCIONA. A outra metade
+// prova que ela NAO MEXE quando nao deve -- que e a parte que importa
+// numa maquina que solda.
+// ---------------------------------------------------------------------
+
+static void teste_M01_assentar_no_fim_do_movimento() {
+  secao("M01  Chegou: o encoder confere e retoca");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;      // dagora o encoder segue o eixo de verdade
+
+  nota("tolerancia %.2f grau, teto %.2f grau, %u tentativas",
+       (double)configCorrecao.toleranciaGraus,
+       (double)configCorrecao.maxCorrecaoGraus,
+       (unsigned)configCorrecao.tentativas);
+  checar(configCorrecao.ativa, "M01a", "de fabrica o assentamento vem ligado");
+
+  // Vai para 20 graus e perde meio grau no caminho -- perda de passo
+  // tipica. O que importa nao e a contagem: e onde o EIXO parou.
+  irComPerda(20, 10, 0.5f);
+  const ResumoCorrecao rc = correcaoResumo();
+  nota("faltavam %+.2f grau ao chegar; %u retoque(s); \"%s\"",
+       (double)rc.erroInicial1, (unsigned)rc.tentativas, rc.motivo);
+  nota("eixo parou em %.3f grau (alvo 20)", (double)eixoFisicoGraus());
+  checar(rc.tentativas > 0, "M01b",
+         "meio grau de perda faz o sistema retocar, em vez de deixar passar");
+  checar(fabsf(eixoFisicoGraus() - 20.0f) < 0.15f, "M01c",
+         "e o EIXO acaba no alvo, nao meio grau atras dele");
+
+  // A contagem tem de voltar ao alvo, senao o desvio nao some: ele so
+  // passa para o proximo movimento. Este e o coracao do pedido do
+  // operador -- "saio de uma posicao e volto, e ela nao e mais a mesma".
+  nota("contagem da junta 1: %ld passos (alvo %ld)",
+       posicaoJ1(), grausParaPassos(J1, 20.0f));
+  checar(labs(posicaoJ1() - grausParaPassos(J1, 20.0f)) < 5, "M01d",
+         "e a contagem volta ao alvo: o desvio some, nao muda de lugar");
+
+  // A prova do incomodo: sai e volta duas vezes, e o lugar tem de ser o
+  // mesmo. Sem assentamento cada viagem deixaria um resto.
+  irComPerda(5, 5, 0.4f);
+  irComPerda(20, 10, 0.4f);
+  nota("depois de sair e voltar: eixo em %.3f grau (alvo 20); %u retoque(s) -- \"%s\"",
+       (double)eixoFisicoGraus(), (unsigned)correcaoResumo().tentativas,
+       correcaoResumo().motivo);
+  checar(fabsf(eixoFisicoGraus() - 20.0f) < 0.15f, "M01e",
+         "sai da posicao, volta, e cai no mesmo lugar -- que era o pedido");
+  checar(modoAtual == MODO_MANUAL, "M01f",
+         "terminado o assentamento, o jog volta a ser do operador");
+}
+
+static void teste_M02_nao_retoca_quando_nao_deve() {
+  secao("M02  Quando o assentamento NAO pode mexer no motor");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  // 1. Erro pequeno: ja esta bom, nao fica cutucando o eixo.
+  irComPerda(15, 5, 0.02f);
+  nota("perda de 0,02 grau: %u retoque(s) -- \"%s\"",
+       (unsigned)correcaoResumo().tentativas, correcaoResumo().motivo);
+  checar(correcaoResumo().tentativas == 0, "M02a",
+         "perda dentro da tolerancia nao vira retoque: o eixo nao fica cutucando");
+
+  // 2. Erro GRANDE: nao e folga. Empurrar o braco varios graus achando
+  //    que esta consertando e o jeito mais rapido de bater a ferramenta.
+  const long antes = (long)J1.motor->pulsosGerados;
+  irComPerda(25, 5, 9.0f);
+  const long depois = (long)J1.motor->pulsosGerados;
+  const long previsto = labs(grausParaPassos(J1, 25.0f) - grausParaPassos(J1, 15.0f));
+  nota("perda de 9 graus: estado %u -- \"%s\"", (unsigned)correcaoResumo().estado,
+       correcaoResumo().motivo);
+  nota("pulsos emitidos %ld (o movimento em si pedia ~%ld)",
+       depois - antes, previsto);
+  checar(correcaoResumo().estado == CORR_RECUSADA, "M02b",
+         "erro grande demais NAO e corrigido: e denunciado");
+  // Nenhum pulso ALEM do movimento pedido: o retoque nao aconteceu.
+  checar(labs((depois - antes) - previsto) < 20, "M02c",
+         "e nenhum pulso a mais sai no fio -- o braco nao anda por adivinhacao");
+
+  // 3. Sem leitura do encoder: nao se move o braco no escuro.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(200);
+  g_espelharEixo = true;
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(1500);
+  const long antes2 = (long)J1.motor->pulsosGerados;
+  irComPerda(12, 8, 0.0f);
+  nota("cabo caido: estado %u -- \"%s\"; pulsos %ld",
+       (unsigned)correcaoResumo().estado, correcaoResumo().motivo,
+       (long)J1.motor->pulsosGerados - antes2);
+  checar(correcaoResumo().estado == CORR_RECUSADA, "M02d",
+         "sem leitura confiavel o assentamento recusa, em vez de adivinhar");
+  checar(modoAtual == MODO_MANUAL, "M02e",
+         "e o robo nao fica preso em POSICIONANDO por causa disso");
+}
+
+static void teste_M03_desligado_e_parada() {
+  secao("M03  Desligar o assentamento, e a parada de emergencia");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  // Desligado, a maquina volta a se comportar como antes do encoder: a
+  // perda fica na peca.
+  configCorrecao.ativa = false;
+  irComPerda(18, 6, 0.8f);
+  nota("desligado: %u retoque(s); eixo em %.3f grau (alvo 18)",
+       (unsigned)correcaoResumo().tentativas, (double)eixoFisicoGraus());
+  checar(correcaoResumo().tentativas == 0, "M03a",
+         "com o assentamento desligado nao ha retoque");
+  checar(fabsf(eixoFisicoGraus() - 18.0f) > 0.5f, "M03b",
+         "e a perda fica na peca -- que e como a maquina era antes do encoder");
+  configCorrecao.ativa = true;
+
+  // Parada de emergencia no meio do assentamento para o retoque tambem.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+  webPost("/api/mover?t1=22&t2=9");
+  rodarComWeb(60);
+  perderPassos(1.0f);
+  uint32_t t = 0;
+  while (!correcaoEmCurso() && t < 8000) { rodarComWeb(20); t += 20; }
+  const bool pegouEmCurso = correcaoEmCurso();
+  solicitarParada();
+  rodarComWeb(200);
+  nota("pegou o assentamento em curso: %d;  depois da parada: em curso=%d",
+       (int)pegouEmCurso, (int)correcaoEmCurso());
+  checar(pegouEmCurso && !correcaoEmCurso(), "M03c",
+         "a parada de emergencia cancela o retoque: nada anda depois do botao");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3511,6 +3729,9 @@ int main() {
   teste_L12_cacar_o_registrador();
   teste_L13_velocidade_sentido_e_passos();
 
+  teste_M01_assentar_no_fim_do_movimento();
+  teste_M02_nao_retoca_quando_nao_deve();
+  teste_M03_desligado_e_parada();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

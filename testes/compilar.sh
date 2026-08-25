@@ -35,5 +35,6 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true \
     Robo2dof/armazenamento.cpp \
     Robo2dof/servidor_web.cpp \
     Robo2dof/rede.cpp \
-    Robo2dof/encoder.cpp
+    Robo2dof/encoder.cpp \
+    Robo2dof/correcao.cpp
 exec testes/saida/banco

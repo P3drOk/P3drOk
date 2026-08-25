@@ -159,6 +159,16 @@ void zerarPosicoes() {
   if (J2.motor) J2.motor->setCurrentPosition(0);
 }
 
+// Reajusta a CONTAGEM sem mover o eixo. Nenhum pulso sai no fio.
+//
+// Serve para uma coisa so: depois do assentamento pelo encoder, o eixo
+// esta fisicamente no alvo mas a contagem ficou adiantada pelo tanto que
+// o retoque andou. Sem este reajuste o desvio nao some -- ele so muda de
+// lugar, e o proximo movimento absoluto nasce errado pelo mesmo tanto.
+void ajustarContagem(Junta& j, long passos) {
+  if (j.motor) j.motor->setCurrentPosition((int32_t)passos);
+}
+
 // ---------------------------------------------------------------------
 // JOG
 // ---------------------------------------------------------------------

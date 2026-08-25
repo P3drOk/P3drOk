@@ -220,6 +220,17 @@ struct ConfigEncoder {
   float    contagensPorVolta[2];   // do ENCODER, por volta do MOTOR
 };
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
+
+// Assentamento pelo encoder. Ver correcao.h para as regras.
+struct ConfigCorrecao {
+  bool  ativa;             // assentar no fim de cada movimento
+  float toleranciaGraus;   // abaixo disto ja esta bom, nao retoca
+  float maxCorrecaoGraus;  // acima disto NAO retoca: denuncia
+  uint8_t tentativas;      // quantos retoques antes de desistir
+  bool  vigiar;            // avisar quando o erro passar do limite andando
+  float alertaGraus;       // limite da vigilancia
+};
+extern ConfigCorrecao configCorrecao;
 extern ConfigEncoder encoderPendente;    // area de preparo, core 0 enche
 void aplicarEncoderPendente();           // core 1: grava e reconfigura
 

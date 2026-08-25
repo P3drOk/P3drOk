@@ -34,6 +34,25 @@ ConfigEncoder configEncoder = {
   {1, 2}, {ENC_REG_PADRAO, 0},
   {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO}
 };
+// Assentamento: ligado de fabrica, com numeros conservadores.
+//
+// 0,10 grau de tolerancia: abaixo disso o retoque seria menor que a
+// propria resolucao de leitura em muitas montagens, e o eixo ficaria
+// cutucando sem parar.
+//
+// 3 graus de teto: acima disso o problema nao e folga. E acoplamento
+// solto, registrador errado ou reducao errada -- e empurrar o braco tres
+// graus achando que esta consertando e o jeito mais rapido de bater a
+// ferramenta em alguma coisa.
+ConfigCorrecao configCorrecao = {
+  true,    // ativa
+  0.10f,   // toleranciaGraus
+  3.00f,   // maxCorrecaoGraus
+  3,       // tentativas
+  true,    // vigiar
+  1.00f,   // alertaGraus
+};
+
 ConfigEncoder encoderPendente = configEncoder;
 
 Modo        modoAtual     = MODO_MANUAL;
@@ -250,6 +269,19 @@ void carregarConfiguracoes() {
   J2.grausHome = prefs.getFloat("e2hom", 0.0f);
 
   configEncoder.ativo        = prefs.getBool ("encOn",  true);
+  configCorrecao.ativa            = prefs.getBool ("crOn",  true);
+  configCorrecao.vigiar           = prefs.getBool ("crVig", true);
+  configCorrecao.toleranciaGraus  = prefs.getFloat("crTol", 0.10f);
+  configCorrecao.maxCorrecaoGraus = prefs.getFloat("crMax", 3.00f);
+  configCorrecao.alertaGraus      = prefs.getFloat("crAlr", 1.00f);
+  configCorrecao.tentativas       = (uint8_t)prefs.getUInt("crTent", 3);
+  // Numeros fora de faixa gravados por engano nao podem virar retoque
+  // gigante nem laco infinito.
+  if (configCorrecao.toleranciaGraus  < 0.01f) configCorrecao.toleranciaGraus  = 0.01f;
+  if (configCorrecao.maxCorrecaoGraus > 15.0f) configCorrecao.maxCorrecaoGraus = 15.0f;
+  if (configCorrecao.maxCorrecaoGraus < configCorrecao.toleranciaGraus)
+      configCorrecao.maxCorrecaoGraus = configCorrecao.toleranciaGraus;
+  if (configCorrecao.tentativas > 10) configCorrecao.tentativas = 10;
   configEncoder.baud         = prefs.getUInt ("encBd",  ENC_BAUD_PADRAO);
   configEncoder.paridade     = (uint8_t) prefs.getUInt("encPar", ENC_PARIDADE_PADRAO);
   configEncoder.funcao       = (uint8_t) prefs.getUInt("encFn",  ENC_FUNCAO_PADRAO);
@@ -328,6 +360,12 @@ void salvarConfiguracoes() {
   prefs.putFloat("e2hom", J2.grausHome);
 
   prefs.putBool ("encOn",  configEncoder.ativo);
+  prefs.putBool ("crOn",   configCorrecao.ativa);
+  prefs.putBool ("crVig",  configCorrecao.vigiar);
+  prefs.putFloat("crTol",  configCorrecao.toleranciaGraus);
+  prefs.putFloat("crMax",  configCorrecao.maxCorrecaoGraus);
+  prefs.putFloat("crAlr",  configCorrecao.alertaGraus);
+  prefs.putUInt ("crTent", configCorrecao.tentativas);
   prefs.putUInt ("encBd",  configEncoder.baud);
   prefs.putUInt ("encPar", configEncoder.paridade);
   prefs.putUInt ("encFn",  configEncoder.funcao);

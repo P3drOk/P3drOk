@@ -549,6 +549,45 @@ h4:first-child{margin-top:0}
         </div>
 
         <div class="et">
+          <div class="cab"><div class="mk">&#9678;</div>
+            <div class="tx"><div class="tt">Correcao de posicao</div>
+            <span class="sb" id="sbCorr">assentamento pelo encoder</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="encGrade">
+              <div class="encCel"><span class="rot">estado</span><b id="crEst">--</b></div>
+              <div class="encCel"><span class="rot">assentamentos</span><b id="crOk">--</b></div>
+              <div class="encCel"><span class="rot">avisos</span><b id="crAlerta">--</b></div>
+            </div>
+            <div class="res" id="crMotivo">--</div>
+            <div class="nt">Quando o braco chega, o encoder diz onde ele
+            <b>realmente</b> parou e o sistema da um retoque curto se precisar.
+            E isto que faz <b>sair de uma posicao e voltar cair no mesmo
+            lugar</b>: sem assentamento, o erro de um movimento entra no
+            proximo e o desvio cresce sem nunca voltar.</div>
+
+            <div class="tr"><div class="ch" id="crOnCh"><i></i></div>
+              <span>assentar no fim de cada movimento</span></div>
+            <div class="tr"><div class="ch" id="crVigCh"><i></i></div>
+              <span>avisar quando o eixo sair de posicao parado</span></div>
+            <div class="cp"><label>Tolerancia</label><input type="number" id="crTol" min="0.01" max="5" step="0.01"><span class="un">&deg;</span></div>
+            <div class="cp"><label>Teto do retoque</label><input type="number" id="crMax" min="0.05" max="15" step="0.05"><span class="un">&deg;</span></div>
+            <div class="cp"><label>Aviso de desvio</label><input type="number" id="crAlr" min="0.05" max="30" step="0.05"><span class="un">&deg;</span></div>
+            <div class="cp"><label>Tentativas</label><input type="number" id="crTent" min="1" max="10" step="1"></div>
+            <button class="b pri" id="btCorrSalvar">Salvar correcao</button>
+            <div class="pq2" id="qCorrSalvar"></div>
+            <div class="nt"><b>Tolerancia</b>: abaixo disso ja esta bom, e o
+            eixo nao fica cutucando. <b>Teto do retoque</b>: acima disso o
+            sistema NAO corrige, ele <b>denuncia</b> &mdash; erro de varios
+            graus nao e folga, e acoplamento solto, registrador errado ou
+            reducao errada, e empurrar o braco achando que esta consertando e
+            o jeito mais rapido de bater a ferramenta em alguma coisa.
+            <br>O retoque nunca sai do curso calibrado, nunca acontece com a
+            solda ligada, e a parada de emergencia cancela ele junto com todo
+            o resto.</div>
+          </div>
+        </div>
+
+        <div class="et">
           <div class="cab"><div class="mk">&#9636;</div>
             <div class="tx"><div class="tt">Analise detalhada</div>
             <span class="sb" id="sbAnal">tudo que foi captado</span></div><div class="chv">&#9654;</div></div>
@@ -2512,6 +2551,40 @@ function analisar(d){
   tb.innerHTML=html;
 }
 
+/* ---------------------------------------------------------------------
+   Assentamento pelo encoder.
+   --------------------------------------------------------------------- */
+const CORR=["parado","conferindo","retocando","conferido","nao fechou","recusado"];
+let corrCarregou=false;
+
+function corrAplicar(d){
+  const est=CORR[d.crEst||0]||"--";
+  anCel("crEst",est);
+  anCel("crOk",String(d.crOk||0)+(d.crFalha?(" / "+d.crFalha+" nao"):""));
+  anCel("crAlerta",String(d.crAlerta||0));
+  $("crMotivo").textContent=d.crMotivo||"--";
+  $("sbCorr").textContent = !d.crOn ? "desligado"
+    : (d.crEst===5||d.crEst===4) ? "atencao" : est;
+  if(!corrCarregou){
+    corrCarregou=true;
+    $("crOnCh").className ="ch"+(d.crOn?" on":"");
+    $("crVigCh").className="ch"+(d.crVig?" on":"");
+    $("crTol").value=d.crTol; $("crMax").value=d.crMax;
+    $("crAlr").value=d.crAlr; $("crTent").value=d.crTent;
+  }
+}
+
+["crOnCh","crVigCh"].forEach(function(id){
+  $(id).onclick=function(){$(id).classList.toggle("on");};
+});
+$("btCorrSalvar").onclick=function(){
+  const on=function(id){return $(id).classList.contains("on")?1:0;};
+  post("/api/correcao?on="+on("crOnCh")+"&vig="+on("crVigCh")+
+       "&tol="+$("crTol").value+"&max="+$("crMax").value+
+       "&alr="+$("crAlr").value+"&tent="+$("crTent").value)
+   .then(function(){corrCarregou=false;});
+};
+
 function encCsv(){
   let txt="ms,bruto1,medido1,comandado1,erro1,vel1,rpm1,"+
           "bruto2,medido2,comandado2,erro2,vel2,rpm2\n";
@@ -2607,7 +2680,7 @@ function encAplicar(d){
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
   }
-  encMedir();encPintar();posPintar();analisar(d);
+  encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
 

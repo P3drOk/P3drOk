@@ -31,6 +31,8 @@ float velocidadeJ2Hz();
 long posicaoJ1();
 long posicaoJ2();
 void zerarPosicoes();
+// Reajusta a contagem sem mover o eixo (nenhum pulso sai). Ver motores.cpp.
+void ajustarContagem(Junta& j, long passos);
 
 // ---------------------------------------------------------------------
 // JOG
