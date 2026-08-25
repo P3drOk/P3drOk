@@ -772,6 +772,7 @@ h4:first-child{margin-top:0}
           <button class="zb pq" id="zAuto" title="Enquadrar o braco">FIT</button>
           <button class="zb pq" id="zDes" title="Desenhar o caminho com o dedo">DES</button>
           <button class="zb pq" id="zTema" title="Alternar tema">TEMA</button>
+          <button class="zb pq" id="z3D" title="Alternar vista 2D / 3D">3D</button>
         </div>
         <div class="barraDes" id="barraDes">
           <span class="cnt" id="dCnt">risque com o dedo sobre a mesa</span>
@@ -1478,6 +1479,16 @@ $("zTema").onclick =function(){
   const e=document.documentElement.getAttribute("data-tema")==="escuro";
   document.documentElement.setAttribute("data-tema",e?"claro":"escuro");
 };
+$("z3D").onclick =function(){
+  vista3D=!vista3D;
+  $("z3D").textContent = vista3D?"2D":"3D";
+  $("z3D").classList.toggle("on",vista3D);
+  /* Desenhar com o dedo so existe na vista de cima: um traco desenhado
+     em perspectiva nao tem onde cair na mesa. Sair da 2D desliga o modo
+     em vez de deixar o operador riscando no vazio. */
+  if(vista3D&&desOn)$("zDes").onclick();
+  try{localStorage.setItem("vista3d",vista3D?"1":"0");}catch(e){}
+};
 
 function ponta(t1,t2,L1,L2){
   const a=t1*Math.PI/180,b=(t1+t2)*Math.PI/180;
@@ -1502,10 +1513,159 @@ function paleta(){
   return PAL;
 }
 
+/* =====================================================================
+   VISTA 3D
+
+   O braco e PLANAR: os dois eixos giram no mesmo plano horizontal. Uma
+   vista de cima ja mostra tudo o que decide o cordao, e por isso ela
+   continua sendo a vista de trabalho -- e a que tem o desenho com o
+   dedo, a escolha de pontos e a mesa.
+
+   A vista 3D existe para outra coisa: enxergar a MAQUINA. A altura dos
+   elos sobre a mesa, o alcance como volume, a ferramenta descendo ate a
+   peca. Serve para explicar a maquina para quem nunca a viu, e para
+   conferir de relance se o braco esta na postura que se imagina.
+
+   E uma REPRESENTACAO em escala, nao um modelo do desenho mecanico: a
+   altura dos elos e uma constante escolhida para a figura ficar legivel.
+   ===================================================================== */
+let vista3D=false;
+const ALT_ELO1=70, ALT_ELO2=42;    /* mm acima da mesa, so para a figura */
+
+function pintar3D(){
+  const C=paleta();
+  const L1=D.l1||200,L2=D.l2||200,dp=window.devicePixelRatio||1;
+  const w=cv.width/dp,h=cv.height/dp;
+  const alc=L1+L2;
+  /* A isometrica achata o eixo vertical, entao a cena cabe maior que na
+     vista de cima sem encostar nas bordas. */
+  esc=Math.min(w,h)/(vistaMm*0.86);
+  ox=w/2; oy=h*0.58;
+
+  /* Isometrica: x para a direita-baixo, y para a esquerda-baixo, z para
+     cima. O achatamento de 0,52 e o que faz a mesa parecer mesa em vez
+     de losango deitado. */
+  const CA=Math.cos(0.5236), SA=Math.sin(0.5236)*0.52;
+  const Q=function(x,y,z){
+    return [ox+(x-y)*CA*esc, oy-((x+y)*SA+ (z||0)*0.62)*esc];
+  };
+
+  ct.clearRect(0,0,w,h);
+  ct.fillStyle=C.papel;ct.fillRect(0,0,w,h);
+
+  /* ---- mesa: grade no plano z = 0 ---- */
+  let passo=10; const alvo=46;
+  while(passo*esc<alvo)passo*=(String(passo)[0]==="1")?2.5:2;
+  while(passo*esc>alvo*2.6)passo/=(String(passo)[0]==="2")?2.5:2;
+  passo=Math.max(1,Math.round(passo));
+  const lim=Math.ceil(alc*1.05/passo)*passo;
+  ct.lineWidth=1;
+  for(let v=-lim;v<=lim;v+=passo){
+    const forte=(v===0);
+    ct.strokeStyle="rgba("+C.grade+","+(forte?.5:.16)+")";
+    let a=Q(v,-lim,0),b=Q(v,lim,0);
+    ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.stroke();
+    a=Q(-lim,v,0);b=Q(lim,v,0);
+    ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.stroke();
+  }
+
+  /* ---- alcance: o circulo de raio L1+L2 visto em perspectiva ---- */
+  ct.strokeStyle="rgba("+C.grade+",.55)";ct.lineWidth=1.5;
+  ct.beginPath();
+  for(let g=0;g<=360;g+=4){
+    const r=g*Math.PI/180, q=Q(alc*Math.cos(r),alc*Math.sin(r),0);
+    if(g)ct.lineTo(q[0],q[1]);else ct.moveTo(q[0],q[1]);
+  }
+  ct.stroke();
+
+  /* ---- pontos do programa, na mesa ---- */
+  /* Os trechos, na mesa: cordao cheio, deslocamento pontilhado. */
+  ct.lineWidth=2;
+  for(let i=0;i<pontos.length-1;i++){
+    const A=pontos[i],B=pontos[i+1];
+    const qa=Q(A.x,A.y,0), qb=Q(B.x,B.y,0);
+    ct.strokeStyle=A.av?C.brasa:(A.s?C.quente:C.arco);
+    ct.setLineDash(A.s?[]:[5,4]);
+    ct.beginPath();ct.moveTo(qa[0],qa[1]);ct.lineTo(qb[0],qb[1]);ct.stroke();
+  }
+  ct.setLineDash([]);
+  pontos.forEach(function(pt,i){
+    const q=Q(pt.x,pt.y,0);
+    ct.fillStyle=pt.s?C.quente:C.ponto;
+    ct.strokeStyle=pt.s?C.quente:C.arco;ct.lineWidth=1.5;
+    ct.beginPath();ct.ellipse(q[0],q[1],5,3.2,0,0,TAU);ct.fill();ct.stroke();
+    if(i===0||i===pontos.length-1){
+      ct.fillStyle=C.letra3;
+      ct.font="9px ui-monospace,Menlo,monospace";ct.textAlign="center";
+      ct.fillText(String(i+1),q[0],q[1]-8);
+    }
+  });
+
+  /* ---- o braco ---- */
+  const t1=(D.t1||0)*Math.PI/180, t2=((D.t1||0)+(D.t2||0))*Math.PI/180;
+  const cx=L1*Math.cos(t1), cy=L1*Math.sin(t1);
+  const px=cx+L2*Math.cos(t2), py=cy+L2*Math.sin(t2);
+
+  /* sombra na mesa: e ela que da a nocao de altura */
+  ct.strokeStyle="rgba(0,0,0,.20)";ct.lineWidth=Math.max(3,10*esc);
+  ct.lineCap="round";
+  let a=Q(0,0,0), b=Q(cx,cy,0), c=Q(px,py,0);
+  ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.lineTo(c[0],c[1]);ct.stroke();
+
+  /* coluna da base */
+  const base0=Q(0,0,0), base1=Q(0,0,ALT_ELO1);
+  ct.strokeStyle=C.elo1;ct.lineWidth=Math.max(6,18*esc);
+  ct.beginPath();ct.moveTo(base0[0],base0[1]);ct.lineTo(base1[0],base1[1]);ct.stroke();
+
+  /* elo 1 e elo 2, cada um na sua altura */
+  const j0=Q(0,0,ALT_ELO1), j1=Q(cx,cy,ALT_ELO1);
+  const k1=Q(cx,cy,ALT_ELO2), k2=Q(px,py,ALT_ELO2);
+  ct.lineCap="round";
+  ct.strokeStyle=C.elo1;ct.lineWidth=Math.max(5,L1*esc*0.10);
+  ct.beginPath();ct.moveTo(j0[0],j0[1]);ct.lineTo(j1[0],j1[1]);ct.stroke();
+  /* coluna curta descendo do cotovelo ate a altura do elo 2 */
+  ct.strokeStyle=C.elo1;ct.lineWidth=Math.max(4,12*esc);
+  ct.beginPath();ct.moveTo(j1[0],j1[1]);ct.lineTo(k1[0],k1[1]);ct.stroke();
+  ct.strokeStyle=C.elo2;ct.lineWidth=Math.max(4,L2*esc*0.08);
+  ct.beginPath();ct.moveTo(k1[0],k1[1]);ct.lineTo(k2[0],k2[1]);ct.stroke();
+
+  /* nervura clara, para o elo nao virar um tubo chapado */
+  ct.strokeStyle="rgba(255,255,255,.20)";ct.lineWidth=Math.max(1,L1*esc*0.02);
+  ct.beginPath();ct.moveTo(j0[0],j0[1]);ct.lineTo(j1[0],j1[1]);ct.stroke();
+
+  /* juntas */
+  [[j0,C.arco],[j1,C.elo1]].forEach(function(par){
+    ct.fillStyle=C.juntaF;ct.beginPath();
+    ct.ellipse(par[0][0],par[0][1],Math.max(4,9*esc),Math.max(3,7*esc),0,0,TAU);
+    ct.fill();ct.strokeStyle=par[1];ct.lineWidth=2;ct.stroke();
+  });
+
+  /* a ferramenta descendo do elo 2 ate a peca */
+  const pontaMesa=Q(px,py,0);
+  ct.strokeStyle=D.solda?C.quente:C.letra3;
+  ct.lineWidth=Math.max(2,5*esc);
+  ct.beginPath();ct.moveTo(k2[0],k2[1]);ct.lineTo(pontaMesa[0],pontaMesa[1]);ct.stroke();
+  ct.fillStyle=D.solda?C.brasa:C.arco;
+  ct.beginPath();ct.arc(pontaMesa[0],pontaMesa[1],D.solda?6:4,0,TAU);ct.fill();
+  if(D.solda){
+    ct.globalAlpha=.28;ct.beginPath();
+    ct.arc(pontaMesa[0],pontaMesa[1],14,0,TAU);ct.fill();ct.globalAlpha=1;
+  }
+  ct.lineCap="butt";
+
+  /* Uma linha so, embaixo. Os angulos e a ponta ja estao na regua do
+     rodape -- repetir aqui em cima so cobriria a legenda. */
+  ct.fillStyle=C.letra3;
+  ct.font="10px ui-monospace,Menlo,monospace";ct.textAlign="left";
+  ct.fillText("vista 3D  ·  desenhar e escolher pontos e na vista de cima",
+              10, h-10);
+}
+
 function pintar(){
   /* Na aba errada o canvas tem largura zero: desenhar ali so gasta CPU
      e divide por zero na escala. */
   if(!cv.width||!cv.height)return;
+  if(vista3D){ pintar3D(); return; }
   const C=paleta();
   const L1=D.l1||200,L2=D.l2||200,dp=window.devicePixelRatio||1;
   const w=cv.width/dp,h=cv.height/dp,alc=L1+L2;
@@ -3286,6 +3446,11 @@ setInterval(pintar,45);
 tick();
 lerPontos();
 sdAtualizar(true);
+/* A vista escolhida sobrevive ao recarregar. Fica AQUI, no fim: mais
+   acima, 'desOn' e o proprio botao de desenho ainda nao existem, e
+   restaurar cedo demais quebraria a pagina inteira. */
+try{ if(localStorage.getItem("vista3d")==="1")$("z3D").onclick(); }catch(e){}
+
 </script>
 </body>
 </html>

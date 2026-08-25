@@ -256,6 +256,37 @@ function checar(ok, texto, extra) {
   await q.locator('#abasTopo button[data-aba="mover"]').click();
   await q.waitForTimeout(200);
 
+  // Vista 3D: e a MESMA maquina, vista de outro angulo. A vista de cima
+  // continua sendo a de trabalho (e nela que se desenha e se escolhe
+  // ponto), entao o botao alterna e nada mais muda de lugar.
+  await q.locator('#z3D').click();
+  await q.waitForTimeout(400);
+  const v3d = await q.evaluate(() => ({
+    ligado: document.getElementById('z3D').classList.contains('on'),
+    texto:  document.getElementById('z3D').textContent.trim(),
+    mesa:   document.getElementById('cv').offsetParent !== null,
+    pintou: (() => {
+      const c = document.getElementById('cv');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      // Alguma coisa foi desenhada se ha pixel diferente do fundo.
+      const r0 = d[0], g0 = d[1], b0 = d[2];
+      for (let i = 0; i < d.length; i += 4 * 977)
+        if (d[i] !== r0 || d[i+1] !== g0 || d[i+2] !== b0) return true;
+      return false;
+    })(),
+  }));
+  checar(v3d.ligado && v3d.texto === '2D',
+         'Mesa: o botao 3D alterna e passa a oferecer a volta para 2D', v3d.texto);
+  checar(v3d.mesa && v3d.pintou,
+         'Mesa: a vista 3D desenha de verdade, nao fica em branco');
+  await q.screenshot({ path: SAIDA + '/computador-5-vista3d.png' });
+
+  await q.locator('#z3D').click();
+  await q.waitForTimeout(300);
+  const volta = await q.evaluate(() =>
+    document.getElementById('z3D').textContent.trim());
+  checar(volta === '3D', 'Mesa: e volta para a vista de cima', volta);
+
   await q.locator('#zTema').click();
   await q.waitForTimeout(300);
   await q.screenshot({ path: SAIDA + '/computador-3-tema-escuro.png' });
