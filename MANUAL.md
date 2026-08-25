@@ -234,6 +234,43 @@ medido.
 > corresponder à máquina. Trocar a montagem, afrouxar o acoplamento ou
 > mexer na redução invalida a calibração — recalibre.
 
+#### Encoder absoluto: a máquina se localiza sozinha
+
+O encoder do servo **guarda a posição com a máquina desligada**. Se
+alguém empurrar o braço à mão com tudo apagado, ao ligar ele sabe. Isso
+**dispensa fim de curso**: em vez de procurar batente, a máquina lê onde
+está.
+
+Para isso ela precisa saber uma coisa só: **qual contagem crua do encoder
+corresponde a 0°**. Ensina-se uma vez, na página avançada (aba Encoder →
+*Zero absoluto* → cadeado).
+
+| | |
+|---|---|
+| **Ensinar** | leve o braço a uma postura que você sabe medir, informe o ângulo real. Não precisa ser 0 |
+| **Ao ligar** | a contagem de passos é acertada pelo encoder, e a máquina já nasce sabendo onde está |
+| **Ir para 0°** | opcional: depois de se localizar, o braço vai para o zero |
+
+**De fábrica o zero NÃO vem ensinado.** Uma máquina recém-montada
+acreditaria que a contagem crua 0 do encoder é o zero da junta — um
+número arbitrário — e iria para lá sozinha. Enquanto ninguém ensinar, a
+máquina liga exatamente como antes.
+
+**O que impede a ida automática ao zero:**
+
+| | |
+|---|---|
+| zero não ensinado | não há referência em que acreditar |
+| **servos desabilitados** | é o intertravamento: habilitar servos é uma ação sua na tela, e enquanto ninguém habilitar o braço não tem como andar |
+| sem leitura do encoder | desiste depois de 5 s e avisa — máquina que não liga é pior que máquina desorientada |
+| zero fora do curso calibrado | não vai: furar a proteção seria pior que não ir |
+| solda ligada, ou fora do manual | não vai |
+
+> A página fica atrás de um cadeado, e o cadeado **volta a fechar em toda
+> visita**. Não é senha: é um tranco para não se mexer sem querer. O que
+> está atrás dele é a origem de onde os limites de curso são contados —
+> errar ali desloca a área útil inteira.
+
 #### O encoder simplifica duas coisas na calibração
 
 **1. Aferir a engrenagem eletrônica sem transferidor.**
@@ -425,6 +462,9 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/correcao` | assentamento pelo encoder |
 | `POST /api/aferir/encoder` | afere a engrenagem eletrônica pelo encoder |
 | `POST /api/travamento/ok` | limpa o aviso de travamento |
+| `POST /api/zero/config` | o que fazer ao ligar a máquina |
+| `POST /api/zero/ensinar` | ensina a referência absoluta de uma junta |
+| `POST /api/zero/esquecer` | volta a ligar como antes |
 | `GET  /api/sd/*`, `POST /api/sd/*` | cartão |
 | `GET  /api/rede` | por onde chegar no painel |
 

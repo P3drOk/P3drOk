@@ -403,6 +403,10 @@ enum TipoComando : uint8_t {
   // encoder conta as voltas do motor e a conta sai sozinha. A reducao
   // mecanica continua sendo declarada -- o encoder esta antes dela.
   CMD_AFERIR_ENCODER,   // a = junta
+  // Ensina a referencia absoluta: "esta junta esta AGORA em f1 graus".
+  // Com encoder absoluto e a unica calibracao que sobra.
+  CMD_ENSINAR_ZERO,     // a = junta, f1 = graus
+  CMD_ESQUECER_ZERO,    // a = junta (0 = as duas)
   CMD_INVERTER_EIXO,    // a = junta, b = 0/1: para que lado o eixo gira
   CMD_APLICAR_ENCODER,  // grava encoderPendente e reconfigura o Modbus
   CMD_ENCODER_ZERAR,    // a = junta (0 = as duas): marca a contagem atual

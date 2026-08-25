@@ -646,10 +646,11 @@ static void handleEncoder() {
   lerSnapshot(s);
   const ResumoCorrecao rc = correcaoResumo();
   const Travamento     tv = correcaoTravamento();
+  const ResumoZero     rz = zeroResumo();
 
   String out;
-  out.reserve(1500);
-  char cab[700];
+  out.reserve(1900);
+  char cab[900];
   snprintf(cab, sizeof(cab),
     "{\"ativo\":%s,\"baud\":%lu,\"par\":%u,\"func\":%u,\"per\":%u,"
     "\"b32\":%s,\"lo\":%s,"
@@ -658,6 +659,8 @@ static void handleEncoder() {
     "\"crEst\":%u,\"crN\":%u,\"crOk\":%lu,\"crFalha\":%lu,"
     "\"crAlerta\":%lu,\"crMotivo\":\"%s\","
     "\"trvOn\":%s,\"trvJ\":%u,\"trvN\":%lu,"
+    "\"zSin\":%s,\"zIr\":%s,\"zTol\":%.2f,\"zEn1\":%s,\"zEn2\":%s,"
+    "\"zEst\":%u,\"zG1\":%.2f,\"zG2\":%.2f,\"zMot\":\"%s\","
     "\"id1\":%u,\"id2\":%u,\"reg1\":%u,\"reg2\":%u,"
     "\"cv1\":%.0f,\"cv2\":%.0f,\"t1\":%.3f,\"t2\":%.3f,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,\"j\":[",
@@ -674,6 +677,12 @@ static void handleEncoder() {
     (unsigned long)rc.totalOk, (unsigned long)rc.totalDesistiu,
     (unsigned long)correcaoAlertas(), rc.motivo,
     tv.ativo ? "true" : "false", (unsigned)tv.junta, (unsigned long)tv.total,
+    configZero.sincronizar ? "true" : "false",
+    configZero.irParaZero  ? "true" : "false",
+    configZero.toleranciaGraus,
+    configZero.ensinado[0] ? "true" : "false",
+    configZero.ensinado[1] ? "true" : "false",
+    (unsigned)rz.estado, rz.graus[0], rz.graus[1], rz.motivo,
     (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
     (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
     configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
@@ -747,6 +756,51 @@ static void handleTravamentoOk() {
   registrarContatoOperador();
   correcaoLimparTravamento();
   ok();
+}
+
+// =====================================================================
+//  ZERO ABSOLUTO -- a pagina escondida
+//
+//  Fica atras de um cadeado na tela porque errar aqui desloca a area util
+//  inteira: o zero e a origem de onde os limites de curso sao contados.
+//  Nao e segredo nem senha -- e um tranco para nao se mexer sem querer.
+// =====================================================================
+static void handleZeroConfig() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+
+  ConfigZero c = configZero;
+  c.sincronizar     = argL("sin", c.sincronizar ? 1 : 0) != 0;
+  c.irParaZero      = argL("ir",  c.irParaZero  ? 1 : 0) != 0;
+  c.toleranciaGraus = argF("tol", c.toleranciaGraus);
+  if (c.toleranciaGraus < 0.05f || c.toleranciaGraus > 10.0f) {
+    erro("a tolerancia do zero deve ficar entre 0,05 e 10 graus"); return;
+  }
+  configZero.sincronizar     = c.sincronizar;
+  configZero.irParaZero      = c.irParaZero;
+  configZero.toleranciaGraus = c.toleranciaGraus;
+  salvarConfiguracoes();
+  definirMensagem("Ao ligar: %s%s",
+                  c.sincronizar ? "recupera a posicao pelo encoder" : "nao recupera a posicao",
+                  c.sincronizar && c.irParaZero ? " e vai para 0 grau" : "");
+  ok();
+}
+
+static void handleEnsinarZero() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long j = argL("j", 0);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+  if (!server.hasArg("g")) { erro("informe em quantos graus a junta esta"); return; }
+  const float g = argF("g", 0.0f);
+  if (g < -720.0f || g > 720.0f) { erro("angulo fora de faixa"); return; }
+  enfileirar(CMD_ENSINAR_ZERO, j, 0, g);
+}
+
+static void handleEsquecerZero() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  enfileirar(CMD_ESQUECER_ZERO, argL("j", 0));
 }
 
 static void handleCorrecao() {
@@ -1057,6 +1111,9 @@ void servidorIniciar() {
   server.on("/api/correcao",       HTTP_POST, handleCorrecao);
   server.on("/api/aferir/encoder", HTTP_POST, handleAferirEncoder);
   server.on("/api/travamento/ok",  HTTP_POST, handleTravamentoOk);
+  server.on("/api/zero/config",    HTTP_POST, handleZeroConfig);
+  server.on("/api/zero/ensinar",   HTTP_POST, handleEnsinarZero);
+  server.on("/api/zero/esquecer",  HTTP_POST, handleEsquecerZero);
   server.on("/api/encoder/testar", HTTP_POST, handleEncoderTestar);
   server.on("/api/encoder/teste",  HTTP_GET,  handleEncoderTeste);
   server.on("/api/encoder/cacar",  HTTP_POST, handleEncoderCacar);

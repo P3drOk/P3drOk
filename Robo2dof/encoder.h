@@ -72,7 +72,20 @@ LeituraEncoder encoderLer(uint8_t junta);   // 1 ou 2
 // Marca a contagem atual como o zero daquela junta. Chamado quando o
 // operador referencia a maquina: dali em diante o erro e medido a partir
 // deste ponto.
-void encoderZerar(uint8_t junta);      // 0 = as duas
+void encoderZerar(uint8_t junta);
+
+// Ensina que o braco esta AGORA em 'graus' naquela junta. Grava a
+// referencia absoluta: a contagem crua que corresponde a esse angulo.
+//
+// E a unica calibracao que sobra com encoder absoluto. Feita uma vez, a
+// maquina se localiza sozinha em todo boot -- sem fim de curso, sem
+// procurar batente, e mesmo que alguem empurre o braco a mao com tudo
+// desligado.
+bool encoderDefinirZero(uint8_t junta, float graus);
+
+// Referencia absoluta gravada, para o NVS e para a tela.
+int32_t encoderReferencia(uint8_t junta);
+void    encoderCarregarReferencia(uint8_t junta, int32_t bruto);      // 0 = as duas
 
 // Aplica a configuracao que esta em configEncoder (chamado pelo core 1
 // ao processar CMD_APLICAR_ENCODER).

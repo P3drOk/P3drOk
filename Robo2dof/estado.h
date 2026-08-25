@@ -231,6 +231,33 @@ struct ConfigCorrecao {
   float alertaGraus;       // limite da vigilancia
 };
 extern ConfigCorrecao configCorrecao;
+
+// ---------------------------------------------------------------------
+// ENCODER ABSOLUTO: a maquina sabe onde esta assim que liga
+//
+// O encoder do servo guarda a posicao com a maquina desligada. Se alguem
+// empurrar o braco a mao com tudo apagado, ao ligar ele sabe. Isso muda
+// a natureza da calibracao:
+//
+//   ANTES  o zero era "onde o braco estava quando ligou", e o operador
+//          tinha de leva-lo ate a referencia toda vez. Sem fim de curso,
+//          a unica protecao era ele lembrar.
+//   AGORA  o zero e um NUMERO GRAVADO -- a contagem crua do encoder que
+//          corresponde a 0 grau. Ensina-se uma vez; dali em diante a
+//          maquina se localiza sozinha em todo boot, sem fim de curso e
+//          sem procurar batente.
+// ---------------------------------------------------------------------
+struct ConfigZero {
+  bool  sincronizar;    // no boot, acertar a contagem pelo encoder
+  bool  irParaZero;     // e depois levar o braco para 0 grau
+  float toleranciaGraus;// abaixo disso ja esta no zero, nao move
+  // A referencia so vale se alguem a ENSINOU. Sem isto, uma maquina
+  // recem-montada acreditaria que a contagem crua 0 do encoder e o zero
+  // da junta -- um numero arbitrario -- e iria para la sozinha ao ligar.
+  // De fabrica: nao ensinado, e a maquina se comporta como antes.
+  bool  ensinado[2];
+};
+extern ConfigZero configZero;
 extern ConfigEncoder encoderPendente;    // area de preparo, core 0 enche
 void aplicarEncoderPendente();           // core 1: grava e reconfigura
 

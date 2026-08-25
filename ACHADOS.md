@@ -2012,3 +2012,87 @@ rolar.
 |-------|-----------|-------|
 | firmware | 223 / 0 | **229 / 0** |
 | interface | 115 / 0 | **121 / 0** |
+
+---
+
+# Rodada 21 — encoder absoluto: a maquina se localiza sozinha
+
+O operador notou o que muda tudo: **o encoder do servo guarda a posicao
+com a maquina desligada**. Empurrar o braco a mao com tudo apagado, e ao
+ligar ele sabe. Isso dispensa fim de curso.
+
+## R63 · O zero vira um NUMERO GRAVADO  ✅  `N01`
+
+Antes o zero era "onde o braco estava quando ligou", e o operador tinha
+de leva-lo a referencia toda vez. Agora e a contagem crua do encoder que
+corresponde a 0 grau, gravada no NVS. Ensina-se uma vez.
+
+No boot, assim que ha leitura boa, a contagem de passos e acertada para
+bater com o encoder -- **nenhum pulso sai no fio**, so a conta muda. Dali
+em diante tudo o que ja existia (limites, cinematica, programa) funciona
+igual, partindo do lugar certo.
+
+`N01d` e o cenario que importa: ensina 30 graus, desliga, **move o braco
+a mao**, religa -- e a maquina le 40 graus.
+
+## R64 · O que impede de andar sozinho  ✅  `N02`, `N03`
+
+Mover um braco de solda ao ligar e perigoso. Cinco travas, e cada uma
+tem cenario:
+
+- **Zero nao ensinado** e o padrao de fabrica. Uma maquina recem-montada
+  acreditaria que a contagem crua 0 e o zero da junta -- um numero
+  arbitrario -- e iria para la sozinha. `N03a`.
+- **Servos desabilitados.** Este e o bom: habilitar servos e uma acao
+  explicita do operador na tela, entao o intertravamento ja existia e nao
+  precisou ser inventado. `N02a`/`N02b` provam que ele se localiza e nao
+  anda.
+- **Sem leitura**, desiste em 5 s e avisa. Maquina que nao liga porque o
+  encoder nao respondeu e pior que maquina desorientada. `N03b`.
+- **Zero fora do curso calibrado**: nao vai. Furar a protecao seria pior
+  que nao ir -- e ela existe justamente porque nao ha fim de curso.
+- Solda ligada, ou fora do manual: nao vai.
+
+## R65 · encoderIniciar() apagava o zero que acabara de ser lido  ✅
+
+Defeito real, achado pelo banco. No `setup()`,
+`carregarConfiguracoes()` roda **antes** de `encoderIniciar()`, e
+`encoderIniciar()` fazia `memset` em `leitura[]` -- levando junto a
+referencia absoluta recem-carregada do NVS. A maquina nasceria localizada
+em qualquer lugar.
+
+A referencia agora sobrevive ao memset.
+
+## R66 · Tres correcoes de fidelidade no banco  ✅
+
+Todas da mesma familia: o ajudante nao encenava um boot de verdade.
+
+1. `reiniciarSistemaMantendoNvs()` nao reiniciava a maquina de estados do
+   zero. Ela le a configuracao no primeiro ciclo e nao volta atras -- o
+   que e certo -- mas ali a configuracao chegava **depois** do primeiro
+   ciclo, coisa que no ESP32 nao acontece.
+2. O escravo Modbus era configurado **depois** do religamento, e nos 50
+   ms iniciais o firmware se localizava em cima de valor de outro
+   registrador. Virou `religarComEncoder()`, que poe o driver no ar antes
+   de a maquina de estados comecar.
+3. O espelho do eixo assumia que contagem e pulsos comecam juntos. Depois
+   de um boot com encoder absoluto eles nao coincidem mais: a contagem
+   nasce onde o encoder disse, os pulsos nascem em zero. Ganhou uma base.
+
+O item 3 apareceu de um jeito bonito: o `N02` reprovou porque o **vigia
+de travamento** parou o braco -- corretamente, ja que no cenario o
+encoder nao acompanhava o eixo. O vigia estava certo e o teste errado.
+
+## R67 · O braco 3D com volume  ✅
+
+Deixou de ser linha grossa: cada elo e uma caixa de tres faces (topo
+claro, laterais escuras), a base e um cilindro, as juntas tem disco, e a
+mesa e uma superficie com gradiente em vez de linhas soltas no vazio. A
+sombra sob cada junta e o que faz a altura se ler.
+
+## Cobertura
+
+| banco | rodada 20 | agora |
+|-------|-----------|-------|
+| firmware | 229 / 0 | **241 / 0** |
+| interface | 121 / 0 | **125 / 0** |

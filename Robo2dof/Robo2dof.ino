@@ -387,6 +387,39 @@ static void processarComando(const Comando& c) {
       else definirMensagem("Afira com o robo parado no modo manual");
       break;
 
+    case CMD_ENSINAR_ZERO: {
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Ensine o zero com o robo parado no modo manual");
+        break;
+      }
+      const uint8_t k = (c.a == 2) ? 2 : 1;
+      if (!encoderDefinirZero(k, c.f1)) {
+        definirMensagem("Junta %u: sem leitura do encoder para ensinar o zero",
+                        (unsigned)k);
+        break;
+      }
+      configZero.ensinado[k - 1] = true;
+      // A contagem passa a valer o angulo ensinado -- senao o painel
+      // continuaria mostrando o valor antigo ate o proximo boot.
+      Junta& jz = (k == 2) ? J2 : J1;
+      ajustarContagem(jz, grausParaPassos(jz, c.f1));
+      salvarConfiguracoes();
+      definirMensagem("Junta %u: zero ensinado em %.2f graus. A maquina "
+                      "se localiza sozinha ao ligar", (unsigned)k, (double)c.f1);
+      break;
+    }
+
+    case CMD_ESQUECER_ZERO:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("So com o robo parado no modo manual");
+        break;
+      }
+      for (uint8_t k = 1; k <= 2; k++)
+        if (c.a == 0 || c.a == k) configZero.ensinado[k - 1] = false;
+      salvarConfiguracoes();
+      definirMensagem("Zero absoluto esquecido: a maquina volta a ligar como antes");
+      break;
+
     case CMD_APLICAR_ENCODER:
       // Reabrir a UART e regravar o NVS com o braco andando nao e
       // perigoso, mas nao ha motivo: o encoder e leitura, e o operador
@@ -792,6 +825,7 @@ void loop() {
       break;
   }
 
+  zeroAtualizar();
   correcaoVigiar();
   publicar();
   vTaskDelay(pdMS_TO_TICKS(1));

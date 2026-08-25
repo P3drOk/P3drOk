@@ -288,6 +288,17 @@ h4:first-child{margin-top:0}
    cabecalho esconde todas de uma vez, e a escolha fica gravada. Esconder
    nao e apagar -- um clique traz tudo de volta. */
 body.semNotas .nt{display:none}
+/* Pagina escondida: nao e segredo nem senha, e um tranco para nao se
+   mexer sem querer. O que esta atras dela desloca a AREA UTIL INTEIRA. */
+.trancado .trancavel{display:none}
+.cadeado{display:flex;align-items:center;gap:9px;background:var(--face);
+ border:1px dashed var(--linha2);border-radius:4px;padding:11px 12px;
+ margin-bottom:10px;cursor:pointer}
+.cadeado b{font-size:12px;color:var(--letra2)}
+.cadeado span{font-size:10.5px;color:var(--letra3);display:block;margin-top:2px}
+.cadeado .ic{font-size:17px;color:var(--letra3);flex:0 0 auto}
+.cadeado:hover{border-color:var(--arco2)}
+.cadeado:hover .ic{color:var(--arco)}
 .ajd{background:var(--face);border:1px solid var(--linha);border-radius:3px;
  width:30px;height:30px;flex:0 0 auto;cursor:pointer;color:var(--letra3);
  font-family:var(--mono);font-size:13px;font-weight:600;margin-left:10px}
@@ -727,6 +738,58 @@ body.semNotas .nt{display:none}
             leitura nao vale, o driver respondeu outra coisa: veja a
             <b>funcao</b> e o <b>registrador</b>.</div>
             <div class="res" id="encQuadro">--</div>
+          </div>
+        </div>
+
+        <div class="et" id="etZero">
+          <div class="cab"><div class="mk">&#9910;</div>
+            <div class="tx"><div class="tt">Zero absoluto da maquina</div>
+            <span class="sb" id="sbZero">avancado</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="res" id="zEstado">--</div>
+            <div class="nt">O encoder do servo guarda a posicao com a maquina
+            <b>desligada</b>. Se alguem empurrar o braco a mao com tudo apagado,
+            ao ligar ele sabe onde esta. Isso dispensa fim de curso: em vez de
+            procurar batente, a maquina <b>le</b> onde esta.
+            <br>Para isso ela precisa saber uma coisa so: <b>qual contagem do
+            encoder corresponde a 0 grau</b>. Ensina-se uma vez.</div>
+
+            <div class="cadeado" id="zCadeado">
+              <div class="ic">&#128274;</div>
+              <div><b>Ajustes de origem</b>
+              <span>errar aqui desloca a area util inteira &mdash; toque para abrir</span></div>
+            </div>
+
+            <div class="trancavel">
+              <h4>Ensinar o zero</h4>
+              <div class="nt">Leve o braco ate uma postura que voce sabe medir
+              (o batente, um gabarito, o esquadro), meca o angulo <b>de
+              verdade</b> e informe. Nao precisa ser 0: informe o angulo em que
+              a junta esta agora, e o sistema calcula o resto.</div>
+              <div class="cp"><label>Junta</label>
+                <select id="zJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
+              <div class="cp"><label>Esta agora em</label><input type="number" id="zG" step="0.1" value="0"><span class="un">&deg;</span></div>
+              <button class="b pri mini" id="btZensinar">Gravar este angulo como referencia</button>
+              <div class="pq2" id="qZensinar"></div>
+              <button class="b mini" id="btZesquecer">Esquecer o zero absoluto</button>
+              <div class="pq2" id="qZesquecer"></div>
+              <div class="nt">Esquecer faz a maquina voltar a ligar como antes:
+              sem se localizar, e sem ir a lugar nenhum sozinha.</div>
+
+              <h4>Ao ligar a maquina</h4>
+              <div class="tr"><div class="ch" id="zSinCh"><i></i></div>
+                <span>recuperar a posicao pelo encoder</span></div>
+              <div class="tr"><div class="ch" id="zIrCh"><i></i></div>
+                <span>e depois ir para 0 grau</span></div>
+              <div class="cp"><label>Ja considero no zero</label><input type="number" id="zTol" min="0.05" max="10" step="0.05"><span class="un">&deg;</span></div>
+              <button class="b pri mini" id="btZsalvar">Salvar</button>
+              <div class="pq2" id="qZsalvar"></div>
+              <div class="nt"><b>O braco so anda depois que voce habilita os
+              servos</b>, que e uma acao sua na tela. Enquanto ninguem habilitar,
+              ele nao tem como se mexer &mdash; por mais que esta chave esteja
+              ligada. E se o zero estiver fora do curso calibrado, ele nao vai:
+              furar a protecao seria pior que nao ir.</div>
+            </div>
           </div>
         </div>
 
@@ -1576,7 +1639,10 @@ function paleta(){
    altura dos elos e uma constante escolhida para a figura ficar legivel.
    ===================================================================== */
 let vista3D=false;
-const ALT_ELO1=70, ALT_ELO2=42;    /* mm acima da mesa, so para a figura */
+/* Altura dos elos sobre a mesa, em mm. Nao vem do desenho mecanico: sao
+   os numeros que fazem a figura ficar legivel. Altos demais e o braco
+   flutua; baixos demais e a vista vira a de cima outra vez. */
+const ALT_ELO1=110, ALT_ELO2=64;
 
 function pintar3D(){
   const C=paleta();
@@ -1584,49 +1650,64 @@ function pintar3D(){
   const w=cv.width/dp,h=cv.height/dp;
   const alc=L1+L2;
   /* A isometrica achata o eixo vertical, entao a cena cabe maior que na
-     vista de cima sem encostar nas bordas. */
-  esc=Math.min(w,h)/(vistaMm*0.86);
-  ox=w/2; oy=h*0.58;
+     vista de cima. O braco e o assunto: a mesa existe para dar chao a
+     ele, nao para ocupar a tela. */
+  esc=Math.min(w,h)/(vistaMm*0.74);
+  ox=w/2; oy=h*0.60;
 
   /* Isometrica: x para a direita-baixo, y para a esquerda-baixo, z para
      cima. O achatamento de 0,52 e o que faz a mesa parecer mesa em vez
      de losango deitado. */
   const CA=Math.cos(0.5236), SA=Math.sin(0.5236)*0.52;
   const Q=function(x,y,z){
-    return [ox+(x-y)*CA*esc, oy-((x+y)*SA+ (z||0)*0.62)*esc];
+    return [ox+(x-y)*CA*esc, oy-((x+y)*SA+(z||0)*0.62)*esc];
   };
+  const escuro=document.documentElement.getAttribute("data-tema")==="escuro";
 
   ct.clearRect(0,0,w,h);
   ct.fillStyle=C.papel;ct.fillRect(0,0,w,h);
 
-  /* ---- mesa: grade no plano z = 0 ---- */
+  /* ---- a mesa: uma superficie, nao so linhas soltas no vazio ---- */
+  const lado=alc*0.92;
+  const cantos=[Q(-lado,-lado,0),Q(lado,-lado,0),Q(lado,lado,0),Q(-lado,lado,0)];
+  const gm=ct.createLinearGradient(cantos[0][0],cantos[0][1],cantos[2][0],cantos[2][1]);
+  gm.addColorStop(0, escuro?"rgba(255,255,255,.055)":"rgba(255,255,255,.85)");
+  gm.addColorStop(1, escuro?"rgba(255,255,255,.015)":"rgba(0,0,0,.045)");
+  ct.fillStyle=gm;
+  ct.beginPath();ct.moveTo(cantos[0][0],cantos[0][1]);
+  for(let k=1;k<4;k++)ct.lineTo(cantos[k][0],cantos[k][1]);
+  ct.closePath();ct.fill();
+  ct.strokeStyle="rgba("+C.grade+",.45)";ct.lineWidth=1.5;ct.stroke();
+
+  /* grade sobre a mesa */
   let passo=10; const alvo=46;
   while(passo*esc<alvo)passo*=(String(passo)[0]==="1")?2.5:2;
   while(passo*esc>alvo*2.6)passo/=(String(passo)[0]==="2")?2.5:2;
   passo=Math.max(1,Math.round(passo));
-  const lim=Math.ceil(alc*1.05/passo)*passo;
+  const lim=Math.floor(lado/passo)*passo;
   ct.lineWidth=1;
   for(let v=-lim;v<=lim;v+=passo){
-    const forte=(v===0);
-    ct.strokeStyle="rgba("+C.grade+","+(forte?.5:.16)+")";
-    let a=Q(v,-lim,0),b=Q(v,lim,0);
+    const eixo=(v===0);
+    ct.strokeStyle="rgba("+C.grade+","+(eixo?.55:.14)+")";
+    ct.lineWidth=eixo?1.6:1;
+    let a=Q(v,-lado,0),b=Q(v,lado,0);
     ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.stroke();
-    a=Q(-lim,v,0);b=Q(lim,v,0);
+    a=Q(-lado,v,0);b=Q(lado,v,0);
     ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.stroke();
   }
 
-  /* ---- alcance: o circulo de raio L1+L2 visto em perspectiva ---- */
-  ct.strokeStyle="rgba("+C.grade+",.55)";ct.lineWidth=1.5;
+  /* alcance util, preenchido de leve */
   ct.beginPath();
-  for(let g=0;g<=360;g+=4){
+  for(let g=0;g<=360;g+=3){
     const r=g*Math.PI/180, q=Q(alc*Math.cos(r),alc*Math.sin(r),0);
     if(g)ct.lineTo(q[0],q[1]);else ct.moveTo(q[0],q[1]);
   }
-  ct.stroke();
+  ct.closePath();
+  ct.fillStyle="rgba("+C.grade+",.07)";ct.fill();
+  ct.strokeStyle="rgba("+C.grade+",.5)";ct.lineWidth=1.5;ct.stroke();
 
-  /* ---- pontos do programa, na mesa ---- */
-  /* Os trechos, na mesa: cordao cheio, deslocamento pontilhado. */
-  ct.lineWidth=2;
+  /* ---- trechos e pontos do programa, deitados na mesa ---- */
+  ct.lineWidth=2.5;ct.lineCap="round";
   for(let i=0;i<pontos.length-1;i++){
     const A=pontos[i],B=pontos[i+1];
     const qa=Q(A.x,A.y,0), qb=Q(B.x,B.y,0);
@@ -1647,56 +1728,116 @@ function pintar3D(){
     }
   });
 
-  /* ---- o braco ---- */
+  /* =====================================================================
+     O braco, com volume.
+
+     Cada elo e uma CAIXA: face de cima clara, faces laterais escuras. Sao
+     tres quadrilateros por elo, nao uma linha grossa -- e a diferenca
+     entre parecer um tubo chapado e parecer uma peca.
+
+     A ordem importa: primeiro a sombra na mesa, depois a base, depois o
+     elo 1, depois o elo 2. Desenhar do fundo para a frente e o que faz
+     uma peca tapar a outra como tapa de verdade.
+     ===================================================================== */
   const t1=(D.t1||0)*Math.PI/180, t2=((D.t1||0)+(D.t2||0))*Math.PI/180;
   const cx=L1*Math.cos(t1), cy=L1*Math.sin(t1);
   const px=cx+L2*Math.cos(t2), py=cy+L2*Math.sin(t2);
 
-  /* sombra na mesa: e ela que da a nocao de altura */
-  ct.strokeStyle="rgba(0,0,0,.20)";ct.lineWidth=Math.max(3,10*esc);
-  ct.lineCap="round";
-  let a=Q(0,0,0), b=Q(cx,cy,0), c=Q(px,py,0);
-  ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.lineTo(c[0],c[1]);ct.stroke();
+  /* Sombra: elipse borrada sob cada junta, e uma faixa entre elas. Sem
+     sombra a peca flutua e a altura nao se le. */
+  const sombra=function(x,y,r){
+    const q=Q(x,y,0);
+    const g=ct.createRadialGradient(q[0],q[1],0,q[0],q[1],r);
+    g.addColorStop(0,"rgba(0,0,0,.26)");
+    g.addColorStop(1,"rgba(0,0,0,0)");
+    ct.fillStyle=g;
+    ct.beginPath();ct.ellipse(q[0],q[1],r,r*0.55,0,0,TAU);ct.fill();
+  };
+  ct.save();
+  ct.strokeStyle="rgba(0,0,0,.13)";
+  ct.lineWidth=Math.max(4,14*esc);ct.lineCap="round";
+  let sa=Q(0,0,0), sb=Q(cx,cy,0), sc=Q(px,py,0);
+  ct.beginPath();ct.moveTo(sa[0],sa[1]);ct.lineTo(sb[0],sb[1]);ct.lineTo(sc[0],sc[1]);ct.stroke();
+  ct.restore();
+  sombra(0,0,Math.max(16,34*esc));
+  sombra(cx,cy,Math.max(12,26*esc));
+  sombra(px,py,Math.max(9,18*esc));
 
-  /* coluna da base */
-  const base0=Q(0,0,0), base1=Q(0,0,ALT_ELO1);
-  ct.strokeStyle=C.elo1;ct.lineWidth=Math.max(6,18*esc);
-  ct.beginPath();ct.moveTo(base0[0],base0[1]);ct.lineTo(base1[0],base1[1]);ct.stroke();
+  /* Uma caixa deitada de (x0,y0) a (x1,y1), na altura z, com largura
+     'larg' e espessura 'alt'. Devolve nada: so pinta. */
+  const caixa=function(x0,y0,x1,y1,z,larg,alt,corTopo,corLado){
+    const dx=x1-x0, dy=y1-y0, m=Math.hypot(dx,dy)||1;
+    const nx=-dy/m*larg/2, ny=dx/m*larg/2;      /* normal no plano */
+    const A=[x0+nx,y0+ny], B=[x1+nx,y1+ny], Bi=[x1-nx,y1-ny], Ai=[x0-nx,y0-ny];
+    const zt=z+alt/2, zb=z-alt/2;
+    const quad=function(p,cor){
+      ct.fillStyle=cor;ct.beginPath();
+      ct.moveTo(p[0][0],p[0][1]);
+      for(let k=1;k<p.length;k++)ct.lineTo(p[k][0],p[k][1]);
+      ct.closePath();ct.fill();
+      ct.strokeStyle="rgba(0,0,0,.18)";ct.lineWidth=1;ct.stroke();
+    };
+    /* lateral de tras primeiro, depois a da frente e a de cima */
+    quad([Q(A[0],A[1],zb),Q(B[0],B[1],zb),Q(B[0],B[1],zt),Q(A[0],A[1],zt)],corLado);
+    quad([Q(Ai[0],Ai[1],zb),Q(Bi[0],Bi[1],zb),Q(Bi[0],Bi[1],zt),Q(Ai[0],Ai[1],zt)],corLado);
+    quad([Q(A[0],A[1],zt),Q(B[0],B[1],zt),Q(Bi[0],Bi[1],zt),Q(Ai[0],Ai[1],zt)],corTopo);
+  };
 
-  /* elo 1 e elo 2, cada um na sua altura */
-  const j0=Q(0,0,ALT_ELO1), j1=Q(cx,cy,ALT_ELO1);
-  const k1=Q(cx,cy,ALT_ELO2), k2=Q(px,py,ALT_ELO2);
-  ct.lineCap="round";
-  ct.strokeStyle=C.elo1;ct.lineWidth=Math.max(5,L1*esc*0.10);
-  ct.beginPath();ct.moveTo(j0[0],j0[1]);ct.lineTo(j1[0],j1[1]);ct.stroke();
-  /* coluna curta descendo do cotovelo ate a altura do elo 2 */
-  ct.strokeStyle=C.elo1;ct.lineWidth=Math.max(4,12*esc);
-  ct.beginPath();ct.moveTo(j1[0],j1[1]);ct.lineTo(k1[0],k1[1]);ct.stroke();
-  ct.strokeStyle=C.elo2;ct.lineWidth=Math.max(4,L2*esc*0.08);
-  ct.beginPath();ct.moveTo(k1[0],k1[1]);ct.lineTo(k2[0],k2[1]);ct.stroke();
+  /* Um cilindro em pe: corpo + tampa. Serve para a base e para as juntas. */
+  const cilindro=function(x,y,z0,z1,r,corLado,corTopo){
+    const b=Q(x,y,z0), t=Q(x,y,z1), rx=r*esc, ry=r*esc*0.52;
+    ct.fillStyle=corLado;
+    ct.beginPath();
+    ct.ellipse(b[0],b[1],rx,ry,0,0,Math.PI);
+    ct.lineTo(t[0]-rx,t[1]);
+    ct.ellipse(t[0],t[1],rx,ry,0,Math.PI,0,true);
+    ct.closePath();ct.fill();
+    ct.fillStyle=corTopo;
+    ct.beginPath();ct.ellipse(t[0],t[1],rx,ry,0,0,TAU);ct.fill();
+    ct.strokeStyle="rgba(0,0,0,.20)";ct.lineWidth=1;ct.stroke();
+  };
 
-  /* nervura clara, para o elo nao virar um tubo chapado */
-  ct.strokeStyle="rgba(255,255,255,.20)";ct.lineWidth=Math.max(1,L1*esc*0.02);
-  ct.beginPath();ct.moveTo(j0[0],j0[1]);ct.lineTo(j1[0],j1[1]);ct.stroke();
+  const mistura=function(hex,f){
+    /* clareia (f>0) ou escurece (f<0) uma cor #rrggbb */
+    const n=parseInt(hex.slice(1),16);
+    let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+    const alvo=f>0?255:0, k=Math.abs(f);
+    r=Math.round(r+(alvo-r)*k); g=Math.round(g+(alvo-g)*k); b=Math.round(b+(alvo-b)*k);
+    return "rgb("+r+","+g+","+b+")";
+  };
+  const topo1=mistura(C.elo1, escuro?0.22:0.30), lado1=mistura(C.elo1,-0.22);
+  const topo2=mistura(C.elo2, escuro?0.22:0.30), lado2=mistura(C.elo2,-0.22);
 
-  /* juntas */
-  [[j0,C.arco],[j1,C.elo1]].forEach(function(par){
-    ct.fillStyle=C.juntaF;ct.beginPath();
-    ct.ellipse(par[0][0],par[0][1],Math.max(4,9*esc),Math.max(3,7*esc),0,0,TAU);
-    ct.fill();ct.strokeStyle=par[1];ct.lineWidth=2;ct.stroke();
-  });
+  /* base */
+  cilindro(0,0,0,ALT_ELO1-16, 34, mistura(C.elo1,-0.34), mistura(C.elo1,-0.10));
+  /* elo 1 */
+  caixa(0,0,cx,cy, ALT_ELO1, Math.max(22,L1*0.15), 26, topo1, lado1);
+  /* cotovelo: coluna curta descendo ate a altura do elo 2 */
+  cilindro(cx,cy,ALT_ELO2-8,ALT_ELO1+10, 20, mistura(C.elo1,-0.30), topo1);
+  /* elo 2 */
+  caixa(cx,cy,px,py, ALT_ELO2, Math.max(16,L2*0.115), 20, topo2, lado2);
 
-  /* a ferramenta descendo do elo 2 ate a peca */
-  const pontaMesa=Q(px,py,0);
-  ct.strokeStyle=D.solda?C.quente:C.letra3;
-  ct.lineWidth=Math.max(2,5*esc);
-  ct.beginPath();ct.moveTo(k2[0],k2[1]);ct.lineTo(pontaMesa[0],pontaMesa[1]);ct.stroke();
-  ct.fillStyle=D.solda?C.brasa:C.arco;
-  ct.beginPath();ct.arc(pontaMesa[0],pontaMesa[1],D.solda?6:4,0,TAU);ct.fill();
+  /* eixos das juntas: um disco claro em cima de cada uma */
+  cilindro(0,0,ALT_ELO1+10,ALT_ELO1+17, 17, mistura(C.arco,-0.2), C.arco);
+  cilindro(cx,cy,ALT_ELO1+10,ALT_ELO1+16, 13, mistura(C.elo1,-0.2), topo1);
+
+  /* ---- a ferramenta, descendo ate a peca ---- */
+  const k2=Q(px,py,ALT_ELO2-6), pMesa=Q(px,py,0);
+  ct.strokeStyle=D.solda?C.quente:mistura(C.elo2,-0.35);
+  ct.lineWidth=Math.max(2.5,6*esc);ct.lineCap="round";
+  ct.beginPath();ct.moveTo(k2[0],k2[1]);ct.lineTo(pMesa[0],pMesa[1]);ct.stroke();
+
   if(D.solda){
-    ct.globalAlpha=.28;ct.beginPath();
-    ct.arc(pontaMesa[0],pontaMesa[1],14,0,TAU);ct.fill();ct.globalAlpha=1;
+    /* o arco: um halo quente na peca */
+    const g=ct.createRadialGradient(pMesa[0],pMesa[1],0,pMesa[0],pMesa[1],22);
+    g.addColorStop(0,C.brasa);
+    g.addColorStop(0.35,"rgba(255,110,40,.55)");
+    g.addColorStop(1,"rgba(255,110,40,0)");
+    ct.fillStyle=g;
+    ct.beginPath();ct.ellipse(pMesa[0],pMesa[1],22,13,0,0,TAU);ct.fill();
   }
+  ct.fillStyle=D.solda?C.brasa:C.arco;
+  ct.beginPath();ct.ellipse(pMesa[0],pMesa[1],D.solda?5:4,D.solda?3.5:2.8,0,0,TAU);ct.fill();
   ct.lineCap="butt";
 
   /* Uma linha so, embaixo. Os angulos e a ponta ja estao na regua do
@@ -2798,6 +2939,64 @@ function corrAplicar(d){
 ["crOnCh","crVigCh"].forEach(function(id){
   $(id).onclick=function(){$(id).classList.toggle("on");};
 });
+/* ---------------------------------------------------------------------
+   Zero absoluto. A secao nasce trancada em toda visita: o tranco existe
+   para nao se mexer sem querer, e "sem querer" inclui ter deixado aberto
+   ontem.
+   --------------------------------------------------------------------- */
+const ZERO=["esperando o encoder","localizado","indo para o zero",
+            "pronto","sem encoder"];
+let zCarregou=false;
+$("etZero").classList.add("trancado");
+$("zCadeado").onclick=function(){
+  $("etZero").classList.toggle("trancado");
+  $("zCadeado").querySelector(".ic").textContent=
+    $("etZero").classList.contains("trancado")?"\u{1F512}":"\u{1F513}";
+};
+
+function zeroAplicar(d){
+  const est=ZERO[d.zEst||0]||"--";
+  const ens=(d.zEn1?1:0)+(d.zEn2?1:0);
+  $("sbZero").textContent = ens===0 ? "nao ensinado" : est;
+  $("zEstado").textContent =
+    (d.zEn1?("junta 1: zero ensinado"+(d.zEst>=1?", leu "+(d.zG1||0).toFixed(2)+"° ao ligar":""))
+           :"junta 1: zero NAO ensinado")+"\n"+
+    (d.zEn2?("junta 2: zero ensinado"+(d.zEst>=1?", leu "+(d.zG2||0).toFixed(2)+"° ao ligar":""))
+           :"junta 2: zero NAO ensinado")+"\n"+
+    (d.zMot||"");
+  if(!zCarregou){
+    zCarregou=true;
+    $("zSinCh").className="ch"+(d.zSin?" on":"");
+    $("zIrCh").className ="ch"+(d.zIr?" on":"");
+    $("zTol").value=d.zTol;
+  }
+}
+
+["zSinCh","zIrCh"].forEach(function(id){
+  $(id).onclick=function(){$(id).classList.toggle("on");};
+});
+$("btZsalvar").onclick=function(){
+  const on=function(id){return $(id).classList.contains("on")?1:0;};
+  post("/api/zero/config?sin="+on("zSinCh")+"&ir="+on("zIrCh")+
+       "&tol="+$("zTol").value).then(function(){zCarregou=false;});
+};
+$("btZensinar").onclick=function(){
+  const g=parseFloat($("zG").value);
+  if(!isFinite(g))return;
+  if(!confirm("Gravar que a junta "+$("zJ").value+" esta AGORA em "+g+" graus?\n\n"+
+              "O zero e a origem de onde os limites de curso sao contados. "+
+              "Se o braco nao estiver mesmo nesse angulo, a area util inteira "+
+              "sai do lugar."))return;
+  post("/api/zero/ensinar?j="+$("zJ").value+"&g="+g)
+   .then(function(){zCarregou=false;carregou=false;});
+};
+$("btZesquecer").onclick=function(){
+  if(!confirm("Esquecer o zero absoluto das duas juntas?\n\n"+
+              "A maquina volta a ligar como antes: sem se localizar e sem ir "+
+              "a lugar nenhum sozinha."))return;
+  post("/api/zero/esquecer?j=0").then(function(){zCarregou=false;});
+};
+
 $("btTravOk").onclick=function(){post("/api/travamento/ok");};
 $("btCorrSalvar").onclick=function(){
   const on=function(id){return $(id).classList.contains("on")?1:0;};
@@ -2902,7 +3101,7 @@ function encAplicar(d){
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
   }
-  encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);
+  encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);zeroAplicar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
 

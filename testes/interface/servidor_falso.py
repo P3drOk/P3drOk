@@ -73,7 +73,8 @@ import math as _mm
 # banco troca isso por /teste/encoder para ver tambem a junta ligada que
 # nao responde -- os dois casos escrevem coisas diferentes na tela.
 _enc = {"n": 0, "reg2": 0, "motivo2": 1,
-        "trvOn": False, "trvJ": 0, "trvN": 0}
+        "trvOn": False, "trvJ": 0, "trvN": 0,
+        "zEn1": True}
 def _encoder():
     _enc["n"] += 1
     # erro pequeno e oscilante na junta 1, junta 2 sem leitura
@@ -85,6 +86,10 @@ def _encoder():
             "crEst": 3, "crN": 1, "crOk": 12, "crFalha": 1, "crAlerta": 0,
             "crMotivo": "posicao conferida pelo encoder",
             "trvOn": _enc["trvOn"], "trvJ": _enc["trvJ"], "trvN": _enc["trvN"],
+            "zSin": True, "zIr": True, "zTol": 0.30,
+            "zEn1": _enc["zEn1"], "zEn2": False,
+            "zEst": 3, "zG1": 12.40, "zG2": 0.0,
+            "zMot": "posicao recuperada do encoder",
             "id1": 1, "id2": 2, "reg1": 90, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],

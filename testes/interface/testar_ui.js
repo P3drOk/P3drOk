@@ -264,6 +264,41 @@ function checar(ok, texto, extra) {
   await q.locator('#abasTopo button[data-aba="mover"]').click();
   await q.waitForTimeout(200);
 
+  // Zero absoluto: a secao nasce TRANCADA em toda visita. O tranco existe
+  // para nao se mexer sem querer -- e "sem querer" inclui ter deixado
+  // aberto ontem. Errar ali desloca a area util inteira.
+  await q.evaluate(() => {
+    const alvo = document.getElementById('etZero');
+    document.querySelectorAll('#pnEnc .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await q.waitForTimeout(300);
+  const zTrancado = await q.evaluate(() => ({
+    trancado: document.getElementById('etZero').classList.contains('trancado'),
+    campoVis: !!document.getElementById('zG').offsetParent,
+    estado: document.getElementById('zEstado').textContent,
+  }));
+  checar(zTrancado.trancado && !zTrancado.campoVis,
+         'Zero: a pagina avancada nasce trancada, em toda visita');
+  checar(/junta 1: zero ensinado/.test(zTrancado.estado),
+         'Zero: mas o ESTADO fica a vista mesmo trancado',
+         zTrancado.estado.split('\n')[0]);
+
+  await q.locator('#zCadeado').click();
+  await q.waitForTimeout(250);
+  const zAberto = await q.evaluate(() =>
+    !!document.getElementById('zG').offsetParent);
+  checar(zAberto, 'Zero: o cadeado abre os ajustes de origem');
+  await q.screenshot({ path: SAIDA + '/computador-7-zero-absoluto.png' });
+
+  // Ensinar o zero PEDE confirmacao: e a origem de onde os limites sao
+  // contados, e errar move a area util inteira.
+  let pediu = false;
+  q.once('dialog', d => { pediu = true; d.dismiss(); });
+  await q.locator('#btZensinar').click();
+  await q.waitForTimeout(300);
+  checar(pediu, 'Zero: ensinar a origem pede confirmacao antes de gravar');
+
   // A coluna fixa do computador tem de ATUALIZAR sozinha. A consulta
   // estava amarrada a aba escolhida, e no computador nao ha mais aba
   // "enc": a coluna ficava aberta mostrando o dado do momento em que a

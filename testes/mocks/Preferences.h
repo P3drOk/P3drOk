@@ -19,10 +19,15 @@ class Preferences {
   void end() {}
   uint32_t getUInt (const char* k, uint32_t d) { auto i=g_nvs.u.find(k); return i==g_nvs.u.end()?d:i->second; }
   long     getLong (const char* k, long d)     { auto i=g_nvs.l.find(k); return i==g_nvs.l.end()?d:i->second; }
+  // O core tem getInt/putInt (32 bits COM sinal). A referencia absoluta
+  // do encoder e negativa com frequencia -- guardar em getUInt truncaria
+  // o sinal e a maquina nasceria localizada no lugar errado.
+  int32_t  getInt  (const char* k, int32_t d)  { auto i=g_nvs.l.find(k); return i==g_nvs.l.end()?d:(int32_t)i->second; }
   float    getFloat(const char* k, float d)    { auto i=g_nvs.f.find(k); return i==g_nvs.f.end()?d:i->second; }
   bool     getBool (const char* k, bool d)     { auto i=g_nvs.b.find(k); return i==g_nvs.b.end()?d:i->second; }
   size_t putUInt (const char* k, uint32_t v) { g_nvs.u[k]=v; return 4; }
   size_t putLong (const char* k, long v)     { g_nvs.l[k]=v; return 4; }
+  size_t putInt  (const char* k, int32_t v)  { g_nvs.l[k]=v; return 4; }
   size_t putFloat(const char* k, float v)    { g_nvs.f[k]=v; return 4; }
   size_t putBool (const char* k, bool v)     { g_nvs.b[k]=v; return 1; }
 

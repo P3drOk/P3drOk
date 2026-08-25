@@ -70,13 +70,17 @@ static const float DT_MS = 1.0f;
 // sem mover o eixo, e e justamente isso que o assentamento faz no fim.
 // Espelhar a contagem esconderia o defeito que este cenario procura.
 static long g_perdaPassos = 0;     // passos que o eixo perdeu (escorregou)
+// Onde o eixo ja estava quando a contagem de pulsos comecou. Depois de
+// um boot com encoder absoluto os dois nao coincidem mais: a contagem
+// nasce onde o encoder disse, e os pulsos nascem em zero.
+static long g_eixoBasePassos = 0;
 // So os cenarios de assentamento ligam o espelho. Os outros cravam a
 // posicao do escravo a mao, e um espelho sempre ligado atropelaria todos.
 static bool g_espelharEixo = false;
 
 static void espelharEixoNoEncoder() {
   if (!g_espelharEixo || !J1.motor) return;
-  const long fisico = (long)J1.motor->pulsosGerados - g_perdaPassos;
+  const long fisico = g_eixoBasePassos + (long)J1.motor->pulsosGerados - g_perdaPassos;
   const float cv  = configEncoder.contagensPorVolta[0];
   const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
   // passos do motor -> voltas do motor -> contagens do encoder.
@@ -97,7 +101,7 @@ static void perderPassos(float graus) {
 // firmware faz.
 static float eixoFisicoGraus() {
   if (!J1.motor || J1.passosPorGrau <= 0.0f) return 0.0f;
-  const long fisico = (long)J1.motor->pulsosGerados - g_perdaPassos;
+  const long fisico = g_eixoBasePassos + (long)J1.motor->pulsosGerados - g_perdaPassos;
   return (float)fisico / J1.passosPorGrau + J1.grausHome;
 }
 
@@ -210,6 +214,7 @@ static void reiniciarSistema() {
   g_uart.moduloLigado = false;
   g_uart.pinoRe       = -1;
   g_perdaPassos       = 0;
+  g_eixoBasePassos    = 0;
   g_espelharEixo      = false;
   g_millis = 1000;
   g_comandosDescartados = 0;
@@ -240,6 +245,13 @@ static void reiniciarSistemaMantendoNvs() {
   reiniciarSistema();
   g_nvs = guardado;
   carregarConfiguracoes();
+  // A maquina de estados do zero absoluto le a configuracao no primeiro
+  // ciclo e nao volta atras -- e certo: depois de localizado, nao se
+  // relocaliza no meio da sessao. Mas aqui a configuracao chegou DEPOIS
+  // do primeiro ciclo, o que no ESP32 nao acontece: la o NVS e lido
+  // antes do loop existir. Reiniciar aqui e o que torna este ajudante um
+  // BOOT de verdade.
+  correcaoReiniciarTeste();
   rodarComWeb(50);
 }
 
@@ -3562,6 +3574,171 @@ static void teste_M04_travamento_nao_dispara_a_toa() {
          "e o movimento chega ao fim normalmente");
 }
 
+// Religa a maquina COM o driver ja respondendo, que e o que acontece de
+// verdade: o encoder nao aparece cinquenta milissegundos depois do boot.
+// Configurar o escravo so depois do religamento deixava o firmware
+// localizar-se em cima de valor de outro registrador.
+static void religarComEncoder(int32_t bruto, bool mudo = false) {
+  const NvsMock guardado = g_nvs;
+  reiniciarSistema();
+  // Nenhuma leitura anterior: num boot de verdade nao ha. Sem isto, os
+  // 50 ms que reiniciarSistema() roda com o escravo ainda no padrao
+  // deixam uma leitura VALIDA de outro registrador, e o firmware se
+  // localiza em cima dela antes de o driver certo entrar no ar.
+  //
+  // Vem ANTES de carregar o NVS: e o NVS que traz a referencia absoluta,
+  // e limpar depois dele apagaria justamente o que se quer restaurar.
+  encoderReiniciarTeste();
+  g_nvs = guardado;
+  carregarConfiguracoes();
+
+  g_uart.escravo[0] = EscravoModbus{};
+  g_uart.escravo[0].id = 1;
+  g_uart.escravo[0].funcao = 3;
+  g_uart.escravo[0].regBase = 90;
+  g_uart.escravo[0].baixaPrimeiro = true;
+  g_uart.escravo[0].posicao = bruto;
+  g_uart.escravo[0].mudo = mudo;
+  g_uart.escravo[1].existe = false;
+
+  correcaoReiniciarTeste();
+}
+
+// =====================================================================
+//  N - Zero absoluto: a maquina se localiza sozinha ao ligar
+// =====================================================================
+// O encoder do servo guarda a posicao com tudo desligado. Isso dispensa
+// fim de curso -- mas so depois que alguem ENSINA qual contagem crua
+// corresponde a zero grau. Antes disso a referencia e um numero
+// arbitrario, e agir por ela poria o braco em qualquer lugar.
+// ---------------------------------------------------------------------
+static void teste_N01_ensinar_e_recuperar() {
+  secao("N01  Ensinar o zero uma vez, e a maquina se acha ao ligar");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(400);
+  g_espelharEixo = false;
+
+  nota("de fabrica: ensinado j1=%d j2=%d",
+       (int)configZero.ensinado[0], (int)configZero.ensinado[1]);
+  checar(!configZero.ensinado[0] && !configZero.ensinado[1], "N01a",
+         "de fabrica o zero NAO vem ensinado: maquina nova liga como antes");
+
+  // O operador leva o braco ao esquadro e diz: esta em 30 graus.
+  const int cod = webPost("/api/zero/ensinar?j=1&g=30");
+  rodarComWeb(200);
+  nota("ensinando 30 graus: HTTP %d -- \"%s\"; contagem agora %.2f graus",
+       cod, ultimaMensagem, (double)passosParaGraus(J1, posicaoJ1()));
+  checar(cod == 200 && configZero.ensinado[0], "N01b",
+         "ensinar grava a referencia absoluta daquela junta");
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 30.0f) < 0.5f, "N01c",
+         "e a contagem passa a valer o angulo ensinado, na hora");
+
+  // O que importa: RELIGAR. O braco foi empurrado a mao com tudo
+  // desligado -- o encoder ficou 10 graus adiante.
+  const float porVolta = configEncoder.contagensPorVolta[0];
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const int32_t dez = (int32_t)lroundf(10.0f * red / 360.0f * porVolta);
+  const int32_t novoBruto = g_uart.escravo[0].posicao + dez;
+
+  religarComEncoder(novoBruto);
+  rodarComWeb(1200);
+
+  nota("depois de religar com o braco movido a mao: contagem %.2f graus, estado %u",
+       (double)passosParaGraus(J1, posicaoJ1()), (unsigned)zeroResumo().estado);
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 40.0f) < 1.0f, "N01d",
+         "ao ligar, a maquina LE onde o braco esta -- sem fim de curso e sem procurar batente");
+  checar(zeroResumo().localizou[0], "N01e",
+         "e diz que se localizou, em vez de fingir que o zero e onde ligou");
+}
+
+static void teste_N02_ir_ao_zero_ao_ligar() {
+  secao("N02  Ir para 0 grau ao ligar, e quando NAO ir");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(400);
+  webPost("/api/zero/ensinar?j=1&g=25");
+  rodarComWeb(200);
+
+  // Religa com o braco fora do zero e SEM servos habilitados.
+  religarComEncoder(500000);
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(1500);
+  // Dagora o encoder acompanha o eixo de verdade, partindo de onde a
+  // localizacao disse que ele estava. Sem isso o vigia de travamento
+  // acusaria -- com razao: comando andando e medido parado.
+  g_eixoBasePassos = posicaoJ1();
+  g_espelharEixo   = true;
+
+  nota("sem servos: estado %u, contagem %.2f graus, movendo=%d",
+       (unsigned)zeroResumo().estado,
+       (double)passosParaGraus(J1, posicaoJ1()), (int)motoresEmMovimento());
+  checar(zeroResumo().estado == ZERO_LOCALIZADO, "N02a",
+         "sem servos habilitados ele se localiza mas NAO anda");
+  checar(!motoresEmMovimento(), "N02b",
+         "o intertravamento e o proprio botao de servos, que e acao do operador");
+
+  // O operador habilita os servos: AGORA o braco vai ao zero.
+  enviarComando(CMD_SERVOS, 1);
+  uint32_t t = 0;
+  while (zeroResumo().estado != ZERO_PRONTO && t < 12000) { rodarComWeb(20); t += 20; }
+  nota("depois de habilitar: estado %u, contagem %.2f graus -- \"%s\"",
+       (unsigned)zeroResumo().estado,
+       (double)passosParaGraus(J1, posicaoJ1()), zeroResumo().motivo);
+  checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 1.0f, "N02c",
+         "habilitados os servos, o braco vai sozinho para 0 grau");
+}
+
+static void teste_N03_o_que_impede_de_ir() {
+  secao("N03  O que impede a ida automatica ao zero");
+
+  // 1. Zero nao ensinado: maquina nova nao pode sair andando.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  const long antes = (long)J1.motor->pulsosGerados;
+  rodarComWeb(2000);
+  nota("zero nao ensinado: estado %u -- \"%s\"; pulsos %ld",
+       (unsigned)zeroResumo().estado, zeroResumo().motivo,
+       (long)J1.motor->pulsosGerados - antes);
+  checar(zeroResumo().estado == ZERO_PRONTO &&
+         (long)J1.motor->pulsosGerados - antes < 10, "N03a",
+         "maquina sem zero ensinado nao anda sozinha: liga como antes");
+
+  // 2. Sem leitura do encoder: nao trava a maquina, mas nao adivinha.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=25");
+  rodarComWeb(200);
+  religarComEncoder(500000, true);
+  const long antes2 = (long)J1.motor->pulsosGerados;
+  rodarComWeb(7000);
+  nota("encoder mudo no boot: estado %u -- \"%s\"; pulsos %ld; modo %d",
+       (unsigned)zeroResumo().estado, zeroResumo().motivo,
+       (long)J1.motor->pulsosGerados - antes2, (int)modoAtual);
+  checar(zeroResumo().estado == ZERO_SEM_ENCODER, "N03b",
+         "sem leitura ele desiste e diz -- maquina que nao liga e pior que maquina desorientada");
+  checar((long)J1.motor->pulsosGerados - antes2 < 10, "N03c",
+         "e nao move o braco por adivinhacao");
+
+  // 3. Esquecer o zero devolve a maquina ao jeito antigo.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=25");
+  rodarComWeb(200);
+  const int cod = webPost("/api/zero/esquecer?j=0");
+  rodarComWeb(200);
+  nota("esquecendo: HTTP %d, ensinado j1=%d", cod, (int)configZero.ensinado[0]);
+  checar(cod == 200 && !configZero.ensinado[0], "N03d",
+         "esquecer devolve a maquina ao jeito antigo, sem regravar firmware");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -3790,6 +3967,9 @@ int main() {
   teste_M02_nao_retoca_quando_nao_deve();
   teste_M03_desligado_e_parada();
   teste_M04_travamento_nao_dispara_a_toa();
+  teste_N01_ensinar_e_recuperar();
+  teste_N02_ir_ao_zero_ao_ligar();
+  teste_N03_o_que_impede_de_ir();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

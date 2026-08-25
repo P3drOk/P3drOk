@@ -102,6 +102,38 @@ struct Travamento {
   uint8_t  junta;        // 1 ou 2
   uint32_t total;        // quantos desde o boot
 };
+// =====================================================================
+//  LOCALIZAR-SE AO LIGAR
+//
+//  Com encoder absoluto a maquina nao precisa de fim de curso nem de
+//  procurar batente: a contagem crua do encoder ja diz onde o braco
+//  esta, mesmo que alguem o tenha empurrado a mao com tudo desligado.
+//
+//  No boot, assim que houver leitura boa, a contagem de passos e
+//  acertada para bater com o encoder. Dali em diante tudo o que ja
+//  existia -- limites, cinematica, programa -- funciona igual, so que
+//  partindo do lugar certo em vez de partir de "zero e onde eu liguei".
+//
+//  E, se o operador quiser, o braco vai para 0 grau em seguida. Isso SO
+//  acontece depois que ele habilita os servos, que e uma acao explicita
+//  na tela: enquanto ninguem habilitar, o braco nao tem como andar.
+// =====================================================================
+enum EstadoZero : uint8_t {
+  ZERO_ESPERANDO = 0,  // ainda sem leitura boa do encoder
+  ZERO_LOCALIZADO,     // contagem acertada pelo encoder
+  ZERO_INDO,           // a caminho de 0 grau
+  ZERO_PRONTO,         // no zero (ou nao foi pedido para ir)
+  ZERO_SEM_ENCODER     // desistiu: nao ha leitura, segue como antes
+};
+struct ResumoZero {
+  uint8_t estado;
+  bool    localizou[2];
+  float   graus[2];     // onde o encoder disse que estava, ao ligar
+  char    motivo[48];
+};
+void       zeroAtualizar();      // core 1: chamada do loop
+ResumoZero zeroResumo();
+
 Travamento correcaoTravamento();
 void correcaoLimparTravamento();
 

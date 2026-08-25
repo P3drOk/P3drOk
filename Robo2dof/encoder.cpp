@@ -665,6 +665,46 @@ LeituraEncoder encoderLer(uint8_t junta) {
   return copia;
 }
 
+int32_t encoderReferencia(uint8_t junta) {
+  const uint8_t i = (junta == 2) ? 1 : 0;
+  portENTER_CRITICAL(&travaEnc);
+  const int32_t r = leitura[i].referencia;
+  portEXIT_CRITICAL(&travaEnc);
+  return r;
+}
+
+// Chamada no boot, com o valor que estava no NVS. Sem isto a referencia
+// nasceria zerada e o angulo lido sairia absurdo no primeiro ciclo.
+void encoderCarregarReferencia(uint8_t junta, int32_t bruto) {
+  const uint8_t i = (junta == 2) ? 1 : 0;
+  portENTER_CRITICAL(&travaEnc);
+  leitura[i].referencia = bruto;
+  portEXIT_CRITICAL(&travaEnc);
+}
+
+bool encoderDefinirZero(uint8_t junta, float graus) {
+  if (junta != 1 && junta != 2) return false;
+  const uint8_t i = junta - 1;
+  const Junta& j = (junta == 1) ? J1 : J2;
+
+  const LeituraEncoder L = encoderLer(junta);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) return false;
+
+  const float cv  = configEncoder.contagensPorVolta[i];
+  const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+  if (cv < 1.0f) return false;
+
+  // graus da junta -> voltas do motor -> contagens. A referencia e a
+  // contagem que sobraria se a junta estivesse em zero.
+  const float voltas = (graus - j.grausHome) * red / 360.0f;
+  const int32_t ref  = L.bruto - (int32_t)lroundf(voltas * cv);
+
+  portENTER_CRITICAL(&travaEnc);
+  leitura[i].referencia = ref;
+  portEXIT_CRITICAL(&travaEnc);
+  return true;
+}
+
 void encoderZerar(uint8_t junta) {
   portENTER_CRITICAL(&travaEnc);
   for (uint8_t i = 0; i < 2; i++) {
@@ -792,8 +832,16 @@ void encoderIniciar() {
   pinMode(PIN_RS485_RE, OUTPUT);
   modoEscuta();
 
+  // A REFERENCIA sobrevive ao memset. Ela vem do NVS, e
+  // carregarConfiguracoes() roda ANTES daqui no setup(): limpar tudo
+  // apagaria o zero absoluto que o operador ensinou, e a maquina
+  // nasceria localizada em qualquer lugar.
+  const int32_t refGuardada[2] = { leitura[0].referencia, leitura[1].referencia };
   memset((void*)leitura, 0, sizeof(leitura));
-  for (uint8_t i = 0; i < 2; i++) leitura[i].motivo = MOTIVO_NUNCA;
+  for (uint8_t i = 0; i < 2; i++) {
+    leitura[i].motivo     = MOTIVO_NUNCA;
+    leitura[i].referencia = refGuardada[i];
+  }
 
   if (configEncoder.ativo) {
     abrirLinha();

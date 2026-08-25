@@ -53,6 +53,14 @@ ConfigCorrecao configCorrecao = {
   1.00f,   // alertaGraus
 };
 
+// A maquina se localiza sozinha ao ligar, e vai para o zero.
+//
+// Ir para o zero SO acontece depois que o operador habilita os servos --
+// que e uma acao explicita dele, na tela. E o intertravamento natural:
+// enquanto ninguem habilitar, o braco nao tem como andar, por mais que
+// esta chave esteja ligada.
+ConfigZero configZero = { true, true, 0.30f, {false, false} };
+
 ConfigEncoder encoderPendente = configEncoder;
 
 Modo        modoAtual     = MODO_MANUAL;
@@ -270,6 +278,15 @@ void carregarConfiguracoes() {
 
   configEncoder.ativo        = prefs.getBool ("encOn",  true);
   configCorrecao.ativa            = prefs.getBool ("crOn",  true);
+  configZero.sincronizar          = prefs.getBool ("zrSin", true);
+  configZero.irParaZero           = prefs.getBool ("zrIr",  true);
+  configZero.toleranciaGraus      = prefs.getFloat("zrTol", 0.30f);
+  configZero.ensinado[0]          = prefs.getBool("zrEn1", false);
+  configZero.ensinado[1]          = prefs.getBool("zrEn2", false);
+  encoderCarregarReferencia(1, prefs.getInt("encRf1", 0));
+  encoderCarregarReferencia(2, prefs.getInt("encRf2", 0));
+  if (configZero.toleranciaGraus < 0.05f) configZero.toleranciaGraus = 0.05f;
+  if (configZero.toleranciaGraus > 10.0f) configZero.toleranciaGraus = 10.0f;
   configCorrecao.vigiar           = prefs.getBool ("crVig", true);
   configCorrecao.toleranciaGraus  = prefs.getFloat("crTol", 0.10f);
   configCorrecao.maxCorrecaoGraus = prefs.getFloat("crMax", 3.00f);
@@ -361,6 +378,15 @@ void salvarConfiguracoes() {
 
   prefs.putBool ("encOn",  configEncoder.ativo);
   prefs.putBool ("crOn",   configCorrecao.ativa);
+  prefs.putBool ("zrSin",  configZero.sincronizar);
+  prefs.putBool ("zrIr",   configZero.irParaZero);
+  prefs.putFloat("zrTol",  configZero.toleranciaGraus);
+  // A referencia absoluta do encoder e a unica calibracao que sobra com
+  // encoder absoluto: ensinada uma vez, vale para sempre.
+  prefs.putBool ("zrEn1",  configZero.ensinado[0]);
+  prefs.putBool ("zrEn2",  configZero.ensinado[1]);
+  prefs.putInt  ("encRf1", encoderReferencia(1));
+  prefs.putInt  ("encRf2", encoderReferencia(2));
   prefs.putBool ("crVig",  configCorrecao.vigiar);
   prefs.putFloat("crTol",  configCorrecao.toleranciaGraus);
   prefs.putFloat("crMax",  configCorrecao.maxCorrecaoGraus);

@@ -198,6 +198,146 @@ void correcaoAtualizar() {
 }
 
 // =====================================================================
+//  Localizar-se ao ligar. Ver correcao.h.
+// =====================================================================
+static ResumoZero z;
+static uint32_t zeroDesde = 0;
+static bool     zeroComecou = false;
+
+ResumoZero zeroResumo() { return z; }
+
+static void dizerZero(const char* m) {
+  strncpy(z.motivo, m, sizeof(z.motivo) - 1);
+  z.motivo[sizeof(z.motivo) - 1] = '\0';
+}
+
+// Acerta a contagem de passos de uma junta para bater com o encoder.
+// Nenhum pulso sai no fio: o eixo NAO se mexe, so a conta muda.
+static bool localizar(uint8_t k) {
+  Junta& j = (k == 1) ? J1 : J2;
+  if (configEncoder.reg[k - 1] == 0) return false;   // junta nao ligada
+  // Sem zero ensinado a referencia e um numero arbitrario, e acertar a
+  // contagem por ela poria o braco em qualquer lugar.
+  if (!configZero.ensinado[k - 1]) return false;
+
+  const LeituraEncoder L = encoderLer(k);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) return false;
+  if (j.passosPorGrau <= 0.0f) return false;
+
+  ajustarContagem(j, grausParaPassos(j, L.graus));
+  z.graus[k - 1] = L.graus;
+  return true;
+}
+
+void zeroAtualizar() {
+  if (!configZero.sincronizar) { z.estado = ZERO_PRONTO; return; }
+  // Nenhuma junta com zero ensinado: nao ha o que recuperar, e a maquina
+  // se comporta exatamente como antes do encoder absoluto.
+  if (!configZero.ensinado[0] && !configZero.ensinado[1]) {
+    if (z.estado == ZERO_ESPERANDO) {
+      z.estado = ZERO_PRONTO;
+      dizerZero("zero nao ensinado: a maquina liga como antes");
+    }
+    return;
+  }
+  if (z.estado == ZERO_PRONTO || z.estado == ZERO_SEM_ENCODER) return;
+
+  if (!zeroComecou) { zeroComecou = true; zeroDesde = millis(); }
+
+  // ---- 1. localizar ----
+  if (z.estado == ZERO_ESPERANDO) {
+    // Nao se acerta contagem com o eixo andando: entre ler e escrever o
+    // eixo teria andado mais, e a conta nasceria torta.
+    if (motoresEmMovimento()) return;
+
+    bool alguma = false;
+    for (uint8_t k = 1; k <= 2; k++) {
+      if (z.localizou[k - 1]) { alguma = true; continue; }
+      if (localizar(k)) { z.localizou[k - 1] = true; alguma = true; }
+    }
+
+    // Junta nao ligada nao impede: uma bancada com um driver so tem de
+    // conseguir ligar a maquina.
+    bool faltaAlguma = false;
+    for (uint8_t k = 1; k <= 2; k++)
+      if (configEncoder.reg[k - 1] != 0 && configZero.ensinado[k - 1] &&
+          !z.localizou[k - 1]) faltaAlguma = true;
+
+    if (!faltaAlguma && alguma) {
+      z.estado = ZERO_LOCALIZADO;
+      dizerZero("posicao recuperada do encoder");
+      definirMensagem("Posicao recuperada do encoder: %.2f / %.2f graus",
+                      (double)z.graus[0], (double)z.graus[1]);
+      return;
+    }
+
+    // Cinco segundos sem leitura: segue como antes do encoder. Uma
+    // maquina que nao liga porque o encoder nao respondeu e pior que uma
+    // maquina que liga sem saber onde esta.
+    if ((uint32_t)(millis() - zeroDesde) > 5000) {
+      z.estado = ZERO_SEM_ENCODER;
+      dizerZero("sem encoder no boot: posicao nao recuperada");
+      definirMensagem("Sem leitura do encoder ao ligar: refira a maquina a mao");
+    }
+    return;
+  }
+
+  // ---- 2. ir para o zero ----
+  if (z.estado == ZERO_LOCALIZADO) {
+    if (!configZero.irParaZero) {
+      z.estado = ZERO_PRONTO;
+      dizerZero("localizado (ir ao zero desligado)");
+      return;
+    }
+    // O INTERTRAVAMENTO: nada anda antes de o operador habilitar os
+    // servos, que e uma acao explicita dele na tela.
+    if (!servosLigados) return;
+    if (soldaLigada()) return;
+    if (modoAtual != MODO_MANUAL) return;
+    if (motoresEmMovimento()) return;
+
+    // Ja esta no zero? Nao mexe.
+    const float g1 = passosParaGraus(J1, posicaoJ1());
+    const float g2 = passosParaGraus(J2, posicaoJ2());
+    if (fabsf(g1) <= configZero.toleranciaGraus &&
+        fabsf(g2) <= configZero.toleranciaGraus) {
+      z.estado = ZERO_PRONTO;
+      dizerZero("ja estava no zero");
+      return;
+    }
+
+    // O zero tem de caber no curso calibrado. Se nao couber, ir para la
+    // seria furar a protecao -- e a protecao existe justamente porque
+    // nao ha fim de curso.
+    if ((J1.calibrada && (grausParaPassos(J1, 0.0f) < J1.passosMin ||
+                          grausParaPassos(J1, 0.0f) > J1.passosMax)) ||
+        (J2.calibrada && (grausParaPassos(J2, 0.0f) < J2.passosMin ||
+                          grausParaPassos(J2, 0.0f) > J2.passosMax))) {
+      z.estado = ZERO_PRONTO;
+      dizerZero("o zero esta fora do curso: nao fui");
+      definirMensagem("Nao fui ao zero: ele esta fora do curso calibrado");
+      return;
+    }
+
+    z.estado = ZERO_INDO;
+    dizerZero("indo para o zero");
+    definirMensagem("Indo para 0 grau (o encoder disse onde o braco estava)");
+    correcaoNovoMovimento();
+    moverCoordenado(grausParaPassos(J1, 0.0f), grausParaPassos(J2, 0.0f),
+                    velAuto);
+    modoAtual = MODO_POSICIONANDO;
+    return;
+  }
+
+  // ---- 3. chegou ----
+  if (z.estado == ZERO_INDO) {
+    if (motoresEmMovimento() || modoAtual == MODO_POSICIONANDO) return;
+    z.estado = ZERO_PRONTO;
+    dizerZero("no zero");
+  }
+}
+
+// =====================================================================
 //  Travamento
 // =====================================================================
 static Travamento trav = {false, 0, 0};
@@ -310,5 +450,7 @@ void correcaoReiniciarTeste() {
   alvo1Original = alvo2Original = 0;
   alertas = 0;
   trav.ativo = false; trav.junta = 0; trav.total = 0;
+  memset(&z, 0, sizeof(z));
+  zeroDesde = 0; zeroComecou = false;
 }
 #endif
