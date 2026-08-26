@@ -194,6 +194,20 @@ struct ConfigPendente {
   uint8_t  suavidade;
   float    elo1, elo2, folgaDobra, envY, envRaio;
   bool     protCurso, protDobra, protEnvelope;
+
+  // ---- CALIBRACAO -----------------------------------------------------
+  // O backup de configuracao guardava o curso das juntas so como
+  // comentario, para conferencia. Isso fazia o arquivo parecer um backup
+  // da maquina sem ser um: restaurar devolvia velocidades e elos, e
+  // deixava o operador refazendo o assistente de calibracao -- que e,
+  // de longe, a parte mais demorada de por a maquina de pe.
+  //
+  // 'temCalib' distingue arquivo novo de arquivo antigo: sem esta marca
+  // um backup gravado pela versao anterior zeraria a calibracao viva.
+  bool     temCalib;
+  bool     cal1, cal2;
+  long     p1Min, p1Max, p2Min, p2Max;
+  float    home1, home2;
 };
 extern ConfigPendente configPendente;
 
@@ -263,6 +277,52 @@ void aplicarEncoderPendente();           // core 1: grava e reconfigura
 
 void prepararConfigPendente();   // core 0: copia o estado vivo para a area
 void aplicarConfigPendente();    // core 1: copia de volta e recalcula
+
+// ---------------------------------------------------------------------
+// MODO OPERADOR x TECNICO
+//
+// Na producao, quem esta na maquina o dia inteiro precisa de quatro
+// botoes: executar, pausar, repetir, parar. Calibracao, resolucao,
+// registrador Modbus e sentido dos eixos sao ajustes de instalacao -- e
+// um toque errado neles no meio do turno para a linha.
+//
+// O modo operador ESCONDE esses paineis. Sair dele pede uma senha curta.
+//
+// O QUE ISTO E, E O QUE NAO E. E uma trava contra toque errado, nao e
+// seguranca de rede: a maquina serve seu proprio Wi-Fi e quem estiver
+// nele alcanca a API direto, sem passar pela tela. Tratar isto como
+// senha de verdade seria mentir para quem compra.
+// ---------------------------------------------------------------------
+struct ConfigPainel {
+  bool operador;      // comeca no modo operador a cada boot
+  char senha[9];      // curta, so para nao ser um toque acidental
+};
+extern ConfigPainel configPainel;
+
+// ---------------------------------------------------------------------
+// PRODUCAO: quantas pecas esta maquina ja fez
+//
+// Um numero que o dono da maquina usa e um numero que o firmware nao
+// tinha: sem ele nao da para dizer se um problema apareceu na peca 10 ou
+// na 3000, nem quando trocar bico e difusor. Vive no NVS, sobrevive a
+// queda de energia, e so o core 1 escreve.
+//
+// Ciclo = uma execucao COM ARCO que chegou ao fim. Ensaio nao conta --
+// ensaio nao gasta consumivel nem produz peca. Programa abortado no meio
+// tambem nao: peca pela metade nao e peca.
+// ---------------------------------------------------------------------
+struct Producao {
+  uint32_t ciclosTotais;    // desde sempre
+  uint32_t ciclosSessao;    // desde este boot
+  uint32_t abortados;       // execucoes com arco que nao chegaram ao fim
+  uint32_t horasArcoS;      // segundos de arco aberto, acumulados
+  uint32_t desdeManutencao; // ciclos desde a ultima manutencao zerada
+};
+extern Producao producao;
+
+void producaoContarCiclo(bool concluido);   // core 1
+void producaoZerarManutencao();             // core 1
+void producaoSomarArco(uint32_t ms);        // core 1: chamado pelo rele
 
 // ---------------------------------------------------------------------
 // Persistencia

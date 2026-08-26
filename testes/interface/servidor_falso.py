@@ -53,6 +53,8 @@ estado = {
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 458.33, "ppg2": 111.11,
     "l1": 450.0, "l2": 400.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
     "aprBotao": False, "apr": False, "aprSolto": False, "aprN": 0,
+    "op": False, "pausa": False, "desf": False, "ciclos": 137, "cicSes": 9,
+    "m1": 9.02, "m2": -14.38, "m1ok": True, "m2ok": True, "trecho": 0,
     "msg": "Pronto. Habilite os servos para comecar",
 }
 PONTOS = {"conferido": True, "pts": [
@@ -68,6 +70,35 @@ TRAJ = [[round(300 * _m.cos(_a / 40.0), 1), round(300 * _m.sin(_a / 40.0) - 60, 
          1 if _a < 20 else 0] for _a in range(-20, 21)]
 
 REDE = {"ssid": "Robo2dof", "ip": "192.168.4.1", "nome": "robo2dof"}
+
+# Previa de uma peca do cartao. Elos DIFERENTES dos da maquina de
+# proposito: e o caso que tem de acender o aviso de peca errada.
+PREVIA = {"n": 4, "l1": 380.0, "l2": 300.0, "l1Maq": 450.0, "l2Maq": 400.0,
+          "pts": [{"x": 300, "y": -40, "s": 1}, {"x": 380, "y": -40, "s": 0},
+                  {"x": 380, "y": 60, "s": 1}, {"x": 300, "y": 60, "s": 0}]}
+
+# Maquina saudavel com historico: e o estado em que a tela tem de mostrar
+# tudo. O banco troca campos daqui para encenar defeito.
+SAUDE = {
+    "up": 9312, "heap": 236864, "heapMin": 198000,
+    "flashUso": 1721921, "flashTot": 3145728,
+    "ciclos": 137, "ciclosSes": 9, "abortados": 3,
+    "arcoS": 4210, "manut": 62,
+    "enc1": {"ok": 18402, "falha": 11, "taxa": 99, "idade": 48,
+             "graus": 9.02, "vale": True},
+    "enc2": {"ok": 0, "falha": 0, "taxa": 0, "idade": 0,
+             "graus": 0.0, "vale": False},
+    "trav": 0, "alerta": 2, "alarme1": False, "alarme2": False,
+    "cartao": True, "cartaoLivre": 7412992, "cartaoTotal": 15204352,
+    "apr": False, "aprBotao": False, "estop": False, "ota": False,
+}
+
+REGISTRO = {"n": 4, "linhas": [
+    {"s": 9280, "t": "programa concluido: 3 pontos"},
+    {"s": 8940, "t": "PROGRAMA COM ARCO iniciado: 3 pontos, cordao a 5.0 mm/s"},
+    {"s": 8901, "t": "programa carregado: cantoneira (3 pontos)"},
+    {"s": 12,   "t": "sistema iniciado"},
+]}
 
 import math as _mm
 # reg2 = 0 e a bancada do operador: um driver so, junta 2 nao ligada. O
@@ -159,6 +190,12 @@ class H(BaseHTTPRequestHandler):
             return self._envia(json.dumps({"pts": TRAJ}))
         if caminho == "/api/encoder":
             return self._envia(json.dumps(_encoder()))
+        if caminho == "/api/saude":
+            return self._envia(json.dumps(SAUDE))
+        if caminho == "/api/registro":
+            return self._envia(json.dumps(REGISTRO))
+        if caminho == "/api/sd/previa":
+            return self._envia(json.dumps(PREVIA))
         if caminho == "/api/rede":
             return self._envia(json.dumps(REDE))
         if caminho == "/api/sd":
@@ -188,6 +225,12 @@ class H(BaseHTTPRequestHandler):
         # maquina (sem calibracao, servos desligados, executando...).
         if caminho == "/teste/estado":
             estado.update(json.loads(corpo or b"{}"))
+            return self._envia("ok", "text/plain")
+        if caminho == "/teste/previa":
+            PREVIA.update(json.loads(corpo or b"{}"))
+            return self._envia("ok", "text/plain")
+        if caminho == "/teste/saude":
+            SAUDE.update(json.loads(corpo or b"{}"))
             return self._envia("ok", "text/plain")
         if caminho == "/teste/encoder":
             _enc.update(json.loads(corpo or b"{}"))

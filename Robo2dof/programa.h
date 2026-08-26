@@ -47,6 +47,35 @@ const Ponto* progLista();
 bool progConferirTrecho(uint8_t i, char* aviso, size_t tam);
 
 // ensaio = true executa o percurso inteiro com o arco desligado.
+// ---------------------------------------------------------------------
+// PAUSA E RETOMADA
+//
+// Parar no meio de um cordao e recomecar do inicio queima a peca duas
+// vezes no mesmo lugar. Pausar guarda ONDE o cordao estava -- em que
+// trecho e a que fracao dele -- e retomar continua dali.
+//
+// O ARCO FECHA NA PAUSA, sempre. Arco aberto com o braco parado fura a
+// chapa em segundos: nao existe pausa "segurando o arco". Ao retomar,
+// ele reabre com o mesmo tempo de abertura do inicio de qualquer cordao.
+// ---------------------------------------------------------------------
+bool progPausar(const char** motivo);
+bool progRetomar(const char** motivo);
+bool progPausado();
+uint8_t progFracaoTrecho();      // 0..100 dentro do trecho atual
+
+// ---------------------------------------------------------------------
+// DESFAZER
+//
+// Um nivel. Cobre o estrago que nao tem volta pela tela: "Apagar
+// programa" com trinta pontos ensinados a mao, ou um ponto removido por
+// engano no meio de um cordao. Guarda o programa inteiro antes de cada
+// alteracao -- 120 pontos sao pouco mais de 1 kB de RAM, e refazer o
+// ensino custa meia hora do operador.
+// ---------------------------------------------------------------------
+bool        progDesfazer(const char** motivo);
+bool        progTemDesfazer();
+const char* progDescricaoDesfazer();
+
 bool    progIniciar(bool ensaio, const char** motivo);
 void    progAtualizar();
 void    progParar();

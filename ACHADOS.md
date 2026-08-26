@@ -2157,9 +2157,111 @@ mede folga que nao existe.
 Agora `A10b` compara as chaves da copia com as chaves da resposta viva:
 campo novo no firmware sem campo novo na copia reprova na hora.
 
+## R72 · A emergencia estava ligada errada, e nao pararia nada  ✅
+
+Defeito real, no unico caminho do sistema que existe para salvar alguem.
+
+O `config.h` mandava ligar o contato NC ao **3V3** e o codigo esperava
+**LOW** para acusar emergencia -- com o pull-up interno ligado. Essa
+combinacao nao funciona de duas maneiras ao mesmo tempo:
+
+- com o contato no 3V3 e o pull-up ativo, o pino **nunca** chega a LOW.
+  Apertar o botao vermelho nao faria nada;
+- e um fio partido tambem daria HIGH, ou seja, "esta tudo bem".
+
+A ligacao certa e o contato NC para o **GND**, com pull-up, e
+**HIGH = EMERGENCIA**:
+
+| situacao | pino | resultado |
+|---|---|---|
+| solto (contato fechado) | LOW | opera normalmente |
+| apertado (contato abre) | HIGH | emergencia |
+| **fio partido / desligado** | HIGH | **emergencia** |
+
+O terceiro caso e o que justifica a ligacao inteira: botao de emergencia
+com cabo rompido tem de parar a maquina, nao sumir em silencio.
+
+Nenhum cenario pegava porque o A08 encenava "apertado" com o mesmo nivel
+que a ligacao errada esperava -- o teste concordava com o defeito. O novo
+`P07` prova o caso que importa: corta o fio, e o torque, o movimento e o
+rearme caem.
+
+O padrao do mock (`pinMode(INPUT_PULLUP)` deixa o pino em HIGH) representa
+**nada ligado**, que agora e emergencia -- entao cada cenario passa a
+comecar declarando o botao instalado e solto. Isso e fidelidade, nao
+concessao.
+
+## R73 · O backup da maquina nao guardava a calibracao  ✅
+
+O arquivo `/cfg/*.cfg` guardava velocidades, elos e protecoes, e o curso
+medido das juntas ia dentro de um **comentario**, "para conferencia".
+Isso fazia o arquivo parecer um backup da maquina sem ser um: restaurar
+devolvia os numeros faceis e deixava o operador refazendo o assistente de
+calibracao, que e de longe a parte mais demorada de por a maquina de pe.
+
+Agora o arquivo leva `cal=1`, os limites em passos, o angulo da
+referencia e o sentido de cada eixo. A marca `cal=1` distingue arquivo
+novo de arquivo antigo: um backup gravado pela versao anterior nao traz
+calibracao, e por isso **nao pode zerar** a que esta na maquina -- quem
+restaura um backup velho espera recuperar o que ele guarda, nao perder o
+que ele nao guarda. Cenarios `Q05` e `Q06`.
+
+## R74 · O QR saiu com os bits de formato ao contrario  ✅
+
+Escrevi um gerador de QR proprio -- a maquina nao tem internet, entao
+biblioteca de CDN nao e opcao. Ele desenhava um codigo **perfeito aos
+olhos** e nenhum leitor abria.
+
+Dois defeitos, os dois invisiveis numa inspecao visual:
+
+1. Os 15 bits de formato eram gravados do menos significativo para o
+   mais, e a ordem e a contraria.
+2. A segunda copia do formato divide **7 modulos na coluna e 8 na
+   linha** -- eu usei 8 e 7, e o modulo `(8, n-8)` ficava sem ser escrito.
+
+O que resolveu nao foi olhar mais: foi arrumar um **oraculo**. Os codigos
+passaram a ser renderizados e lidos de volta por um decodificador de
+verdade (OpenCV), e os dois defeitos apareceram em minutos. Virou o
+guarda permanente `testes/conferir_qr.py`, que roda antes de cada
+compilacao e cobre v1 a v10, UTF-8 e o teto de tamanho.
+
+A licao e velha e vale registrar: **para o que nao da para conferir no
+olho, arrume um leitor independente antes de escrever o codigo.**
+
+## R75 · O espelho do eixo no banco so existia para a junta 1  ✅
+
+Todo cenario da junta 2 tinha de cravar a posicao do escravo Modbus a
+mao, o que nao e o eixo andando -- e o teste fingindo. O primeiro cenario
+que exigiu assentamento na junta 2 reprovou por isso, e a reprovacao
+estava certa: o banco nao tinha como encenar perda de passo naquele eixo.
+
+O espelho agora cobre as duas juntas, cada uma com sua base e sua perda,
+e a junta 2 so e espelhada quando esta no barramento -- entao os
+cenarios de um driver so continuam identicos.
+
+## R76 · O botao que apagava a calibracao nao dizia por que estava mudo  ✅
+
+Achado pela propria varredura de interface, que exige que todo botao
+desabilitado explique o motivo. O `btCalApagar` era desabilitado por
+atribuicao direta, sem passar por `acao()`, e sem elemento de motivo --
+entao ficava cinza e calado. Botao apagado e mudo e a reclamacao mais
+antiga deste painel.
+
+## R77 · A tela cresceu, e o teto subiu com justificativa  ✅
+
+A pagina comprimida passou de 52 KB para 65 KB e estourou o teto de 64 KB
+-- que existe exatamente para o crescimento ser uma decisao, e nao um
+acidente. O teto foi para 80 KB, com a lista do que subiu escrita ao lado
+dele: gerador de QR, aba Maquina inteira, miniatura de peca, dicionario
+de ingles e os controles de producao. No Wi-Fi do proprio robo, 80 KB sao
+entre 0,3 e 0,6 s.
+
 ## Cobertura
 
-| banco | rodada 20 | agora |
-|-------|-----------|-------|
-| firmware | 229 / 0 | **273 / 0** |
-| interface | 121 / 0 | **132 / 0** |
+| banco | rodada 20 | rodada 22 | agora |
+|-------|-----------|-----------|-------|
+| firmware | 229 / 0 | 241 / 0 | **314 / 0** |
+| interface | 121 / 0 | 125 / 0 | **163 / 0** |
+
+Guardas automaticas antes de cada compilacao: fiacao, rotas, pagina
+comprimida e **os codigos QR lidos por um decodificador de verdade**.

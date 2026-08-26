@@ -319,6 +319,47 @@ body.semNotas .nt{display:none}
  background:var(--face);border:1px solid var(--linha);border-radius:3px;
  padding:7px 10px;margin-bottom:9px}
 .aprEst.on{color:var(--arco);border-color:var(--arco2);font-weight:600}
+/* Grelha da tela de saude: rotulo a esquerda, numero a direita. Linha a
+   linha, para ser lida em pe na frente da maquina. */
+/* Angulo medido pelo encoder, debaixo do comandado. Fica discreto quando
+   os dois concordam e vermelho quando divergem: o operador so precisa
+   olhar quando ha o que olhar. */
+/* Botao do arco depois do primeiro toque: pisca ate confirmar ou expirar. */
+.b.armado{background:var(--quente);color:#fff;animation:pulsa 1s ease-in-out infinite}
+@keyframes pulsa{50%{opacity:.55}}
+/* Modo operador: some com o que e ajuste de instalacao. Some de verdade,
+   nao fica cinza -- botao desabilitado ainda convida a apertar. */
+body.operador .soTecnico{display:none}
+.med{display:block;font-family:var(--mono);font-size:9.5px;font-weight:400;
+ color:var(--fraca);text-decoration:none;line-height:1.5;letter-spacing:0}
+.med.dif{color:var(--quente)}
+.med.sem{opacity:.45}
+/* Barra de producao: pausar, repetir e a contagem de pecas. */
+.prod{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.prod .b{flex:1 1 130px;margin:0}
+.prod .pq2{flex-basis:100%;order:9}
+.cont{flex:1 1 100%;font-family:var(--mono);font-size:11px;color:var(--fraca);
+ background:var(--face);border:1px solid var(--linha);border-radius:3px;
+ padding:7px 10px;text-align:center}
+.pvTela{display:block;width:100%;max-width:340px;height:auto;background:var(--face);
+ border:1px solid var(--linha);border-radius:3px;margin-bottom:10px}
+.grelha{display:flex;flex-direction:column;gap:1px;background:var(--linha);
+ border:1px solid var(--linha);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.sl{display:flex;justify-content:space-between;gap:10px;background:var(--face);
+ padding:7px 10px;font-size:11.5px}
+.sl span{color:var(--fraca)}
+.sl b{font-family:var(--mono);font-size:11px;color:var(--letra);text-align:right}
+.sb.alerta{color:var(--quente)}
+/* Os dois QR lado a lado, e fundo branco fixo: leitor espera escuro
+   sobre claro, e no tema escuro um codigo invertido nao abre. */
+.qrPar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.qrCx{background:#fff;border:1px solid var(--linha);border-radius:4px;padding:8px;
+ text-align:center}
+.qrCx canvas{display:block;width:180px;height:180px;image-rendering:pixelated}
+.qrLg{font-size:10.5px;color:#333;margin-top:5px}
+.res i{color:var(--fraca);font-style:normal;font-size:10px;
+ display:inline-block;min-width:74px}
+input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:100%}
 .res{font-family:var(--mono);font-size:10.5px;color:var(--arco);background:var(--face);
  border:1px solid var(--linha);border-radius:3px;padding:8px 10px;margin-bottom:9px;
  line-height:1.6}
@@ -888,9 +929,16 @@ body.semNotas .nt{display:none}
           <button class="b pri mini" id="pAplicar">Virar programa</button>
         </div>
       </div>
+      <!-- Leitura de angulo. Duas colunas por junta: o angulo COMANDADO
+           (a conta de pulsos do firmware) e o MEDIDO pelo encoder. Ver os
+           dois lado a lado e o que transforma "acho que esta em 30 graus"
+           em "esta em 30,12 graus" -- e o que denuncia um desvio antes de
+           ele virar peca torta. -->
       <div class="regua">
-        <div><span class="rot">junta 1</span><b id="hT1">0°</b></div>
-        <div><span class="rot">junta 2</span><b id="hT2">0°</b></div>
+        <div><span class="rot">junta 1</span><b id="hT1">0°</b>
+             <u class="med" id="hM1">--</u></div>
+        <div><span class="rot">junta 2</span><b id="hT2">0°</b>
+             <u class="med" id="hM2">--</u></div>
         <div><span class="rot">X mm</span><b id="hX">0</b></div>
         <div><span class="rot">Y mm</span><b id="hY">0</b></div>
         <div><span class="rot">ponta mm/s</span><b id="hV">0</b></div>
@@ -1005,6 +1053,8 @@ body.semNotas .nt{display:none}
             sempre acao sua.</div>
             <div id="lista"></div>
             <button class="b mini" id="btLimpar">Apagar programa</button>
+            <button class="b mini" id="btDesf">Desfazer</button>
+            <div class="pq2" id="qDesf"></div>
           </div>
         </div>
 
@@ -1030,6 +1080,20 @@ body.semNotas .nt{display:none}
             <button class="b quente" id="btSoldar">Executar com arco</button>
             <div class="pq2" id="qSoldar"></div>
             <div class="pgr"><i id="pg"></i></div>
+
+            <div class="prod">
+              <button class="b" id="btPausa">Pausar</button>
+              <div class="pq2" id="qPausa"></div>
+              <button class="b" id="btRepetir">Mais uma peca</button>
+              <div class="pq2" id="qRepetir"></div>
+              <div class="cont" id="contPecas">--</div>
+            </div>
+            <div class="nt"><b>Pausar</b> fecha o arco e guarda em que ponto do
+            cordao parou; retomar continua dali, em vez de refazer o trecho por
+            cima do que ja foi soldado. O arco reabre com o mesmo tempo de
+            abertura do inicio &mdash; a poca esfriou na pausa.<br><br>
+            <b>Mais uma peca</b> repete o mesmo programa sem reabrir o arquivo:
+            e o caso normal de producao.</div>
           </div>
         </div>
 
@@ -1165,6 +1229,7 @@ body.semNotas .nt{display:none}
             <button class="b" id="btCalib">Abrir assistente de calibracao</button>
             <div class="tr"><span id="calEstado">--</span></div>
             <button class="b mini x" id="btCalApagar">Apagar calibracao gravada</button>
+            <div class="pq2" id="qCalApagar"></div>
             <div class="nt">Apagar volta o robo ao <b>modo de instalacao</b>: o jog
             fica livre, sem limite de curso, e programa e trajetoria ficam
             recusados ate calibrar de novo. A resolucao dos eixos nao e
@@ -1295,11 +1360,124 @@ body.semNotas .nt{display:none}
           </div>
         </div>
       </section>
+
+      <!-- ========================== MAQUINA =========================== -->
+      <section class="pane" id="pnMaq">
+        <div class="et aberta">
+          <div class="cab"><div class="mk">&#9829;</div>
+            <div class="tx"><div class="tt">Saude da maquina</div>
+            <span class="sb" id="sbSaude">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="grelha" id="saudeG"></div>
+            <div class="nt">Estes numeros respondem "esta tudo bem?" sem cabo
+            nenhum. A <b>taxa</b> do encoder e a que mais diz: 100% e barramento
+            saudavel; 60% nao e "meio quebrado", e cabo, terminacao ou
+            aterramento &mdash; e vai piorar.</div>
+            <button class="b mini" id="btManut">Registrar manutencao feita</button>
+            <div class="pq2" id="qManut"></div>
+            <div class="nt">Zera o contador de ciclos desde a ultima
+            manutencao. O total da maquina continua contando.</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9998;</div>
+            <div class="tx"><div class="tt">Registro de eventos</div>
+            <span class="sb">o que a maquina fez nas ultimas horas</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="res" id="regLista">--</div>
+            <div class="nt">Sai da memoria da maquina, entao funciona sem
+            cartao &mdash; que e justamente quando isto costuma ser consultado.
+            Com cartao, o registro completo fica em <b>/log/</b>.</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9635;</div>
+            <div class="tx"><div class="tt">Conectar no painel</div>
+            <span class="sb">aponte a camera do celular</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="qrPar">
+              <div class="qrCx"><canvas id="qrRede" width="180" height="180"></canvas>
+                <div class="qrLg">1. entrar na rede</div></div>
+              <div class="qrCx"><canvas id="qrPainel" width="180" height="180"></canvas>
+                <div class="qrLg">2. abrir o painel</div></div>
+            </div>
+            <div class="nt">O primeiro codigo entra na rede Wi-Fi da maquina; o
+            segundo abre esta tela. Na maioria dos celulares o painel abre
+            sozinho ao entrar na rede &mdash; o segundo codigo e para quando
+            nao abre.</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#8593;</div>
+            <div class="tx"><div class="tt">Atualizar o firmware</div>
+            <span class="sb" id="sbOta">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="perigo">A maquina reinicia ao terminar. Nao atualize com
+            peca no meio de um cordao.</div>
+            <div id="otaCaixa">
+              <input type="file" id="otaArq" accept=".bin">
+              <button class="b pri" id="btOta">Enviar firmware</button>
+              <div class="pq2" id="qOta"></div>
+              <div class="pgr"><i id="otaBarra"></i></div>
+            </div>
+            <div class="nt" id="otaNota"></div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#128274;</div>
+            <div class="tx"><div class="tt">Modo operador</div>
+            <span class="sb" id="sbOp">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">O modo operador <b>esconde</b> os ajustes de
+            instalacao &mdash; calibracao, resolucao, encoder, sentido dos
+            eixos. No turno, um toque errado num desses para a linha.</div>
+            <button class="b" id="btOp">Entrar no modo operador</button>
+            <div class="pq2" id="qOp"></div>
+            <div class="cp"><label>Senha do tecnico</label>
+              <input type="password" id="opAtual" placeholder="atual"></div>
+            <div class="cp"><label>Nova senha</label>
+              <input type="password" id="opNova" placeholder="4 a 8 caracteres"></div>
+            <button class="b mini" id="btOpSenha">Trocar a senha</button>
+            <div class="pq2" id="qOpSenha"></div>
+            <h4>Idioma / Language</h4>
+            <button class="b mini" id="btIdioma">English</button>
+            <div class="nt">Traduz o que o operador toca: abas, botoes,
+            rotulos, a tela de saude e a tira de estado. <b>As notas longas
+            de explicacao continuam em portugues</b> &mdash; elas sao o manual
+            embutido desta maquina, escritas para quem a monta, e traduzir mal
+            um texto que explica por que o arco fecha na pausa e pior do que
+            deixa-lo como esta.</div>
+
+            <div class="perigo"><b>Isto nao e seguranca de rede.</b> A maquina
+            serve o proprio Wi-Fi, e quem estiver nele alcanca a API direto,
+            sem passar por esta tela. E uma trava contra toque errado &mdash;
+            util todo dia, e so isso.</div>
+          </div>
+        </div>
+      </section>
     </div></aside>
   </div>
 
   <nav class="abas" id="abas"></nav>
 </div>
+
+<!-- Miniatura de uma peca do cartao, sem trocar a que esta na maquina. -->
+<div class="veu" id="veuPeca"><div class="cx">
+  <h2 id="pvNome">--</h2>
+  <div class="pp">previa do cartao</div>
+  <canvas id="pvTela" width="340" height="240" class="pvTela"></canvas>
+  <div class="res" id="pvInfo">--</div>
+  <div class="perigo" id="pvAviso" style="display:none"></div>
+  <div class="nt">Linha grossa e cordao; tracejado e deslocamento sem arco.
+  O ponto maior e o inicio. Isto le o arquivo <b>sem</b> trocar o programa
+  que esta na maquina.</div>
+  <button class="b pri" id="pvCarregar">Carregar esta peca na maquina</button>
+  <button class="b" id="pvFechar">Fechar</button>
+</div></div>
 
 <div class="veu" id="veu"><div class="cx">
   <h2>Calibracao das juntas</h2>
@@ -1453,10 +1631,44 @@ $("btLimpar").onclick=function(){
 $("btEnsaio").onclick=function(){
   if(D.modo==="EXECUTANDO")post("/api/prog/parar");
   else post("/api/prog/executar?ensaio=1");};
+/* Abrir o arco pede DOIS toques. O primeiro arma o botao por 4 segundos
+   e ele muda de texto; o segundo executa. Nao e cerimonia: "executar com
+   arco" fica a um toque de distancia de "executar ensaio", numa tela que
+   se usa de luva, e os dois botoes ficam um embaixo do outro.
+
+   A confirmacao vai TAMBEM na requisicao (conf=1). A tela pedir dois
+   toques nao protege nada se a rota abrir o arco para qualquer chamada
+   -- e ela e alcancavel por qualquer coisa na rede da maquina. */
+let arcoArmado=0;
 $("btSoldar").onclick=function(){
   if(D.modo==="EXECUTANDO"){post("/api/prog/parar");return;}
-  if(confirm("O ARCO VAI ABRIR.\n\nMascara, aterramento na peca e area livre conferidos?"))
-    post("/api/prog/executar?ensaio=0");};
+  if(Date.now()>arcoArmado){
+    arcoArmado=Date.now()+4000;
+    pintarSoldar();
+    setTimeout(function(){if(Date.now()>arcoArmado)pintarSoldar();},4100);
+    return;
+  }
+  arcoArmado=0;
+  post("/api/prog/executar?ensaio=0&conf=1");
+  pintarSoldar();
+};
+function pintarSoldar(){
+  const b=$("btSoldar"), rodando=(D.modo==="EXECUTANDO");
+  const armado=Date.now()<arcoArmado;
+  b.textContent = tr(rodando ? "PARAR"
+    : armado ? "Confirmar: abrir o arco" : "Executar com arco");
+  b.className = "b "+(rodando?"rod":"quente")+(armado?" armado":"");
+}
+
+/* Pausar e retomar. O mesmo botao, porque e a mesma decisao. */
+$("btPausa").onclick=function(){
+  post("/api/prog/pausar?on="+(D.pausa?0:1));};
+
+$("btRepetir").onclick=function(){
+  if(!confirm("Repetir o programa com o ARCO ABERTO?\n\nPeca nova posicionada?"))return;
+  post("/api/prog/repetir?conf=1");};
+
+$("btDesf").onclick=function(){post("/api/prog/desfazer").then(lerPontos);};
 
 function geo(){
   return post("/api/geometria?l1="+$("inL1").value+"&l2="+$("inL2").value+
@@ -1538,6 +1750,348 @@ $("btReset").onclick =function(){
      seguinte reaplicava tudo por cima do padrao de fabrica. */
   if(confirm("Restaurar todos os ajustes de fabrica?"))
     post("/api/config/reset").then(function(){carregou=false;});};
+
+/* =====================================================================
+   ABA MAQUINA: saude, registro, QR de conexao, firmware e modo operador
+   ===================================================================== */
+
+/* <<QR>> -- este bloco e extraido por testes/conferir_qr.py e conferido
+   contra um decodificador de verdade. Nao mexa nele sem rodar o guarda:
+   um QR desenhado errado fica bonito na tela e nenhum leitor abre. */
+
+function qrGerar(txt,mascaraFixa){
+  const dados=[];
+  for(const ch of unescape(encodeURIComponent(txt))) dados.push(ch.charCodeAt(0));
+
+  /* capacidade de dados (bytes) por versao, nivel M */
+  const CAP=[0,14,26,42,62,84,106,122,152,180,213];
+  /* [total de codewords, blocos grupo1, dados/bloco g1, blocos g2, dados/bloco g2] nivel M */
+  const EC =[null,
+    [10,1,16,0,0],[16,1,28,0,0],[26,1,44,0,0],[18,2,32,0,0],[24,2,43,0,0],
+    [16,4,27,0,0],[18,4,31,0,0],[22,2,38,2,39],[22,3,36,2,37],[26,4,43,1,44]];
+  let v=0;
+  for(let i=1;i<=10;i++) if(dados.length<=CAP[i]){v=i;break;}
+  if(!v) throw new Error("texto longo demais para o QR");
+
+  const [ecPorBloco,b1,d1,b2,d2]=EC[v];
+  const totalDados=b1*d1+b2*d2;
+
+  /* ---- bitstream ---- */
+  const bits=[];
+  const push=(val,n)=>{for(let i=n-1;i>=0;i--)bits.push((val>>i)&1);};
+  push(4,4);                       /* modo byte */
+  push(dados.length,8);            /* v1..9: 8 bits; v10: 16 */
+  if(v>=10){bits.length=4;push(dados.length,16);}
+  for(const b of dados) push(b,8);
+  for(let i=0;i<4&&bits.length<totalDados*8;i++) bits.push(0);
+  while(bits.length%8) bits.push(0);
+  const cw=[];
+  for(let i=0;i<bits.length;i+=8){let b=0;for(let j=0;j<8;j++)b=(b<<1)|bits[i+j];cw.push(b);}
+  const PAD=[0xEC,0x11];
+  for(let i=0;cw.length<totalDados;i++) cw.push(PAD[i%2]);
+
+  /* ---- Reed-Solomon ---- */
+  const EXP=new Array(512),LOG=new Array(256);
+  for(let i=0,x=1;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x&256)x^=0x11d;}
+  for(let i=255;i<512;i++)EXP[i]=EXP[i-255];
+  const mul=(a,b)=>(a===0||b===0)?0:EXP[LOG[a]+LOG[b]];
+  function gerador(n){let g=[1];for(let i=0;i<n;i++){const ng=new Array(g.length+1).fill(0);
+    for(let j=0;j<g.length;j++){ng[j]^=mul(g[j],1);ng[j+1]^=mul(g[j],EXP[i]);}g=ng;}return g;}
+  function rs(bloco,n){const g=gerador(n);const r=bloco.concat(new Array(n).fill(0));
+    for(let i=0;i<bloco.length;i++){const f=r[i];if(f===0)continue;
+      for(let j=0;j<g.length;j++)r[i+j]^=mul(g[j],f);}
+    return r.slice(bloco.length);}
+
+  const blocos=[],ecs=[];
+  let p=0;
+  for(let i=0;i<b1;i++){const b=cw.slice(p,p+d1);p+=d1;blocos.push(b);ecs.push(rs(b,ecPorBloco));}
+  for(let i=0;i<b2;i++){const b=cw.slice(p,p+d2);p+=d2;blocos.push(b);ecs.push(rs(b,ecPorBloco));}
+
+  const finais=[];
+  const maxD=Math.max(d1,d2);
+  for(let i=0;i<maxD;i++) for(const b of blocos) if(i<b.length) finais.push(b[i]);
+  for(let i=0;i<ecPorBloco;i++) for(const e of ecs) finais.push(e[i]);
+
+  /* ---- matriz ---- */
+  const n=v*4+17;
+  const m=Array.from({length:n},()=>new Array(n).fill(null));
+  const por=(r,c,val)=>{if(r>=0&&r<n&&c>=0&&c<n)m[r][c]=val;};
+
+  function finder(r,c){
+    for(let i=-1;i<=7;i++)for(let j=-1;j<=7;j++){
+      const rr=r+i,cc=c+j;
+      if(rr<0||rr>=n||cc<0||cc>=n)continue;
+      const dentro=(i>=0&&i<=6&&(j===0||j===6))||(j>=0&&j<=6&&(i===0||i===6))||
+                   (i>=2&&i<=4&&j>=2&&j<=4);
+      m[rr][cc]=dentro?1:0;
+    }
+  }
+  finder(0,0);finder(0,n-7);finder(n-7,0);
+
+  /* alinhamento */
+  const AL=[[],[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50]];
+  const cen=AL[v];
+  for(const r of cen)for(const c of cen){
+    if((r<=7&&c<=7)||(r<=7&&c>=n-8)||(r>=n-8&&c<=7))continue;
+    for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)
+      m[r+i][c+j]=(Math.max(Math.abs(i),Math.abs(j))!==1)?1:0;
+  }
+  /* temporizacao */
+  for(let i=8;i<n-8;i++){ if(m[6][i]===null)m[6][i]=(i%2===0)?1:0;
+                          if(m[i][6]===null)m[i][6]=(i%2===0)?1:0; }
+  /* modulo escuro */
+  m[n-8][8]=1;
+
+  /* reserva das areas de formato/versao */
+  const reservado=Array.from({length:n},()=>new Array(n).fill(false));
+  for(let i=0;i<9;i++){reservado[8][i]=true;reservado[i][8]=true;}
+  for(let i=0;i<8;i++){reservado[8][n-1-i]=true;reservado[n-1-i][8]=true;}
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++) if(m[r][c]!==null) reservado[r][c]=true;
+  if(v>=7){for(let i=0;i<6;i++)for(let j=0;j<3;j++){
+    reservado[n-11+j][i]=true;reservado[i][n-11+j]=true;}}
+
+  /* ---- dados em ziguezague ---- */
+  const fluxo=[];
+  for(const b of finais) for(let i=7;i>=0;i--) fluxo.push((b>>i)&1);
+  let idx=0,cima=true;
+  for(let col=n-1;col>0;col-=2){
+    if(col===6)col--;
+    for(let k=0;k<n;k++){
+      const r=cima?(n-1-k):k;
+      for(const c of [col,col-1]){
+        if(reservado[r][c])continue;
+        m[r][c]=idx<fluxo.length?fluxo[idx]:0;
+        idx++;
+      }
+    }
+    cima=!cima;
+  }
+
+  /* ---- mascaras ---- */
+  const REGRA=[
+    (r,c)=>(r+c)%2===0, (r,c)=>r%2===0, (r,c)=>c%3===0, (r,c)=>(r+c)%3===0,
+    (r,c)=>(Math.floor(r/2)+Math.floor(c/3))%2===0,
+    (r,c)=>((r*c)%2)+((r*c)%3)===0,
+    (r,c)=>(((r*c)%2)+((r*c)%3))%2===0,
+    (r,c)=>(((r+c)%2)+((r*c)%3))%2===0];
+
+  function formatoBits(mask){
+    const dadosF=(0<<3)|mask;            /* nivel M = 00 */
+    let v2=dadosF<<10;
+    for(let i=4;i>=0;i--) if(v2&(1<<(i+10))) v2^=0x537<<i;
+    return ((dadosF<<10)|v2)^0x5412;
+  }
+  function porFormato(mm,mask){
+    const f=formatoBits(mask);
+    for(let i=0;i<15;i++){
+      /* i=0 recebe o bit MAIS significativo. Conferido lendo os modulos
+         de formato de um QR de referencia -- na ordem contraria o codigo
+         fica desenhado certinho e nenhum leitor abre. */
+      const b=(f>>(14-i))&1;
+      /* copia 1 */
+      if(i<6)      mm[8][i]=b;
+      else if(i===6) mm[8][7]=b;
+      else if(i===7) mm[8][8]=b;
+      else if(i===8) mm[7][8]=b;
+      else           mm[14-i][8]=b;
+      /* copia 2: 7 modulos na coluna, 8 na linha. O oitavo da coluna
+         seria (n-8,8), que e o modulo escuro fixo -- por isso o corte e
+         em 7 e nao em 8. */
+      if(i<7) mm[n-1-i][8]=b;
+      else    mm[8][n-15+i]=b;
+    }
+  }
+  function porVersao(mm){
+    if(v<7)return;
+    let d=v<<12;
+    for(let i=5;i>=0;i--) if(d&(1<<(i+12))) d^=0x1f25<<i;
+    const bitsV=(v<<12)|d;
+    for(let i=0;i<18;i++){
+      const b=(bitsV>>i)&1;
+      mm[Math.floor(i/3)][n-11+(i%3)]=b;
+      mm[n-11+(i%3)][Math.floor(i/3)]=b;
+    }
+  }
+  function penalidade(mm){
+    let p=0;
+    /* 1: corridas */
+    for(let r=0;r<n;r++)for(const eixo of [0,1]){
+      let run=1;
+      for(let c=1;c<n;c++){
+        const a=eixo?mm[c-1][r]:mm[r][c-1], b=eixo?mm[c][r]:mm[r][c];
+        if(a===b)run++;else{if(run>=5)p+=3+(run-5);run=1;}
+      }
+      if(run>=5)p+=3+(run-5);
+    }
+    /* 2: blocos 2x2 */
+    for(let r=0;r<n-1;r++)for(let c=0;c<n-1;c++){
+      const a=mm[r][c];
+      if(a===mm[r][c+1]&&a===mm[r+1][c]&&a===mm[r+1][c+1])p+=3;
+    }
+    /* 3: padrao 1011101 com 4 claros */
+    const A=[1,0,1,1,1,0,1,0,0,0,0],B=[0,0,0,0,1,0,1,1,1,0,1];
+    for(let r=0;r<n;r++)for(let c=0;c+10<n;c++){
+      let ma=true,mb=true;
+      for(let i=0;i<11;i++){if(mm[r][c+i]!==A[i])ma=false;if(mm[r][c+i]!==B[i])mb=false;}
+      if(ma||mb)p+=40;
+      ma=true;mb=true;
+      for(let i=0;i<11;i++){if(mm[c+i][r]!==A[i])ma=false;if(mm[c+i][r]!==B[i])mb=false;}
+      if(ma||mb)p+=40;
+    }
+    /* 4: proporcao de escuros */
+    let escuros=0;
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(mm[r][c])escuros++;
+    const pct=escuros*100/(n*n);
+    p+=Math.floor(Math.abs(pct-50)/5)*10;
+    return p;
+  }
+
+  let melhor=null,melhorP=Infinity;
+  for(let mask=0;mask<8;mask++){
+    if(mascaraFixa!==undefined&&mask!==mascaraFixa)continue;
+    const mm=m.map(r=>r.slice());
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++)
+      if(!reservado[r][c]&&REGRA[mask](r,c)) mm[r][c]^=1;
+    porFormato(mm,mask);porVersao(mm);
+    const p2=penalidade(mm);
+    if(p2<melhorP){melhorP=p2;melhor=mm;}
+  }
+  return melhor;
+}
+/* <</QR>> */
+
+function pintarQRem(id,txt){
+  const cv=$(id); if(!cv)return;
+  const ct=cv.getContext("2d");
+  ct.fillStyle="#fff"; ct.fillRect(0,0,cv.width,cv.height);
+  let m;
+  try{ m=qrGerar(txt); }catch(e){
+    ct.fillStyle="#900"; ct.font="11px sans-serif";
+    ct.fillText("texto longo demais",8,cv.height/2); return; }
+  const n=m.length, Q=2;                    /* zona de silencio */
+  const e=Math.floor(cv.width/(n+2*Q));
+  const off=Math.floor((cv.width-e*(n+2*Q))/2)+e*Q;
+  /* Preto no branco SEMPRE, mesmo no tema escuro: leitor de QR espera
+     contraste nessa ordem, e codigo invertido nao abre em boa parte dos
+     celulares. Por isso o fundo branco tambem e pintado acima. */
+  ct.fillStyle="#000";
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++)
+    if(m[r][c]) ct.fillRect(off+c*e,off+r*e,e,e);
+}
+
+let qrDesenhado=false;
+function pintarQR(){
+  if(qrDesenhado)return;
+  fetch("/api/rede").then(function(r){return r.json();}).then(function(j){
+    /* Formato padrao de credencial Wi-Fi, lido por Android e iPhone. A
+       rede da maquina e aberta, entao T:nopass e sem senha. */
+    const ssid=String(j.ssid||"Robo2dof").replace(/([\;,:"])/g,"\\$1");
+    pintarQRem("qrRede","WIFI:T:nopass;S:"+ssid+";;");
+    pintarQRem("qrPainel","http://"+(j.ip||"192.168.4.1")+"/");
+    qrDesenhado=true;
+  }).catch(function(){});
+}
+
+function dur(s){
+  s=Math.max(0,Math.floor(s));
+  const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60);
+  if(d)return d+" d "+h+" h";
+  if(h)return h+" h "+m+" min";
+  if(m)return m+" min";
+  return s+" s";
+}
+
+function saudeAtualizar(){
+  fetch("/api/saude").then(function(r){return r.json();}).then(function(j){
+    const enc=function(e){
+      if(!e.vale&&!e.ok&&!e.falha)return "nao ligado";
+      return e.graus.toFixed(2)+"° · "+e.taxa+"% de acerto"+
+             (e.vale?"":" · SEM LEITURA");
+    };
+    const linhas=[
+      ["Ligada ha",              dur(j.up)],
+      ["Pecas prontas",          j.ciclos+" (nesta sessao: "+j.ciclosSes+")"],
+      ["Interrompidas no meio",  String(j.abortados)],
+      ["Arco aberto, no total",  dur(j.arcoS)],
+      ["Desde a manutencao",     j.manut+" pecas"],
+      ["Encoder junta 1",        enc(j.enc1)],
+      ["Encoder junta 2",        enc(j.enc2)],
+      ["Travamentos",            String(j.trav)],
+      ["Avisos de desvio",       String(j.alerta)],
+      ["Alarme dos drivers",     (j.alarme1||j.alarme2)?"SIM":"nenhum"],
+      ["Botao de emergencia",    j.estop?"instalado":"nao instalado"],
+      ["Botao da ponteira",      j.aprBotao?"instalado":"nao instalado"],
+      ["Cartao",                 j.cartao?(Math.round(j.cartaoLivre/1024)+" MB livres de "+
+                                           Math.round(j.cartaoTotal/1024)+" MB"):"ausente"],
+      ["Memoria livre",          Math.round(j.heap/1024)+" kB (minimo "+
+                                 Math.round(j.heapMin/1024)+" kB)"],
+      ["Programa na particao",   Math.round(j.flashUso/1024)+" kB de "+
+                                 Math.round(j.flashTot/1024)+" kB"]
+    ];
+    $("saudeG").innerHTML=linhas.map(function(l){
+      return '<div class="sl"><span>'+tr(l[0])+'</span><b>'+tr(l[1])+'</b></div>';}).join("");
+
+    const encRuim=(j.enc1.ok+j.enc1.falha>50&&j.enc1.taxa<90);
+    const ruim=j.alarme1||j.alarme2||j.trav>0||encRuim;
+    $("sbSaude").textContent = ruim ? "atencao: veja os itens abaixo"
+      : (j.ciclos+" pecas · ligada ha "+dur(j.up));
+    $("sbSaude").className="sb"+(ruim?" alerta":"");
+
+    $("sbOta").textContent = tr(j.ota ? "disponivel" : "indisponivel neste firmware");
+    $("otaCaixa").style.display = j.ota ? "" : "none";
+    $("otaNota").innerHTML = j.ota
+      ? "Envie o arquivo <b>.bin</b> gerado por <b>Sketch &rarr; Exportar binario compilado</b> na IDE do Arduino."
+      : "Este firmware foi gravado com a particao de <b>3 MB sem OTA</b>, entao nao ha para onde escrever a imagem nova. Para atualizar pela rede, grave uma vez pelo USB usando <b>partitions_ota.csv</b> (veja o MANUAL). Nao ha como contornar: OTA precisa de duas particoes de programa, porque a imagem nova e escrita naquela que nao esta rodando.";
+  }).catch(function(){});
+
+  fetch("/api/registro").then(function(r){return r.json();}).then(function(j){
+    if(!j.n){$("regLista").textContent=tr("nenhum evento registrado ainda");return;}
+    $("regLista").innerHTML=j.linhas.map(function(l){
+      return '<div><i>'+dur(l.s)+' atras</i> '+String(l.t).replace(/[<>&]/g,"")+'</div>';
+    }).join("");
+  }).catch(function(){});
+}
+
+$("btManut").onclick=function(){
+  if(!confirm("Registrar manutencao feita e zerar o contador de pecas desde a ultima?"))return;
+  post("/api/manutencao/ok").then(saudeAtualizar);
+};
+
+$("btOp").onclick=function(){
+  if(!D.op){ post("/api/painel?op=1"); return; }
+  const s=prompt("Senha do tecnico:");
+  if(s===null)return;
+  post("/api/painel?op=0&senha="+encodeURIComponent(s));
+};
+$("btIdioma").onclick=function(){definirIdioma(idioma==="en"?"pt":"en");};
+$("btOpSenha").onclick=function(){
+  post("/api/painel?atual="+encodeURIComponent($("opAtual").value)+
+       "&nova="+encodeURIComponent($("opNova").value)).then(function(){
+    $("opAtual").value=""; $("opNova").value="";});
+};
+
+/* Envio do firmware. XMLHttpRequest e nao fetch por causa da barra de
+   progresso: um .bin de 1,3 MB por Wi-Fi leva dezenas de segundos, e sem
+   progresso o operador acha que travou e desliga a maquina no meio -- que
+   e a unica maneira de transformar uma atualizacao numa placa morta. */
+$("btOta").onclick=function(){
+  const f=$("otaArq").files[0];
+  if(!f){acao("Ota","escolha o arquivo .bin primeiro");return;}
+  if(!/\.bin$/i.test(f.name)){acao("Ota","o arquivo tem de ser .bin");return;}
+  if(!confirm("Gravar "+f.name+" ("+Math.round(f.size/1024)+" kB)? A maquina reinicia ao terminar."))return;
+  acao("Ota","");
+  const fd=new FormData(); fd.append("f",f,f.name);
+  const x=new XMLHttpRequest();
+  x.open("POST","/api/ota");
+  x.upload.onprogress=function(e){
+    if(e.lengthComputable)$("otaBarra").style.width=(e.loaded*100/e.total)+"%";};
+  x.onload=function(){
+    acao("Ota", x.status===200 ? "" : (x.responseText||"falhou"));
+    if(x.status===200)$("otaBarra").style.width="100%";
+  };
+  x.onerror=function(){acao("Ota","conexao perdida durante o envio");};
+  x.send(fd);
+};
 
 /* ---------- pontos ---------- */
 let pontos=[];
@@ -3275,7 +3829,7 @@ function aplicar(d){
   t.textContent=erro?("Recusado: "+erro):d.msg;
   t.className="tira"+(erro||d.modo==="FALHA"?" er":(pronto?" ok":""));
 
-  $("btServos").textContent=d.servos?"Desabilitar servos":"Habilitar servos";
+  $("btServos").textContent=tr(d.servos?"Desabilitar servos":"Habilitar servos");
   $("btServos").className="b "+(d.servos?"":"pri");
   $("e1").classList.toggle("feita",pronto);
   $("sb1").textContent=pronto?("elos "+d.l1.toFixed(0)+"+"+d.l2.toFixed(0)+" mm · calibrado")
@@ -3291,7 +3845,7 @@ function aplicar(d){
 
   /* Aprendizado. Quando esta ligado o braco esta solto: o estado tem de
      aparecer sem o operador ter de procurar. */
-  $("btApr").textContent=d.apr?"Sair do modo aprendizado":"Entrar no modo aprendizado";
+  $("btApr").textContent=tr(d.apr?"Sair do modo aprendizado":"Entrar no modo aprendizado");
   $("btApr").className="b "+(d.apr?"rod":"pri");
   $("aprEst").className="aprEst"+(d.apr?" on":"");
   $("aprEst").textContent=d.apr
@@ -3304,15 +3858,50 @@ function aplicar(d){
        : d.movendo ? "espere o braco parar" : "");
   $("btPrec").textContent="Precisao: "+(d.precisao?"ligada":"desligada");
 
-  $("btEnsaio").textContent=(rodando&&d.ensaio)?"Parar ensaio":"Executar ensaio";
+  /* Leitura de angulo: comandado em cima, medido pelo encoder embaixo.
+     Divergencia acima de meio grau fica vermelha -- abaixo disso e o
+     tremor normal de um encoder de 17 bits e nao quer dizer nada. */
+  [[1,d.m1,d.m1ok,d.t1],[2,d.m2,d.m2ok,d.t2]].forEach(function(k){
+    const el=$("hM"+k[0]);
+    if(!k[2]){el.textContent="sem leitura";el.className="med sem";return;}
+    const dif=k[1]-k[3];
+    el.textContent=k[1].toFixed(2)+"° medido"+
+      (Math.abs(dif)>=0.05?(dif>0?"  +":"  ")+dif.toFixed(2):"");
+    el.className="med"+(Math.abs(dif)>0.5?" dif":"");
+  });
+
+  /* Producao */
+  $("btPausa").textContent=tr(d.pausa?"Retomar":"Pausar");
+  $("btPausa").className="b "+(d.pausa?"pri":"");
+  acao("Pausa", rodando ? "" : "nao ha programa em execucao");
+  acao("Repetir", rodando ? "programa em execucao"
+       : (d.progN<2) ? "grave pelo menos 2 pontos"
+       : porQueNaoMove(d,true));
+  $("contPecas").textContent = d.pausa
+    ? ("PAUSADO no trecho "+(d.progIdx+1)+"\u2192"+(d.progIdx+2)+", a "+d.trecho+"% dele")
+    : (d.ciclos+" peca"+(d.ciclos===1?"":"s")+" no total \u00b7 "+
+       d.cicSes+" nesta sessao");
+  acao("Desf", d.desf ? "" : "nada para desfazer");
+
+  /* Modo operador: esconde o que e ajuste de instalacao. */
+  document.body.classList.toggle("operador", !!d.op);
+  /* Se o modo operador entrou com uma aba de tecnico aberta, sair dela
+     e obrigatorio -- senao o painel fica numa tela que a propria regra
+     acabou de esconder, sem nenhuma aba acesa. */
+  if(d.op&&(abaAtual==="ajuste"||abaAtual==="enc"))irAba("mover");
+  $("btOp").textContent=tr(d.op?"Sair do modo operador":"Entrar no modo operador");
+  $("btOp").className="b "+(d.op?"pri":"");
+  $("sbOp").textContent=tr(d.op?"ligado: ajustes escondidos":"desligado: tudo visivel");
+  $("btIdioma").textContent=(idioma==="en")?"Portugues":"English";
+
+  pintarSoldar();
+  $("btEnsaio").textContent=tr((rodando&&d.ensaio)?"Parar ensaio":"Executar ensaio");
   $("btEnsaio").className="b "+((rodando&&d.ensaio)?"rod":"pri");
   acao("Ensaio", (rodando&&d.ensaio) ? ""
        : (rodando&&!d.ensaio) ? "execucao com arco em andamento"
        : (d.progN<2) ? "grave pelo menos 2 pontos na aba Mover"
        : porQueNaoMove(d,true));
   $("e3").classList.toggle("feita",d.progN>=2&&!rodando);
-  $("btSoldar").textContent=(rodando&&!d.ensaio)?"PARAR":"Executar com arco";
-  $("btSoldar").className="b "+((rodando&&!d.ensaio)?"rod":"quente");
   acao("Soldar", (rodando&&!d.ensaio) ? ""
        : (rodando&&d.ensaio) ? "ensaio em andamento"
        : (d.progN<2) ? "grave pelo menos 2 pontos na aba Mover"
@@ -3333,7 +3922,13 @@ function aplicar(d){
     ? ("calibrado · J1 "+d.j1min.toFixed(0)+"…"+d.j1max.toFixed(0)+"° · J2 "+
        d.j2min.toFixed(0)+"…"+d.j2max.toFixed(0)+"°")
     : "sem calibracao · modo de instalacao, jog livre";
-  $("btCalApagar").disabled=(d.modo!=="MANUAL"&&d.modo!=="CALIBRANDO")||!temCal;
+  /* Estava desabilitando direto, sem dizer por que: botao apagado e mudo
+     e a reclamacao mais antiga deste painel. Vai por acao(), como todos
+     os outros. */
+  acao("CalApagar",
+       (d.modo!=="MANUAL"&&d.modo!=="CALIBRANDO")
+         ? "apague a calibracao com o robo parado: "+(RM[d.modo]||d.modo)
+       : !temCal ? "nao ha calibracao gravada para apagar" : "");
 
   $("pCur").className="ch"+(d.protCurso?" on":"");
   $("pDob").className="ch"+(d.protDobra?" on":"");
@@ -3488,6 +4083,120 @@ function tick(){
    No celular cada aba e uma tela; no computador a mesa de tracado fica
    sempre visivel e a aba comanda so a coluna da direita.
    ===================================================================== */
+/* =====================================================================
+   IDIOMAS
+   O que e traduzido: TUDO que o operador toca -- abas, botoes, rotulos,
+   titulos de secao, mensagens da tira e a tela de saude. O que NAO e
+   traduzido: as notas longas de explicacao (os blocos cinza) e os
+   paineis de instalacao. Elas sao o manual embutido desta maquina, foram
+   escritas para quem a monta, e traduzir mal um texto que explica por que
+   o arco fecha na pausa e pior do que deixa-lo em portugues.
+
+   A troca e por dicionario de FRASE INTEIRA, casando o texto exato. Sem
+   chave nenhuma espalhada pelo HTML: chave errada quebra em silencio e
+   ninguem descobre ate o cliente estrangeiro abrir a tela.
+   ===================================================================== */
+const EN={
+ /* abas */
+ "Mesa":"Table","Mover":"Jog","Programa":"Program","Arquivos":"Files",
+ "Ajustes":"Setup","Encoder":"Encoder","Maquina":"Machine",
+ /* regua */
+ "junta 1":"joint 1","junta 2":"joint 2","X mm":"X mm","Y mm":"Y mm",
+ "ponta mm/s":"tip mm/s",
+ /* botoes principais */
+ "Habilitar servos":"Enable servos","Desabilitar servos":"Disable servos",
+ "PARAR":"STOP","Parar":"Stop","Executar ensaio":"Run dry run",
+ "Parar ensaio":"Stop dry run","Executar com arco":"Run with arc",
+ "Confirmar: abrir o arco":"Confirm: strike the arc",
+ "Pausar":"Pause","Retomar":"Resume","Mais uma peca":"One more part",
+ "Desfazer":"Undo","Apagar programa":"Clear program",
+ "Gravar ponto na posicao atual":"Teach point at current position",
+ "Ir para o zero da maquina":"Go to machine zero",
+ "Zerar a maquina aqui":"Set machine zero here",
+ "Ir para esses angulos":"Go to these angles",
+ "Entrar no modo aprendizado":"Enter teach mode",
+ "Sair do modo aprendizado":"Leave teach mode",
+ "Entrar no modo operador":"Enter operator mode",
+ "Sair do modo operador":"Leave operator mode",
+ "Registrar manutencao feita":"Log maintenance done",
+ "Trocar a senha":"Change password","Enviar firmware":"Upload firmware",
+ "Fechar":"Close","Iniciar gravacao":"Start recording",
+ "Encerrar gravacao":"Stop recording","Abrir arco":"Strike arc",
+ "Restaurar padroes":"Restore defaults",
+ "Carregar esta peca na maquina":"Load this part into the machine",
+ "carregar":"load","apagar":"delete","ver":"view",
+ /* titulos de secao */
+ "Ensinar o caminho":"Teach the path","Ensaiar sem arco":"Dry run, no arc",
+ "Soldar":"Weld","Modo aprendizado":"Teach mode",
+ "Saude da maquina":"Machine health","Registro de eventos":"Event log",
+ "Conectar no painel":"Connect to the panel",
+ "Atualizar o firmware":"Update firmware","Modo operador":"Operator mode",
+ "Ir para um angulo":"Go to an angle","Atalhos":"Shortcuts",
+ "Velocidade do cordao":"Bead speed","Senha do tecnico":"Technician password",
+ "Nova senha":"New password",
+ "1. entrar na rede":"1. join the network","2. abrir o painel":"2. open the panel",
+ /* tela de saude */
+ "Ligada ha":"Powered on for","Pecas prontas":"Parts finished",
+ "Interrompidas no meio":"Interrupted midway","Arco aberto, no total":"Total arc time",
+ "Desde a manutencao":"Since last maintenance",
+ "Encoder junta 1":"Joint 1 encoder","Encoder junta 2":"Joint 2 encoder",
+ "Travamentos":"Stalls","Avisos de desvio":"Deviation warnings",
+ "Alarme dos drivers":"Drive alarms","Botao de emergencia":"Emergency stop",
+ "Botao da ponteira":"Torch button","Cartao":"Card","Memoria livre":"Free memory",
+ "Programa na particao":"Program in partition",
+ "nenhum":"none","ausente":"absent","instalado":"installed",
+ "nao instalado":"not installed","disponivel":"available",
+ "indisponivel neste firmware":"unavailable in this firmware",
+ "nenhum evento registrado ainda":"no events logged yet",
+ "atencao: veja os itens abaixo":"attention: see the items below",
+ "ligado: ajustes escondidos":"on: setup hidden",
+ "desligado: tudo visivel":"off: everything visible",
+ "desligado":"off","sem leitura":"no reading",
+ "previa do cartao":"preview from card",
+};
+
+let idioma="pt";
+function tr(s){
+  if(idioma==="pt")return s;
+  const k=String(s).trim();
+  return (k in EN)?EN[k]:s;
+}
+
+/* Percorre o documento trocando NOS DE TEXTO que casem por inteiro. Nao
+   toca em nada dentro de .nt (as notas longas) nem em .res, que e saida
+   crua da maquina. */
+function traduzirDom(raiz){
+  if(idioma==="pt")return;
+  const it=document.createTreeWalker(raiz||document.body,NodeFilter.SHOW_TEXT,{
+    acceptNode:function(n){
+      if(!n.nodeValue||!n.nodeValue.trim())return NodeFilter.FILTER_REJECT;
+      let p=n.parentElement;
+      while(p&&p!==document.body){
+        if(p.classList&&(p.classList.contains("nt")||p.classList.contains("res")||
+                         p.classList.contains("perigo")))return NodeFilter.FILTER_REJECT;
+        p=p.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+  const alvos=[];
+  let n;
+  while((n=it.nextNode()))alvos.push(n);
+  alvos.forEach(function(x){
+    const k=x.nodeValue.trim();
+    if(k in EN)x.nodeValue=x.nodeValue.replace(k,EN[k]);
+  });
+}
+
+function definirIdioma(novo){
+  idioma=(novo==="en")?"en":"pt";
+  try{localStorage.setItem("idioma",idioma);}catch(e){}
+  /* Recarregar e mais honesto do que tentar desfazer a traducao no
+     lugar: o PT original volta do proprio HTML, sem dicionario reverso
+     e sem risco de sobrar meia tela traduzida. */
+  location.reload();
+}
+try{ if(localStorage.getItem("idioma")==="en")idioma="en"; }catch(e){}
+
 const ABAS=[
  ["mesa","Mesa","M4 19h16M6 19V9l6-5 6 5v10"],
  ["mover","Mover","M12 4v16M4 12h16M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3"],
@@ -3495,18 +4204,24 @@ const ABAS=[
  ["arq","Arquivos","M4 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"],
  ["ajuste","Ajustes","M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 4.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 11a2 2 0 110 4 1.7 1.7 0 00-1.6 0z"],
  ["enc","Encoder","M12 3a9 9 0 100 18 9 9 0 000-18zM12 12l5-3M12 12v-4"],
+ ["maq","Maquina","M12 3a9 9 0 100 18 9 9 0 000-18zM9 12h6M12 9v6"],
 ];
-const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAjuste"};
+const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAjuste",maq:"pnMaq"};
 
 (function montarAbas(){
   let h="",t="";
   ABAS.forEach(function(a){
-    h+='<button data-aba="'+a[0]+'"><svg viewBox="0 0 24 24"><path d="'+a[2]+'"/></svg>'+
+    /* Ajustes e Encoder sao instalacao, nao operacao: somem no modo
+       operador. A Mesa, o Mover, o Programa e os Arquivos ficam --
+       e com eles a maquina continua fazendo peca o dia inteiro. */
+    const cl=(a[0]==="ajuste"||a[0]==="enc")?' class="soTecnico"':'';
+    h+='<button'+cl+' data-aba="'+a[0]+'"><svg viewBox="0 0 24 24"><path d="'+a[2]+'"/></svg>'+
        '<span>'+a[1]+'</span></button>';
-    t+='<button data-aba="'+a[0]+'">'+a[1]+'</button>';
+    t+='<button'+cl+' data-aba="'+a[0]+'">'+a[1]+'</button>';
   });
   $("abas").innerHTML=h;
   $("abasTopo").innerHTML=t;
+  traduzirDom($("abas")); traduzirDom($("abasTopo"));
   document.querySelectorAll("[data-aba]").forEach(function(b){
     b.addEventListener("click",function(){irAba(b.dataset.aba);});
   });
@@ -3525,6 +4240,7 @@ function irAba(nome){
     b.classList.toggle("on",b.dataset.aba===nome);});
   if(nome==="mesa")medir();
   if(nome==="arq")sdAtualizar(true);
+  if(nome==="maq"){saudeAtualizar();pintarQR();}
   try{localStorage.setItem("aba",nome);}catch(e){}
 }
 
@@ -3669,10 +4385,14 @@ function sdPintar(){
   sdArqs.forEach(function(a){
     h+='<div class="arq"><div class="nm">'+a.n+'</div>'+
        '<div class="kb">'+(a.b<1024?a.b+" B":(a.b/1024).toFixed(1)+" kB")+'</div>'+
+       (sdTipo==="prog"?'<button class="mb" data-ver="'+a.n+'">ver</button>':'')+
        '<button class="mb" data-car="'+a.n+'">carregar</button>'+
        '<button class="mb x" data-apg="'+a.n+'">apagar</button></div>';
   });
   cx.innerHTML=h+'</div>';
+  traduzirDom(cx);
+  cx.querySelectorAll("[data-ver]").forEach(function(e){e.onclick=function(){
+    verPeca(e.dataset.ver);};});
   cx.querySelectorAll("[data-car]").forEach(function(e){e.onclick=function(){
     post("/api/sd/carregar?tipo="+sdTipo+"&nome="+encodeURIComponent(e.dataset.car))
      .then(function(){sdSeq=-1;});};});
@@ -3681,6 +4401,93 @@ function sdPintar(){
     post("/api/sd/apagar?tipo="+sdTipo+"&nome="+encodeURIComponent(e.dataset.apg))
      .then(function(){sdSeq=-1;});};});
 }
+
+/* =====================================================================
+   MINIATURA DA PECA
+   Ver a peca errada e barato; carregar a peca errada custa uma chapa. O
+   "ver" le o arquivo para uma area de troca no firmware e desenha -- o
+   programa que esta na maquina nao e tocado.
+   ===================================================================== */
+function verPeca(nome){
+  $("pvNome").textContent=nome;
+  $("pvAviso").textContent="";
+  $("pvAviso").style.display="none";
+  $("pvInfo").textContent="lendo do cartao...";
+  $("veuPeca").classList.add("on");
+  const ct=$("pvTela").getContext("2d");
+  ct.clearRect(0,0,$("pvTela").width,$("pvTela").height);
+
+  post("/api/sd/prever?nome="+encodeURIComponent(nome)).then(function(){
+    /* A leitura e assincrona no firmware (tarefa propria do cartao).
+       Tenta algumas vezes ate a area de troca trazer esta peca. */
+    let tentativas=0;
+    (function puxar(){
+      fetch("/api/sd/previa").then(function(r){return r.json();}).then(function(j){
+        if(!j.n&&tentativas++<12){setTimeout(puxar,180);return;}
+        pintarPeca(j);
+      }).catch(function(){$("pvInfo").textContent="nao consegui ler o arquivo";});
+    })();
+  }).catch(function(){$("pvInfo").textContent="cartao ocupado ou ausente";});
+}
+
+function pintarPeca(j){
+  const cv=$("pvTela"), ct=cv.getContext("2d");
+  const L=cv.width, A=cv.height;
+  ct.clearRect(0,0,L,A);
+  if(!j.n){$("pvInfo").textContent="arquivo sem pontos";return;}
+
+  /* Enquadra a peca inteira com folga. */
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  j.pts.forEach(function(p){x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);
+                            y0=Math.min(y0,p.y);y1=Math.max(y1,p.y);});
+  const lx=Math.max(1,x1-x0), ly=Math.max(1,y1-y0);
+  const k=Math.min((L-30)/lx,(A-30)/ly);
+  const cx=function(x){return 15+(x-x0)*k;};
+  /* Y do desenho cresce para cima, o do canvas para baixo. */
+  const cy=function(y){return A-15-(y-y0)*k;};
+
+  const est=getComputedStyle(document.body);
+  const corSolda=est.getPropertyValue("--quente").trim()||"#c0392b";
+  const corDesl =est.getPropertyValue("--fraca").trim()||"#888";
+
+  for(let i=0;i+1<j.n;i++){
+    ct.beginPath();
+    ct.moveTo(cx(j.pts[i].x),cy(j.pts[i].y));
+    ct.lineTo(cx(j.pts[i+1].x),cy(j.pts[i+1].y));
+    ct.strokeStyle=j.pts[i].s?corSolda:corDesl;
+    ct.lineWidth=j.pts[i].s?3:1;
+    if(!j.pts[i].s)ct.setLineDash([3,3]); else ct.setLineDash([]);
+    ct.stroke();
+  }
+  ct.setLineDash([]);
+  j.pts.forEach(function(p,i){
+    ct.beginPath();
+    ct.arc(cx(p.x),cy(p.y),i===0?4:3,0,7);
+    ct.fillStyle=i===0?corSolda:corDesl;
+    ct.fill();
+  });
+
+  const cordoes=j.pts.filter(function(p,i){return i<j.n-1&&p.s;}).length;
+  $("pvInfo").textContent=j.n+" pontos · "+cordoes+" cordao(oes) · "+
+    Math.round(lx)+" x "+Math.round(ly)+" mm";
+
+  /* Peca errada: feita com outros elos, ela nao vai cair onde deveria. */
+  if(j.l1>0&&j.l2>0&&(Math.abs(j.l1-j.l1Maq)>0.5||Math.abs(j.l2-j.l2Maq)>0.5)){
+    const av=$("pvAviso");
+    av.style.display="block";
+    av.innerHTML="Esta peca foi feita com elos <b>"+j.l1.toFixed(0)+"+"+
+      j.l2.toFixed(0)+" mm</b> e esta maquina tem <b>"+j.l1Maq.toFixed(0)+"+"+
+      j.l2Maq.toFixed(0)+" mm</b>. Os mesmos angulos apontam para outro lugar da chapa "+
+      "&mdash; ensaie antes de soldar.";
+  }
+}
+
+$("pvFechar").onclick=function(){$("veuPeca").classList.remove("on");};
+$("pvCarregar").onclick=function(){
+  const nome=$("pvNome").textContent;
+  post("/api/sd/carregar?tipo=prog&nome="+encodeURIComponent(nome)).then(function(){
+    sdSeq=-1; $("veuPeca").classList.remove("on");});
+};
 
 function sdAtualizar(forcar){
   return fetch("/api/sd").then(function(r){return r.json();}).then(function(d){

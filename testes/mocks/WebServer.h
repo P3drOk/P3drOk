@@ -16,15 +16,38 @@
 #define HTTP_GET  1
 #define HTTP_POST 3
 
+// Upload de arquivo, como o core entrega ao handler: o mesmo objeto
+// aparece varias vezes, uma por pedaco, com 'status' dizendo em que
+// ponto do envio ele esta.
+#define UPLOAD_FILE_START  0
+#define UPLOAD_FILE_WRITE  1
+#define UPLOAD_FILE_END    2
+#define UPLOAD_FILE_ABORTED 3
+
+struct HTTPUpload {
+  int      status = UPLOAD_FILE_START;
+  String   filename;
+  size_t   currentSize = 0;
+  size_t   totalSize   = 0;
+  uint8_t* buf = nullptr;
+};
+
 class WebServer {
  public:
-  struct Rota { std::string uri; int metodo; void (*fn)(); };
+  struct Rota { std::string uri; int metodo; void (*fn)(); void (*envio)(); };
 
   explicit WebServer(int) { atual = this; }
 
   void on(const char* uri, int metodo, void (*fn)()) {
-    rotas.push_back(Rota{uri ? uri : "", metodo, fn});
+    rotas.push_back(Rota{uri ? uri : "", metodo, fn, nullptr});
   }
+  // Rota com upload: o core chama 'envio' uma vez por pedaco recebido e
+  // so depois chama 'fn' para responder. A assinatura e a do core.
+  void on(const char* uri, int metodo, void (*fn)(), void (*envio)()) {
+    rotas.push_back(Rota{uri ? uri : "", metodo, fn, envio});
+  }
+  HTTPUpload& upload() { return envioAtual; }
+  HTTPUpload  envioAtual;
   void onNotFound(void (*fn)()) { naoEncontrado = fn; }
   void begin() {}
   void handleClient() {}
@@ -113,6 +136,43 @@ class WebServer {
     return 0;
   }
 
+  // Encena um envio inteiro: inicio, N pedacos, fim -- e so entao a
+  // resposta. E a sequencia do core; chamar so o handler de resposta
+  // deixaria o caminho que realmente grava sem nenhum teste.
+  int enviarArquivo(const std::string& alvo, const std::string& nome,
+                    const uint8_t* dados, size_t n, size_t pedaco = 1024,
+                    bool abortar = false) {
+    args.clear(); cabecalhos.clear();
+    respCodigo = 0; respCorpo = String(""); respBytes = 0;
+    uriAtual = alvo.substr(0, alvo.find('?'));
+    const Rota* r = nullptr;
+    for (const Rota& x : rotas)
+      if (x.uri == uriAtual && x.metodo == HTTP_POST) { r = &x; break; }
+    if (!r || !r->envio) return 0;
+
+    envioAtual = HTTPUpload{};
+    envioAtual.filename = String(nome);
+    envioAtual.status = UPLOAD_FILE_START;
+    r->envio();
+
+    size_t feito = 0;
+    while (feito < n) {
+      const size_t q = (n - feito < pedaco) ? (n - feito) : pedaco;
+      envioAtual.status = UPLOAD_FILE_WRITE;
+      envioAtual.buf = (uint8_t*)(dados + feito);
+      envioAtual.currentSize = q;
+      r->envio();
+      feito += q;
+    }
+    envioAtual.status = abortar ? UPLOAD_FILE_ABORTED : UPLOAD_FILE_END;
+    envioAtual.totalSize = feito;
+    envioAtual.currentSize = 0;
+    r->envio();
+
+    r->fn();
+    return respCodigo;
+  }
+
   size_t nRotas() const { return rotas.size(); }
 
   int         respCodigo = 0;
@@ -131,6 +191,9 @@ class WebServer {
 
 // Atalhos usados pelo banco.
 int         webPost(const std::string& alvo, const char* corpo = nullptr);
+int         webEnviarArquivo(const std::string& alvo, const std::string& nome,
+                             const uint8_t* dados, size_t n,
+                             size_t pedaco = 1024, bool abortar = false);
 int         webGet (const std::string& alvo);
 const char* webCorpo();
 const char* webCabecalho(const char* nome);

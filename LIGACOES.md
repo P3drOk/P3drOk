@@ -228,13 +228,25 @@ Três coisas, todas obrigatórias:
 ## 6. Botão de emergência
 
 ```
-3V3 ──► [contato NC do botão] ──► ESP32 GPIO27
+GND ──► [contato NC do botão] ──► ESP32 GPIO27
                                   (INPUT_PULLUP interno)
 ```
 
-Contato **NC** (normalmente fechado): apertar o botão abre o contato, o
-pino vai a LOW pelo pull-up interno e o firmware entende emergência. Fio
-partido também dá LOW — falha para o lado seguro.
+| situação | pino | o firmware entende |
+|---|---|---|
+| solto (contato **fechado**) | LOW | opera normalmente |
+| apertado (contato **abre**) | HIGH | **emergência** |
+| **fio partido / botão desligado** | HIGH | **emergência** |
+
+Contato **NC** (normalmente fechado), do lado do **GND**. O terceiro caso
+é a razão de ser desta ligação: botão de emergência com o cabo rompido
+tem de **parar a máquina**, não passar despercebido.
+
+> **A polaridade não é detalhe.** Este documento já mandou ligar o
+> contato no 3V3 esperando LOW — combinação em que, com o pull-up
+> interno, o pino nunca chega a LOW: o botão não faria nada, e um fio
+> partido também não. Corrigido; ver `ACHADOS.md`, R72, e o cenário
+> **P07** do banco, que corta o fio e exige que tudo caia.
 
 Vem desligado em `config.h`:
 
@@ -242,9 +254,11 @@ Vem desligado em `config.h`:
 #define ESTOP_FISICO_INSTALADO  false   // mude para true após instalar
 ```
 
-A lógica já está pronta e testada (banco de testes, cenário A08): com o
-botão acionado, o torque cai a cada ciclo, rearmar servos é recusado e o
-jog fica bloqueado até soltar.
+A lógica já está pronta e testada (cenários **A08** e **P07**): com o
+botão acionado — ou com o cabo rompido — o torque cai a cada ciclo,
+rearmar servos é recusado e o jog fica bloqueado até a linha voltar ao
+normal. No arranque, o firmware confere a linha e avisa no monitor serial
+se ela já nasce em nível de emergência.
 
 ---
 

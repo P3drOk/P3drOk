@@ -30,6 +30,7 @@
 #include "aprender.h"
 #include "Preferences.h"
 #include "FS.h"
+#include "SD.h"
 #include <string>
 #include <stdlib.h>
 
@@ -79,17 +80,37 @@ static long g_eixoBasePassos = 0;
 // posicao do escravo a mao, e um espelho sempre ligado atropelaria todos.
 static bool g_espelharEixo = false;
 
-static void espelharEixoNoEncoder() {
-  if (!g_espelharEixo || !J1.motor) return;
-  const long fisico = g_eixoBasePassos + (long)J1.motor->pulsosGerados - g_perdaPassos;
-  const float cv  = configEncoder.contagensPorVolta[0];
-  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+// O espelho cobre AS DUAS juntas. Cobria so a primeira, e isso deixava
+// qualquer cenario da junta 2 tendo de cravar a posicao do escravo a mao
+// -- o que nao e o eixo andando, e sim o teste fingindo. A junta 2 so e
+// espelhada quando ela esta no barramento (reg != 0), entao os cenarios
+// de um driver so continuam exatamente como estavam.
+static long g_perdaPassos2    = 0;
+static long g_eixoBasePassos2 = 0;
+
+static void espelharUmEixo(uint8_t k, const Junta& j, long base, long perda) {
+  if (!j.motor) return;
+  if (k == 2 && configEncoder.reg[1] == 0) return;
+  const long fisico = base + (long)j.motor->pulsosGerados - perda;
+  const float cv  = configEncoder.contagensPorVolta[k - 1];
+  const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
   // passos do motor -> voltas do motor -> contagens do encoder.
-  const float voltasMotor = (J1.passosPorGrau > 0.0f)
-      ? ((float)fisico / J1.passosPorGrau) * red / 360.0f : 0.0f;
-  g_uart.escravo[0].parar();
-  g_uart.escravo[0].posicao = encoderLer(1).referencia
-                            + (int32_t)lroundf(voltasMotor * cv);
+  const float voltasMotor = (j.passosPorGrau > 0.0f)
+      ? ((float)fisico / j.passosPorGrau) * red / 360.0f : 0.0f;
+  g_uart.escravo[k - 1].parar();
+  g_uart.escravo[k - 1].posicao = encoderLer(k).referencia
+                                + (int32_t)lroundf(voltasMotor * cv);
+}
+
+static void espelharEixoNoEncoder() {
+  if (!g_espelharEixo) return;
+  espelharUmEixo(1, J1, g_eixoBasePassos,  g_perdaPassos);
+  espelharUmEixo(2, J2, g_eixoBasePassos2, g_perdaPassos2);
+}
+
+// Encena perda de passo na junta 2, igual a perderPassos() da junta 1.
+static void perderPassos2(float graus) {
+  g_perdaPassos2 += lroundf(graus * J2.passosPorGrau);
 }
 
 // Encena perda de passo: o eixo fica para tras do que foi comandado.
@@ -217,10 +238,18 @@ static void reiniciarSistema() {
   g_uart.pinoRe       = -1;
   g_perdaPassos       = 0;
   g_eixoBasePassos    = 0;
+  g_perdaPassos2      = 0;
+  g_eixoBasePassos2   = 0;
   g_espelharEixo      = false;
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
+  // Repouso do botao de emergencia: contato NC fechado, o pino ve GND.
+  // Vem DEPOIS do setup() de proposito -- e o pinMode(INPUT_PULLUP) de
+  // la que poe o pino em HIGH, e HIGH representa NADA LIGADO, que agora
+  // (e com razao) e emergencia. Cada cenario comeca com o botao
+  // instalado e solto; quem quiser encenar cabo partido poe HIGH.
+  g_pinEntrada[PIN_ESTOP] = LOW;
   // Cada cenario comeca com os geradores de pulso no estado de boot: o
   // mock reaproveita os objetos entre setup()s, entao o movimento
   // residual de um teste vazaria para o seguinte.
@@ -602,7 +631,7 @@ static void teste_A08_estop_rearme() {
        (int)servosLigados, (int)motoresEmMovimento());
 
   // Operador soca o botao (contato NC -> LOW).
-  g_pinEntrada[PIN_ESTOP] = LOW;
+  g_pinEntrada[PIN_ESTOP] = ESTOP_NIVEL_ATIVO;
   rodarComWeb(800);
 
   checar(!servosLigados && !motoresEmMovimento() && !soldaLigada(), "A08a",
@@ -627,8 +656,8 @@ static void teste_A08_estop_rearme() {
   nota("CMD_SERVOS posterior religar o torque com o botao pressionado, e");
   nota("jogAtualizar() nao consultava estop em lugar nenhum.");
 
-  // Solta o botao: o sistema volta a aceitar rearme.
-  g_pinEntrada[PIN_ESTOP] = HIGH;
+  // Solta o botao: contato NC volta a fechar, o pino volta a ver GND.
+  g_pinEntrada[PIN_ESTOP] = LOW;
   rodarComWeb(100);
   enviarComando(CMD_SERVOS, 1);
   rodarComWeb(50);
@@ -731,6 +760,8 @@ static void teste_A10_json_status() {
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
+    "\"op\":%s,\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
+    "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
@@ -746,11 +777,13 @@ static void teste_A10_json_status() {
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
     9999.9f, 9999.9f, 90.0f, -9999.9f, 9999.9f,
     "false","false","false", 255u,
+    "false","false","false", 4294967295UL, 4294967295UL,
+    -999.99f, -999.99f, "false", "false", 100u,
     msg);
 
-  checar(n < 1152, "A10a", "o JSON de status precisa caber no buffer de 1152 bytes");
-  nota("pior caso medido: %d bytes. Buffer declarado em servidor_web.cpp: 1152.", n);
-  if (n >= 1152) {
+  checar(n < 1400, "A10a", "o JSON de status precisa caber no buffer de 1400 bytes");
+  nota("pior caso medido: %d bytes. Buffer declarado em servidor_web.cpp: 1400.", n);
+  if (n >= 1400) {
     nota("snprintf trunca sem erro: a resposta sai como JSON invalido, o");
     nota("r.json() do navegador lanca excecao, o contador 'quedas' sobe e a");
     nota("interface anuncia 'sem comunicacao' com o robo funcionando.");
@@ -4126,13 +4159,65 @@ static void teste_P05_o_que_encerra_o_aprendizado() {
   botao(APRENDER_SEGURAR_MS + 300);
   checar(aprenderResumo().ativo, "P05c", "aprendizado ligado antes do botao vermelho");
 
-  g_pinEntrada[PIN_ESTOP] = LOW;
+  g_pinEntrada[PIN_ESTOP] = ESTOP_NIVEL_ATIVO;
   rodarComWeb(200);
   nota("emergencia: ativo=%d -- \"%s\"", (int)aprenderResumo().ativo, ultimaMensagem);
   checar(!aprenderResumo().ativo, "P05d",
          "o botao vermelho encerra o aprendizado junto com todo o resto");
+  g_pinEntrada[PIN_ESTOP] = LOW;
+  rodarComWeb(200);
+}
+
+// =====================================================================
+//  P07 - O botao de emergencia com o fio partido
+// =====================================================================
+// A pergunta que decide se um botao de emergencia serve para alguma
+// coisa: se o cabo dele romper, a maquina para ou continua andando?
+//
+// Com contato NC ligado ao GND e pull-up interno, fio partido e
+// indistinguivel de botao apertado -- e e assim que tem de ser. Se
+// alguem trocar a polaridade de novo, este cenario reprova.
+static void teste_P07_estop_a_prova_de_falha() {
+  secao("P07  Emergencia: fio partido tem de parar a maquina");
+
+  if (!ESTOP_FISICO_INSTALADO) {
+    nota("compile com -DESTOP_FISICO_INSTALADO=true para exercitar este ramo");
+    return;
+  }
+
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  rodarComWeb(50);
+  nota("botao instalado e solto (contato NC fechado, pino em LOW): servos=%d",
+       (int)servosLigados);
+  checar(servosLigados, "P07a",
+         "botao solto e fio inteiro: a maquina opera normalmente");
+
+  // O cabo rompe. Ninguem aperta nada -- o pull-up interno assume a
+  // linha, e o pino sobe.
   g_pinEntrada[PIN_ESTOP] = HIGH;
   rodarComWeb(200);
+  nota("fio partido: servos=%d, movimento liberado=%d -- \"%s\"",
+       (int)servosLigados, (int)movimentoLiberado, ultimaMensagem);
+  checar(!servosLigados && !movimentoLiberado, "P07b",
+         "cabo rompido derruba torque e movimento: falha para o lado seguro");
+
+  // E nao da para rearmar enquanto a linha estiver assim.
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(100);
+  nota("tentativa de rearme com o cabo ainda partido: servos=%d -- \"%s\"",
+       (int)servosLigados, ultimaMensagem);
+  checar(!servosLigados, "P07c",
+         "e nao da para religar o torque por cima de um botao que nao responde");
+
+  // Cabo refeito: volta ao normal.
+  g_pinEntrada[PIN_ESTOP] = LOW;
+  rodarComWeb(150);
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(100);
+  nota("cabo refeito: servos=%d", (int)servosLigados);
+  checar(servosLigados, "P07d",
+         "consertado o cabo, o rearme volta a funcionar");
 }
 
 static void teste_P06_pela_tela_tambem() {
@@ -4169,6 +4254,439 @@ static void teste_P06_pela_tela_tambem() {
   webPost("/api/aprender?on=0");
   rodarComWeb(200);
   checar(!aprenderResumo().ativo, "P06d", "e sair pela tela tambem funciona");
+}
+
+// =====================================================================
+//  Q - Producao: pausa, contagem de pecas, desfazer, confirmacao do arco
+// =====================================================================
+// O que separa um braco de bancada de um equipamento de producao nao e
+// precisao: e o que acontece na centesima peca. Pausar sem estragar o
+// cordao, saber quantas ja sairam, desfazer um toque errado, e nao abrir
+// arco por acidente.
+// ---------------------------------------------------------------------
+
+// Espera o programa terminar E o modo voltar para MANUAL. Esperar so por
+// progRodando() nao basta: o modo so volta no ciclo seguinte, e o pedido
+// seguinte cai em "Robo ocupado" -- que foi exatamente o que aconteceu
+// aqui na primeira escrita deste cenario.
+static bool esperarPrograma(uint32_t limiteMs = 60000) {
+  uint32_t t = 0;
+  while ((progRodando() || modoAtual != MODO_MANUAL) && t < limiteMs) {
+    rodarComWeb(20); t += 20;
+  }
+  return !progRodando() && modoAtual == MODO_MANUAL;
+}
+
+// Programa minimo com um cordao, ja pronto para executar.
+static void prepararProgramaDeSolda() {
+  progLimpar();
+  const char* m = nullptr;
+  progAdicionarPonto(grausParaPassos(J1, 10.0f), grausParaPassos(J2, -20.0f), &m);
+  progAdicionarPonto(grausParaPassos(J1, 20.0f), grausParaPassos(J2, -30.0f), &m);
+  progDefinirSolda(0, true);
+  rodarComWeb(20);
+}
+
+static void teste_Q01_pausar_no_meio_do_cordao() {
+  secao("Q01  Pausar no meio de um cordao, e retomar de onde parou");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararProgramaDeSolda();
+
+  const int cod = webPost("/api/prog/executar?ensaio=0&conf=1");
+  rodarComWeb(50);
+  // Espera o cordao comecar de verdade.
+  uint32_t t = 0;
+  while (!soldaLigada() && t < 8000) { rodarComWeb(20); t += 20; }
+  while (progFracaoTrecho() < 30 && t < 20000) { rodarComWeb(20); t += 20; }
+  const uint8_t ondeParou = progFracaoTrecho();
+  nota("executando com arco: HTTP %d, arco=%d, %u%% do cordao",
+       cod, (int)soldaLigada(), (unsigned)ondeParou);
+  checar(cod == 200 && soldaLigada() && ondeParou >= 30, "Q01a",
+         "o cordao esta sendo percorrido com o arco aberto");
+
+  webPost("/api/prog/pausar?on=1");
+  rodarComWeb(400);
+  nota("pausado: arco=%d, movendo=%d, guardado em %u%% -- \"%s\"",
+       (int)soldaLigada(), (int)motoresEmMovimento(),
+       (unsigned)progFracaoTrecho(), ultimaMensagem);
+  checar(!soldaLigada(), "Q01b",
+         "a pausa FECHA o arco: arco aberto com o braco parado fura a chapa");
+  checar(progRodando() && progPausado(), "Q01c",
+         "mas o programa continua vivo, so pausado");
+  checar(progFracaoTrecho() >= 30, "Q01d",
+         "e guarda em que altura do cordao parou");
+
+  // Fica parado um tempo: nada pode andar, nada pode acender.
+  const long p1Pausa = posicaoJ1();
+  rodarComWeb(2000);
+  nota("2 s pausado: andou %ld passos, arco=%d",
+       posicaoJ1() - p1Pausa, (int)soldaLigada());
+  checar(labs(posicaoJ1() - p1Pausa) < 5 && !soldaLigada(), "Q01e",
+         "pausado e pausado: nada anda e o arco fica fechado");
+
+  webPost("/api/prog/pausar?on=0");
+  rodarComWeb(60);
+  // O arco reabre com o tempo de abertura antes de voltar a andar.
+  t = 0;
+  while (!soldaLigada() && t < 3000) { rodarComWeb(20); t += 20; }
+  nota("retomado: arco=%d, fase %u", (int)soldaLigada(), (unsigned)progFaseTeste());
+  checar(soldaLigada(), "Q01f",
+         "retomar reabre o arco -- a poca esfriou na pausa, arco frio nao funde");
+
+  esperarPrograma();
+  nota("fim: rodando=%d, arco=%d, pecas=%lu -- \"%s\"",
+       (int)progRodando(), (int)soldaLigada(),
+       (unsigned long)producao.ciclosTotais, ultimaMensagem);
+  checar(!progRodando() && !soldaLigada(), "Q01g",
+         "e o programa chega ao fim depois da pausa, com o arco fechado");
+  checar(producao.ciclosTotais == 1, "Q01h",
+         "a peca conta uma vez so, mesmo tendo sido pausada no meio");
+}
+
+static void teste_Q02_contagem_de_pecas() {
+  secao("Q02  A contagem de pecas: o que conta e o que nao conta");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararProgramaDeSolda();
+
+  nota("maquina nova: %lu pecas", (unsigned long)producao.ciclosTotais);
+  checar(producao.ciclosTotais == 0, "Q02a", "maquina nova comeca em zero");
+
+  // 1. Ensaio NAO conta: nao gasta consumivel nem produz peca.
+  const int codEns = webPost("/api/prog/executar?ensaio=1");
+  rodarComWeb(100);
+  nota("ensaio pedido: HTTP %d, modo %d, fase %u -- \"%s\"",
+       codEns, (int)modoAtual, (unsigned)progFaseTeste(), ultimaMensagem);
+  const bool acabou = esperarPrograma();
+  nota("ensaio terminou=%d, modo %d, fase %u, J1 em %.1f graus",
+       (int)acabou, (int)modoAtual, (unsigned)progFaseTeste(),
+       (double)passosParaGraus(J1, posicaoJ1()));
+  nota("depois de um ensaio: %lu pecas, %lu abortadas",
+       (unsigned long)producao.ciclosTotais, (unsigned long)producao.abortados);
+  checar(producao.ciclosTotais == 0 && producao.abortados == 0, "Q02b",
+         "ensaio nao conta como peca -- nem como peca perdida");
+
+  // 2. Execucao com arco que termina: conta.
+  const int codArco = webPost("/api/prog/executar?ensaio=0&conf=1");
+  rodarComWeb(100);
+  nota("pedido de execucao com arco: HTTP %d, modo %d -- \"%s\"",
+       codArco, (int)modoAtual, ultimaMensagem);
+  esperarPrograma();
+  nota("depois de uma execucao com arco: %lu pecas, arco aberto por %lu s",
+       (unsigned long)producao.ciclosTotais, (unsigned long)producao.horasArcoS);
+  checar(producao.ciclosTotais == 1, "Q02c", "peca pronta conta uma vez");
+  checar(producao.horasArcoS > 0, "Q02d",
+         "e o tempo de arco acumula -- e o numero que diz quando trocar bico");
+
+  // 3. Parada no meio conta como ABORTADA, nao como peca.
+  webPost("/api/prog/executar?ensaio=0&conf=1");
+  rodarComWeb(400);
+  webPost("/api/prog/parar");
+  rodarComWeb(200);
+  nota("interrompida no meio: %lu pecas, %lu abortadas",
+       (unsigned long)producao.ciclosTotais, (unsigned long)producao.abortados);
+  checar(producao.ciclosTotais == 1 && producao.abortados == 1, "Q02e",
+         "peca pela metade nao e peca: entra como abortada");
+
+  // 4. Sobrevive ao religamento: e um numero do dono da maquina.
+  reiniciarSistemaMantendoNvs();
+  nota("depois de religar: %lu pecas, %lu abortadas, %lu desde a manutencao",
+       (unsigned long)producao.ciclosTotais, (unsigned long)producao.abortados,
+       (unsigned long)producao.desdeManutencao);
+  checar(producao.ciclosTotais == 1 && producao.abortados == 1, "Q02f",
+         "e a contagem sobrevive a queda de energia");
+
+  // 5. Registrar manutencao zera SO o contador de manutencao.
+  const int cod = webPost("/api/manutencao/ok");
+  rodarComWeb(200);
+  nota("manutencao registrada: HTTP %d, total %lu, desde a manutencao %lu",
+       cod, (unsigned long)producao.ciclosTotais,
+       (unsigned long)producao.desdeManutencao);
+  checar(cod == 200 && producao.desdeManutencao == 0 &&
+         producao.ciclosTotais == 1, "Q02g",
+         "registrar manutencao zera o contador dela e nao mexe no total da maquina");
+}
+
+static void teste_Q03_desfazer() {
+  secao("Q03  Desfazer: o programa apagado por engano volta");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  progLimpar();
+
+  const char* m = nullptr;
+  for (int i = 0; i < 5; i++)
+    progAdicionarPonto(grausParaPassos(J1, 5.0f * i), grausParaPassos(J2, -10.0f), &m);
+  rodarComWeb(20);
+  nota("ensinados %u pontos", (unsigned)progQuantidade());
+  checar(progQuantidade() == 5, "Q03a", "cinco pontos ensinados");
+
+  // O estrago classico: apagar o programa inteiro.
+  webPost("/api/prog/limpar");
+  rodarComWeb(100);
+  nota("depois de apagar: %u pontos, ha desfazer=%d -- \"%s\"",
+       (unsigned)progQuantidade(), (int)progTemDesfazer(), ultimaMensagem);
+  checar(progQuantidade() == 0 && progTemDesfazer(), "Q03b",
+         "apagou -- e ha o que desfazer");
+
+  const int cod = webPost("/api/prog/desfazer");
+  rodarComWeb(100);
+  nota("desfeito: HTTP %d, %u pontos -- \"%s\"",
+       cod, (unsigned)progQuantidade(), ultimaMensagem);
+  checar(cod == 200 && progQuantidade() == 5, "Q03c",
+         "desfazer devolve os cinco pontos: meia hora de ensino nao se perde num toque");
+
+  // Desfazer de novo volta ao estado anterior: um Ctrl+Z apertado duas
+  // vezes sem querer nao pode deixar o operador pior do que comecou.
+  webPost("/api/prog/desfazer");
+  rodarComWeb(100);
+  nota("desfazendo de novo: %u pontos", (unsigned)progQuantidade());
+  checar(progQuantidade() == 0, "Q03d",
+         "desfazer duas vezes volta ao que estava: a operacao e reversivel");
+
+  // Remocao de um ponto tambem entra no desfazer.
+  webPost("/api/prog/desfazer");
+  rodarComWeb(100);
+  webPost("/api/ponto/remover?i=2");
+  rodarComWeb(100);
+  const uint8_t depois = progQuantidade();
+  webPost("/api/prog/desfazer");
+  rodarComWeb(100);
+  nota("remover um ponto e desfazer: %u -> %u -> %u",
+       5u, (unsigned)depois, (unsigned)progQuantidade());
+  checar(depois == 4 && progQuantidade() == 5, "Q03e",
+         "remover um ponto por engano tambem se desfaz");
+
+  // Nao da para desfazer com o programa rodando.
+  prepararProgramaDeSolda();
+  webPost("/api/prog/executar?ensaio=1");
+  rodarComWeb(200);
+  const int codR = webPost("/api/prog/desfazer");
+  nota("desfazer com o programa rodando: HTTP %d", codR);
+  checar(codR != 200, "Q03f",
+         "desfazer com o braco executando e recusado antes de chegar ao core 1");
+  webPost("/api/prog/parar");
+  rodarComWeb(200);
+}
+
+static void teste_Q04_arco_exige_confirmacao() {
+  secao("Q04  Abrir o arco exige confirmacao NA REQUISICAO");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararProgramaDeSolda();
+
+  // A tela pede dois toques. Isso nao protege nada se a rota abrir o arco
+  // para qualquer chamada -- e ela e alcancavel por qualquer coisa na
+  // rede da maquina.
+  const int semConf = webPost("/api/prog/executar?ensaio=0");
+  rodarComWeb(200);
+  nota("executar com arco SEM conf=1: HTTP %d, modo %d, arco=%d",
+       semConf, (int)modoAtual, (int)soldaLigada());
+  checar(semConf != 200 && modoAtual != MODO_EXECUTANDO, "Q04a",
+         "sem confirmacao explicita a rota recusa: nao abre arco por chamada solta");
+
+  // Ensaio nao precisa: ele existe justamente para ser barato.
+  const int ensaio = webPost("/api/prog/executar?ensaio=1");
+  rodarComWeb(200);
+  nota("ensaio sem conf: HTTP %d, modo %d", ensaio, (int)modoAtual);
+  checar(ensaio == 200 && modoAtual == MODO_EXECUTANDO, "Q04b",
+         "o ensaio nao exige confirmacao -- ele nao abre arco nenhum");
+  webPost("/api/prog/parar");
+  rodarComWeb(200);
+
+  const int comConf = webPost("/api/prog/executar?ensaio=0&conf=1");
+  rodarComWeb(200);
+  nota("com conf=1: HTTP %d, modo %d", comConf, (int)modoAtual);
+  checar(comConf == 200 && modoAtual == MODO_EXECUTANDO, "Q04c",
+         "com a confirmacao, executa");
+  webPost("/api/prog/parar");
+  rodarComWeb(200);
+
+  // Repetir tambem abre arco, entao tambem exige.
+  const int rep = webPost("/api/prog/repetir");
+  rodarComWeb(200);
+  nota("repetir sem conf: HTTP %d", rep);
+  checar(rep != 200, "Q04d",
+         "\"mais uma peca\" tambem abre o arco, e tambem exige confirmacao");
+}
+
+static void teste_Q05_backup_leva_a_calibracao() {
+  secao("Q05  O backup da maquina leva a calibracao junto");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+
+  // Uma calibracao com numeros reconheciveis. Posta a mao de proposito:
+  // o que este cenario mede e a ida e volta do arquivo, nao o assistente
+  // -- que ja tem cenarios so dele.
+  J1.passosMin = -8000; J1.passosMax = 9000; J1.grausHome = 12.5f;
+  J2.passosMin = -7000; J2.passosMax = 7500; J2.grausHome = -3.5f;
+  J1.calibrada = J2.calibrada = true;
+  recalcularResolucao();
+  rodarComWeb(30);
+  const long min1 = J1.passosMin, max1 = J1.passosMax;
+  const float home1 = J1.grausHome, home2 = J2.grausHome;
+  nota("calibrado: J1 de %ld a %ld passos, referencia em %.2f graus",
+       min1, max1, (double)home1);
+
+  enviarComandoNomeado(CMD_ARQ_SALVAR_CONFIG, "maquina");
+  esperarCartao();
+  nota("backup: \"%s\"", armMensagem());
+  checar(armEstado() == ARM_PRONTO, "Q05a", "o backup da maquina foi gravado");
+
+  // Alguem refaz a calibracao errado -- ou apaga.
+  calibApagar();
+  J1.passosMin = 0; J1.passosMax = 0; J1.grausHome = 0.0f;
+  J2.grausHome = 0.0f;
+  rodarComWeb(50);
+  checar(!J1.calibrada, "Q05b", "calibracao apagada");
+
+  armSolicitar(TAR_CARREGAR_CONFIG, "maquina");
+  esperarCartao();
+  rodarComWeb(60);
+  nota("restaurado: calibrada=%d, J1 de %ld a %ld, referencia %.2f / %.2f -- \"%s\"",
+       (int)J1.calibrada, J1.passosMin, J1.passosMax,
+       (double)J1.grausHome, (double)J2.grausHome, armMensagem());
+  checar(J1.calibrada && J1.passosMin == min1 && J1.passosMax == max1, "Q05c",
+         "o backup devolve o CURSO MEDIDO: antes so devolvia velocidades e elos");
+  checar(fabsf(J1.grausHome - home1) < 0.01f &&
+         fabsf(J2.grausHome - home2) < 0.01f, "Q05d",
+         "e o angulo da referencia junto -- sem ele o desenho sai girado");
+}
+
+// Arquivo de backup gravado pela versao ANTERIOR nao tem calibracao. Ele
+// nao pode zerar a que esta na maquina: quem restaura um backup velho
+// espera recuperar o que ele guarda, nao perder o que ele nao guarda.
+static void teste_Q06_backup_antigo_nao_apaga_calibracao() {
+  secao("Q06  Backup de uma versao anterior nao apaga a calibracao viva");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+
+  // Escreve a mao um arquivo no formato antigo: sem 'cal='.
+  {
+    File f = SD.open("/cfg/antigo.cfg", FILE_WRITE);
+    f.println("ROBO2DOF-CFG 1");
+    f.println("velN=25");
+    f.println("velP=3");
+    f.println("velA=15");
+    f.println("velC=6.0");
+    f.println("acel1=60");
+    f.println("acel2=60");
+    f.println("ppv1=10000");
+    f.println("ppv2=10000");
+    f.println("red1=16.5");
+    f.println("red2=4.0");
+    f.println("l1=450");
+    f.println("l2=400");
+    f.close();
+  }
+  J1.passosMin = -5500; J1.passosMax = 6100; J1.calibrada = true;
+  recalcularResolucao();
+  rodarComWeb(30);
+
+  armSolicitar(TAR_CARREGAR_CONFIG, "antigo");
+  esperarCartao();
+  rodarComWeb(60);
+  nota("apos carregar backup antigo: velN=%.0f, calibrada=%d, J1 de %ld a %ld",
+       (double)velNormal, (int)J1.calibrada, J1.passosMin, J1.passosMax);
+  checar(fabsf(velNormal - 25.0f) < 0.5f, "Q06a",
+         "o backup antigo continua sendo aplicado no que ele traz");
+  checar(J1.calibrada && J1.passosMin == -5500 && J1.passosMax == 6100, "Q06b",
+         "e a calibracao viva fica intacta: o arquivo nao a traz, entao nao a apaga");
+}
+
+// =====================================================================
+//  R01 - O SEGUNDO driver no barramento
+// =====================================================================
+// Ate aqui quase todo cenario de encoder rodou com um driver so, porque
+// e a bancada do operador hoje. Isso deixa uma pergunta em aberto: o
+// codigo trata a junta 2 de verdade, ou so a 1 esta ligada de fato?
+//
+// Aqui os dois estao no barramento, em enderecos diferentes, e tudo o
+// que a junta 1 faz a junta 2 tem de fazer: ler, se localizar ao ligar,
+// seguir o eixo movido a mao e ser assentada no fim do movimento.
+static void teste_R01_o_segundo_driver() {
+  secao("R01  Os dois drivers no mesmo barramento, cada um no seu endereco");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(400);
+
+  const LeituraEncoder a1 = encoderLer(1);
+  const LeituraEncoder a2 = encoderLer(2);
+  nota("junta 1: valido=%d, %lu leituras, %lu falhas | junta 2: valido=%d, %lu leituras, %lu falhas",
+       (int)a1.valido, (unsigned long)a1.leituras, (unsigned long)a1.falhas,
+       (int)a2.valido, (unsigned long)a2.leituras, (unsigned long)a2.falhas);
+  checar(a1.valido && a2.valido, "R01a",
+         "os dois drivers respondem, cada um no seu endereco Modbus");
+  checar(a1.leituras > 3 && a2.leituras > 3, "R01b",
+         "e as duas juntas sao consultadas de verdade, nao so a primeira");
+
+  // Uma pergunta para o endereco 2 nao pode ser respondida pelo 1: se
+  // fosse, as duas juntas mostrariam o mesmo angulo e ninguem notaria
+  // ate a peca sair torta.
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(100);
+  levarComAMao(15.0f, -25.0f);
+  nota("levadas a mao para 15 / -25: junta 1 le %.2f, junta 2 le %.2f",
+       (double)encoderLer(1).graus, (double)encoderLer(2).graus);
+  checar(fabsf(encoderLer(1).graus - 15.0f) < 0.5f &&
+         fabsf(encoderLer(2).graus + 25.0f) < 0.5f, "R01c",
+         "cada junta le o SEU angulo -- endereco trocado daria o mesmo numero nas duas");
+  checar(fabsf(passosParaGraus(J2, posicaoJ2()) + 25.0f) < 0.5f, "R01d",
+         "e o seguidor de eixo solto acerta a contagem da junta 2 tambem");
+
+  // Assentamento na junta 2: o mesmo retoque que a 1 recebe.
+  enviarComando(CMD_SERVOS, 1);
+  // Com o zero absoluto ensinado, habilitar servos dispara a ida
+  // automatica a 0 grau. Mandar um posicionamento por cima disso cai em
+  // "Robo ocupado" -- espera-se a maquina se acomodar primeiro.
+  {
+    uint32_t z = 0;
+    while ((zeroResumo().estado == ZERO_INDO || modoAtual != MODO_MANUAL) && z < 20000) {
+      rodarComWeb(20); z += 20;
+    }
+  }
+  // Dagora o eixo de verdade e espelhado nas duas juntas, partindo de
+  // onde a contagem esta. Sem esta base os pulsos comecam em zero e o
+  // encoder passa a discordar da contagem por um valor fixo.
+  g_eixoBasePassos  = posicaoJ1() - (long)J1.motor->pulsosGerados;
+  g_eixoBasePassos2 = posicaoJ2() - (long)J2.motor->pulsosGerados;
+  g_espelharEixo    = true;
+  rodarComWeb(300);
+
+  // A junta 2 vai escorregar meio grau no caminho: perda de passo de
+  // verdade, com o eixo fisico ficando para tras do comandado.
+  perderPassos2(0.5f);
+
+  // Pela porta normal de posicionamento: e ela que leva a maquina para
+  // MODO_POSICIONANDO, e e so nesse modo que o loop roda o assentamento.
+  // Chamar moverCoordenado() direto move o braco e nunca assenta.
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0,
+                passosParaGraus(J1, posicaoJ1()), -10.0f);
+  rodarComWeb(100);
+  nota("pedido de posicionamento: modo %d, servos=%d -- \"%s\"",
+       (int)modoAtual, (int)servosLigados, ultimaMensagem);
+  uint32_t t = 0;
+  while (modoAtual == MODO_POSICIONANDO && t < 20000) { rodarComWeb(20); t += 20; }
+  const ResumoCorrecao rc = correcaoResumo();
+  nota("modo ao fim: %d, junta 2 medida em %.2f graus (alvo -10,00)",
+       (int)modoAtual, (double)encoderLer(2).graus);
+  nota("assentamento da junta 2: estado %u, %u retoque(s), erro %.2f -> %.2f -- \"%s\"",
+       (unsigned)rc.estado, (unsigned)rc.tentativas,
+       (double)rc.erroInicial2, (double)rc.erroFinal2, rc.motivo);
+  checar(rc.tentativas > 0 && fabsf(encoderLer(2).graus + 10.0f) < 0.2f, "R01e",
+         "a junta 2 tambem e assentada pelo encoder: escorregou meio grau e o retoque trouxe de volta");
+
+  // Um driver mudo nao pode derrubar a leitura do outro.
+  g_uart.escravo[1].mudo = true;
+  rodarComWeb(1200);
+  nota("junta 2 muda: junta 1 valida=%d (idade %lu ms), junta 2 valida=%d",
+       (int)encoderLer(1).valido, (unsigned long)encoderLer(1).idadeMs,
+       (int)encoderLer(2).valido);
+  checar(encoderLer(1).valido && !encoderLer(2).valido, "R01f",
+         "driver mudo derruba SO a junta dele: um cabo solto nao cega o barramento inteiro");
 }
 
 static void teste_K01_sentido_do_eixo() {
@@ -4409,6 +4927,14 @@ int main() {
   teste_P04_sem_encoder_nao_solta_o_braco();
   teste_P05_o_que_encerra_o_aprendizado();
   teste_P06_pela_tela_tambem();
+  teste_P07_estop_a_prova_de_falha();
+  teste_Q01_pausar_no_meio_do_cordao();
+  teste_Q02_contagem_de_pecas();
+  teste_Q03_desfazer();
+  teste_Q04_arco_exige_confirmacao();
+  teste_Q05_backup_leva_a_calibracao();
+  teste_Q06_backup_antigo_nao_apaga_calibracao();
+  teste_R01_o_segundo_driver();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

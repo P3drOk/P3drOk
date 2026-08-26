@@ -7,11 +7,17 @@
 #include "ESPmDNS.h"
 #include "DNSServer.h"
 #include "HardwareSerial.h"
+#include "Update.h"
 
 uint32_t g_millis = 0;
 int g_pinModo[64]    = {0};
 int g_pinSaida[64]   = {0};
 int g_pinEntrada[64];
+UpdateMock Update;
+// Tamanho da particao de OTA. Zero = firmware gravado sem OTA, que e o
+// que o partitions.csv de 3 MB deste projeto produz.
+uint32_t g_espParticaoOta = 3145728 - 1721921;
+uint32_t g_espReinicios = 0;
 // Entradas em repouso: nivel alto. Um inicializador {1} so preencheria o
 // primeiro elemento -- o resto ficaria em 0 e o firmware leria emergencia
 // acionada em todos os testes.
@@ -55,6 +61,13 @@ HardwareSerial* HardwareSerial::atual = nullptr;
 
 int webPost(const std::string& alvo, const char* corpo) {
   return WebServer::atual ? WebServer::atual->pedir(HTTP_POST, alvo, corpo) : 0;
+}
+int webEnviarArquivo(const std::string& alvo, const std::string& nome,
+                     const uint8_t* dados, size_t n, size_t pedaco,
+                     bool abortar) {
+  return WebServer::atual
+       ? WebServer::atual->enviarArquivo(alvo, nome, dados, n, pedaco, abortar)
+       : 0;
 }
 int webGet(const std::string& alvo) {
   return WebServer::atual ? WebServer::atual->pedir(HTTP_GET, alvo) : 0;

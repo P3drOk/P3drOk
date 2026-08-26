@@ -13,6 +13,10 @@ python3 testes/conferir_ligacoes.py
 # aparece. Confere as duas pontas antes de compilar.
 python3 testes/conferir_rotas.py
 
+# QR desenhado errado fica bonito na tela e nao abre em celular nenhum.
+# Este guarda le os codigos de volta com um decodificador de verdade.
+python3 testes/conferir_qr.py
+
 # A pagina servida e a comprimida: se ela ficar velha, o robo entrega uma
 # interface diferente da que esta no repositorio.
 python3 testes/gerar_pagina_gz.py --conferir
@@ -37,5 +41,6 @@ g++ $FLAGS -DESTOP_FISICO_INSTALADO=true -DAPRENDER_BOTAO_INSTALADO=true \
     Robo2dof/rede.cpp \
     Robo2dof/encoder.cpp \
     Robo2dof/correcao.cpp \
-    Robo2dof/aprender.cpp
+    Robo2dof/aprender.cpp \
+    Robo2dof/ota.cpp
 exec testes/saida/banco

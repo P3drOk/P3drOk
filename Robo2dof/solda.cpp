@@ -20,6 +20,10 @@ void soldaDesligar() {
   if (ligada) {
     digitalWrite(PIN_RELE_SOLDA, LOW);
     ligada = false;
+    // Horas de arco: e o numero que diz quando trocar bico e difusor.
+    // Contado no fechamento, que e o unico instante em que se sabe
+    // quanto tempo o arco ficou aberto.
+    producaoSomarArco(millis() - inicioArco);
     Serial.println("[SOLDA] Rele desligado.");
   } else {
     // Reforca o nivel mesmo se o estado interno ja indicava desligado.

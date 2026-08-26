@@ -1,0 +1,35 @@
+# Layout ALTERNATIVO do Robo2dof: com atualizacao pela rede (OTA).
+#
+# Use este arquivo no lugar de partitions.csv quando quiser atualizar o
+# firmware pelo painel em vez do cabo USB. Renomeie:
+#
+#   partitions.csv      -> partitions_3mb.csv
+#   partitions_ota.csv  -> partitions.csv
+#
+# e grave UMA vez pelo USB. Dali em diante as atualizacoes vao pela rede.
+#
+# POR QUE DUAS PARTICOES DE APP. O firmware novo e escrito na particao
+# que NAO esta rodando; so no fim o carregador passa a apontar para ela.
+# Com uma particao so, gravar seria escrever por cima do proprio codigo
+# em execucao -- o processador trava no meio, com o rele de solda em
+# estado indefinido. Nao ha meio-termo: ou cabem duas imagens, ou nao ha
+# OTA.
+#
+# O QUE SE PERDE. Cada particao fica com 1,9 MB em vez dos 3 MB do outro
+# esquema, e o SPIFFS sai. Para este projeto sobra: o firmware com Wi-Fi,
+# servidor web, cartao SD e a pagina comprimida fica bem abaixo disso, e
+# o SPIFFS nao e usado (os arquivos do operador vao para o cartao).
+# Confira o numero que o proprio robo imprime no boot: "[FLASH] sketch
+# XXX kB de YYY kB de particao".
+#
+# O 'nvs' continua em 0x9000 com 0x5000, igual aos outros esquemas: a
+# CALIBRACAO JA SALVA CONTINUA VALENDO depois de trocar de particao.
+#
+# Flash de 4 MB (ESP32-WROOM-32 comum).
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x1E0000,
+app1,       app,  ota_1,    0x1F0000, 0x1E0000,
+coredump,   data, coredump, 0x3D0000, 0x10000,

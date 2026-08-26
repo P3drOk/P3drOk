@@ -21,6 +21,7 @@
 #include "encoder.h"
 #include "correcao.h"
 #include "aprender.h"
+#include "ota.h"
 #include <math.h>
 
 static bool     emergenciaAtiva  = false;
@@ -92,7 +93,8 @@ static const char* NOME_CMD[] = {
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
   "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","AFERIR_ENCODER",
   "ENSINAR_ZERO","ESQUECER_ZERO","INVERTER_EIXO",
-  "APLICAR_ENCODER","ENCODER_ZERAR","APRENDER","JOG_XY",
+  "APLICAR_ENCODER","ENCODER_ZERAR","APRENDER",
+  "PROG_PAUSAR","PROG_DESFAZER","PROG_REPETIR","MANUTENCAO_OK","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -336,6 +338,57 @@ static void processarComando(const Comando& c) {
     case CMD_PROG_PARAR:
       progParar();
       modoAtual = MODO_MANUAL;
+      break;
+
+    case CMD_PROG_PAUSAR: {
+      const bool pausar = (c.a < 0) ? !progPausado() : (c.a != 0);
+      const char* motivo = nullptr;
+      if (pausar) {
+        if (!progPausar(&motivo))
+          definirMensagem("Pausa recusada: %s", motivo ? motivo : "erro");
+      } else {
+        if (!progRetomar(&motivo))
+          definirMensagem("Retomada recusada: %s", motivo ? motivo : "erro");
+      }
+      break;
+    }
+
+    case CMD_PROG_DESFAZER: {
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Desfaca com o robo parado no modo manual");
+        break;
+      }
+      const char* motivo = nullptr;
+      if (!progDesfazer(&motivo))
+        definirMensagem("Nada desfeito: %s", motivo ? motivo : "erro");
+      break;
+    }
+
+    case CMD_PROG_REPETIR: {
+      // "Mais uma peca": o caso normal de producao e repetir o mesmo
+      // programa dezenas de vezes. Sem isto o operador tem de reabrir o
+      // arquivo e reconfirmar o arco a cada peca.
+      if (modoAtual != MODO_MANUAL) { definirMensagem("Robo ocupado"); break; }
+      const char* motivo = nullptr;
+      if (!progIniciar(false, &motivo)) {
+        definirMensagem("Repeticao recusada: %s", motivo ? motivo : "erro");
+        break;
+      }
+      modoAtual = MODO_EXECUTANDO;
+      logEvento("repeticao: peca %lu do turno",
+                (unsigned long)(producao.ciclosSessao + 1));
+      break;
+    }
+
+    case CMD_MANUTENCAO_OK:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Registre a manutencao com o robo parado");
+        break;
+      }
+      logEvento("manutencao registrada apos %lu ciclos",
+                (unsigned long)producao.desdeManutencao);
+      producaoZerarManutencao();
+      definirMensagem("Manutencao registrada. Contador zerado");
       break;
 
     case CMD_TESTE_RELE:
@@ -596,7 +649,10 @@ static void supervisionar() {
 
   bool estop = false;
   if (ESTOP_FISICO_INSTALADO) {
-    estop = (digitalRead(PIN_ESTOP) == LOW);
+    // HIGH = emergencia: botao apertado (contato NC abre) OU fio
+    // partido. Ver a nota de ligacao em config.h -- a polaridade e o que
+    // faz um cabo rompido parar a maquina em vez de sumir em silencio.
+    estop = (digitalRead(PIN_ESTOP) == ESTOP_NIVEL_ATIVO);
   }
 
   const bool semConexao =
@@ -726,7 +782,19 @@ void setup() {
     pinMode(PIN_LED_STATUS, OUTPUT);
     digitalWrite(PIN_LED_STATUS, LOW);
   }
-  if (ESTOP_FISICO_INSTALADO) pinMode(PIN_ESTOP, INPUT_PULLUP);
+  if (ESTOP_FISICO_INSTALADO) {
+    pinMode(PIN_ESTOP, INPUT_PULLUP);
+    // Conferencia de linha no boot. Com o botao solto e o fio inteiro o
+    // pino tem de estar em LOW; se ja nasce em nivel de emergencia, ou o
+    // botao esta acionado ou o cabo nao chegou. Dizer isso no arranque
+    // evita a cena de o operador passar meia hora achando que os servos
+    // "nao ligam".
+    delay(5);
+    if (digitalRead(PIN_ESTOP) == ESTOP_NIVEL_ATIVO) {
+      Serial.println("[ESTOP] Linha em nivel de emergencia no arranque: "
+                     "botao acionado ou cabo interrompido.");
+    }
+  }
 
   soldaIniciar();          // rele desligado antes de qualquer outra coisa
   carregarConfiguracoes();
@@ -855,6 +923,15 @@ void loop() {
     case MODO_FALHA:
       pararSuave();
       break;
+  }
+
+  // Reinicio pedido pela atualizacao de firmware. Ele acontece AQUI, no
+  // core 1, e nao dentro do handler HTTP: a resposta precisa chegar ao
+  // navegador antes, senao o operador fica olhando para uma requisicao
+  // que morreu sem saber se deu certo.
+  if (otaPrecisaReiniciar()) {
+    pararTudo("Reiniciando com o firmware novo");
+    otaReiniciarAgora();
   }
 
   zeroAtualizar();

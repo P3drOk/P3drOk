@@ -44,6 +44,11 @@ enum ArmTarefa : uint8_t {
   TAR_APAGAR,          // nome = "<tipo>/<arquivo>"
   TAR_SALVAR_PROG,
   TAR_CARREGAR_PROG,
+  // Le o arquivo para a area de troca e PARA por ai: o programa vivo da
+  // maquina nao e tocado. E o que deixa a biblioteca mostrar a miniatura
+  // de uma peca sem trocar a que esta carregada -- ver a peca errada e
+  // barato, carregar a peca errada custa uma chapa.
+  TAR_PREVER_PROG,
   TAR_SALVAR_TRAJ,
   TAR_CARREGAR_TRAJ,
   TAR_SALVAR_CONFIG,
@@ -112,6 +117,22 @@ float armStagingElo2();
 // atrasar o laco de controle.
 // ---------------------------------------------------------------------
 void logEvento(const char* fmt, ...);
+
+// ---------------------------------------------------------------------
+// REGISTRO NA MEMORIA
+//
+// As ultimas linhas do log tambem ficam num anel na RAM. O arquivo no
+// cartao continua sendo o registro de verdade -- mas ele so existe se
+// houver cartao, e a pergunta "o que aconteceu agora ha pouco?" e feita
+// justamente quando algo deu errado, que e quando ninguem quer descobrir
+// que o cartao nao estava montado.
+// ---------------------------------------------------------------------
+struct LinhaRegistro {
+  uint32_t ms;
+  char     txt[80];
+};
+uint8_t              logQuantosNaMemoria();
+const LinhaRegistro* logDaMemoria(uint8_t i);   // 0 = mais recente
 
 #ifdef ROBO2DOF_TESTE
 // Executa um ciclo da tarefa de cartao no lugar do laco proprio. Existe

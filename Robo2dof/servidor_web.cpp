@@ -9,6 +9,7 @@
 #include "encoder.h"
 #include "correcao.h"
 #include "aprender.h"
+#include "ota.h"
 #include "pagina_web_gz.h"
 
 static WebServer server(80);
@@ -143,8 +144,10 @@ static void handleStatus() {
   // tela precisa saber que o braco esta solto TODO ciclo, e nao so
   // quando alguem abre o painel do encoder.
   const ResumoAprender ra = aprenderResumo();
+  const LeituraEncoder lidoJ1 = encoderLer(1);
+  const LeituraEncoder lidoJ2 = encoderLer(2);
 
-  char json[1152];
+  char json[1400];
   snprintf(json, sizeof(json),
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
     "\"p1\":%ld,\"p2\":%ld,\"t1\":%.2f,\"t2\":%.2f,\"x\":%.1f,\"y\":%.1f,"
@@ -161,6 +164,8 @@ static void handleStatus() {
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
+    "\"op\":%s,\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
+    "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
@@ -190,6 +195,17 @@ static void handleStatus() {
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
     ra.instalado ? "true" : "false", ra.ativo ? "true" : "false",
     ra.bracoSolto ? "true" : "false", (unsigned)ra.gravados,
+    configPainel.operador ? "true" : "false",
+    progPausado() ? "true" : "false",
+    progTemDesfazer() ? "true" : "false",
+    (unsigned long)producao.ciclosTotais, (unsigned long)producao.ciclosSessao,
+    // Angulo MEDIDO pelo encoder, ao lado do comandado. E a leitura que o
+    // operador quer de relance: onde o braco esta de verdade, e nao onde
+    // a contagem de pulsos acha que ele esta.
+    lidoJ1.graus, lidoJ2.graus,
+    (lidoJ1.valido && lidoJ1.idadeMs <= ENC_IDADE_MAX_MS) ? "true" : "false",
+    (lidoJ2.valido && lidoJ2.idadeMs <= ENC_IDADE_MAX_MS) ? "true" : "false",
+    (unsigned)progFracaoTrecho(),
     s.mensagem);
 
   server.send(200, "application/json", json);
@@ -318,7 +334,43 @@ static void handlePontoSolda() { registrarContatoOperador(); enfileirar(CMD_PONT
 static void handleProgLimpar() { registrarContatoOperador(); enfileirar(CMD_PROG_LIMPAR); }
 static void handleProgParar()  { registrarContatoOperador(); enfileirar(CMD_PROG_PARAR); }
 static void handleIrPonto()    { registrarContatoOperador(); enfileirar(CMD_IR_PARA_PONTO, argL("i",-1)); }
-static void handleProgExec()   { registrarContatoOperador(); enfileirar(CMD_PROG_EXECUTAR, argL("ensaio",1)); }
+// Abrir arco exige confirmacao EXPLICITA na requisicao, nao so na tela.
+// A tela ja pede dois toques, mas a trava tem de existir tambem aqui: a
+// rota e alcancavel por qualquer coisa na rede da maquina, e "executar
+// com arco" e a unica acao deste sistema que queima material e pode pegar
+// fogo. Ensaio nao precisa -- ele existe justamente para ser barato.
+static void handleProgExec() {
+  registrarContatoOperador();
+  const bool ensaio = argL("ensaio", 1) != 0;
+  if (!ensaio && argL("conf", 0) != 1) {
+    erro("execucao com arco exige confirmacao (conf=1)");
+    return;
+  }
+  enfileirar(CMD_PROG_EXECUTAR, ensaio ? 1 : 0);
+}
+
+static void handleProgPausar() {
+  registrarContatoOperador();
+  enfileirar(CMD_PROG_PAUSAR, argL("on", -1));
+}
+static void handleProgDesfazer() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  enfileirar(CMD_PROG_DESFAZER);
+}
+static void handleProgRepetir() {
+  registrarContatoOperador();
+  if (argL("conf", 0) != 1) {
+    erro("repetir abre o arco: exige confirmacao (conf=1)");
+    return;
+  }
+  enfileirar(CMD_PROG_REPETIR);
+}
+static void handleManutencaoOk() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  enfileirar(CMD_MANUTENCAO_OK);
+}
 static void handleGravarIni()  { registrarContatoOperador(); enfileirar(CMD_GRAVAR_INICIAR); }
 static void handleGravarFim()  { registrarContatoOperador(); enfileirar(CMD_GRAVAR_PARAR); }
 static void handleReproduzir() { registrarContatoOperador(); enfileirar(CMD_REPRODUZIR); }
@@ -647,6 +699,181 @@ static void jsonEncoderJunta(String& out, uint8_t j) {
     (unsigned long)L.passosTotais, (unsigned long)L.inversoes,
     (long)L.brutoMin, (long)L.brutoMax, L.velMax, L.velMin);
   out += b;
+}
+
+// ---------------------------------------------------------------------
+// MODO OPERADOR x TECNICO
+//
+// Entrar no modo operador nao pede nada -- trancar a maquina para o
+// turno tem de ser rapido. SAIR pede a senha. E uma trava contra toque
+// errado, nao seguranca de rede: quem estiver no Wi-Fi da maquina
+// alcanca a API direto. Ver a nota em estado.h.
+// ---------------------------------------------------------------------
+static void handlePainel() {
+  registrarContatoOperador();
+  const long op = argL("op", -1);
+
+  // Trocar a senha exige saber a atual.
+  if (server.hasArg("nova")) {
+    if (strcmp(server.arg("atual").c_str(), configPainel.senha) != 0) {
+      erro("senha atual incorreta"); return;
+    }
+    const String nova = server.arg("nova");
+    if (nova.length() < 4 || nova.length() > 8) {
+      erro("a senha deve ter de 4 a 8 caracteres"); return;
+    }
+    snprintf(configPainel.senha, sizeof(configPainel.senha), "%s", nova.c_str());
+    salvarConfiguracoes();
+    definirMensagem("Senha do modo tecnico alterada");
+    ok();
+    return;
+  }
+
+  if (op < 0) { erro("informe op=0 ou op=1"); return; }
+  if (op == 0 && configPainel.operador) {
+    if (strcmp(server.arg("senha").c_str(), configPainel.senha) != 0) {
+      erro("senha incorreta"); return;
+    }
+  }
+  configPainel.operador = (op != 0);
+  salvarConfiguracoes();
+  definirMensagem(configPainel.operador
+                  ? "Modo operador: ajustes de instalacao escondidos"
+                  : "Modo tecnico liberado");
+  ok();
+}
+
+// ---------------------------------------------------------------------
+// REGISTRO DE EVENTOS na tela. Sai do anel na RAM, entao funciona sem
+// cartao -- que e exatamente quando ele costuma ser consultado.
+// ---------------------------------------------------------------------
+static void handleRegistro() {
+  registrarContatoOperador();
+  String out;
+  out.reserve(1400);
+  out += "{\"n\":";
+  out += (int)logQuantosNaMemoria();
+  out += ",\"linhas\":[";
+  for (uint8_t i = 0; i < logQuantosNaMemoria(); i++) {
+    const LinhaRegistro* l = logDaMemoria(i);
+    if (!l) break;
+    if (i) out += ',';
+    char item[128];
+    // O texto do log e nosso, mas passa por aspas de JSON: uma aspa
+    // solta ali quebraria a resposta inteira e a tela diria "sem
+    // comunicacao" com a maquina funcionando.
+    char limpo[80];
+    size_t k = 0;
+    for (size_t j = 0; l->txt[j] && k < sizeof(limpo) - 1; j++) {
+      const char c = l->txt[j];
+      if (c == '"' || c == '\\') continue;
+      if ((unsigned char)c < 0x20) continue;
+      limpo[k++] = c;
+    }
+    limpo[k] = '\0';
+    snprintf(item, sizeof(item), "{\"s\":%lu,\"t\":\"%s\"}",
+             (unsigned long)(l->ms / 1000), limpo);
+    out += item;
+  }
+  out += "]}";
+  server.send(200, "application/json", out);
+}
+
+// ---------------------------------------------------------------------
+// ATUALIZACAO DE FIRMWARE
+//
+// Duas metades: o handler de ENVIO, chamado uma vez por pedaco enquanto
+// o arquivo sobe, e o de RESPOSTA, chamado no fim. Quem grava e o
+// primeiro -- responder sem ele gravaria coisa nenhuma e diria "ok".
+// ---------------------------------------------------------------------
+static void handleOtaEnvio() {
+  HTTPUpload& u = server.upload();
+  if (u.status == UPLOAD_FILE_START) {
+    const char* motivo = nullptr;
+    if (!otaComecar(&motivo)) {
+      // Nao da para responder daqui: o corpo ainda esta subindo. O
+      // handler de resposta le o estado e conta o que aconteceu.
+      otaCancelar(motivo);
+    }
+  } else if (u.status == UPLOAD_FILE_WRITE) {
+    otaPedaco(u.buf, u.currentSize);
+  } else if (u.status == UPLOAD_FILE_END) {
+    const char* motivo = nullptr;
+    otaTerminar(&motivo);
+  } else if (u.status == UPLOAD_FILE_ABORTED) {
+    otaCancelar("envio interrompido pelo navegador");
+  }
+}
+
+static void handleOtaFim() {
+  const ResumoOta o = otaResumo();
+  if (o.estado == OTA_OK) {
+    server.send(200, "text/plain",
+                "firmware gravado; a maquina reinicia em seguida");
+  } else {
+    erro(o.motivo[0] ? o.motivo : "atualizacao nao concluida");
+  }
+}
+
+// ---------------------------------------------------------------------
+// SAUDE DA MAQUINA
+//
+// Uma tela so com tudo que se pergunta quando algo esta estranho: ha
+// quanto tempo esta ligada, quanta memoria sobrou, quantas pecas fez,
+// quanto arco ja abriu, se o encoder esta respondendo e a que taxa, se o
+// cartao esta la, quantos alarmes e travamentos houve.
+//
+// Antes disso a resposta a "esta tudo bem?" era abrir o monitor serial
+// com um cabo -- que so existe na bancada, nunca na fabrica.
+// ---------------------------------------------------------------------
+static void handleSaude() {
+  registrarContatoOperador();
+
+  const LeituraEncoder e1 = encoderLer(1);
+  const LeituraEncoder e2 = encoderLer(2);
+  const Travamento     tv = correcaoTravamento();
+  const ResumoAprender ra = aprenderResumo();
+
+  const uint32_t up = millis() / 1000;
+  // Taxa de acerto do barramento: e o numero que separa "o encoder nao
+  // funciona" de "o encoder funciona e cai de vez em quando" -- dois
+  // problemas com causas completamente diferentes.
+  const uint32_t tent1 = e1.leituras + e1.falhas;
+  const uint32_t tent2 = e2.leituras + e2.falhas;
+
+  char json[1024];
+  snprintf(json, sizeof(json),
+    "{\"up\":%lu,\"heap\":%lu,\"heapMin\":%lu,"
+    "\"flashUso\":%lu,\"flashTot\":%lu,"
+    "\"ciclos\":%lu,\"ciclosSes\":%lu,\"abortados\":%lu,"
+    "\"arcoS\":%lu,\"manut\":%lu,"
+    "\"enc1\":{\"ok\":%lu,\"falha\":%lu,\"taxa\":%u,\"idade\":%lu,\"graus\":%.2f,\"vale\":%s},"
+    "\"enc2\":{\"ok\":%lu,\"falha\":%lu,\"taxa\":%u,\"idade\":%lu,\"graus\":%.2f,\"vale\":%s},"
+    "\"trav\":%lu,\"alerta\":%lu,\"alarme1\":%s,\"alarme2\":%s,"
+    "\"cartao\":%s,\"cartaoLivre\":%lu,\"cartaoTotal\":%lu,"
+    "\"apr\":%s,\"aprBotao\":%s,\"estop\":%s,\"ota\":%s}",
+    (unsigned long)up,
+    (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
+    (unsigned long)ESP.getSketchSize(),
+    (unsigned long)(ESP.getSketchSize() + ESP.getFreeSketchSpace()),
+    (unsigned long)producao.ciclosTotais, (unsigned long)producao.ciclosSessao,
+    (unsigned long)producao.abortados,
+    (unsigned long)producao.horasArcoS, (unsigned long)producao.desdeManutencao,
+    (unsigned long)e1.leituras, (unsigned long)e1.falhas,
+    (unsigned)(tent1 ? e1.leituras * 100 / tent1 : 0),
+    (unsigned long)e1.idadeMs, e1.graus, e1.valido ? "true" : "false",
+    (unsigned long)e2.leituras, (unsigned long)e2.falhas,
+    (unsigned)(tent2 ? e2.leituras * 100 / tent2 : 0),
+    (unsigned long)e2.idadeMs, e2.graus, e2.valido ? "true" : "false",
+    (unsigned long)tv.total, (unsigned long)correcaoAlertas(),
+    J1.alarme ? "true" : "false", J2.alarme ? "true" : "false",
+    armBytesTotais() > 0 ? "true" : "false",
+    (unsigned long)(armBytesLivres() / 1024), (unsigned long)(armBytesTotais() / 1024),
+    ra.ativo ? "true" : "false", ra.instalado ? "true" : "false",
+    ESTOP_FISICO_INSTALADO ? "true" : "false",
+    otaDisponivel() ? "true" : "false");
+
+  server.send(200, "application/json", json);
 }
 
 static void handleEncoder() {
@@ -1018,6 +1245,62 @@ static void handleSdSalvar() {
   }
 }
 
+// ---------------------------------------------------------------------
+// PREVIA de um programa do cartao: le o arquivo e DESENHA, sem trocar o
+// programa que esta na maquina. Ver a peca errada e barato; carregar a
+// peca errada custa uma chapa.
+// ---------------------------------------------------------------------
+static void handleSdPrever() {
+  registrarContatoOperador();
+  const String nome = server.arg("nome");
+  if (!armNomeValido(nome.c_str())) { erro("nome invalido"); return; }
+  if (!armSolicitar(TAR_PREVER_PROG, nome.c_str())) {
+    erro("cartao ocupado ou ausente");
+    return;
+  }
+  ok();
+}
+
+// A previa fica na area de troca ate alguem pedir outra. Devolve os
+// pontos ja em milimetros, com os elos com que o arquivo foi feito --
+// e a comparacao desses elos com os da maquina que avisa "esta peca nao
+// e desta maquina" antes de o arco abrir.
+static void handleSdPrevia() {
+  registrarContatoOperador();
+  const uint8_t n = armStagingN();
+  const float e1 = armStagingElo1(), e2 = armStagingElo2();
+
+  String out;
+  out.reserve(120 + (size_t)n * 34);
+  char cab[160];
+  snprintf(cab, sizeof(cab),
+           "{\"n\":%u,\"l1\":%.1f,\"l2\":%.1f,\"l1Maq\":%.1f,\"l2Maq\":%.1f,\"pts\":[",
+           (unsigned)n, e1, e2, elo1Mm, elo2Mm);
+  out += cab;
+
+  // Desenhados com os elos DO ARQUIVO, nao com os da maquina: a miniatura
+  // tem de mostrar a peca como ela foi feita. Se os elos diferem, o aviso
+  // e justamente essa diferenca -- e desenhar com os elos errados a
+  // esconderia.
+  const float a1 = (e1 > 0.0f) ? e1 : elo1Mm;
+  const float a2 = (e2 > 0.0f) ? e2 : elo2Mm;
+  const Ponto* pts = armStagingPontos();
+  for (uint8_t i = 0; i < n; i++) {
+    const float t1 = passosParaGraus(J1, pts[i].p1);
+    const float t2 = passosParaGraus(J2, pts[i].p2);
+    const float r1 = t1 * (float)M_PI / 180.0f;
+    const float r12 = (t1 + t2) * (float)M_PI / 180.0f;
+    const float x = a1 * cosf(r1) + a2 * cosf(r12);
+    const float y = a1 * sinf(r1) + a2 * sinf(r12);
+    char item[40];
+    snprintf(item, sizeof(item), "%s{\"x\":%.0f,\"y\":%.0f,\"s\":%u}",
+             i ? "," : "", x, y, (unsigned)pts[i].soldaAteProximo);
+    out += item;
+  }
+  out += "]}";
+  server.send(200, "application/json", out);
+}
+
 static void handleSdCarregar() {
   registrarContatoOperador();
   const String tipo = server.arg("tipo");
@@ -1089,6 +1372,10 @@ void servidorIniciar() {
   server.on("/api/prog/executar", HTTP_POST, handleProgExec);
   server.on("/api/prog/desenho",  HTTP_POST, handleProgDesenho);
   server.on("/api/prog/parar",    HTTP_POST, handleProgParar);
+  server.on("/api/prog/pausar",   HTTP_POST, handleProgPausar);
+  server.on("/api/prog/desfazer", HTTP_POST, handleProgDesfazer);
+  server.on("/api/prog/repetir",  HTTP_POST, handleProgRepetir);
+  server.on("/api/manutencao/ok", HTTP_POST, handleManutencaoOk);
   server.on("/api/home",          HTTP_POST, handleHome);
 
   server.on("/api/gravar/iniciar", HTTP_POST, handleGravarIni);
@@ -1108,6 +1395,8 @@ void servidorIniciar() {
   server.on("/api/sd/lista",      HTTP_GET,  handleSdLista);
   server.on("/api/sd/salvar",     HTTP_POST, handleSdSalvar);
   server.on("/api/sd/carregar",   HTTP_POST, handleSdCarregar);
+  server.on("/api/sd/prever",     HTTP_POST, handleSdPrever);
+  server.on("/api/sd/previa",     HTTP_GET,  handleSdPrevia);
   server.on("/api/sd/apagar",     HTTP_POST, handleSdApagar);
   server.on("/api/sd/montar",     HTTP_POST, handleSdMontar);
 
@@ -1125,6 +1414,10 @@ void servidorIniciar() {
 
   server.on("/api/rede",           HTTP_GET,  handleRede);
 
+  server.on("/api/saude",          HTTP_GET,  handleSaude);
+  server.on("/api/registro",       HTTP_GET,  handleRegistro);
+  server.on("/api/painel",         HTTP_POST, handlePainel);
+  server.on("/api/ota",            HTTP_POST, handleOtaFim, handleOtaEnvio);
   server.on("/api/encoder",        HTTP_GET,  handleEncoder);
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);

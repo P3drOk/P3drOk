@@ -201,6 +201,15 @@ void prepararConfigPendente() {
   configPendente.protCurso    = protCurso;
   configPendente.protDobra    = protDobra;
   configPendente.protEnvelope = protEnvelope;
+
+  // A area de preparo e tambem a forma canonica do backup: quem a
+  // preenche a partir do estado vivo esta descrevendo a maquina inteira,
+  // e a calibracao faz parte dela.
+  configPendente.temCalib = true;
+  configPendente.cal1  = J1.calibrada;   configPendente.cal2  = J2.calibrada;
+  configPendente.p1Min = J1.passosMin;   configPendente.p1Max = J1.passosMax;
+  configPendente.p2Min = J2.passosMin;   configPendente.p2Max = J2.passosMax;
+  configPendente.home1 = J1.grausHome;   configPendente.home2 = J2.grausHome;
 }
 
 void aplicarConfigPendente() {
@@ -227,6 +236,18 @@ void aplicarConfigPendente() {
   protDobra         = configPendente.protDobra;
   protEnvelope      = configPendente.protEnvelope;
 
+  // A calibracao so e tocada quando o arquivo REALMENTE tem uma. Um
+  // backup gravado pela versao anterior nao carrega estes campos, e
+  // aplicar zeros ali apagaria o curso medido da maquina.
+  if (configPendente.temCalib) {
+    J1.calibrada = configPendente.cal1;
+    J2.calibrada = configPendente.cal2;
+    J1.passosMin = configPendente.p1Min;  J1.passosMax = configPendente.p1Max;
+    J2.passosMin = configPendente.p2Min;  J2.passosMax = configPendente.p2Max;
+    J1.grausHome = configPendente.home1;
+    J2.grausHome = configPendente.home2;
+  }
+
   recalcularResolucao();
 }
 
@@ -239,6 +260,20 @@ void carregarConfiguracoes() {
 
   // Chaves NOVAS: as antigas guardavam Hz, e reler 3000 como 3000 graus/s
   // seria absurdo. Quem atualiza recebe os padroes em graus/s.
+  configPainel.operador = prefs.getBool("pnOp", false);
+  {
+    // getString com destino e tamanho: a chave ausente devolve 0 e a
+    // senha padrao fica valendo.
+    char sp[9] = "";
+    const size_t n = prefs.getString("pnSenha", sp, sizeof(sp));
+    if (n > 0 && sp[0]) snprintf(configPainel.senha, sizeof(configPainel.senha), "%s", sp);
+  }
+
+  producao.ciclosTotais    = prefs.getUInt("ciclos", 0);
+  producao.abortados       = prefs.getUInt("cicAb",  0);
+  producao.horasArcoS      = prefs.getUInt("arcoS",  0);
+  producao.desdeManutencao = prefs.getUInt("cicMan", 0);
+
   velNormal      = prefs.getFloat("velNg",       VEL_NORMAL_PADRAO);
   velPrecisao    = prefs.getFloat("velPg",       VEL_PRECISAO_PADRAO);
   velAuto        = prefs.getFloat("velAg",       VEL_AUTO_PADRAO);
@@ -333,6 +368,56 @@ void carregarConfiguracoes() {
   Serial.println("[NVS] Configuracoes carregadas.");
 }
 
+// =====================================================================
+//  Producao
+// =====================================================================
+Producao producao = {0, 0, 0, 0, 0};
+
+// De fabrica: comeca destrancado, com a senha padrao. Maquina nova que
+// nasce trancada com uma senha que ninguem sabe e uma maquina que volta
+// para a assistencia no primeiro dia.
+ConfigPainel configPainel = {false, "1234"};
+
+// A gravacao no NVS e por ciclo, nao por segundo: a memoria do ESP32
+// aguenta na casa de 100 mil escritas por celula, e um contador salvo a
+// cada volta do laco a queimaria em uma tarde.
+static void salvarProducao() {
+  prefs.begin("robo2dof", false);
+  prefs.putUInt("ciclos", producao.ciclosTotais);
+  prefs.putUInt("cicAb",  producao.abortados);
+  prefs.putUInt("arcoS",  producao.horasArcoS);
+  prefs.putUInt("cicMan", producao.desdeManutencao);
+  prefs.end();
+}
+
+void producaoContarCiclo(bool concluido) {
+  if (concluido) {
+    producao.ciclosTotais++;
+    producao.ciclosSessao++;
+    producao.desdeManutencao++;
+  } else {
+    producao.abortados++;
+  }
+  salvarProducao();
+}
+
+void producaoZerarManutencao() {
+  producao.desdeManutencao = 0;
+  salvarProducao();
+}
+
+// Somado pelo rele. Guardado em segundos inteiros para nao gravar no NVS
+// a cada arco curto -- o resto de milissegundos fica de fora, e num
+// numero que so serve para dizer "troque o bico" isso nao muda nada.
+void producaoSomarArco(uint32_t ms) {
+  static uint32_t restoMs = 0;
+  restoMs += ms;
+  if (restoMs >= 1000) {
+    producao.horasArcoS += restoMs / 1000;
+    restoMs %= 1000;
+  }
+}
+
 uint32_t proximaSessao() {
   prefs.begin("robo2dof", false);
   const uint32_t s = prefs.getUInt("sessao", 0) + 1;
@@ -385,6 +470,8 @@ void salvarConfiguracoes() {
   // encoder absoluto: ensinada uma vez, vale para sempre.
   prefs.putBool ("zrEn1",  configZero.ensinado[0]);
   prefs.putBool ("zrEn2",  configZero.ensinado[1]);
+  prefs.putBool ("pnOp",   configPainel.operador);
+  prefs.putString("pnSenha", configPainel.senha);
   prefs.putInt  ("encRf1", encoderReferencia(1));
   prefs.putInt  ("encRf2", encoderReferencia(2));
   prefs.putBool ("crVig",  configCorrecao.vigiar);

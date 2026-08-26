@@ -13,7 +13,8 @@ nenhuma alteração; o que é substituído por mock é só o que depende do hard
 | `mocks/WiFi.h` | só para o `.ino` compilar |
 | `mocks/driver/uart.h` | as chamadas do IDF que pedem RS485 meio-duplex por hardware, guardando o que foi pedido |
 | `mocks/HardwareSerial.h` | UART **com um escravo Modbus dentro** cujo eixo **gira entre as leituras** (e o eco do MAX485, que segue o pino RE de verdade): tabela de registradores de verdade (um ou dois por pergunta), encena mudo, exceção, CRC ruim e driver que **recusa** a leitura dupla |
-| `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler |
+| `mocks/WebServer.h` | registra as rotas de verdade e despacha um pedido direto no handler, **inclusive envio de arquivo** (início, N pedaços, fim) |
+| `mocks/Update.h` | gravação de firmware: encena partição ausente, imagem truncada e flash cheia |
 
 `servidor_web.cpp` **entra** no banco. Os dois defeitos que o operador sentiu na
 mão — botão que não fazia nada e velocidade de cordão que não salvava — moravam
@@ -25,8 +26,15 @@ thread.
 que aceita mais que a biblioteca de verdade deixa o banco passar limpo e joga
 o erro na IDE do operador. Ver [`mocks/LEIA-ME.md`](mocks/LEIA-ME.md).
 
-O banco compila com `-DESTOP_FISICO_INSTALADO=true` para exercitar o ramo da
-emergência física. O `config.h` de produção mantém `false` até o botão existir.
+O banco compila com `-DESTOP_FISICO_INSTALADO=true` e
+`-DAPRENDER_BOTAO_INSTALADO=true` para exercitar os ramos dos dois botões
+físicos. O `config.h` de produção mantém os dois em `false` até eles
+existirem de verdade na máquina.
+
+Cada cenário começa declarando o botão de emergência **instalado e
+solto** (pino em LOW). O padrão do mock — `pinMode(INPUT_PULLUP)` deixa o
+pino em HIGH — representa *nada ligado*, que na ligação à prova de falha
+é emergência. Ver `ACHADOS.md`, R72.
 
 ## Rodar
 
@@ -119,6 +127,14 @@ no próprio `checar(...)`.
 | P04 | sem encoder acompanhando as duas juntas, o braço **não** é solto |
 | P05 | sair do modo manual e a emergência encerram o aprendizado |
 | P06 | o mesmo modo pela tela, e o estado no `/api/status` |
+| P07 | emergência com o **fio partido** tem de parar a máquina |
+| Q01 | pausar no meio de um cordão e retomar de onde parou |
+| Q02 | a contagem de peças: o que conta, o que não conta, e o que sobrevive ao religamento |
+| Q03 | desfazer devolve o programa apagado por engano — e desfazer duas vezes é reversível |
+| Q04 | abrir o arco exige confirmação **na requisição**, não só na tela |
+| Q05 | o backup da máquina leva a calibração junto |
+| Q06 | backup de uma versão anterior não apaga a calibração viva |
+| R01 | os dois drivers no mesmo barramento, cada um no seu endereço |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

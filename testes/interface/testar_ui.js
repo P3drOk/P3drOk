@@ -46,22 +46,36 @@ function checar(ok, texto, extra) {
   // O teto nao e estetico: a pagina inteira vai comprimida na flash e sai
   // pelo Wi-Fi proprio do robo, que e lento.
   //
-  // 64 KB nao e chute: no ponto de acesso do ESP32 a transferencia fica
-  // na casa de 1 a 2 Mbit/s efetivos, entao 64 KB sao menos de meio
-  // segundo -- o operador nao percebe. Na flash sao 64 KB de uma
-  // particao de 3 MB, que tambem nao aperta.
+  // 80 KB nao e chute: no ponto de acesso do ESP32 a transferencia fica
+  // na casa de 1 a 2 Mbit/s efetivos, entao 80 KB sao entre 0,3 e 0,6 s
+  // -- o operador nao percebe. Na flash sao 80 KB, e mesmo no esquema de
+  // particao com OTA (1,9 MB por imagem) isso nao aperta.
   //
-  // O teto existe para o crescimento ser uma DECISAO e nao um acidente:
-  // quando ele estourar, e hora de olhar o que cresceu antes de subir o
-  // numero de novo.
-  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 64000,
+  // O teto existe para o crescimento ser uma DECISAO e nao um acidente.
+  // Ja foi 48 KB, depois 64 KB, agora 80 KB. O que subiu desta vez, e por
+  // que valeu:
+  //
+  //   - gerador de QR (~7,5 KB de fonte): substitui uma biblioteca
+  //     externa que nao existe aqui -- a maquina nao tem internet, entao
+  //     CDN nao e opcao. Conferido contra um decodificador de verdade
+  //     (testes/conferir_qr.py).
+  //   - aba Maquina inteira: saude, registro de eventos, os dois QR de
+  //     conexao, envio de firmware e modo operador.
+  //   - miniatura de peca do cartao, com o aviso de elos diferentes.
+  //   - dicionario de ingles da superficie do operador.
+  //   - controles de producao: pausar, retomar, repetir, desfazer.
+  //
+  // Nenhum deles e enfeite: sao o que separa uma bancada de um
+  // equipamento que faz a centesima peca. Quando ESTE teto estourar, olhe
+  // de novo antes de subir.
+  checar(cab['content-encoding'] === 'gzip' && bytesRede > 0 && bytesRede < 80000,
          'a pagina e servida comprimida, como o firmware faz',
          'Content-Encoding: ' + cab['content-encoding'] + ', ' + bytesRede +
          ' bytes na rede');
 
   // Barra de abas presente e com as cinco abas
   const nAbas = await p.locator('#abas button').count();
-  checar(nAbas === 6, 'barra de abas inferior com 6 abas', nAbas + ' abas encontradas');
+  checar(nAbas === 7, 'barra de abas inferior com 7 abas', nAbas + ' abas encontradas');
 
   // Aba inicial = Mover, com o joystick visivel
   const joyVis = await p.locator('#joy').isVisible();
@@ -488,8 +502,12 @@ function checar(ok, texto, extra) {
         clicados++;
         const uteis = rotas.filter(x => !RUIDO.includes(x));
         // btSdSalvar sem nome no campo e recusa local proposital;
-        // btDxfAbrir abre o seletor de arquivo, que nao e uma rota.
+        // btDxfAbrir abre o seletor de arquivo, que nao e uma rota;
+        // btSoldar e btOta pedem uma segunda acao de proposito (dois
+        // toques para o arco, escolher o .bin para o firmware) -- os dois
+        // tem cenario proprio mais abaixo, entao aqui nao sao mudos.
         const local = (a.id === 'btSdSalvar') ||
+                      (a.id === 'btSoldar') || (a.id === 'btOta') ||
                       (a.id === 'btDxfAbrir' && abriuArquivo > 0);
         if (!uteis.length && !local) mortos.push(a.id + ' (nao chamou nada)');
       }
@@ -1111,6 +1129,270 @@ function checar(ok, texto, extra) {
   await t.request.post(BASE + '/teste/estado',
     { data: { cal1: true, cal2: true, servos: true, progN: 3, trajN: 24 } });
   await t.waitForTimeout(500);
+
+
+  // ------------------------------------------------------------------
+  // Producao: pausar, repetir, desfazer, e o arco em DOIS toques.
+  // ------------------------------------------------------------------
+  await t.request.post(BASE + '/teste/estado',
+    { data: { modo: 'EXECUTANDO', progN: 3, progIdx: 1, trecho: 42,
+              ciclos: 137, cicSes: 9, pausa: false, desf: true } });
+  await t.waitForTimeout(600);
+  await t.locator('#abas button[data-aba="prog"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btSoldar').closest('.et');
+    document.querySelectorAll('#pnProg .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(250);
+
+  const contando = await t.evaluate(() => document.getElementById('contPecas').textContent.trim());
+  checar(/137/.test(contando) && /9/.test(contando),
+         'Producao: a contagem de pecas aparece durante a execucao', contando);
+
+  rotas = [];
+  await t.locator('#btPausa').click();
+  await t.waitForTimeout(300);
+  const pausou = rotas.find(x => x.split('?')[0] === '/api/prog/pausar');
+  checar(!!pausou && /on=1/.test(pausou), 'Producao: Pausar chama a rota certa',
+         pausou || 'nada');
+
+  await t.request.post(BASE + '/teste/estado', { data: { pausa: true } });
+  await t.waitForTimeout(600);
+  const pausado = await t.evaluate(() => ({
+    bt: document.getElementById('btPausa').textContent.trim(),
+    cont: document.getElementById('contPecas').textContent.trim(),
+  }));
+  checar(/Retomar/.test(pausado.bt), 'Producao: pausado, o mesmo botao vira Retomar', pausado.bt);
+  checar(/42%/.test(pausado.cont) && /2.*3/.test(pausado.cont),
+         'Producao: pausado, a tela diz em que trecho e a que altura dele parou',
+         pausado.cont);
+
+  rotas = [];
+  await t.locator('#btPausa').click();
+  await t.waitForTimeout(300);
+  checar(rotas.some(x => /\/api\/prog\/pausar\?on=0/.test(x)),
+         'Producao: Retomar volta pela mesma rota com on=0', rotas.join(' '));
+
+  // O arco em dois toques. O primeiro NAO pode executar.
+  await t.request.post(BASE + '/teste/estado',
+    { data: { modo: 'MANUAL', pausa: false } });
+  await t.waitForTimeout(600);
+  rotas = [];
+  await t.locator('#btSoldar').click();
+  await t.waitForTimeout(250);
+  const armado = await t.evaluate(() => document.getElementById('btSoldar').textContent.trim());
+  checar(!rotas.some(x => x.startsWith('/api/prog/executar')),
+         'Arco: o primeiro toque NAO executa nada', rotas.join(' ') || 'nenhuma rota');
+  checar(/Confirmar/i.test(armado),
+         'Arco: o primeiro toque arma o botao e ele diz que esta armado', armado);
+
+  rotas = [];
+  await t.locator('#btSoldar').click();
+  await t.waitForTimeout(300);
+  const soldou = rotas.find(x => x.split('?')[0] === '/api/prog/executar');
+  checar(!!soldou && /ensaio=0/.test(soldou) && /conf=1/.test(soldou),
+         'Arco: o segundo toque executa, e a confirmacao vai na requisicao',
+         soldou || 'nada');
+
+  rotas = [];
+  await t.locator('#btRepetir').click();
+  await t.waitForTimeout(300);
+  const repetiu = rotas.find(x => x.split('?')[0] === '/api/prog/repetir');
+  checar(!!repetiu && /conf=1/.test(repetiu),
+         'Producao: "Mais uma peca" tambem exige confirmacao na requisicao',
+         repetiu || 'nada');
+
+  // ------------------------------------------------------------------
+  // Leitura de angulo: comandado e medido, lado a lado.
+  // ------------------------------------------------------------------
+  await t.request.post(BASE + '/teste/estado',
+    { data: { t1: 30.0, m1: 30.04, m1ok: true, t2: -14.4, m2: -12.1, m2ok: true } });
+  await t.waitForTimeout(600);
+  const ang = await t.evaluate(() => ({
+    m1: document.getElementById('hM1').textContent.trim(),
+    c1: document.getElementById('hM1').className,
+    m2: document.getElementById('hM2').textContent.trim(),
+    c2: document.getElementById('hM2').className,
+  }));
+  checar(/30\.04/.test(ang.m1) && !/dif/.test(ang.c1),
+         'Angulo: a leitura do encoder aparece junto do comandado', ang.m1);
+  checar(/12\.1/.test(ang.m2) && /dif/.test(ang.c2),
+         'Angulo: divergencia grande fica marcada, a pequena nao', ang.m2 + ' | ' + ang.c2);
+
+  await t.request.post(BASE + '/teste/estado', { data: { m1ok: false } });
+  await t.waitForTimeout(600);
+  const semLeitura = await t.evaluate(() => document.getElementById('hM1').textContent.trim());
+  checar(/sem leitura/i.test(semLeitura),
+         'Angulo: sem encoder a tela diz "sem leitura" em vez de mostrar zero',
+         semLeitura);
+  await t.request.post(BASE + '/teste/estado', { data: { m1ok: true } });
+
+  // ------------------------------------------------------------------
+  // Aba Maquina: saude, registro, QR e modo operador.
+  // ------------------------------------------------------------------
+  await t.locator('#abas button[data-aba="maq"]').click();
+  await t.waitForTimeout(700);
+  const saude = await t.evaluate(() => ({
+    n: document.querySelectorAll('#saudeG .sl').length,
+    txt: document.getElementById('saudeG').textContent,
+    sb: document.getElementById('sbSaude').textContent.trim(),
+  }));
+  checar(saude.n >= 12, 'Maquina: a tela de saude lista os indicadores',
+         saude.n + ' linhas');
+  checar(/pecas|Pecas/.test(saude.txt) && /Encoder/.test(saude.txt),
+         'Maquina: producao e encoder estao entre eles', saude.sb);
+
+  const reg = await t.evaluate(() => document.getElementById('regLista').textContent.trim());
+  checar(reg.length > 0, 'Maquina: o registro de eventos aparece', reg.slice(0, 60));
+
+  // Os dois QR tem de ser DESENHADOS, nao so existir como canvas vazio.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('qrRede').closest('.et');
+    document.querySelectorAll('#pnMaq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(500);
+  const qr = await t.evaluate(() => {
+    const r = {};
+    ['qrRede', 'qrPainel'].forEach(id => {
+      const cv = document.getElementById(id);
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let escuros = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] < 128) escuros++;
+      r[id] = escuros;
+    });
+    return r;
+  });
+  checar(qr.qrRede > 500 && qr.qrPainel > 500,
+         'Maquina: os dois codigos QR sao realmente desenhados',
+         'modulos escuros: rede ' + qr.qrRede + ', painel ' + qr.qrPainel);
+
+  // Modo operador esconde as abas de instalacao.
+  await t.request.post(BASE + '/teste/estado', { data: { op: true } });
+  await t.waitForTimeout(700);
+  const opLigado = await t.evaluate(() => ({
+    ajuste: !!document.querySelector('#abas button[data-aba="ajuste"]').offsetParent,
+    enc:    !!document.querySelector('#abas button[data-aba="enc"]').offsetParent,
+    prog:   !!document.querySelector('#abas button[data-aba="prog"]').offsetParent,
+    aba:    document.body.dataset.aba,
+  }));
+  checar(!opLigado.ajuste && !opLigado.enc,
+         'Operador: as abas de instalacao somem no modo operador',
+         'ajuste visivel: ' + opLigado.ajuste + ', encoder: ' + opLigado.enc);
+  checar(opLigado.prog,
+         'Operador: o que faz peca continua na tela', 'programa visivel: ' + opLigado.prog);
+
+  await t.request.post(BASE + '/teste/estado', { data: { op: false } });
+  await t.waitForTimeout(600);
+  const opDesligado = await t.evaluate(() =>
+    !!document.querySelector('#abas button[data-aba="ajuste"]').offsetParent);
+  checar(opDesligado, 'Operador: saindo do modo, os ajustes voltam');
+
+
+  // ------------------------------------------------------------------
+  // Biblioteca de pecas: ver a miniatura ANTES de carregar.
+  // ------------------------------------------------------------------
+  await t.locator('#abas button[data-aba="arq"]').click();
+  await t.waitForTimeout(500);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('sdLista').closest('.et');
+    document.querySelectorAll('#pnArq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(400);
+  rotas = [];
+  await t.locator('#sdLista [data-ver]').first().click();
+  await t.waitForTimeout(900);
+  const pediuPrevia = rotas.some(x => x.split('?')[0] === '/api/sd/prever');
+  checar(pediuPrevia, 'Biblioteca: "ver" pede a previa e NAO carrega a peca',
+         rotas.join(' ') || 'nada');
+  checar(!rotas.some(x => x.split('?')[0] === '/api/sd/carregar'),
+         'Biblioteca: ver uma peca nao troca a que esta na maquina');
+
+  const pv = await t.evaluate(() => {
+    const cv = document.getElementById('pvTela');
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let pintados = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) pintados++;
+    return { aberto: document.getElementById('veuPeca').classList.contains('on'),
+             pintados: pintados,
+             info: document.getElementById('pvInfo').textContent.trim(),
+             aviso: document.getElementById('pvAviso').textContent.trim() };
+  });
+  checar(pv.aberto && pv.pintados > 300,
+         'Biblioteca: a miniatura da peca e realmente desenhada',
+         pv.pintados + ' pixels pintados');
+  checar(/4 pontos/.test(pv.info) && /cordao/.test(pv.info),
+         'Biblioteca: e diz quantos pontos e quantos cordoes', pv.info);
+  checar(/380/.test(pv.aviso) && /450/.test(pv.aviso),
+         'Biblioteca: peca feita com outros elos ACENDE o aviso, com os dois numeros',
+         pv.aviso.slice(0, 90));
+
+  // Peca da propria maquina: nenhum aviso.
+  await t.request.post(BASE + '/teste/previa', { data: { l1: 450.0, l2: 400.0 } });
+  await t.locator('#pvFechar').click();
+  await t.waitForTimeout(200);
+  await t.locator('#sdLista [data-ver]').first().click();
+  await t.waitForTimeout(900);
+  const semAviso = await t.evaluate(() =>
+    document.getElementById('pvAviso').style.display);
+  checar(semAviso === 'none',
+         'Biblioteca: peca feita nesta maquina nao acende aviso nenhum',
+         'display: ' + semAviso);
+
+  rotas = [];
+  await t.locator('#pvCarregar').click();
+  await t.waitForTimeout(400);
+  checar(rotas.some(x => /\/api\/sd\/carregar/.test(x)),
+         'Biblioteca: dali mesmo da para carregar a peca vista', rotas.join(' '));
+
+
+  // ------------------------------------------------------------------
+  // Idiomas. O que interessa e a ida E a volta: uma traducao que nao
+  // desfaz deixa a maquina em ingles para sempre.
+  // ------------------------------------------------------------------
+  await t.locator('#abas button[data-aba="maq"]').click();
+  await t.waitForTimeout(500);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btIdioma').closest('.et');
+    document.querySelectorAll('#pnMaq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(300);
+  await t.locator('#btIdioma').click();
+  await t.waitForTimeout(1200);
+  const ingles = await t.evaluate(() => ({
+    abas: [...document.querySelectorAll('#abas button span')].map(e => e.textContent.trim()),
+    servos: document.getElementById('btServos').textContent.trim(),
+    idioma: (() => { try { return localStorage.getItem('idioma'); } catch (e) { return null; } })(),
+  }));
+  checar(ingles.abas.includes('Program') && ingles.abas.includes('Machine'),
+         'Idioma: as abas ficam em ingles', ingles.abas.join(' '));
+  checar(/servos/i.test(ingles.servos) && /able/i.test(ingles.servos),
+         'Idioma: os botoes principais tambem', ingles.servos);
+  checar(ingles.idioma === 'en', 'Idioma: a escolha fica gravada no navegador');
+
+  // As notas longas NAO sao traduzidas -- e proposital, e a tela nao
+  // pode ficar meio traduzida por acidente.
+  const nota1 = await t.evaluate(() => {
+    const n = document.querySelector('#pnProg .nt');
+    return n ? n.textContent.slice(0, 60) : '';
+  });
+  checar(/[çãõéí]/i.test(nota1) || /cordao|ponto|braco/i.test(nota1),
+         'Idioma: as notas longas seguem em portugues, como documentado',
+         nota1.slice(0, 50));
+
+  await t.locator('#abas button[data-aba="maq"]').click();
+  await t.waitForTimeout(400);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btIdioma').closest('.et');
+    document.querySelectorAll('#pnMaq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(300);
+  await t.locator('#btIdioma').click();
+  await t.waitForTimeout(1200);
+  const voltou = await t.evaluate(() =>
+    [...document.querySelectorAll('#abas button span')].map(e => e.textContent.trim()));
+  checar(voltou.includes('Programa') && voltou.includes('Maquina'),
+         'Idioma: e a volta para o portugues funciona', voltou.join(' '));
 
   checar(errosT.length === 0, 'nenhum erro de JavaScript em toda a varredura',
          errosT.length ? errosT.slice(0, 3).join(' | ') : 'console limpo');

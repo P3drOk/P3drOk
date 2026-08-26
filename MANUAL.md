@@ -188,6 +188,7 @@ escreve registrador):
 | `encoder.h/.cpp` | mestre Modbus, tarefa própria no núcleo 0 |
 | `correcao.h/.cpp` | assentamento de posição pelo encoder, seguir o eixo solto, zero absoluto |
 | `aprender.h/.cpp` | modo aprendizado e o botão físico da ponteira |
+| `ota.h/.cpp` | atualização de firmware pela rede |
 | `pagina_web.h` | a interface inteira, um arquivo — **é aqui que se edita** |
 | `pagina_web_gz.h` | gerado; `testes/gerar_pagina_gz.py` refaz |
 
@@ -398,6 +399,57 @@ fora do modo, o botão preso no boot, o caso sem encoder, o que encerra o
 modo, e a mesma coisa pela tela) e **M05** (quando a contagem segue o
 eixo movido à mão — e quando não segue).
 
+### 5.4.2 Produção: pausa, repetição, contagem e desfazer
+
+O que separa um braço de bancada de um equipamento de produção não é
+precisão — é o que acontece na centésima peça.
+
+**Pausar** (`progPausar`) guarda em que trecho e **a que fração dele** o
+cordão parou, e retomar continua dali em vez de refazer por cima do que
+já foi soldado. O arco **fecha** na pausa, sempre: arco aberto com o
+braço parado fura a chapa em segundos, então não existe pausa "segurando
+o arco". Ao retomar ele reabre com o mesmo tempo de abertura do início de
+qualquer cordão, porque a poça esfriou. Cenário **Q01**.
+
+**Mais uma peça** (`/api/prog/repetir`) roda o mesmo programa sem
+reabrir o arquivo. É o caso normal de produção, e exige a mesma
+confirmação do arco.
+
+**Contador de peças** (`Producao`, em `estado.h`), gravado em NVS:
+
+| | |
+|---|---|
+| peças prontas | execução **com arco** que chegou ao fim |
+| interrompidas | execução com arco parada no meio |
+| tempo de arco | segundos de arco aberto acumulados — é o número que diz quando trocar bico e difusor |
+| desde a manutenção | zerado pelo botão **Registrar manutenção feita** |
+
+Ensaio **não** conta: não gasta consumível nem produz peça. Cenário
+**Q02**.
+
+**Desfazer** (`progDesfazer`), um nível, cobre o estrago que não tem
+volta pela tela: apagar um programa de trinta pontos ensinados à mão, ou
+remover um ponto no meio de um cordão. Desfazer duas vezes volta ao que
+estava — um Ctrl+Z apertado sem querer não pode deixar o operador pior do
+que começou. Cenário **Q03**.
+
+**Abrir o arco pede dois toques** na tela — *e* `conf=1` na requisição. A
+tela pedir confirmação não protege nada se a rota abre o arco para
+qualquer chamada, e ela é alcançável por qualquer coisa na rede da
+máquina. Cenário **Q04**.
+
+### 5.4.3 Biblioteca de peças, com miniatura
+
+Na aba **Arquivos**, cada programa do cartão tem um botão **ver**: ele lê
+o arquivo para uma área de troca e **desenha** a peça — cordões em linha
+grossa, deslocamentos tracejados — sem tocar no programa que está na
+máquina. Ver a peça errada é barato; carregar a peça errada custa uma
+chapa.
+
+A miniatura também acende o **aviso de peça errada**: um programa feito
+com outros comprimentos de elo aponta para outro lugar da chapa com os
+mesmos ângulos, e o aviso mostra os dois pares de números.
+
 ### 5.5 Leitura do encoder
 
 Aba/coluna **Encoder**. No computador ela fica **aberta o tempo todo** ao
@@ -462,6 +514,13 @@ desvio (1°), tentativas (3). Tudo desligável.
 **Vigilância**: com o eixo parado, se o erro passar do limite por mais de
 um segundo, o painel avisa. Não mexe no motor — só conta e avisa.
 
+**Leitura de ângulo na tela.** A régua do topo mostra, para cada junta,
+o ângulo **comandado** (a conta de pulsos do firmware) e logo abaixo o
+**medido** pelo encoder, com a diferença. Abaixo de 0,5° a diferença fica
+discreta — é o tremor normal de um encoder de 17 bits; acima disso fica
+vermelha. É o que transforma "acho que está em 30 graus" em "está em
+30,12 graus", e o que denuncia um desvio antes de ele virar peça torta.
+
 **Braço movido à mão** (`seguirEixoSolto()`): com o torque **desligado**
 o braço está solto e o encoder é a única coisa que sabe onde ele foi
 parar. A contagem é acertada pela leitura, e "movi com a mão" passa a
@@ -499,6 +558,81 @@ do Windows, Android e iPhone levam redirecionamento para 192.168.4.1.
 
 ---
 
+### 5.10 Máquina: saúde, registro, conexão, firmware e modo operador
+
+Aba **Máquina**.
+
+### Saúde (`GET /api/saude`)
+
+Uma tela só com tudo que se pergunta quando algo está estranho: há quanto
+tempo está ligada, peças prontas e interrompidas, tempo de arco,
+memória, ocupação da partição, cartão, alarmes, travamentos, e — o mais
+útil — a **taxa de acerto** de cada encoder. 100% é barramento saudável;
+60% não é "meio quebrado", é cabo, terminação ou aterramento, e vai
+piorar.
+
+Antes disso, a resposta a "está tudo bem?" era abrir o monitor serial com
+um cabo — que só existe na bancada, nunca na fábrica.
+
+### Registro de eventos (`GET /api/registro`)
+
+As últimas 24 linhas saem de um **anel na RAM**, então funcionam sem
+cartão — que é justamente quando a pergunta "o que aconteceu?" é feita. O
+registro completo continua indo para `/log/s####.csv` no cartão.
+
+### Conectar (QR)
+
+Dois códigos: o primeiro entra na rede Wi-Fi da máquina (formato
+`WIFI:...`, lido por Android e iPhone), o segundo abre o painel.
+
+O gerador de QR é **próprio** — a máquina não tem internet, então CDN não
+é opção — e é conferido por `testes/conferir_qr.py`, que renderiza os
+códigos e os **lê de volta com um decodificador de verdade**. Um QR
+desenhado errado fica quadradinho e bonito e não abre em celular nenhum;
+nenhuma inspeção visual pega isso.
+
+### Atualizar o firmware (OTA)
+
+> **Limite real.** O `partitions.csv` deste projeto dá 3 MB de app e
+> **não tem partição de OTA**. Gravado assim, o robô não tem para onde
+> escrever a imagem nova, e o painel diz isso em vez de fingir.
+
+Para ter OTA, grave **uma vez pelo USB** com `partitions_ota.csv` (duas
+partições de 1,9 MB); daí em diante as atualizações vão pela rede. Não há
+meio-termo: a imagem nova é escrita na partição que **não** está rodando.
+Com uma partição só, gravar seria escrever por cima do próprio código em
+execução — o processador trava no meio, com o relé de solda em estado
+indefinido.
+
+O `nvs` fica no mesmo lugar nos dois esquemas, então **a calibração já
+salva continua valendo** depois de trocar de partição.
+
+Antes de começar, o módulo desabilita os servos: o ESP32 reinicia no fim,
+e um driver habilitado com o gerador de pulso morto é um eixo que ninguém
+está comandando.
+
+### Modo operador × técnico
+
+O modo operador **esconde** as abas de instalação (Ajustes e Encoder).
+Entrar não pede nada — trancar a máquina para o turno tem de ser rápido.
+Sair pede uma senha curta (de fábrica `1234`, trocável na própria tela).
+
+> **Isto não é segurança de rede.** A máquina serve o próprio Wi-Fi, e
+> quem estiver nele alcança a API direto, sem passar pela tela. É uma
+> trava contra toque errado — útil todo dia, e só isso.
+
+### Idiomas
+
+Traduz o que o operador toca: abas, botões, rótulos, a tela de saúde e a
+tira de estado. **As notas longas de explicação continuam em
+português** — elas são o manual embutido desta máquina, escritas para
+quem a monta, e traduzir mal um texto que explica por que o arco fecha na
+pausa é pior do que deixá-lo como está.
+
+---
+
+---
+
 ## 6. Rotas HTTP
 
 Conferidas por `testes/conferir_rotas.py`, que reprova rota registrada e
@@ -531,6 +665,16 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/zero/ensinar` | ensina a referência absoluta de uma junta |
 | `POST /api/zero/esquecer` | volta a ligar como antes |
 | `POST /api/aprender` | entra/sai do modo aprendizado (`on=1`, `on=0`, `on=-1` alterna) |
+| `POST /api/prog/pausar` | pausa (`on=1`) e retoma (`on=0`) o programa |
+| `POST /api/prog/repetir` | mais uma peça — exige `conf=1` |
+| `POST /api/prog/desfazer` | desfaz a última alteração do programa |
+| `POST /api/prog/executar` | com `ensaio=0` **exige `conf=1`** |
+| `POST /api/manutencao/ok` | zera o contador de peças desde a manutenção |
+| `GET  /api/saude` | tudo que responde "está tudo bem?" |
+| `GET  /api/registro` | as últimas linhas do log, da memória |
+| `POST /api/painel` | modo operador e senha do técnico |
+| `POST /api/ota` | envio do firmware (multipart) |
+| `POST /api/sd/prever`, `GET /api/sd/previa` | miniatura de uma peça do cartão |
 | `GET  /api/sd/*`, `POST /api/sd/*` | cartão |
 | `GET  /api/rede` | por onde chegar no painel |
 

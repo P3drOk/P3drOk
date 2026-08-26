@@ -30,6 +30,10 @@ inline void delayMicroseconds(uint32_t us) { g_millis += (us + 999) / 1000; }
 extern int  g_pinModo[64];
 extern int  g_pinSaida[64];
 extern int  g_pinEntrada[64];
+// Tamanho da particao de OTA que o mock informa. O banco troca para 0
+// para encenar o firmware gravado sem OTA.
+extern uint32_t g_espParticaoOta;
+extern uint32_t g_espReinicios;
 extern int  g_escritasRele;
 extern int  g_subidas[64];   // bordas de subida por pino
 void pinMode(uint8_t p, int m);
@@ -66,9 +70,15 @@ extern SerialMock Serial;
 // ---- ESP -------------------------------------------------------------
 struct EspMock {
   uint32_t getSketchSize()      const { return 1721921; }
-  uint32_t getFreeSketchSpace() const { return 3145728 - 1721921; }
+  uint32_t getFreeSketchSpace() const { return g_espParticaoOta; }
   uint32_t getFreeHeap()        const { return 236864; }
+  uint32_t getMinFreeHeap()     const { return 198000; }
+  // Reiniciar no PC nao pode matar o banco: conta e segue. Um cenario
+  // que mande a maquina reiniciar sem querer aparece no contador, em vez
+  // de derrubar a suite inteira sem dizer onde.
+  void restart() const { g_espReinicios++; }
 };
+extern uint32_t g_espReinicios;
 extern EspMock ESP;
 
 // ---- utilitarios ------------------------------------------------------

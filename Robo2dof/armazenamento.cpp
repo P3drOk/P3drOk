@@ -125,13 +125,39 @@ static void caminhoDe(char* destino, size_t tam, ArmTipo t, const char* nome) {
 }
 
 // ---------------------------------------------------------------------
+// Anel na RAM com as ultimas linhas. Escrito pelo core 1 dentro de
+// logEvento() e lido pelo core 0 no handler HTTP. Uma linha lida no meio
+// de uma escrita sai truncada e nada mais -- nao vale um mutex no
+// caminho de um registro de texto.
+static const uint8_t LOG_MEM = 24;
+static LinhaRegistro anel[LOG_MEM];
+static uint8_t       anelN   = 0;    // quantas linhas validas
+static uint8_t       anelFim = 0;    // onde a proxima entra
+
+uint8_t logQuantosNaMemoria() { return anelN; }
+
+const LinhaRegistro* logDaMemoria(uint8_t i) {
+  if (i >= anelN) return nullptr;
+  // 0 = mais recente: anda para tras a partir do fim.
+  const uint8_t pos = (uint8_t)((anelFim + LOG_MEM - 1 - i) % LOG_MEM);
+  return &anel[pos];
+}
+
 void logEvento(const char* fmt, ...) {
-  if (!filaLog) return;
   LinhaLog l;
   l.ms = millis();
   va_list a; va_start(a, fmt);
   vsnprintf(l.txt, sizeof(l.txt), fmt, a);
   va_end(a);
+
+  // O anel vem PRIMEIRO e nao depende de fila nem de cartao: a pergunta
+  // "o que aconteceu?" e feita justamente quando algo deu errado.
+  anel[anelFim].ms = l.ms;
+  snprintf(anel[anelFim].txt, sizeof(anel[anelFim].txt), "%s", l.txt);
+  anelFim = (uint8_t)((anelFim + 1) % LOG_MEM);
+  if (anelN < LOG_MEM) anelN++;
+
+  if (!filaLog) return;
   // Timeout zero: o log jamais segura o laco de controle.
   xQueueSend(filaLog, &l, 0);
 }
@@ -435,7 +461,22 @@ static bool salvarConfig(const char* nome) {
   f.printf("pCur=%u\n",   c.protCurso    ? 1u : 0u);
   f.printf("pDob=%u\n",   c.protDobra    ? 1u : 0u);
   f.printf("pEnv=%u\n",   c.protEnvelope ? 1u : 0u);
-  // Referencia: nao e recarregado, serve para conferir o arquivo.
+  f.printf("inv1=%u\n",   c.inv1 ? 1u : 0u);
+  f.printf("inv2=%u\n",   c.inv2 ? 1u : 0u);
+  f.printf("suav=%u\n",   (unsigned)c.suavidade);
+  // CALIBRACAO. Sem isto o arquivo parecia um backup da maquina sem
+  // ser um: restaurar devolvia velocidades e elos e deixava o operador
+  // refazendo o assistente, que e a parte mais demorada de tudo.
+  f.printf("cal=1\n");
+  f.printf("cal1=%u\n",   c.cal1 ? 1u : 0u);
+  f.printf("cal2=%u\n",   c.cal2 ? 1u : 0u);
+  f.printf("p1min=%ld\n", c.p1Min);
+  f.printf("p1max=%ld\n", c.p1Max);
+  f.printf("p2min=%ld\n", c.p2Min);
+  f.printf("p2max=%ld\n", c.p2Max);
+  f.printf("home1=%.4f\n", c.home1);
+  f.printf("home2=%.4f\n", c.home2);
+  // Referencia para quem abrir o arquivo no PC.
   f.printf("# curso J1 %.2f a %.2f graus\n", J1.grausMin, J1.grausMax);
   f.printf("# curso J2 %.2f a %.2f graus\n", J2.grausMin, J2.grausMax);
   f.close();
@@ -498,6 +539,20 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
     else if (!strcmp(ch, "pCur"))   c.protCurso    = (v != 0);
     else if (!strcmp(ch, "pDob"))   c.protDobra    = (v != 0);
     else if (!strcmp(ch, "pEnv"))   c.protEnvelope = (v != 0);
+    else if (!strcmp(ch, "inv1"))   c.inv1         = (v != 0);
+    else if (!strcmp(ch, "inv2"))   c.inv2         = (v != 0);
+    else if (!strcmp(ch, "suav"))   c.suavidade    = (uint8_t)v;
+    // 'cal=1' e a marca de que este arquivo traz calibracao. Arquivo da
+    // versao anterior nao tem, e ai a calibracao viva fica como esta.
+    else if (!strcmp(ch, "cal"))    c.temCalib     = (v != 0);
+    else if (!strcmp(ch, "cal1"))   c.cal1         = (v != 0);
+    else if (!strcmp(ch, "cal2"))   c.cal2         = (v != 0);
+    else if (!strcmp(ch, "p1min"))  c.p1Min        = (long)v;
+    else if (!strcmp(ch, "p1max"))  c.p1Max        = (long)v;
+    else if (!strcmp(ch, "p2min"))  c.p2Min        = (long)v;
+    else if (!strcmp(ch, "p2max"))  c.p2Max        = (long)v;
+    else if (!strcmp(ch, "home1"))  c.home1        = (float)v;
+    else if (!strcmp(ch, "home2"))  c.home2        = (float)v;
   }
   f.close();
   if (!cabecalhoOk) { snprintf(erro, tamErro, "arquivo vazio ou ilegivel"); return false; }
@@ -510,7 +565,12 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
       c.elo1 <= 0 || c.elo2 <= 0 ||
       c.velNormal > FREQ_PULSO_MAX_HZ || c.velPrecisao > FREQ_PULSO_MAX_HZ ||
       c.velAuto > FREQ_PULSO_MAX_HZ ||
-      c.folgaDobra < 0 || c.folgaDobra > 90 || c.envRaio < 0) {
+      c.folgaDobra < 0 || c.folgaDobra > 90 || c.envRaio < 0 ||
+      // Curso invertido ou nulo num arquivo marcado como calibrado nao e
+      // "quase certo": e uma maquina que aceitaria qualquer movimento,
+      // porque toda protecao de curso se apoia nesses dois numeros.
+      (c.temCalib && c.cal1 && c.p1Min >= c.p1Max) ||
+      (c.temCalib && c.cal2 && c.p2Min >= c.p2Max)) {
     prepararConfigPendente();   // descarta o que foi lido
     snprintf(erro, tamErro, "configuracao com valor fora de faixa");
     return false;
@@ -618,6 +678,17 @@ static void executar(const Pedido& p) {
         // quando ele voltar ao slot.
         desmontar();
         definirResultado(ARM_ERRO, "nao consegui gravar o programa");
+      }
+      break;
+
+    case TAR_PREVER_PROG:
+      // Le para a area de troca e nao avisa o core 1: o programa vivo
+      // continua onde estava. Quem consome e o painel, por HTTP.
+      if (carregarPrograma(p.nome, erro, sizeof(erro))) {
+        definirResultado(ARM_PRONTO, "previa de \"%s\": %u pontos",
+                         p.nome, (unsigned)stagingN);
+      } else {
+        definirResultado(ARM_ERRO, "%s", erro);
       }
       break;
 
@@ -730,6 +801,7 @@ void armReiniciarTeste() {
   listaN  = 0;
   stagingN = 0;
   arquivoLog[0] = '\0';
+  anelN = anelFim = 0;
   if (filaPedidos) { vQueueDelete(filaPedidos); filaPedidos = nullptr; }
   if (filaLog)     { vQueueDelete(filaLog);     filaLog     = nullptr; }
 }

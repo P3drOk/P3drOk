@@ -32,8 +32,30 @@
 // rele de solda significa abrir arco na hora de energizar.
 #define PIN_RELE_SOLDA    2
 
-// Botao de emergencia fisico (contato NC -> LOW significa emergencia)
+// ---------------------------------------------------------------------
+// BOTAO DE EMERGENCIA fisico.
+//
+// Ligacao a prova de falha, e a polaridade nao e detalhe:
+//
+//   GND ──► [contato NC do botao] ──► GPIO27  (INPUT_PULLUP interno)
+//
+//   solto (contato FECHADO)  -> o pino ve GND        -> LOW  -> normal
+//   apertado (contato ABRE)  -> o pull-up puxa       -> HIGH -> EMERGENCIA
+//   fio partido / desligado  -> o pull-up puxa       -> HIGH -> EMERGENCIA
+//
+// O terceiro caso e a razao de ser desta ligacao: botao de emergencia
+// com fio rompido tem de PARAR a maquina, nao passar despercebido. Com
+// o contato NA (normalmente aberto), ou com o pull-up do lado errado,
+// um fio solto vira "esta tudo bem" -- e o botao vermelho deixa de
+// existir sem ninguem notar.
+//
+// Havia aqui a combinacao errada: o comentario mandava ligar o contato
+// no 3V3 e o codigo esperava LOW. Com pull-up interno e o outro lado no
+// 3V3 o pino nunca chega a LOW, entao o botao nao faria nada -- e um
+// fio partido tambem nao faria nada. Ver ACHADOS.md, R72.
 #define PIN_ESTOP         27
+// Nivel logico que significa EMERGENCIA no pino acima.
+#define ESTOP_NIVEL_ATIVO HIGH
 
 // ---------------------------------------------------------------------
 // BOTAO DE APRENDIZADO (o botao da ponteira)
@@ -445,6 +467,12 @@ enum TipoComando : uint8_t {
   // Modo aprendizado: o braco solto e o botao da ponteira gravando
   // pontos. a = 0 sai, 1 entra, -1 alterna. Ver aprender.h.
   CMD_APRENDER,
+
+  // Producao e edicao do programa.
+  CMD_PROG_PAUSAR,      // a = 0 retoma, 1 pausa, -1 alterna
+  CMD_PROG_DESFAZER,
+  CMD_PROG_REPETIR,     // roda de novo o ultimo programa executado
+  CMD_MANUTENCAO_OK,    // zera o contador de ciclos desde a manutencao
 
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP

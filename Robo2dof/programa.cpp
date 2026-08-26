@@ -5,6 +5,7 @@
 #include "solda.h"
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 static Ponto   pontos[MAX_PONTOS];
 static uint8_t nPontos = 0;
@@ -15,13 +16,45 @@ enum FaseProg : uint8_t {
   FASE_ABRINDO_ARCO,
   FASE_DESLOCANDO,   // trecho sem solda: interpolacao nas juntas (rapido)
   FASE_SOLDANDO,     // trecho com solda: RETA no espaco cartesiano
-  FASE_FECHANDO_ARCO
+  FASE_FECHANDO_ARCO,
+  // Retomada de um cordao pausado: reabre o arco e volta para a reta sem
+  // refazer prepararReta(), que zeraria o adiantamento do relogio.
+  FASE_RETOMANDO
 };
 
 static FaseProg fase       = FASE_PARADO;
 static bool     ensaio     = false;
 static uint8_t  idx        = 0;
 static uint32_t marcaTempo = 0;
+
+// ---------------------------------------------------------------------
+// Pausa. Guarda em que fase o programa estava e, quando era um cordao,
+// a que fracao dele -- e o que permite retomar de onde parou em vez de
+// refazer o trecho por cima do que ja foi soldado.
+// ---------------------------------------------------------------------
+static bool     pausado      = false;
+// Marcado no instante em que o programa chega ao ultimo ponto. E o que
+// separa "peca pronta" de "alguem apertou parar no meio" -- os dois
+// passam por progParar(), e sem esta marca o contador de producao nao
+// teria como distinguir.
+static bool     concluiu     = false;
+static FaseProg faseGuardada = FASE_PARADO;
+static float    fracaoSeg    = 0.0f;
+
+// ---------------------------------------------------------------------
+// Desfazer, um nivel. Guarda o programa inteiro antes de cada alteracao.
+// ---------------------------------------------------------------------
+static Ponto   desfPontos[MAX_PONTOS];
+static uint8_t desfN        = 0;
+static bool    desfTem      = false;
+static char    desfOque[40] = "";
+
+static void guardarParaDesfazer(const char* oque) {
+  memcpy(desfPontos, pontos, sizeof(Ponto) * nPontos);
+  desfN   = nPontos;
+  desfTem = true;
+  snprintf(desfOque, sizeof(desfOque), "%s", oque ? oque : "alteracao");
+}
 
 // Estado da reta em curso
 static float    xa, ya, xb, yb;
@@ -69,6 +102,7 @@ bool progAdicionarPonto(long p1, long p2, const char** motivo) {
     if (motivo) *motivo = aviso;
     return false;
   }
+  guardarParaDesfazer("ponto gravado");
   pontos[nPontos].p1 = (int32_t)p1;
   pontos[nPontos].p2 = (int32_t)p2;
   pontos[nPontos].soldaAteProximo = 0;
@@ -91,6 +125,8 @@ bool progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo) {
     return false;
   }
   // Valida tudo ANTES de escrever: nada de programa carregado pela metade.
+  // (o guarda de desfazer vem depois da validacao, la embaixo: guardar
+  // aqui perderia o desfazer anterior por causa de um arquivo recusado)
   for (uint8_t i = 0; i < n; i++) {
     Violacao v;
     if (!posturaValidaDet(passosParaGraus(J1, origem[i].p1),
@@ -104,6 +140,7 @@ bool progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo) {
       return false;
     }
   }
+  guardarParaDesfazer("carga de arquivo");
   memcpy(pontos, origem, (size_t)n * sizeof(Ponto));
   nPontos = n;
   // O ultimo ponto nao tem "proximo": solda ligada nele nao significa nada.
@@ -113,6 +150,7 @@ bool progCarregarDe(const Ponto* origem, uint8_t n, const char** motivo) {
 
 bool progRemoverPonto(uint8_t indice) {
   if (indice >= nPontos) return false;
+  guardarParaDesfazer("remocao de ponto");
   for (uint8_t i = indice; i + 1 < nPontos; i++) pontos[i] = pontos[i + 1];
   nPontos--;
   definirMensagem("Ponto %u removido", (unsigned)(indice + 1));
@@ -125,9 +163,41 @@ void progDefinirSolda(uint8_t indice, bool ligar) {
 }
 
 void progLimpar() {
+  // Apagar um programa de trinta pontos ensinados a mao e o estrago que
+  // mais custa caro nesta maquina. Ele guarda antes.
+  if (nPontos) guardarParaDesfazer("programa apagado");
   nPontos = 0;
   fase    = FASE_PARADO;
-  definirMensagem("Programa apagado");
+  pausado = false;
+  definirMensagem(desfTem ? "Programa apagado -- da para desfazer"
+                          : "Programa apagado");
+}
+
+// ---------------------------------------------------------------------
+bool progTemDesfazer()            { return desfTem; }
+const char* progDescricaoDesfazer() { return desfOque; }
+
+bool progDesfazer(const char** motivo) {
+  if (!desfTem) {
+    if (motivo) *motivo = "nao ha alteracao para desfazer";
+    return false;
+  }
+  if (fase != FASE_PARADO) {
+    if (motivo) *motivo = "pare o programa antes de desfazer";
+    return false;
+  }
+  // Troca em vez de copiar: desfazer duas vezes seguidas volta ao que
+  // estava, o que e o que o operador espera de um Ctrl+Z apertado sem
+  // querer duas vezes.
+  Ponto  troca[MAX_PONTOS];
+  const uint8_t nTroca = nPontos;
+  memcpy(troca, pontos, sizeof(Ponto) * nPontos);
+  memcpy(pontos, desfPontos, sizeof(Ponto) * desfN);
+  nPontos = desfN;
+  memcpy(desfPontos, troca, sizeof(Ponto) * nTroca);
+  desfN = nTroca;
+  definirMensagem("Desfeito: %s (%u pontos)", desfOque, (unsigned)nPontos);
+  return true;
 }
 
 // ---------------------------------------------------------------------
@@ -236,9 +306,12 @@ bool progIniciar(bool modoEnsaio, const char** motivo) {
     }
   }
 
-  ensaio = modoEnsaio;
-  idx    = 0;
-  fase   = FASE_INDO_INICIO;
+  ensaio    = modoEnsaio;
+  idx       = 0;
+  concluiu  = false;
+  pausado   = false;
+  fracaoSeg = 0.0f;
+  fase      = FASE_INDO_INICIO;
 
   soldaDesligar();
   moverCoordenado(pontos[0].p1, pontos[0].p2, velAuto);
@@ -325,6 +398,7 @@ static void atualizarReta() {
     } else {
       idx++;
       if (idx + 1 >= nPontos) {
+        concluiu = true;
         progParar();
         definirMensagem(ensaio ? "Ensaio concluido" : "Programa concluido");
         return;
@@ -335,9 +409,99 @@ static void atualizarReta() {
   }
 }
 
+// =====================================================================
+//  Pausa e retomada
+// =====================================================================
+bool progPausado() { return pausado; }
+
+uint8_t progFracaoTrecho() {
+  if (!progRodando()) return 0;
+  if (pausado) return (uint8_t)(fracaoSeg * 100.0f);
+  if (fase != FASE_SOLDANDO || tSegTotal == 0) return 0;
+  const uint32_t d = millis() - tSegIni;
+  const uint32_t f = (uint64_t)d * 100 / tSegTotal;
+  return (uint8_t)(f > 100 ? 100 : f);
+}
+
+bool progPausar(const char** motivo) {
+  if (fase == FASE_PARADO) {
+    if (motivo) *motivo = "nao ha programa em execucao";
+    return false;
+  }
+  if (pausado) return true;
+
+  // A fracao do cordao e a unica coisa que nao da para recalcular depois:
+  // o relogio nao para junto com o braco. Guardar ANTES de qualquer outra
+  // coisa.
+  if (fase == FASE_SOLDANDO && tSegTotal > 0) {
+    const uint32_t d = millis() - tSegIni;
+    fracaoSeg = (float)d / (float)tSegTotal;
+    if (fracaoSeg > 1.0f) fracaoSeg = 1.0f;
+  } else {
+    fracaoSeg = 0.0f;
+  }
+
+  // O ARCO FECHA. Arco aberto com o braco parado fura a chapa em
+  // segundos -- nao existe pausa "segurando o arco".
+  soldaDesligar();
+  pararSuave();
+
+  faseGuardada = fase;
+  pausado      = true;
+  definirMensagem("Programa pausado no trecho %u->%u, a %u%% dele",
+                  (unsigned)(idx + 1), (unsigned)(idx + 2),
+                  (unsigned)progFracaoTrecho());
+  return true;
+}
+
+bool progRetomar(const char** motivo) {
+  if (!pausado) {
+    if (motivo) *motivo = "o programa nao esta pausado";
+    return false;
+  }
+  if (!movimentoLiberado) {
+    if (motivo) *motivo = "habilite os servos e limpe os alarmes antes de retomar";
+    return false;
+  }
+
+  pausado = false;
+
+  if (faseGuardada == FASE_SOLDANDO) {
+    // Recalcula a reta do trecho e "adianta o relogio" ate a fracao onde
+    // parou: o seguidor de setpoint leva o braco de volta a esse ponto
+    // sozinho, e o cordao continua de onde estava em vez de recomecar
+    // por cima do que ja foi soldado.
+    // prepararReta() aqui e so para recuperar xa/ya/xb/yb, o ramo do
+    // cotovelo e as velocidades de seguimento do trecho. O relogio ela
+    // zera, e por isso ele e readiantado logo em seguida.
+    prepararReta();
+    tSegIni = millis() - (uint32_t)(fracaoSeg * (float)tSegTotal);
+    // Nao volta direto para FASE_SOLDANDO: o arco reabre com o mesmo
+    // tempo de abertura de qualquer cordao, porque a poca esfriou na
+    // pausa e retomar com o arco frio nao funde. Passar por
+    // FASE_ABRINDO_ARCO tambem nao serve -- ela refaz prepararReta() e
+    // perderia o adiantamento. Dai a fase propria.
+    fase       = FASE_RETOMANDO;
+    marcaTempo = millis();
+  } else {
+    // Deslocamento ou espera: refazer o trecho inteiro nao custa nada e
+    // nao marca a peca.
+    fase       = faseGuardada;
+    marcaTempo = millis();
+    if (fase == FASE_DESLOCANDO) {
+      moverCoordenado(pontos[idx + 1].p1, pontos[idx + 1].p2, velAuto);
+    }
+  }
+  aplicarAceleracao();
+  definirMensagem("Retomando o trecho %u->%u de onde parou",
+                  (unsigned)(idx + 1), (unsigned)(idx + 2));
+  return true;
+}
+
 // ---------------------------------------------------------------------
 void progAtualizar() {
   if (fase == FASE_PARADO) return;
+  if (pausado) return;
 
   // A fase de reta nao pode esperar os motores pararem.
   if (fase == FASE_SOLDANDO) { atualizarReta(); return; }
@@ -375,6 +539,7 @@ void progAtualizar() {
     case FASE_DESLOCANDO:
       idx++;
       if (idx + 1 >= nPontos) {
+        concluiu = true;
         progParar();
         definirMensagem(ensaio ? "Ensaio concluido" : "Programa concluido");
         return;
@@ -383,11 +548,27 @@ void progAtualizar() {
       marcaTempo = millis();
       break;
 
+    case FASE_RETOMANDO: {
+      // Reabre o arco (se o trecho tem solda) e volta para a reta, com o
+      // relogio ja adiantado ate a fracao onde a pausa pegou.
+      const bool comSolda = pontos[idx].soldaAteProximo;
+      if (comSolda && !ensaio) {
+        soldaDefinir(true);
+        if (millis() - marcaTempo < DWELL_ABRE_ARCO_MS) return;
+        // O tempo de abertura nao pode contar como cordao andado: o
+        // relogio da reta so recomeca agora.
+        tSegIni = millis() - (uint32_t)(fracaoSeg * (float)tSegTotal);
+      }
+      fase = FASE_SOLDANDO;
+      break;
+    }
+
     case FASE_FECHANDO_ARCO:
       if (millis() - marcaTempo < DWELL_FECHA_ARCO_MS) return;
       soldaDesligar();
       idx++;
       if (idx + 1 >= nPontos) {
+        concluiu = true;
         progParar();
         definirMensagem("Programa concluido");
         return;
@@ -403,7 +584,16 @@ void progAtualizar() {
 
 void progParar() {
   if (fase == FASE_PARADO) return;
-  fase = FASE_PARADO;
+
+  // Ciclo = execucao COM ARCO que chegou ao fim. Ensaio nao conta: nao
+  // gasta consumivel nem produz peca. Parado no meio conta como
+  // abortado, e esse numero e tao util quanto o outro -- ele e que
+  // mostra que a maquina esta sendo interrompida demais.
+  if (!ensaio) producaoContarCiclo(concluiu);
+  concluiu = false;
+
+  fase    = FASE_PARADO;
+  pausado = false;
   soldaDesligar();
   pararSuave();
   aplicarVelocidadeManual();
