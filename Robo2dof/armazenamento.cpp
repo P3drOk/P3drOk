@@ -476,6 +476,16 @@ static bool salvarConfig(const char* nome) {
   f.printf("p2max=%ld\n", c.p2Max);
   f.printf("home1=%.4f\n", c.home1);
   f.printf("home2=%.4f\n", c.home2);
+  // AREA DA MESA. Ensinada levando a ponta aos cantos -- refazer isso a
+  // mao a partir de um backup custaria o mesmo trabalho de ensinar de
+  // novo, entao ela viaja junto.
+  f.printf("mesa=1\n");
+  f.printf("mesaOn=%u\n", c.mesaDefinida ? 1u : 0u);
+  f.printf("mesaN=%u\n",  (unsigned)c.mesaCantos);
+  f.printf("mesaX0=%.2f\n", c.mesaXMin);
+  f.printf("mesaX1=%.2f\n", c.mesaXMax);
+  f.printf("mesaY0=%.2f\n", c.mesaYMin);
+  f.printf("mesaY1=%.2f\n", c.mesaYMax);
   // Referencia para quem abrir o arquivo no PC.
   f.printf("# curso J1 %.2f a %.2f graus\n", J1.grausMin, J1.grausMax);
   f.printf("# curso J2 %.2f a %.2f graus\n", J2.grausMin, J2.grausMax);
@@ -553,6 +563,15 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
     else if (!strcmp(ch, "p2max"))  c.p2Max        = (long)v;
     else if (!strcmp(ch, "home1"))  c.home1        = (float)v;
     else if (!strcmp(ch, "home2"))  c.home2        = (float)v;
+    // 'mesa=1' e a marca de que este arquivo traz area util. Arquivo da
+    // versao anterior nao tem, e ai a mesa ensinada fica como esta.
+    else if (!strcmp(ch, "mesa"))   c.temMesa      = (v != 0);
+    else if (!strcmp(ch, "mesaOn")) c.mesaDefinida = (v != 0);
+    else if (!strcmp(ch, "mesaN"))  c.mesaCantos   = (uint8_t)v;
+    else if (!strcmp(ch, "mesaX0")) c.mesaXMin     = (float)v;
+    else if (!strcmp(ch, "mesaX1")) c.mesaXMax     = (float)v;
+    else if (!strcmp(ch, "mesaY0")) c.mesaYMin     = (float)v;
+    else if (!strcmp(ch, "mesaY1")) c.mesaYMax     = (float)v;
   }
   f.close();
   if (!cabecalhoOk) { snprintf(erro, tamErro, "arquivo vazio ou ilegivel"); return false; }
@@ -570,7 +589,12 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
       // "quase certo": e uma maquina que aceitaria qualquer movimento,
       // porque toda protecao de curso se apoia nesses dois numeros.
       (c.temCalib && c.cal1 && c.p1Min >= c.p1Max) ||
-      (c.temCalib && c.cal2 && c.p2Min >= c.p2Max)) {
+      (c.temCalib && c.cal2 && c.p2Min >= c.p2Max) ||
+      // Mesa marcada como definida mas com retangulo invertido ou nulo
+      // recusaria TODO movimento: a maquina ficaria travada por causa de
+      // um arquivo, sem nada apontando para ele.
+      (c.temMesa && c.mesaDefinida &&
+       (c.mesaXMin >= c.mesaXMax || c.mesaYMin >= c.mesaYMax))) {
     prepararConfigPendente();   // descarta o que foi lido
     snprintf(erro, tamErro, "configuracao com valor fora de faixa");
     return false;

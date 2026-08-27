@@ -791,6 +791,86 @@ exige fechar uma janela antes nao e parada de emergencia.
 - Cenario `T03` -- analisador de JSON estrito aplicado a toda rota, em
   sete estados da maquina.
 
+## R86 · A reducao nao sai do angulo do encoder -- e isso e fisica  ✅
+
+O pedido era "agora que tenho o angulo, posso achar a reducao mais
+facil". A premissa nao fecha, e a conta mostra por que:
+
+    graus da junta = voltas do motor * 360 / reducao
+
+O angulo que o encoder mostra **ja e calculado usando a reducao**. Tirar
+a reducao dele seria tirar o numero de uma conta que usa o proprio
+numero. Com um sensor so, e antes do redutor, a relacao do redutor e
+invisivel -- nenhum programa contorna isso.
+
+O que o encoder da de graca, e com muita precisao, e a contagem de
+**voltas do motor**. Falta UMA referencia do lado da junta. Com ela:
+
+    reducao = voltas do motor * 360 / angulo real
+
+E ai vem o ganho de verdade, que e grande: a medida antiga contava
+PULSOS COMANDADOS. Ela erra junto com a engrenagem eletronica (se
+passosPorVolta estiver errado, a reducao sai errada na mesma proporcao) e
+erra junto com perda de passo. Contar voltas reais do motor nao tem
+nenhum dos dois problemas.
+
+`U01e` prova a diferenca: mede a reducao certa com o eixo **escorregando
+metade do caminho**. A medida por pulsos daria o dobro.
+
+As referencias, da melhor para a pior: esquadro de 90 graus (preciso e
+todo mundo tem um), curso entre batentes (maior angulo, menor erro
+relativo), volta completa (nao precisa de instrumento nenhum).
+
+## R87 · A area util virou coisa ensinada, nao digitada  ✅
+
+Eram dois numeros: um Y minimo e um raio morto. Descrevem mal uma mesa de
+verdade, que e um retangulo, num lugar especifico, e que o operador
+conhece pelos cantos e nao por coordenadas.
+
+Agora se leva a ponta a cada canto e grava. Dali para fora o braco nao
+anda -- nem por programa, nem pelas setas.
+
+O detalhe que fazia falta pensar: a area entra na mesma conta de
+GRAVIDADE dos limites de curso. Sem isso, uma ponta que parasse fora da
+area ficaria presa la para sempre -- `posturaValida` bloquearia todo
+movimento e o criterio de recuperacao ("nao piorar") nunca teria o que
+melhorar. `U03f` prova que sempre ha um lado que melhora.
+
+A conferencia e da PONTA, nao do cotovelo: o cotovelo passa por cima da
+mesa o tempo todo e nao solda nada.
+
+O raio morto da base continua em separado -- ele nao e da mesa, e da
+mecanica, e vale mesmo com a mesa inteira ensinada.
+
+## R88 · O desenho mostrava a intencao, nao o braco  ✅
+
+O boneco 2D e o 3D usavam o angulo COMANDADO. Isso desenha o que o
+firmware acha, nao o que o braco fez: com o eixo escorregado, a tela
+continua mostrando tudo no lugar enquanto a peca sai torta.
+
+Agora o boneco e a posicao MEDIDA, e quando as duas discordam de mais de
+meio grau o comandado aparece atras como fantasma tracejado. Da para VER
+o desvio. Sem leitura confiavel volta a valer o comandado, e a legenda
+diz qual das duas esta na tela -- boneco que muda de significado sem
+avisar e pior que nenhum.
+
+## R89 · O 3D tinha ordem de desenho fixa  ✅
+
+Era base, elo 1, cotovelo, elo 2 -- sempre nessa ordem. Com o cotovelo
+dobrado PARA TRAS, o elo 2 esta atras do elo 1 na cena e mesmo assim era
+pintado por cima dele. O braco saia recortado errado em metade das
+posturas, e era isso que fazia o desenho "ter problema de design".
+
+Agora cada peca declara a profundidade do seu ponto medio e o conjunto e
+pintado do fundo para a frente. As caixas dos elos ganharam tampa nas
+pontas (sem elas o elo parecia um tubo aberto visto de enfiada), as duas
+laterais tambem sao ordenadas, a base virou pedestal de dois degraus e a
+ferramenta virou um cone, que le como tocha.
+
+O achatamento vertical passou de 0,62 para 0,80 -- exagero DECLARADO: um
+braco de 850 mm de alcance tem 110 mm de altura, e na proporcao real nao
+da para ler qual elo passa por cima de qual. O exagero e so no Z.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -2395,8 +2475,8 @@ entre 0,3 e 0,6 s.
 
 | banco | rodada 20 | rodada 22 | agora |
 |-------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | **340 / 0** |
-| interface | 121 / 0 | 125 / 0 | **170 / 0** |
+| firmware | 229 / 0 | 241 / 0 | **358 / 0** |
+| interface | 121 / 0 | 125 / 0 | **177 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

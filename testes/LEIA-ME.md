@@ -142,6 +142,9 @@ no próprio `checar(...)`.
 | T03 | **toda** rota JSON validada por analisador estrito, em sete estados da máquina |
 | T04 | pausar na aproximação ao primeiro ponto, e retomar de onde parou |
 | T05 | travamento no meio de um programa **interrompe o programa** |
+| U01 | redução medida pelo encoder — inclusive com o eixo **escorregando metade do caminho** |
+| U02 | o que a medida da redução recusa: giro curto, referência curta, resultado implausível |
+| U03 | mesa ensinada pelos cantos, o limite que ela cria, e o braço **nunca preso do lado de fora** |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

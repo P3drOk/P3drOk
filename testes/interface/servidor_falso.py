@@ -54,6 +54,8 @@ estado = {
     "l1": 450.0, "l2": 400.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
     "aprBotao": False, "apr": False, "aprSolto": False, "aprN": 0,
     "op": False, "pausa": False, "desf": False, "ciclos": 137, "cicSes": 9,
+    "mesaOn": True, "mesaX0": 180.0, "mesaX1": 640.0,
+    "mesaY0": -260.0, "mesaY1": 260.0,
     "m1": 9.02, "m2": -14.38, "m1ok": True, "m2ok": True, "trecho": 0,
     "msg": "Pronto. Habilite os servos para comecar",
 }
@@ -91,6 +93,18 @@ SAUDE = {
     "trav": 0, "alerta": 2, "alarme1": False, "alarme2": False,
     "cartao": True, "cartaoLivre": 7412992, "cartaoTotal": 15204352,
     "apr": False, "aprBotao": False, "estop": False, "ota": False,
+}
+
+CALIBRACAO = {
+    "cal1": True, "cal2": True,
+    "ppv1": 10000, "ppv2": 10000, "red1": 16.5, "red2": 4.0,
+    "ppg1": 458.33, "ppg2": 111.11,
+    "g1min": -95.0, "g1max": 95.0, "g2min": -120.0, "g2max": 30.0,
+    "marca1": False, "marca2": False, "voltas1": 0.0, "voltas2": 0.0,
+    "passos1": 0, "passos2": 0, "enc1": True, "enc2": False,
+    "mesaOn": True, "mesaN": 3,
+    "mesaX0": 180.0, "mesaX1": 640.0, "mesaY0": -260.0, "mesaY1": 260.0,
+    "envY": -150.0, "envR": 40.0,
 }
 
 REGISTRO = {"n": 4, "linhas": [
@@ -190,6 +204,8 @@ class H(BaseHTTPRequestHandler):
             return self._envia(json.dumps({"pts": TRAJ}))
         if caminho == "/api/encoder":
             return self._envia(json.dumps(_encoder()))
+        if caminho == "/api/calibracao":
+            return self._envia(json.dumps(CALIBRACAO))
         if caminho == "/api/saude":
             return self._envia(json.dumps(SAUDE))
         if caminho == "/api/registro":
@@ -228,6 +244,9 @@ class H(BaseHTTPRequestHandler):
             return self._envia("ok", "text/plain")
         if caminho == "/teste/previa":
             PREVIA.update(json.loads(corpo or b"{}"))
+            return self._envia("ok", "text/plain")
+        if caminho == "/teste/calibracao":
+            CALIBRACAO.update(json.loads(corpo or b"{}"))
             return self._envia("ok", "text/plain")
         if caminho == "/teste/saude":
             SAUDE.update(json.loads(corpo or b"{}"))

@@ -474,6 +474,11 @@ enum TipoComando : uint8_t {
   CMD_PROG_REPETIR,     // roda de novo o ultimo programa executado
   CMD_MANUTENCAO_OK,    // zera o contador de ciclos desde a manutencao
 
+  // Calibracao pelo encoder e area util ensinada.
+  CMD_AFERIR_REDUCAO,   // a = junta, f1 = angulo real de referencia
+  CMD_MESA_CANTO,       // ensina um canto na posicao atual da ponta
+  CMD_MESA_LIMPAR,
+
   // Joystick: f1 e f2 sao a fracao de velocidade de cada junta, de -1 a
   // +1. Um comando so para os dois eixos - metade das requisicoes HTTP
   // do heartbeat comparado a mandar CMD_JOG por eixo.

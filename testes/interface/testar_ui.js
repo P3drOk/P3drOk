@@ -201,10 +201,11 @@ async function fecharGaveta(pag) {
     abas: [...document.querySelectorAll('#cfgAbas button')].map(b => b.textContent.trim()),
   }));
   checar(gaveta.aberta, 'a engrenagem abre a gaveta de configuracao');
-  checar(gaveta.abas.length === 3, 'com as tres paginas de ajuste',
+  checar(gaveta.abas.length === 4, 'com as quatro paginas de ajuste',
          gaveta.abas.join(' | '));
   for (const [cfg, alvo, nome] of [
     ['maquina', '#e1',        'Maquina'],
+    ['calib',   '#calResumo', 'Calibracao'],
     ['encoder', '#sbCorr',    'Encoder'],
     ['sistema', '#saudeG',    'Sistema'],
   ]) {
@@ -549,7 +550,8 @@ async function fecharGaveta(pag) {
   // Clica cada botao de cada secao, uma secao aberta por vez.
   // Ajustes saiu da barra de abas e virou aba da gaveta da engrenagem.
   const PANES = { mover: '#pnMover', prog: '#pnProg', arq: '#pnArq' };
-  const CFG_PANES = { maquina: '#cfgMaquina', encoder: '#cfgEncoder', sistema: '#cfgSistema' };
+  const CFG_PANES = { maquina: '#cfgMaquina', calib: '#cfgCalib',
+                      encoder: '#cfgEncoder', sistema: '#cfgSistema' };
   const mortos = [], mudos = [];
   let clicados = 0;
   // Abrir o seletor de arquivo E a acao do botao de importar DXF: ele nao
@@ -1169,44 +1171,126 @@ async function fecharGaveta(pag) {
   checar(rotas.some(x => x.split('?')[0] === '/api/referenciar'),
          '"Zerar a maquina aqui" pede confirmacao e chama /api/referenciar');
 
-  await abrirGaveta(t, 'maquina');
+  // ------------------------------------------------------------------
+  // Aba Calibracao: as duas medidas, e a area da mesa.
+  //
+  // As duas medem coisas DIFERENTES e nao podem ser confundidas: o passo
+  // 1 mede a engrenagem eletronica (o encoder faz sozinho), o passo 2
+  // mede a reducao mecanica (o encoder nao ve o redutor, entao precisa de
+  // uma referencia).
+  // ------------------------------------------------------------------
+  await abrirGaveta(t, 'calib');
+  await t.waitForTimeout(600);
+
+  const resumo = await t.evaluate(() => ({
+    n: document.querySelectorAll('#calResumo .sl').length,
+    txt: document.getElementById('calResumo').textContent,
+    vivo: document.getElementById('calVivo').textContent,
+  }));
+  checar(resumo.n >= 9,
+         'Calibracao: o quadro resume resolucao, reducao, curso e mesa',
+         resumo.n + ' linhas');
+  checar(/16\.500|16,500/.test(resumo.txt) && /458/.test(resumo.txt),
+         'Calibracao: com a reducao e a resolucao de cada junta',
+         resumo.txt.slice(0, 70));
+  checar(/comandado/.test(resumo.vivo) && /medido/.test(resumo.vivo),
+         'Calibracao: e a conferencia comandado x medido, que fecha o laco',
+         resumo.vivo.split('\n')[0]);
+
+  // Passo 1: engrenagem eletronica, pelo encoder.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btAfMarcar').closest('.et');
+    document.querySelectorAll('#cfgCalib .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
   await t.waitForTimeout(250);
-  await t.evaluate(() => document.querySelectorAll('#cfgMaquina .et')
-    .forEach(x => x.classList.toggle('aberta', x.id === 'e5')));
-  await t.waitForTimeout(200);
   rotas = [];
   await t.locator('#btAfMarcar').click();
-  await t.waitForTimeout(250);
+  await t.waitForTimeout(300);
   checar(rotas.some(x => x === '/api/aferir/marcar?j=1'),
-         'aferir: "Marcar o inicio" manda a junta escolhida');
-  const semMarca = await t.locator('#btAfAplicar').isDisabled();
-  checar(semMarca, 'aferir: sem marca e sem angulo o botao de gravar fica travado');
+         'Calibracao: "Marcar o inicio" manda a junta escolhida');
 
-  // O robo passa a contar pulsos desde a marca.
+  await t.request.post(BASE + '/teste/calibracao',
+    { data: { marca1: true, passos1: 9500, voltas1: 2.375 } });
+  await t.waitForTimeout(900);
+  const contagemAf = await t.evaluate(() =>
+    document.getElementById('afConta').textContent.trim());
+  checar(/9500 passos/.test(contagemAf) && /2\.375/.test(contagemAf),
+         'Calibracao: a contagem mostra passos comandados E voltas do motor',
+         contagemAf);
+
+  // Passo 2: reducao. O botao so libera com marca E angulo.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btRdMarcar').closest('.et');
+    document.querySelectorAll('#cfgCalib .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(250);
   await t.request.post(BASE + '/teste/estado', { data: { afer1: 9500 } });
   await t.waitForTimeout(500);
   const semAngulo = await t.evaluate(() => ({
-    dis: document.getElementById('btAfAplicar').disabled,
-    motivo: document.getElementById('qAfAplicar').textContent.trim(),
-    conta: document.getElementById('afConta').textContent.trim(),
+    dis: document.getElementById('btRdAplicar').disabled,
+    motivo: document.getElementById('qRdAplicar').textContent.trim(),
   }));
-  checar(semAngulo.dis && /graus/.test(semAngulo.motivo),
-         'aferir: com marca mas sem angulo, o botao explica o que falta',
+  checar(semAngulo.dis && /angulo/i.test(semAngulo.motivo),
+         'Calibracao: sem o angulo de referencia o botao trava e diz o porque',
          semAngulo.motivo);
-  checar(/9500 pulsos/.test(semAngulo.conta),
-         'aferir: os pulsos contados desde a marca aparecem na tela',
-         semAngulo.conta.replace(/\n/g, ' / '));
+
+  // Os atalhos preenchem o angulo: 90 do esquadro e o caminho recomendado.
+  await t.locator('#cfgCalib [data-rdg="90"]').click();
+  await t.waitForTimeout(300);
+  const comAtalho = await t.evaluate(() => ({
+    v: document.getElementById('rdG').value,
+    dis: document.getElementById('btRdAplicar').disabled,
+  }));
+  checar(comAtalho.v === '90' && !comAtalho.dis,
+         'Calibracao: o atalho do esquadro preenche 90 e libera o botao',
+         'valor ' + comAtalho.v);
 
   rotas = [];
-  await t.locator('#afG').fill('54.5');
-  await t.waitForTimeout(150);
-  checar(!(await t.locator('#btAfAplicar').isDisabled()),
-         'aferir: digitado o angulo, o botao de gravar libera');
-  await t.locator('#btAfAplicar').click();
+  await t.locator('#btRdAplicar').click();
+  await t.waitForTimeout(400);
+  checar(rotas.some(x => x === '/api/aferir/reducao?j=1&g=90'),
+         'Calibracao: a medida da reducao leva a junta e o angulo real',
+         rotas.join(' ') || 'nada');
+
+  // Area da mesa.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btMesaCanto').closest('.et');
+    document.querySelectorAll('#cfgCalib .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
   await t.waitForTimeout(300);
-  checar(rotas.some(x => x === '/api/aferir/aplicar?j=1&g=54.5'),
-         'aferir: o pedido leva a junta e os graus medidos');
-  await t.request.post(BASE + '/teste/estado', { data: { afer1: 0 } });
+  const mesa = await t.evaluate(() => ({
+    est: document.getElementById('mesaEstado').textContent.trim(),
+    sb: document.getElementById('sbMesa').textContent.trim(),
+  }));
+  checar(/180/.test(mesa.est) && /640/.test(mesa.est),
+         'Calibracao: a area ensinada aparece com os quatro limites', mesa.est);
+  checar(/460/.test(mesa.sb) && /520/.test(mesa.sb),
+         'Calibracao: e o cabecalho diz o tamanho da mesa', mesa.sb);
+
+  rotas = [];
+  await t.locator('#btMesaCanto').click();
+  await t.waitForTimeout(350);
+  checar(rotas.some(x => x.split('?')[0] === '/api/mesa/canto'),
+         'Calibracao: "Gravar canto" chama a rota certa', rotas.join(' '));
+
+  // Sem calibracao, ensinar a mesa e recusado: sem curso medido nao ha
+  // coordenada em que confiar.
+  await t.request.post(BASE + '/teste/estado', { data: { cal1: false } });
+  await t.waitForTimeout(600);
+  const mesaBloq = await t.evaluate(() => ({
+    dis: document.getElementById('btMesaCanto').disabled,
+    motivo: document.getElementById('qMesaCanto').textContent.trim(),
+  }));
+  checar(mesaBloq.dis && /calibre/i.test(mesaBloq.motivo),
+         'Calibracao: sem calibracao, ensinar a mesa e recusado com motivo',
+         mesaBloq.motivo);
+  await t.request.post(BASE + '/teste/estado', { data: { cal1: true, afer1: 0 } });
+  await t.request.post(BASE + '/teste/calibracao',
+    { data: { marca1: false, passos1: 0, voltas1: 0 } });
+  await fecharGaveta(t);
 
   // Botoes de seta do jog.
   rotas = [];

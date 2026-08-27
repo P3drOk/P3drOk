@@ -79,6 +79,58 @@ void aferirMarcar(uint8_t junta);
 // Some um dos dois numeros da conta. A reducao continua sendo declarada
 // por quem montou a maquina -- mas com um numero a menos para errar.
 bool aferirPelosEncoder(uint8_t junta);
+// ---------------------------------------------------------------------
+// AFERIR A REDUCAO MECANICA -- pelo encoder, contra UMA referencia
+//
+// LEIA ISTO ANTES DE ACHAR QUE O ENCODER RESOLVE SOZINHO.
+//
+// O encoder esta no eixo do MOTOR, antes do redutor. O angulo que ele
+// mostra na tela ja e calculado ASSIM:
+//
+//     graus da junta = voltas do motor * 360 / reducao
+//
+// Ou seja: o angulo lido JA DEPENDE da reducao. Nao da para descobrir a
+// reducao a partir dele -- seria tirar o numero de uma conta que usa o
+// proprio numero. Isso e fisica, nao limitacao de software: com um unico
+// sensor antes do redutor, a relacao do redutor e invisivel.
+//
+// O que o encoder da de graca, e com muita precisao, e a contagem de
+// VOLTAS DO MOTOR. Falta uma referencia do lado da JUNTA -- uma, so uma.
+// E com ela sai a reducao exata:
+//
+//     reducao = voltas do motor * 360 / angulo real da junta
+//
+// POR QUE ISSO E MUITO MELHOR QUE O QUE EXISTIA. A afericao antiga
+// contava PULSOS COMANDADOS. Ela erra junto com a engrenagem eletronica
+// (se passosPorVolta estiver errado, a reducao sai errada na mesma
+// proporcao) e erra junto com perda de passo (o eixo escorrega e a conta
+// nem fica sabendo). Contar voltas reais do motor nao tem nenhum dos
+// dois problemas: o encoder mede o eixo, nao a intencao.
+//
+// DE ONDE TIRAR A REFERENCIA, da melhor para a pior:
+//
+//   1. ESQUADRO (90 graus). Um esquadro de carpinteiro da 90 graus com
+//      precisao muito boa e todo mundo tem um. Encoste, marque, gire ate
+//      a outra face, aplique 90. E o metodo recomendado.
+//   2. CURSO ENTRE BATENTES. O maior angulo disponivel na maquina, e
+//      quanto maior o angulo, menor o erro relativo da medida. Precisa
+//      do curso real, medido uma vez.
+//   3. VOLTA COMPLETA, se a junta der uma. Nao precisa de instrumento
+//      nenhum: basta reconhecer que voltou ao mesmo lugar, e a reducao
+//      e o numero de voltas do motor.
+//
+// Depois de aplicada, CONFIRA: mande o braco um tanto conhecido e veja
+// se o encoder concorda. E o que fecha o laco e denuncia engrenagem
+// eletronica errada.
+// ---------------------------------------------------------------------
+bool aferirReducaoPeloEncoder(uint8_t junta, float grausReais);
+
+// Quantas voltas o MOTOR deu desde a marca, pelo encoder. Vai para a
+// tela enquanto o operador move o eixo: ver o numero subir e o que
+// mostra que a medida esta acontecendo.
+float aferirVoltasDesde(uint8_t junta);
+bool  aferirTemMarcaBoa(uint8_t junta);
+
 bool aferirAplicar(uint8_t junta, float grausReais);
 long aferirPassosDesde(uint8_t junta);   // quanto andou desde a marca
 void calibAtualizar();   // chamar a cada ciclo do loop

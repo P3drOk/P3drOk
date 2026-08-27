@@ -99,6 +99,12 @@ void violacaoTexto(const Violacao& v, char* destino, size_t tam) {
     snprintf(destino, tam,
              "o braco desceria a Y=%.0f mm%s, abaixo do Y minimo de %.0f",
              v.valor, onde, v.limite);
+  } else if (!strcmp(v.causa, "areaX") || !strcmp(v.causa, "areaY")) {
+    // A area ensinada e um retangulo: dizer QUAL borda foi passada, e em
+    // que eixo, e o que deixa o operador saber para onde mover.
+    snprintf(destino, tam,
+             "a ponta sairia da mesa%s: %s=%.0f mm, e a area ensinada vai ate %.0f",
+             onde, (v.causa[4] == 'X') ? "X" : "Y", v.valor, v.limite);
   } else if (!strcmp(v.causa, "base")) {
     snprintf(destino, tam,
              "o elo 2 passaria a %.0f mm da base%s, dentro do raio morto de %.0f",
@@ -167,6 +173,24 @@ bool posturaValidaDet(float t1, float t2, Violacao& v) {
     if (d < envRaioMin) {
       v.causa="base"; v.valor=d; v.limite=envRaioMin; return false;
     }
+
+    // A MESA ENSINADA. So a PONTA e conferida contra ela: o cotovelo
+    // passa por cima da mesa o tempo todo, e ele nao solda nada. Quem
+    // tem de ficar dentro da area util e a ferramenta.
+    if (areaMesa.definida) {
+      if (xp < areaMesa.xMin) {
+        v.causa="areaX"; v.valor=xp; v.limite=areaMesa.xMin; return false;
+      }
+      if (xp > areaMesa.xMax) {
+        v.causa="areaX"; v.valor=xp; v.limite=areaMesa.xMax; return false;
+      }
+      if (yp < areaMesa.yMin) {
+        v.causa="areaY"; v.valor=yp; v.limite=areaMesa.yMin; return false;
+      }
+      if (yp > areaMesa.yMax) {
+        v.causa="areaY"; v.valor=yp; v.limite=areaMesa.yMax; return false;
+      }
+    }
   }
   return true;
 }
@@ -216,6 +240,18 @@ float gravidadeViolacao(float t1, float t2) {
     if (yc < envYMin) g += (envYMin - yc) * 0.1f;
     const float d = distanciaOrigemAoSegmento(xc, yc, xp, yp);
     if (d < envRaioMin) g += (envRaioMin - d) * 0.1f;
+
+    // A mesa entra na MESMA conta de gravidade. Sem isto, uma ponta que
+    // parou fora da area ficaria presa la: posturaValida bloquearia todo
+    // movimento e o criterio de recuperacao ("nao piorar") nunca teria o
+    // que melhorar. O braco nao pode se prender sozinho para fora da
+    // propria mesa.
+    if (areaMesa.definida) {
+      if (xp < areaMesa.xMin) g += (areaMesa.xMin - xp) * 0.1f;
+      if (xp > areaMesa.xMax) g += (xp - areaMesa.xMax) * 0.1f;
+      if (yp < areaMesa.yMin) g += (areaMesa.yMin - yp) * 0.1f;
+      if (yp > areaMesa.yMax) g += (yp - areaMesa.yMax) * 0.1f;
+    }
   }
   return g;
 }

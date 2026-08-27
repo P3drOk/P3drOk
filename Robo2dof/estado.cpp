@@ -210,6 +210,14 @@ void prepararConfigPendente() {
   configPendente.p1Min = J1.passosMin;   configPendente.p1Max = J1.passosMax;
   configPendente.p2Min = J2.passosMin;   configPendente.p2Max = J2.passosMax;
   configPendente.home1 = J1.grausHome;   configPendente.home2 = J2.grausHome;
+
+  configPendente.temMesa      = true;
+  configPendente.mesaDefinida = areaMesa.definida;
+  configPendente.mesaCantos   = areaMesa.cantos;
+  configPendente.mesaXMin     = areaMesa.xMin;
+  configPendente.mesaXMax     = areaMesa.xMax;
+  configPendente.mesaYMin     = areaMesa.yMin;
+  configPendente.mesaYMax     = areaMesa.yMax;
 }
 
 void aplicarConfigPendente() {
@@ -248,6 +256,17 @@ void aplicarConfigPendente() {
     J2.grausHome = configPendente.home2;
   }
 
+  // Mesma regra da calibracao: so mexe quando o arquivo REALMENTE traz
+  // uma mesa. Backup antigo nao apaga a area ensinada.
+  if (configPendente.temMesa) {
+    areaMesa.definida = configPendente.mesaDefinida;
+    areaMesa.cantos   = configPendente.mesaCantos;
+    areaMesa.xMin     = configPendente.mesaXMin;
+    areaMesa.xMax     = configPendente.mesaXMax;
+    areaMesa.yMin     = configPendente.mesaYMin;
+    areaMesa.yMax     = configPendente.mesaYMax;
+  }
+
   recalcularResolucao();
 }
 
@@ -260,6 +279,13 @@ void carregarConfiguracoes() {
 
   // Chaves NOVAS: as antigas guardavam Hz, e reler 3000 como 3000 graus/s
   // seria absurdo. Quem atualiza recebe os padroes em graus/s.
+  areaMesa.definida = prefs.getBool ("mesaOn", false);
+  areaMesa.cantos   = (uint8_t)prefs.getUInt("mesaN", 0);
+  areaMesa.xMin     = prefs.getFloat("mesaX0", 0.0f);
+  areaMesa.xMax     = prefs.getFloat("mesaX1", 0.0f);
+  areaMesa.yMin     = prefs.getFloat("mesaY0", 0.0f);
+  areaMesa.yMax     = prefs.getFloat("mesaY1", 0.0f);
+
   configPainel.operador = prefs.getBool("pnOp", false);
   {
     // getString com destino e tamanho: a chave ausente devolve 0 e a
@@ -371,6 +397,34 @@ void carregarConfiguracoes() {
 // =====================================================================
 //  Producao
 // =====================================================================
+// De fabrica sem mesa ensinada: a maquina se comporta como antes, com o
+// Y minimo e o raio morto. A mesa so passa a proteger quando alguem a
+// ensinou -- protecao inventada por padrao recusaria movimento valido na
+// primeira vez que a maquina liga.
+AreaMesa areaMesa = {false, 0, 0.0f, 0.0f, 0.0f, 0.0f};
+
+void mesaEnsinarCanto(float x, float y) {
+  if (areaMesa.cantos == 0) {
+    areaMesa.xMin = areaMesa.xMax = x;
+    areaMesa.yMin = areaMesa.yMax = y;
+  } else {
+    if (x < areaMesa.xMin) areaMesa.xMin = x;
+    if (x > areaMesa.xMax) areaMesa.xMax = x;
+    if (y < areaMesa.yMin) areaMesa.yMin = y;
+    if (y > areaMesa.yMax) areaMesa.yMax = y;
+  }
+  if (areaMesa.cantos < 255) areaMesa.cantos++;
+  // Dois cantos na mesma linha nao fazem retangulo: enquanto a area for
+  // uma risca, a protecao nao vale -- ela recusaria tudo.
+  areaMesa.definida = (areaMesa.cantos >= 2) &&
+                      (areaMesa.xMax - areaMesa.xMin > 10.0f) &&
+                      (areaMesa.yMax - areaMesa.yMin > 10.0f);
+}
+
+void mesaLimpar() {
+  areaMesa = AreaMesa{false, 0, 0.0f, 0.0f, 0.0f, 0.0f};
+}
+
 Producao producao = {0, 0, 0, 0, 0};
 
 // De fabrica: comeca destrancado, com a senha padrao. Maquina nova que
@@ -470,6 +524,12 @@ void salvarConfiguracoes() {
   // encoder absoluto: ensinada uma vez, vale para sempre.
   prefs.putBool ("zrEn1",  configZero.ensinado[0]);
   prefs.putBool ("zrEn2",  configZero.ensinado[1]);
+  prefs.putBool ("mesaOn", areaMesa.definida);
+  prefs.putUInt ("mesaN",  areaMesa.cantos);
+  prefs.putFloat("mesaX0", areaMesa.xMin);
+  prefs.putFloat("mesaX1", areaMesa.xMax);
+  prefs.putFloat("mesaY0", areaMesa.yMin);
+  prefs.putFloat("mesaY1", areaMesa.yMax);
   prefs.putBool ("pnOp",   configPainel.operador);
   prefs.putString("pnSenha", configPainel.senha);
   prefs.putInt  ("encRf1", encoderReferencia(1));
@@ -535,6 +595,10 @@ void restaurarPadroes() {
   envYMin        = ENV_Y_MIN_PADRAO;
   envRaioMin     = ENV_RAIO_MIN_PADRAO;
   escalaVelocidadeTraj = 100;
+  // A mesa ensinada NAO e apagada aqui. "Restaurar padroes" devolve
+  // parametros de fabrica; a area util e uma medida da instalacao, do
+  // mesmo tipo da calibracao -- e apagar meia hora de trabalho de quem so
+  // queria voltar as velocidades seria uma armadilha.
 
   recalcularResolucao();
   prepararConfigPendente();

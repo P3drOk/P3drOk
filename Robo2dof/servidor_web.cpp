@@ -185,7 +185,7 @@ static void handleStatus() {
   char msgSegura[sizeof(s.mensagem) * 2];
   jsonTexto(msgSegura, sizeof(msgSegura), s.mensagem);
 
-  char json[1400];
+  char json[1520];
   snprintf(json, sizeof(json),
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
     "\"p1\":%ld,\"p2\":%ld,\"t1\":%.2f,\"t2\":%.2f,\"x\":%.1f,\"y\":%.1f,"
@@ -204,6 +204,7 @@ static void handleStatus() {
     "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
     "\"op\":%s,\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
+    "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
@@ -246,6 +247,8 @@ static void handleStatus() {
     leituraConfiavel(1) ? "true" : "false",
     leituraConfiavel(2) ? "true" : "false",
     (unsigned)progFracaoTrecho(),
+    areaMesa.definida ? "true" : "false",
+    areaMesa.xMin, areaMesa.xMax, areaMesa.yMin, areaMesa.yMax,
     msgSegura);
 
   server.send(200, "application/json", json);
@@ -408,6 +411,69 @@ static void handleProgRepetir() {
   }
   enfileirar(CMD_PROG_REPETIR);
 }
+// Redução medida pelo encoder: a rota exige o angulo de referencia, e o
+// core 1 confere de novo antes de gravar.
+static void handleAferirReducao() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long j = argL("j", 0);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+  if (!server.hasArg("g")) {
+    erro("informe o angulo real de referencia (90 do esquadro, ou o curso)");
+    return;
+  }
+  const float g = argF("g", 0.0f);
+  if (g < 5.0f || g > 3600.0f) {
+    erro("angulo de referencia fora de faixa: use de 5 a 3600 graus");
+    return;
+  }
+  enfileirar(CMD_AFERIR_REDUCAO, j, 0, g);
+}
+
+static void handleMesaCanto() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  enfileirar(CMD_MESA_CANTO);
+}
+static void handleMesaLimpar() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  enfileirar(CMD_MESA_LIMPAR);
+}
+
+// Estado da calibracao, para a aba propria dela. Junta num lugar so o que
+// estava espalhado por tres rotas: resolucao medida, marca de afericao,
+// voltas do motor acumuladas e a area da mesa.
+static void handleCalibracao() {
+  registrarContatoOperador();
+  char json[640];
+  snprintf(json, sizeof(json),
+    "{\"cal1\":%s,\"cal2\":%s,"
+    "\"ppv1\":%lu,\"ppv2\":%lu,\"red1\":%.4f,\"red2\":%.4f,"
+    "\"ppg1\":%.3f,\"ppg2\":%.3f,"
+    "\"g1min\":%.2f,\"g1max\":%.2f,\"g2min\":%.2f,\"g2max\":%.2f,"
+    "\"marca1\":%s,\"marca2\":%s,\"voltas1\":%.4f,\"voltas2\":%.4f,"
+    "\"passos1\":%ld,\"passos2\":%ld,"
+    "\"enc1\":%s,\"enc2\":%s,"
+    "\"mesaOn\":%s,\"mesaN\":%u,\"mesaX0\":%.1f,\"mesaX1\":%.1f,"
+    "\"mesaY0\":%.1f,\"mesaY1\":%.1f,"
+    "\"envY\":%.1f,\"envR\":%.1f}",
+    J1.calibrada ? "true" : "false", J2.calibrada ? "true" : "false",
+    (unsigned long)J1.passosPorVolta, (unsigned long)J2.passosPorVolta,
+    J1.reducao, J2.reducao, J1.passosPorGrau, J2.passosPorGrau,
+    J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax,
+    aferirTemMarcaBoa(1) ? "true" : "false",
+    aferirTemMarcaBoa(2) ? "true" : "false",
+    aferirVoltasDesde(1), aferirVoltasDesde(2),
+    aferirPassosDesde(1), aferirPassosDesde(2),
+    leituraConfiavel(1) ? "true" : "false",
+    leituraConfiavel(2) ? "true" : "false",
+    areaMesa.definida ? "true" : "false", (unsigned)areaMesa.cantos,
+    areaMesa.xMin, areaMesa.xMax, areaMesa.yMin, areaMesa.yMax,
+    envYMin, envRaioMin);
+  server.send(200, "application/json", json);
+}
+
 static void handleManutencaoOk() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -1427,6 +1493,10 @@ void servidorIniciar() {
   server.on("/api/prog/desfazer", HTTP_POST, handleProgDesfazer);
   server.on("/api/prog/repetir",  HTTP_POST, handleProgRepetir);
   server.on("/api/manutencao/ok", HTTP_POST, handleManutencaoOk);
+  server.on("/api/aferir/reducao", HTTP_POST, handleAferirReducao);
+  server.on("/api/mesa/canto",    HTTP_POST, handleMesaCanto);
+  server.on("/api/mesa/limpar",   HTTP_POST, handleMesaLimpar);
+  server.on("/api/calibracao",    HTTP_GET,  handleCalibracao);
   server.on("/api/home",          HTTP_POST, handleHome);
 
   server.on("/api/gravar/iniciar", HTTP_POST, handleGravarIni);

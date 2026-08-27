@@ -352,6 +352,8 @@ body.operador .soTecnico{display:none}
 .sb.alerta{color:var(--quente)}
 /* Os dois QR lado a lado, e fundo branco fixo: leitor espera escuro
    sobre claro, e no tema escuro um codigo invertido nao abre. */
+.linhaB{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.linhaB .b{flex:1 1 auto;margin:0;width:auto}
 .qrPar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px}
 .qrCx{background:#fff;border:1px solid var(--linha);border-radius:4px;padding:8px;
  text-align:center}
@@ -431,6 +433,7 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 /* No modo operador some o que e instalacao; sobra o painel Sistema, que
    e por onde ele sai do modo. */
 body.operador .cfgAbas button[data-cfg="maquina"],
+body.operador .cfgAbas button[data-cfg="calib"],
 body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
 
 /* Botao de parada sempre alcancavel, em qualquer aba. */
@@ -1154,6 +1157,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
   </div>
   <nav class="cfgAbas" id="cfgAbas">
     <button data-cfg="maquina" class="on">Maquina</button>
+    <button data-cfg="calib">Calibracao</button>
     <button data-cfg="encoder">Encoder</button>
     <button data-cfg="sistema">Sistema</button>
   </nav>
@@ -1232,37 +1236,6 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             crescente no sentido <b>anti-horario</b>, com a junta 1 em zero
             apontando para a <b>direita</b>.</div>
             <div class="res" id="resumoRes">--</div>
-            <h4>Aferir a reducao no braco</h4>
-            <div class="nt">Quando a reducao real nao bate com a de catalogo
-            (correia, folga, engrenagem trocada), medir sai mais barato que
-            calcular: marque o inicio, gire o eixo com o jog o quanto der, meca
-            com transferidor quantos graus ele andou de <b>verdade</b> e digite.
-            O sistema divide os pulsos contados por esses graus e reescreve a
-            reducao daquele eixo sozinho. Quanto maior o angulo medido, melhor:
-            um erro de meio grau em 90° pesa dez vezes menos que em 9°.</div>
-            <div class="cp"><label>Junta</label>
-              <select id="afJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
-            <button class="b mini" id="btAfMarcar">1 &middot; Marcar o inicio aqui</button>
-            <div class="pq2" id="qAfMarcar"></div>
-            <div class="res" id="afConta">--</div>
-            <div class="cp"><label>2 &middot; Girou de verdade</label><input type="number" id="afG" min="0.1" step="0.5"><span class="un">°</span></div>
-            <button class="b pri mini" id="btAfAplicar">3 &middot; Gravar a reducao medida</button>
-            <div class="pq2" id="qAfAplicar"></div>
-            <h4>Ou sem transferidor, pelo encoder</h4>
-            <button class="b mini" id="btAfEnc">Aferir pelo encoder</button>
-            <div class="pq2" id="qAfEnc"></div>
-            <div class="nt">Marque o inicio, gire o eixo <b>bastante</b> (pelo
-            menos um quarto de volta do motor) e aperte aqui. O encoder conta as
-            voltas do motor e a conta sai sozinha &mdash; sem transferidor.
-            <br>Repare no que ele mede: a <b>engrenagem eletronica</b> do driver,
-            que e o numero que mais se erra. A <b>reducao mecanica</b> continua
-            sendo a que voce declarou, porque o encoder conta no eixo do motor,
-            <b>antes</b> do redutor, e nao tem como enxerga-la. Some um dos dois
-            numeros da conta, nao os dois.</div>
-            <div class="nt">Aferir muda so a resolucao daquele eixo. Os limites de
-            curso ja gravados continuam valendo em graus, entao vale conferir a
-            calibracao depois.</div>
-            <div class="nt">Pulsos por volta e a engrenagem eletronica do T3D. Reducao e a relacao mecanica daquele eixo: <b>50</b> para um redutor 50:1. Os dois eixos sao independentes.</div>
             <h4>Velocidades</h4>
             <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
             <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="0.1" step="0.1"><span class="un">°/s</span></div>
@@ -1308,6 +1281,156 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
           </div>
         </div>
       
+    </div>
+    <div class="pane" id="cfgCalib">
+      <div class="et aberta">
+        <div class="cab"><div class="mk">&#9737;</div>
+          <div class="tx"><div class="tt">Como a maquina esta agora</div>
+          <span class="sb" id="sbCalib">--</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="grelha" id="calResumo"></div>
+          <div class="nt">A resolucao de cada junta e
+          <b>passos por volta &times; reducao &divide; 360</b>. Sao dois numeros, e
+          cada um erra de um jeito diferente &mdash; por isso os passos 1 e 2
+          abaixo medem um de cada vez.</div>
+          <div class="res" id="calVivo">--</div>
+          <div class="nt">Comparar o <b>comandado</b> com o <b>medido</b> depois de
+          mover e a conferencia final: se os dois andarem juntos, a resolucao
+          esta certa. Se o medido andar menos, a reducao declarada esta maior
+          que a real (e vice-versa).</div>
+        </div>
+      </div>
+
+      <div class="et">
+        <div class="cab"><div class="mk">1</div>
+          <div class="tx"><div class="tt">Engrenagem eletronica</div>
+          <span class="sb">sem instrumento nenhum</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="nt">Quantos <b>passos</b> o driver precisa para dar uma volta
+          no motor. E um parametro do T3D, e o numero que mais se erra: troca-se o
+          driver, refaz-se um parametro, e o declarado aqui deixa de bater. O
+          sintoma e o braco andar menos (ou mais) do que a tela diz.<br><br>
+          O encoder mede isso <b>sozinho</b>: manda-se um tanto conhecido de
+          passos e pergunta-se quantas voltas o motor deu.</div>
+          <div class="cp"><label>Junta</label>
+            <select id="afJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
+          <button class="b mini" id="btAfMarcar">1 &middot; Marcar o inicio aqui</button>
+          <div class="pq2" id="qAfMarcar"></div>
+          <div class="nt">Agora mova o eixo com as setas, <b>bastante</b>
+          &mdash; pelo menos um quarto de volta do motor.</div>
+          <div class="res" id="afConta">--</div>
+          <button class="b pri mini" id="btAfEnc">2 &middot; Medir passos por volta</button>
+          <div class="pq2" id="qAfEnc"></div>
+        </div>
+      </div>
+
+      <div class="et">
+        <div class="cab"><div class="mk">2</div>
+          <div class="tx"><div class="tt">Reducao mecanica</div>
+          <span class="sb">precisa de uma referencia, uma so</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="nt"><b>Leia isto antes de achar que o encoder resolve
+          sozinho.</b> O encoder esta no eixo do <b>motor</b>, antes do redutor.
+          O angulo que ele mostra na tela ja e calculado assim:<br><br>
+          &nbsp;&nbsp;<b>graus da junta = voltas do motor &times; 360 &divide; reducao</b><br><br>
+          Ou seja: o angulo lido <b>ja depende da reducao</b>. Nao da para tirar a
+          reducao dele &mdash; seria tirar o numero de uma conta que usa o proprio
+          numero. Isso e fisica, nao limitacao de programa: com um sensor so, e
+          antes do redutor, a relacao do redutor e invisivel.<br><br>
+          O que o encoder da de graca, e com muita precisao, e a contagem de
+          <b>voltas do motor</b>. Falta <b>uma</b> referencia do lado da junta.
+          Com ela a reducao sai exata:<br><br>
+          &nbsp;&nbsp;<b>reducao = voltas do motor &times; 360 &divide; angulo real</b></div>
+          <div class="nt"><b>Por que isto e melhor do que medir por pulsos.</b> A
+          medida antiga contava pulsos comandados: ela erra junto com a
+          engrenagem eletronica e erra junto com perda de passo. Contar voltas
+          reais do motor nao tem nenhum dos dois problemas &mdash; o encoder mede
+          o eixo, nao a intencao.</div>
+          <div class="cp"><label>Junta</label>
+            <select id="rdJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
+          <button class="b mini" id="btRdMarcar">1 &middot; Marcar o inicio aqui</button>
+          <div class="pq2" id="qRdMarcar"></div>
+          <div class="res" id="rdConta">--</div>
+          <div class="nt">De onde tirar a referencia, da melhor para a pior:</div>
+          <div class="tr"><b>1.</b>&nbsp;<span><b>Esquadro (90&deg;)</b> &mdash; um
+          esquadro de carpinteiro da 90 graus com precisao muito boa e todo mundo
+          tem um. Encoste numa face, marque, gire ate a outra, aplique 90.</span></div>
+          <div class="tr"><b>2.</b>&nbsp;<span><b>Curso entre batentes</b> &mdash; o
+          maior angulo disponivel, e quanto maior o angulo menor o erro relativo.
+          Precisa do curso real, medido uma vez.</span></div>
+          <div class="tr"><b>3.</b>&nbsp;<span><b>Volta completa</b>, se a junta der
+          uma &mdash; nao precisa de instrumento: basta reconhecer que voltou ao
+          mesmo lugar.</span></div>
+          <div class="cp"><label>2 &middot; Angulo real</label>
+            <input type="number" id="rdG" min="5" step="1" placeholder="90"><span class="un">°</span></div>
+          <div class="linhaB">
+            <button class="b mini" data-rdg="90">esquadro 90&deg;</button>
+            <button class="b mini" data-rdg="180">meia volta</button>
+            <button class="b mini" data-rdg="360">volta inteira</button>
+          </div>
+          <button class="b pri mini" id="btRdAplicar">3 &middot; Gravar a reducao medida</button>
+          <div class="pq2" id="qRdAplicar"></div>
+          <div class="nt">Depois de gravar, <b>confira</b>: mande o braco um tanto
+          conhecido e veja se o medido acompanha o comandado, no quadro do topo
+          desta pagina. E o que fecha o laco.</div>
+        </div>
+      </div>
+
+      <div class="et">
+        <div class="cab"><div class="mk">3</div>
+          <div class="tx"><div class="tt">Curso das juntas</div>
+          <span class="sb" id="sbCurso">--</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="nt">Onde cada junta bate. E o assistente que leva voce ate
+          os batentes e grava os limites &mdash; e deles que sai toda protecao de
+          curso.</div>
+          <button class="b pri" id="btCalIni2">Abrir o assistente de calibracao</button>
+          <div class="pq2" id="qCalIni2"></div>
+          <button class="b mini x" id="btCalApagar2">Apagar a calibracao gravada</button>
+          <div class="pq2" id="qCalApagar2"></div>
+        </div>
+      </div>
+
+      <div class="et">
+        <div class="cab"><div class="mk">4</div>
+          <div class="tx"><div class="tt">Area da mesa</div>
+          <span class="sb" id="sbMesa">--</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="nt">A area util deixou de ser dois numeros digitados e passou
+          a ser <b>ensinada</b>: leve a ponta a cada canto da mesa e grave. O
+          retangulo e a caixa que contem os cantos ensinados.<br><br>
+          Dali para fora o braco <b>nao anda</b> &mdash; nem por programa, nem
+          pelas setas. Se a ponta parar fora da area, so o movimento que a traz de
+          volta e liberado: o braco nunca se prende do lado de fora.</div>
+          <div class="perigo">Ensine os cantos com a <b>ponta</b> da tocha, nao com
+          o cotovelo. A area e da ferramenta &mdash; o cotovelo passa por cima da
+          mesa o tempo todo e nao solda nada.</div>
+          <button class="b pri" id="btMesaCanto">Gravar canto na posicao atual</button>
+          <div class="pq2" id="qMesaCanto"></div>
+          <div class="res" id="mesaEstado">--</div>
+          <button class="b mini x" id="btMesaLimpar">Apagar a area ensinada</button>
+          <div class="pq2" id="qMesaLimpar"></div>
+          <div class="nt">Sem area ensinada a maquina volta a se proteger so pelo
+          <b>Y minimo</b> e pelo <b>raio morto da base</b>, que continuam valendo
+          em qualquer caso &mdash; o raio da base e mecanica, nao mesa.</div>
+        </div>
+      </div>
+
+      <div class="et">
+        <div class="cab"><div class="mk">&#9993;</div>
+          <div class="tx"><div class="tt">Onde isto fica guardado</div>
+          <span class="sb">NVS e cartao</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="nt">Tudo desta pagina &mdash; resolucao, reducao, curso,
+          referencia e a area da mesa &mdash; e gravado na memoria da maquina
+          assim que voce confirma, e sobrevive a queda de energia.<br><br>
+          No cartao, o backup em <b>Arquivos &rarr; ajustes</b> leva a calibracao
+          <b>junto</b>. E isso que faz o backup ser um backup da maquina, e nao so
+          das velocidades: restaurar devolve o curso medido e a mesa ensinada, sem
+          refazer o assistente.</div>
+          <button class="b mini" id="btIrArquivos">Ir para Arquivos</button>
+        </div>
+      </div>
     </div>
     <div class="pane" id="cfgEncoder">
 
@@ -1777,31 +1900,134 @@ $("pCur").onclick=function(){D.protCurso=!D.protCurso;prot();};
 $("pDob").onclick=function(){D.protDobra=!D.protDobra;prot();};
 $("pEnv").onclick=function(){D.protEnv=!D.protEnv;prot();};
 
+
+/* =====================================================================
+   ABA CALIBRACAO
+   Junta num lugar so o que estava espalhado: resolucao medida pelo
+   encoder, reducao medida contra uma referencia, curso das juntas e a
+   area da mesa ensinada pelos cantos.
+   ===================================================================== */
+let calSeq = 0;
+
+function calibAtualizar(){
+  fetch("/api/calibracao").then(function(r){return r.json();}).then(function(j){
+    const linha=function(rot,val){
+      return '<div class="sl"><span>'+rot+'</span><b>'+val+'</b></div>';};
+    let h="";
+    for(const k of [1,2]){
+      const cal=j["cal"+k], ppv=j["ppv"+k], red=j["red"+k], ppg=j["ppg"+k];
+      const g0=j["g"+k+"min"], g1=j["g"+k+"max"];
+      h+=linha("Junta "+k+" · passos por volta", ppv);
+      h+=linha("Junta "+k+" · reducao", red.toFixed(3)+" : 1");
+      h+=linha("Junta "+k+" · resolucao", ppg.toFixed(2)+" passos/°");
+      h+=linha("Junta "+k+" · curso",
+               cal ? (g0.toFixed(1)+"° a "+g1.toFixed(1)+"°") : "nao calibrada");
+    }
+    h+=linha("Area da mesa", j.mesaOn
+      ? ("X "+j.mesaX0.toFixed(0)+" a "+j.mesaX1.toFixed(0)+
+         " · Y "+j.mesaY0.toFixed(0)+" a "+j.mesaY1.toFixed(0)+" mm")
+      : (j.mesaN>0 ? (j.mesaN+" canto(s), area ainda pequena demais")
+                   : "nao ensinada"));
+    h+=linha("Y minimo · raio da base",
+             j.envY.toFixed(0)+" mm · "+j.envR.toFixed(0)+" mm");
+    $("calResumo").innerHTML=h;
+
+    $("sbCalib").textContent = (j.cal1&&j.cal2)
+      ? ("resolucao "+j.ppg1.toFixed(1)+" e "+j.ppg2.toFixed(1)+" passos/°")
+      : "juntas ainda nao calibradas";
+    $("sbCurso").textContent = (j.cal1&&j.cal2)
+      ? (j.g1min.toFixed(0)+"…"+j.g1max.toFixed(0)+"° · "+
+         j.g2min.toFixed(0)+"…"+j.g2max.toFixed(0)+"°")
+      : "nao calibrado";
+    $("sbMesa").textContent = j.mesaOn
+      ? (Math.round(j.mesaX1-j.mesaX0)+" x "+Math.round(j.mesaY1-j.mesaY0)+" mm")
+      : (j.mesaN>0 ? (j.mesaN+" canto(s)") : "nao ensinada");
+    $("mesaEstado").textContent = j.mesaOn
+      ? ("mesa ensinada com "+j.mesaN+" canto(s): X de "+j.mesaX0.toFixed(0)+
+         " a "+j.mesaX1.toFixed(0)+" mm, Y de "+j.mesaY0.toFixed(0)+
+         " a "+j.mesaY1.toFixed(0)+" mm")
+      : (j.mesaN>0
+         ? ("so "+j.mesaN+" canto(s), e a area ainda e uma risca. Grave um canto "+
+            "bem afastado dos outros")
+         : "nenhum canto ensinado ainda");
+
+    /* Contagem ao vivo das duas medicoes. Ver o numero subir e o que
+       mostra que a medida esta acontecendo. */
+    const jA=+($("afJ")||{value:1}).value, jR=+($("rdJ")||{value:1}).value;
+    const conta=function(n){
+      if(!j["marca"+n]) return "marque o inicio para comecar a contar";
+      return j["passos"+n]+" passos comandados  ·  "+
+             j["voltas"+n].toFixed(4)+" volta(s) do motor pelo encoder"+
+             (j["enc"+n]?"":"  ·  SEM LEITURA CONFIAVEL");
+    };
+    if($("afConta")) $("afConta").textContent=conta(jA);
+    if($("rdConta")) $("rdConta").textContent=conta(jR);
+
+    /* Comandado x medido: a conferencia final. */
+    const cmp=function(n){
+      const c=(n===1?D.t1:D.t2)||0, m=(n===1?D.m1:D.m2)||0;
+      if(!(n===1?D.m1ok:D.m2ok)) return "junta "+n+": sem leitura";
+      return "junta "+n+": comandado "+c.toFixed(2)+"°  medido "+m.toFixed(2)+
+             "°  ("+(m-c>=0?"+":"")+(m-c).toFixed(2)+"°)";
+    };
+    $("calVivo").textContent=cmp(1)+"\n"+cmp(2);
+  }).catch(function(){});
+}
+
+/* Enquanto a aba estiver aberta, o quadro se atualiza sozinho: quem esta
+   girando o eixo precisa ver a contagem andar. */
+setInterval(function(){
+  if($("veuCfg")&&$("veuCfg").classList.contains("on")&&cfgAtual==="calib")
+    calibAtualizar();
+}, 500);
+
+$("btRdMarcar").onclick=function(){
+  post("/api/aferir/marcar?j="+$("rdJ").value).then(calibAtualizar);};
+$("btRdAplicar").onclick=function(){
+  const g=parseFloat($("rdG").value);
+  if(!(g>=5)){acao("RdAplicar","informe o angulo real: 90 do esquadro, ou o curso");return;}
+  acao("RdAplicar","");
+  post("/api/aferir/reducao?j="+$("rdJ").value+"&g="+g).then(calibAtualizar);};
+document.querySelectorAll("[data-rdg]").forEach(function(b){
+  b.onclick=function(){$("rdG").value=b.dataset.rdg;};});
+
+$("btMesaCanto").onclick=function(){
+  post("/api/mesa/canto").then(calibAtualizar);};
+$("btMesaLimpar").onclick=function(){
+  if(!confirm("Apagar a area da mesa ensinada?\n\nO braco volta a se proteger so pelo Y minimo e pelo raio da base."))return;
+  post("/api/mesa/limpar").then(calibAtualizar);};
+
+/* Os dois atalhos para o assistente e para apagar a calibracao: a acao e
+   a mesma dos botoes da pagina Maquina, e por isso reaproveitam o
+   handler em vez de duplicar a regra. */
+$("btCalIni2").onclick=function(){ if($("btCalib"))$("btCalib").click(); };
+$("btCalApagar2").onclick=function(){ if($("btCalApagar"))$("btCalApagar").click(); };
+$("btIrArquivos").onclick=function(){ fecharCfg(); irAba("arq"); };
+
 /* ---------- zerar aqui e aferir a reducao ---------- */
 /* Os pulsos contados desde a marca aparecem em tempo real: sem isso o
    operador nao tem como saber se a marca pegou. E o botao de gravar so
    liga quando ha marca E graus digitados -- apertar e nao acontecer nada
    e o mesmo defeito de sempre, com outro nome. */
+/* Os dois botoes de medida so ligam quando ha marca: apertar e nao
+   acontecer nada e o defeito mais antigo deste painel. A contagem ao
+   vivo (passos e voltas do motor) vem de /api/calibracao, em
+   calibAtualizar() -- aqui fica so o estado dos botoes. */
 function afEstado(){
   const aj=+$("afJ").value, ap=(aj===2?D.afer2:D.afer1)||0;
-  const ppg=(aj===2?D.ppg2:D.ppg1)||1;
-  const g=parseFloat($("afG").value);
-  acao("AfAplicar", !D.modo ? "sem contato com o robo"
-      : ap===0 ? "marque o inicio e gire o eixo primeiro"
-      : !(g>0) ? "digite quantos graus o eixo girou de verdade"
-      : porQueNaoMove(D,false));
-  /* Aferir pelo encoder tem outra exigencia: um quarto de volta do
-     MOTOR, nao um angulo medido. Explicar isso no proprio botao evita o
-     "apertei e nao aconteceu nada". */
+  const rj=+$("rdJ").value, rp=(rj===2?D.afer2:D.afer1)||0;
   acao("AfEnc", !D.modo ? "sem contato com o robo"
       : ap===0 ? "marque o inicio e gire o eixo primeiro"
       : porQueNaoMove(D,false));
-  $("afConta").textContent = ap===0
-    ? "sem marca: aperte \"Marcar o inicio aqui\", gire o eixo com o jog e volte"
-    : ap+" pulsos desde a marca"+
-      "\nque hoje o sistema le como "+(ap/ppg).toFixed(2)+"°";
+  acao("RdAplicar", !D.modo ? "sem contato com o robo"
+      : rp===0 ? "marque o inicio e gire o eixo primeiro"
+      : !(parseFloat($("rdG").value)>=5) ? "informe o angulo real de referencia"
+      : porQueNaoMove(D,false));
+  acao("MesaCanto", !D.modo ? "sem contato com o robo"
+      : (!D.cal1||!D.cal2) ? "calibre as juntas antes de ensinar a mesa"
+      : D.modo!=="MANUAL" ? "ensine a mesa com o robo parado no manual"
+      : D.movendo ? "espere o braco parar" : "");
 }
-$("afG").oninput=afEstado;
 afEstado();
 
 $("btRefer").onclick=function(){
@@ -1810,20 +2036,15 @@ $("btRefer").onclick=function(){
              "estiver mesmo na referencia, a area util inteira sai do lugar."))
     post("/api/referenciar");
 };
-$("afJ").onchange=function(){$("afG").value="";afEstado();};
+$("afJ").onchange=afEstado;
+$("rdJ").onchange=afEstado;
+$("rdG").oninput=afEstado;
 $("btAfMarcar").onclick=function(){
-  $("afG").value="";afEstado();
-  post("/api/aferir/marcar?j="+$("afJ").value);
+  post("/api/aferir/marcar?j="+$("afJ").value).then(afEstado);
 };
 $("btAfEnc").onclick=function(){
   post("/api/aferir/encoder?j="+$("afJ").value)
-   .then(function(){carregou=false;$("afG").value="";});
-};
-$("btAfAplicar").onclick=function(){
-  const g=parseFloat($("afG").value);
-  if(!(g>0)){erro="digite quantos graus o eixo girou de verdade";return;}
-  post("/api/aferir/aplicar?j="+$("afJ").value+"&g="+g)
-   .then(function(){carregou=false;});   /* repreenche reducao e resolucao */
+   .then(function(){carregou=false;});
 };
 
 $("btReset").onclick =function(){
@@ -2309,6 +2530,51 @@ let vista3D=false;
    flutua; baixos demais e a vista vira a de cima outra vez. */
 const ALT_ELO1=110, ALT_ELO2=64;
 
+/* =====================================================================
+   QUAL POSTURA O DESENHO MOSTRA
+
+   Ate aqui o boneco era desenhado com o angulo COMANDADO -- a conta de
+   pulsos do firmware. Isso desenha a intencao, nao o braco: se o eixo
+   escorregou, a tela continua mostrando tudo no lugar enquanto a peca
+   sai torta.
+
+   Agora o boneco e a posicao MEDIDA pelo encoder, que e onde o braco
+   esta de verdade. Quando as duas discordam de mais de meio grau, o
+   comandado aparece por tras como um fantasma: da para VER o desvio, em
+   vez de so ler um numero.
+
+   Sem leitura confiavel (encoder desligado, cabo solto, leitura
+   impossivel) volta a valer o comandado -- e a legenda diz isso, porque
+   um boneco que muda de significado sem avisar e pior que nenhum.
+   ===================================================================== */
+const DESVIO_VISIVEL = 0.5;   /* graus */
+
+function legendaPostura(z){
+  if(!z.medido) return "posicao comandada (sem leitura do encoder)";
+  if(z.desvio > DESVIO_VISIVEL)
+    return "posicao MEDIDA pelo encoder  ·  tracejado = comandado, "+
+           z.desvio.toFixed(2)+"\u00b0 de desvio";
+  return z.completo ? "posicao medida pelo encoder"
+                    : "posicao medida (uma junta sem leitura)";
+}
+
+function postura(){
+  const c1 = D.t1 || 0, c2 = D.t2 || 0;
+  const tem1 = !!D.m1ok, tem2 = !!D.m2ok;
+  /* Junta sem leitura usa o comandado dela: uma bancada com um driver so
+     no barramento tem de desenhar o braco inteiro assim mesmo. */
+  const r1 = tem1 ? (D.m1 || 0) : c1;
+  const r2 = tem2 ? (D.m2 || 0) : c2;
+  return {
+    t1: r1, t2: r2,               /* o que se desenha */
+    c1: c1, c2: c2,               /* o comandado, para o fantasma */
+    medido: tem1 || tem2,
+    completo: tem1 && tem2,
+    desvio: Math.max(tem1 ? Math.abs(r1 - c1) : 0,
+                     tem2 ? Math.abs(r2 - c2) : 0)
+  };
+}
+
 function pintar3D(){
   const C=paleta();
   const L1=D.l1||200,L2=D.l2||200,dp=window.devicePixelRatio||1;
@@ -2317,7 +2583,7 @@ function pintar3D(){
   /* A isometrica achata o eixo vertical, entao a cena cabe maior que na
      vista de cima. O braco e o assunto: a mesa existe para dar chao a
      ele, nao para ocupar a tela. */
-  esc=Math.min(w,h)/(vistaMm*0.74);
+  esc=Math.min(w,h)/(vistaMm*0.64);
   ox=w/2; oy=h*0.60;
 
   /* Isometrica: x para a direita-baixo, y para a esquerda-baixo, z para
@@ -2325,7 +2591,11 @@ function pintar3D(){
      de losango deitado. */
   const CA=Math.cos(0.5236), SA=Math.sin(0.5236)*0.52;
   const Q=function(x,y,z){
-    return [ox+(x-y)*CA*esc, oy-((x+y)*SA+(z||0)*0.62)*esc];
+    /* O 0,80 no Z e EXAGERO DECLARADO. Um braco de 850 mm de alcance tem
+       110 mm de altura: na proporcao real ele sai achatado a ponto de nao
+       se ler qual elo passa por cima de qual. O exagero e so vertical e
+       nao mente sobre nada que se meca na tela -- X e Y saem na escala. */
+    return [ox+(x-y)*CA*esc, oy-((x+y)*SA+(z||0)*0.80)*esc];
   };
   const escuro=document.documentElement.getAttribute("data-tema")==="escuro";
 
@@ -2333,7 +2603,7 @@ function pintar3D(){
   ct.fillStyle=C.papel;ct.fillRect(0,0,w,h);
 
   /* ---- a mesa: uma superficie, nao so linhas soltas no vazio ---- */
-  const lado=alc*0.92;
+  const lado=alc*0.86;
   const cantos=[Q(-lado,-lado,0),Q(lado,-lado,0),Q(lado,lado,0),Q(-lado,lado,0)];
   const gm=ct.createLinearGradient(cantos[0][0],cantos[0][1],cantos[2][0],cantos[2][1]);
   gm.addColorStop(0, escuro?"rgba(255,255,255,.055)":"rgba(255,255,255,.85)");
@@ -2371,6 +2641,22 @@ function pintar3D(){
   ct.fillStyle="rgba("+C.grade+",.07)";ct.fill();
   ct.strokeStyle="rgba("+C.grade+",.5)";ct.lineWidth=1.5;ct.stroke();
 
+  /* ---- a AREA ENSINADA, se houver: o retangulo onde a ponta pode ir ----
+     Nao e enfeite: dali para fora o braco nao anda, nem por programa nem
+     por jog. Ver o limite e o que evita ensinar um ponto que sera
+     recusado depois. */
+  if(D.mesaOn){
+    const q=[Q(D.mesaX0,D.mesaY0,0),Q(D.mesaX1,D.mesaY0,0),
+             Q(D.mesaX1,D.mesaY1,0),Q(D.mesaX0,D.mesaY1,0)];
+    ct.beginPath();ct.moveTo(q[0][0],q[0][1]);
+    for(let k=1;k<4;k++)ct.lineTo(q[k][0],q[k][1]);
+    ct.closePath();
+    ct.fillStyle="rgba("+C.grade+",.10)";ct.fill();
+    ct.strokeStyle=C.arco;ct.globalAlpha=.65;
+    ct.setLineDash([7,5]);ct.lineWidth=2;ct.stroke();
+    ct.setLineDash([]);ct.globalAlpha=1;
+  }
+
   /* ---- trechos e pontos do programa, deitados na mesa ---- */
   ct.lineWidth=2.5;ct.lineCap="round";
   for(let i=0;i<pontos.length-1;i++){
@@ -2404,9 +2690,11 @@ function pintar3D(){
      elo 1, depois o elo 2. Desenhar do fundo para a frente e o que faz
      uma peca tapar a outra como tapa de verdade.
      ===================================================================== */
-  const t1=(D.t1||0)*Math.PI/180, t2=((D.t1||0)+(D.t2||0))*Math.PI/180;
+  const PZ=postura();
+  const t1=PZ.t1*Math.PI/180, t2=(PZ.t1+PZ.t2)*Math.PI/180;
   const cx=L1*Math.cos(t1), cy=L1*Math.sin(t1);
   const px=cx+L2*Math.cos(t2), py=cy+L2*Math.sin(t2);
+
 
   /* Sombra: elipse borrada sob cada junta, e uma faixa entre elas. Sem
      sombra a peca flutua e a altura nao se le. */
@@ -2428,23 +2716,62 @@ function pintar3D(){
   sombra(cx,cy,Math.max(12,26*esc));
   sombra(px,py,Math.max(9,18*esc));
 
+  const mistura=function(hex,f){
+    /* clareia (f>0) ou escurece (f<0) uma cor. Aceita #rrggbb e rgb(). */
+    let r,g,b;
+    if(hex[0]==="#"){
+      const n=parseInt(hex.slice(1),16);
+      r=(n>>16)&255; g=(n>>8)&255; b=n&255;
+    }else{
+      const m=hex.match(/(\d+)\D+(\d+)\D+(\d+)/);
+      r=m?+m[1]:128; g=m?+m[2]:128; b=m?+m[3]:128;
+    }
+    const alvo=f>0?255:0, k=Math.abs(f);
+    r=Math.round(r+(alvo-r)*k); g=Math.round(g+(alvo-g)*k); b=Math.round(b+(alvo-b)*k);
+    return "rgb("+r+","+g+","+b+")";
+  };
+
+  /* Profundidade na isometrica: quanto MAIOR x+y, mais perto do
+     observador. Toda peca e desenhada em ordem crescente disso, e e o
+     que faz uma tapar a outra como tapa de verdade. */
+  const prof=function(x,y){ return x+y; };
+
+  const quad=function(p,cor){
+    ct.fillStyle=cor;ct.beginPath();
+    ct.moveTo(p[0][0],p[0][1]);
+    for(let k=1;k<p.length;k++)ct.lineTo(p[k][0],p[k][1]);
+    ct.closePath();ct.fill();
+    ct.strokeStyle="rgba(0,0,0,.18)";ct.lineWidth=1;ct.stroke();
+  };
+
   /* Uma caixa deitada de (x0,y0) a (x1,y1), na altura z, com largura
-     'larg' e espessura 'alt'. Devolve nada: so pinta. */
+     'larg' e espessura 'alt'.
+     As DUAS laterais sao ordenadas por profundidade, e as duas pontas
+     ganham tampa: sem elas o elo parecia um tubo aberto quando visto de
+     enfiada. */
   const caixa=function(x0,y0,x1,y1,z,larg,alt,corTopo,corLado){
     const dx=x1-x0, dy=y1-y0, m=Math.hypot(dx,dy)||1;
     const nx=-dy/m*larg/2, ny=dx/m*larg/2;      /* normal no plano */
     const A=[x0+nx,y0+ny], B=[x1+nx,y1+ny], Bi=[x1-nx,y1-ny], Ai=[x0-nx,y0-ny];
     const zt=z+alt/2, zb=z-alt/2;
-    const quad=function(p,cor){
-      ct.fillStyle=cor;ct.beginPath();
-      ct.moveTo(p[0][0],p[0][1]);
-      for(let k=1;k<p.length;k++)ct.lineTo(p[k][0],p[k][1]);
-      ct.closePath();ct.fill();
-      ct.strokeStyle="rgba(0,0,0,.18)";ct.lineWidth=1;ct.stroke();
-    };
-    /* lateral de tras primeiro, depois a da frente e a de cima */
-    quad([Q(A[0],A[1],zb),Q(B[0],B[1],zb),Q(B[0],B[1],zt),Q(A[0],A[1],zt)],corLado);
-    quad([Q(Ai[0],Ai[1],zb),Q(Bi[0],Bi[1],zb),Q(Bi[0],Bi[1],zt),Q(Ai[0],Ai[1],zt)],corLado);
+
+    /* laterais, a de tras primeiro */
+    const ladoA=[A,B], ladoB=[Ai,Bi];
+    const dA=prof((A[0]+B[0])/2,(A[1]+B[1])/2);
+    const dB=prof((Ai[0]+Bi[0])/2,(Ai[1]+Bi[1])/2);
+    const ordem = (dA<dB) ? [ladoA,ladoB] : [ladoB,ladoA];
+    const corFundo = mistura(corLado,-0.12);
+    ordem.forEach(function(L,i){
+      quad([Q(L[0][0],L[0][1],zb),Q(L[1][0],L[1][1],zb),
+            Q(L[1][0],L[1][1],zt),Q(L[0][0],L[0][1],zt)],
+           i===0?corFundo:corLado);
+    });
+    /* tampa da ponta mais proxima */
+    const pA=prof(x0,y0), pB=prof(x1,y1);
+    const tp = (pA>pB) ? [A,Ai] : [B,Bi];
+    quad([Q(tp[0][0],tp[0][1],zb),Q(tp[1][0],tp[1][1],zb),
+          Q(tp[1][0],tp[1][1],zt),Q(tp[0][0],tp[0][1],zt)], corFundo);
+    /* face de cima por ultimo: e a que se ve */
     quad([Q(A[0],A[1],zt),Q(B[0],B[1],zt),Q(Bi[0],Bi[1],zt),Q(Ai[0],Ai[1],zt)],corTopo);
   };
 
@@ -2462,35 +2789,70 @@ function pintar3D(){
     ct.strokeStyle="rgba(0,0,0,.20)";ct.lineWidth=1;ct.stroke();
   };
 
-  const mistura=function(hex,f){
-    /* clareia (f>0) ou escurece (f<0) uma cor #rrggbb */
-    const n=parseInt(hex.slice(1),16);
-    let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
-    const alvo=f>0?255:0, k=Math.abs(f);
-    r=Math.round(r+(alvo-r)*k); g=Math.round(g+(alvo-g)*k); b=Math.round(b+(alvo-b)*k);
-    return "rgb("+r+","+g+","+b+")";
-  };
   const topo1=mistura(C.elo1, escuro?0.22:0.30), lado1=mistura(C.elo1,-0.22);
   const topo2=mistura(C.elo2, escuro?0.22:0.30), lado2=mistura(C.elo2,-0.22);
 
-  /* base */
-  cilindro(0,0,0,ALT_ELO1-16, 34, mistura(C.elo1,-0.34), mistura(C.elo1,-0.10));
-  /* elo 1 */
-  caixa(0,0,cx,cy, ALT_ELO1, Math.max(22,L1*0.15), 26, topo1, lado1);
-  /* cotovelo: coluna curta descendo ate a altura do elo 2 */
-  cilindro(cx,cy,ALT_ELO2-8,ALT_ELO1+10, 20, mistura(C.elo1,-0.30), topo1);
-  /* elo 2 */
-  caixa(cx,cy,px,py, ALT_ELO2, Math.max(16,L2*0.115), 20, topo2, lado2);
+  /* =====================================================================
+     ORDEM DE DESENHO POR PROFUNDIDADE.
 
-  /* eixos das juntas: um disco claro em cima de cada uma */
-  cilindro(0,0,ALT_ELO1+10,ALT_ELO1+17, 17, mistura(C.arco,-0.2), C.arco);
-  cilindro(cx,cy,ALT_ELO1+10,ALT_ELO1+16, 13, mistura(C.elo1,-0.2), topo1);
+     Estava fixa: base, elo 1, cotovelo, elo 2 -- sempre nessa ordem. Com
+     o cotovelo dobrado PARA TRAS, o elo 2 esta atras do elo 1 na cena e
+     mesmo assim era pintado por cima dele. O braco aparecia recortado
+     errado em metade das posturas, e era isso que fazia o desenho
+     parecer quebrado.
+
+     Agora cada peca declara a profundidade do seu ponto medio e o
+     conjunto e pintado do fundo para a frente.
+     ===================================================================== */
+  const pecas=[];
+  /* pedestal: dois degraus, para a base ter cara de base e nao de poste */
+  pecas.push({d:-1e9, f:function(){
+    cilindro(0,0,0,10, 44, mistura(C.elo1,-0.42), mistura(C.elo1,-0.26));
+    cilindro(0,0,8,ALT_ELO1-14, 30, mistura(C.elo1,-0.34), mistura(C.elo1,-0.12));
+  }});
+  pecas.push({d:prof(cx/2,cy/2), f:function(){
+    caixa(0,0,cx,cy, ALT_ELO1, Math.max(22,L1*0.15), 26, topo1, lado1);
+  }});
+  pecas.push({d:prof(cx,cy)+0.01, f:function(){
+    /* carcaca do cotovelo: desce do elo 1 ate a altura do elo 2 */
+    cilindro(cx,cy,ALT_ELO2-8,ALT_ELO1+12, 21, mistura(C.elo1,-0.30), topo1);
+  }});
+  pecas.push({d:prof((cx+px)/2,(cy+py)/2), f:function(){
+    caixa(cx,cy,px,py, ALT_ELO2, Math.max(16,L2*0.115), 20, topo2, lado2);
+  }});
+  /* discos dos eixos, sempre por cima da propria junta */
+  pecas.push({d:prof(0,0)+0.02, f:function(){
+    cilindro(0,0,ALT_ELO1+12,ALT_ELO1+19, 17, mistura(C.arco,-0.2), C.arco);
+  }});
+  pecas.push({d:prof(cx,cy)+0.03, f:function(){
+    cilindro(cx,cy,ALT_ELO1+12,ALT_ELO1+18, 13, mistura(C.elo1,-0.2), topo1);
+  }});
+  pecas.sort(function(a,b){return a.d-b.d;});
+  pecas.forEach(function(p){p.f();});
 
   /* ---- a ferramenta, descendo ate a peca ---- */
-  const k2=Q(px,py,ALT_ELO2-6), pMesa=Q(px,py,0);
-  ct.strokeStyle=D.solda?C.quente:mistura(C.elo2,-0.35);
-  ct.lineWidth=Math.max(2.5,6*esc);ct.lineCap="round";
-  ct.beginPath();ct.moveTo(k2[0],k2[1]);ct.lineTo(pMesa[0],pMesa[1]);ct.stroke();
+  /* A tocha e um cone: grossa em cima, fina na ponta. Um risco de
+     espessura constante nao lia como ferramenta. */
+  const zTopo=ALT_ELO2+6;
+  const k2=Q(px,py,zTopo), pMesa=Q(px,py,0);
+  {
+    const rTopo=Math.max(5,14*esc), rPonta=Math.max(1.5,3.5*esc);
+    const g=ct.createLinearGradient(k2[0],k2[1],pMesa[0],pMesa[1]);
+    g.addColorStop(0, mistura(C.elo2,-0.10));
+    g.addColorStop(1, D.solda?C.quente:mistura(C.elo2,-0.45));
+    ct.fillStyle=g;
+    ct.beginPath();
+    ct.moveTo(k2[0]-rTopo,k2[1]);
+    ct.lineTo(k2[0]+rTopo,k2[1]);
+    ct.lineTo(pMesa[0]+rPonta,pMesa[1]);
+    ct.lineTo(pMesa[0]-rPonta,pMesa[1]);
+    ct.closePath();ct.fill();
+    ct.strokeStyle="rgba(0,0,0,.22)";ct.lineWidth=1;ct.stroke();
+    /* colar do bico */
+    ct.fillStyle=mistura(C.elo2,-0.30);
+    ct.beginPath();
+    ct.ellipse(k2[0],k2[1],rTopo,rTopo*0.5,0,0,TAU);ct.fill();
+  }
 
   if(D.solda){
     /* o arco: um halo quente na peca */
@@ -2505,11 +2867,30 @@ function pintar3D(){
   ct.beginPath();ct.ellipse(pMesa[0],pMesa[1],D.solda?5:4,D.solda?3.5:2.8,0,0,TAU);ct.fill();
   ct.lineCap="butt";
 
+  /* Fantasma do comandado, POR CIMA de tudo -- ele so serve se der para
+     ve-lo. Desenhado por baixo do braco, ficava escondido justamente nas
+     posturas em que o desvio importa. */
+  if(PZ.medido && PZ.desvio > DESVIO_VISIVEL){
+    const f1=PZ.c1*Math.PI/180, f2=(PZ.c1+PZ.c2)*Math.PI/180;
+    const fcx=L1*Math.cos(f1), fcy=L1*Math.sin(f1);
+    const fpx=fcx+L2*Math.cos(f2), fpy=fcy+L2*Math.sin(f2);
+    const a=Q(0,0,ALT_ELO1), b=Q(fcx,fcy,ALT_ELO1), c2q=Q(fpx,fpy,ALT_ELO2);
+    ct.save();
+    ct.strokeStyle=C.brasa;
+    ct.setLineDash([7,5]); ct.lineWidth=Math.max(2,3.5*esc); ct.lineCap="round";
+    ct.globalAlpha=.85;
+    ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.lineTo(c2q[0],c2q[1]);
+    ct.stroke();
+    ct.fillStyle=C.brasa;
+    ct.beginPath();ct.ellipse(c2q[0],c2q[1],4,2.8,0,0,TAU);ct.fill();
+    ct.setLineDash([]); ct.globalAlpha=1; ct.restore();
+  }
+
   /* Uma linha so, embaixo. Os angulos e a ponta ja estao na regua do
      rodape -- repetir aqui em cima so cobriria a legenda. */
   ct.fillStyle=C.letra3;
   ct.font="10px ui-monospace,Menlo,monospace";ct.textAlign="left";
-  ct.fillText("vista 3D  ·  desenhar e escolher pontos e na vista de cima",
+  ct.fillText(legendaPostura(PZ) + "  ·  desenhar e escolher pontos e na vista de cima",
               10, h-10);
 }
 
@@ -2678,11 +3059,38 @@ function pintar(){
       ct.fillText(String(i+1),a[0],a[1]);}
   });
 
+  /* Area util ensinada: o retangulo de onde a ponta nao sai. */
+  if(D.mesaOn){
+    const a=P(D.mesaX0,D.mesaY0), b=P(D.mesaX1,D.mesaY1);
+    ct.fillStyle="rgba("+C.grade+",.10)";
+    ct.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),
+                Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));
+    ct.strokeStyle=C.arco;ct.globalAlpha=.6;
+    ct.setLineDash([7,5]);ct.lineWidth=2;
+    ct.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),
+                  Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));
+    ct.setLineDash([]);ct.globalAlpha=1;
+  }
+
   /* braco: espessura proporcional ao comprimento de cada elo */
-  const t1=(D.t1||0)*Math.PI/180,t2=((D.t1||0)+(D.t2||0))*Math.PI/180;
+  const PZ=postura();
+  const t1=PZ.t1*Math.PI/180,t2=(PZ.t1+PZ.t2)*Math.PI/180;
   const c=P(L1*Math.cos(t1),L1*Math.sin(t1));
   const p=P(L1*Math.cos(t1)+L2*Math.cos(t2),L1*Math.sin(t1)+L2*Math.sin(t2));
   const e1=Math.max(4,L1*esc*0.085), e2=Math.max(3,L2*esc*0.068);
+
+  /* Fantasma do comandado: onde o firmware ACHA que o braco esta. */
+  if(PZ.medido && PZ.desvio > DESVIO_VISIVEL){
+    const f1=PZ.c1*Math.PI/180, f2=(PZ.c1+PZ.c2)*Math.PI/180;
+    const fc=P(L1*Math.cos(f1),L1*Math.sin(f1));
+    const fp=P(L1*Math.cos(f1)+L2*Math.cos(f2),L1*Math.sin(f1)+L2*Math.sin(f2));
+    ct.save();
+    ct.strokeStyle=C.letra3;ct.globalAlpha=.42;
+    ct.setLineDash([6,5]);ct.lineWidth=Math.max(2,e2*.5);ct.lineCap="round";
+    ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(fc[0],fc[1]);ct.lineTo(fp[0],fp[1]);
+    ct.stroke();
+    ct.setLineDash([]);ct.globalAlpha=1;ct.restore();
+  }
 
   ct.save();ct.shadowColor=cor("--sombra");ct.shadowBlur=8;ct.shadowOffsetY=3;
   ct.strokeStyle=C.elo1;ct.lineWidth=e1;
@@ -2718,11 +3126,15 @@ function pintar(){
   ct.beginPath();ct.arc(p[0],p[1],Math.max(4,e2*.6),0,TAU);ct.fill();
   ct.restore();
 
+  ct.fillStyle=C.letra3;ct.globalAlpha=.8;
+  ct.font="10px ui-monospace,Menlo,monospace";ct.textAlign="left";
+  ct.fillText(legendaPostura(PZ),12,h-14);
+  ct.globalAlpha=1;
   if(!D.protEnv){
     ct.fillStyle=C.letra2;ct.globalAlpha=.75;
-    ct.font="10px ui-monospace,Menlo,monospace";ct.textAlign="left";
-    ct.fillText("protecao de mesa e base desligada",12,h-14);
-    ct.globalAlpha=1;
+    ct.textAlign="right";
+    ct.fillText("protecao de mesa e base desligada",w-12,h-14);
+    ct.textAlign="left";ct.globalAlpha=1;
   }
 
   /* desenho importado, enquanto o operador o posiciona */
@@ -4330,7 +4742,8 @@ const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc"};
 let cfgAtual = "maquina";
 
 function irCfg(qual){
-  const validas = {maquina:"cfgMaquina", encoder:"cfgEncoder", sistema:"cfgSistema"};
+  const validas = {maquina:"cfgMaquina", calib:"cfgCalib",
+                   encoder:"cfgEncoder", sistema:"cfgSistema"};
   if(!validas[qual]) qual = "maquina";
   cfgAtual = qual;
   for(const k in validas) $(validas[k]).classList.toggle("on", k === qual);
@@ -4339,6 +4752,7 @@ function irCfg(qual){
   /* A tela de saude e o registro so sao buscados quando aparecem: sao
      duas requisicoes que nao fazem falta enquanto ninguem olha. */
   if(qual === "sistema"){ saudeAtualizar(); pintarQR(); }
+  if(qual === "calib"){ calibAtualizar(); }
   try{localStorage.setItem("cfg", qual);}catch(e){}
 }
 

@@ -763,6 +763,7 @@ static void teste_A10_json_status() {
     "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
     "\"op\":%s,\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
+    "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
@@ -780,11 +781,12 @@ static void teste_A10_json_status() {
     "false","false","false", 255u,
     "false","false","false", 4294967295UL, 4294967295UL,
     -999.99f, -999.99f, "false", "false", 100u,
+    "false", -9999.0f, 9999.0f, -9999.0f, 9999.0f,
     msg);
 
-  checar(n < 1400, "A10a", "o JSON de status precisa caber no buffer de 1400 bytes");
-  nota("pior caso medido: %d bytes. Buffer declarado em servidor_web.cpp: 1400.", n);
-  if (n >= 1400) {
+  checar(n < 1520, "A10a", "o JSON de status precisa caber no buffer de 1520 bytes");
+  nota("pior caso medido: %d bytes. Buffer declarado em servidor_web.cpp: 1520.", n);
+  if (n >= 1520) {
     nota("snprintf trunca sem erro: a resposta sai como JSON invalido, o");
     nota("r.json() do navegador lanca excecao, o contador 'quedas' sobe e a");
     nota("interface anuncia 'sem comunicacao' com o robo funcionando.");
@@ -5331,6 +5333,227 @@ static void teste_T05_travamento_para_o_programa() {
          "a maquina volta ao manual, para o operador ver o que aconteceu");
 }
 
+// =====================================================================
+//  U01 - Medir a REDUCAO pelo encoder, contra uma referencia
+// =====================================================================
+// O encoder esta no eixo do MOTOR, antes do redutor: o angulo que ele
+// mostra JA e calculado usando a reducao. Nao da para tirar a reducao
+// dele -- seria tirar o numero de uma conta que usa o proprio numero.
+//
+// O que ele da e a contagem de VOLTAS DO MOTOR, precisa e imune a perda
+// de passo. Com UMA referencia do lado da junta (90 graus de esquadro, o
+// curso entre batentes, uma volta completa) a reducao sai exata.
+//
+// A diferenca para a medida antiga, que contava pulsos comandados, e
+// justamente essa imunidade -- e este cenario prova as duas coisas.
+// ---------------------------------------------------------------------
+static void teste_U01_reducao_pelo_encoder() {
+  secao("U01  Medir a reducao pelo encoder, contra uma referencia");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+
+  // A maquina acredita numa reducao de 16,5. A de verdade e 20.
+  webPost("/api/config?ppv1=10000&red1=16.5");
+  rodarComWeb(150);
+  nota("declarado: %lu passos/volta, reducao %.3f",
+       (unsigned long)J1.passosPorVolta, (double)J1.reducao);
+
+  webPost("/api/aferir/marcar?j=1");
+  rodarComWeb(100);
+  checar(aferirTemMarcaBoa(1), "U01a",
+         "a marca guarda a contagem do encoder, nao so os passos");
+
+  // O operador leva a junta 90 graus (esquadro). Com reducao REAL de 20,
+  // 90 graus de junta sao 5 voltas do motor.
+  const float cv = configEncoder.contagensPorVolta[0];
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao += (int32_t)lroundf(5.0f * cv);
+  rodarComWeb(400);
+  nota("depois de girar: %.4f volta(s) do motor pelo encoder",
+       (double)aferirVoltasDesde(1));
+  checar(fabsf(aferirVoltasDesde(1) - 5.0f) < 0.01f, "U01b",
+         "o encoder conta as voltas do motor -- e so isso que ele sabe medir");
+
+  const int cod = webPost("/api/aferir/reducao?j=1&g=90");
+  rodarComWeb(200);
+  nota("aferindo com 90 graus de esquadro: HTTP %d, reducao agora %.4f -- \"%s\"",
+       cod, (double)J1.reducao, ultimaMensagem);
+  checar(cod == 200 && fabsf(J1.reducao - 20.0f) < 0.05f, "U01c",
+         "5 voltas do motor para 90 graus de junta dao reducao 20:1");
+  checar(fabsf(J1.passosPorGrau - 10000.0f * 20.0f / 360.0f) < 0.5f, "U01d",
+         "e a resolucao e recalculada com a reducao nova");
+
+  // A prova de que isto e melhor que contar pulsos: o mesmo movimento com
+  // o eixo ESCORREGANDO. Os pulsos comandados mentem; as voltas do motor,
+  // nao -- o encoder ve o eixo, nao a intencao.
+  webPost("/api/aferir/marcar?j=1");
+  rodarComWeb(100);
+  const long passosAntes = aferirPassosDesde(1);
+  // Comanda 10 voltas de pulso, mas o eixo so da 5: escorregou metade.
+  if (J1.motor) J1.motor->setCurrentPosition(posicaoJ1() + (long)(10.0f * 10000.0f));
+  g_uart.escravo[0].posicao += (int32_t)lroundf(5.0f * cv);
+  rodarComWeb(400);
+  nota("eixo escorregando: %ld passos comandados, %.3f volta(s) de verdade",
+       aferirPassosDesde(1) - passosAntes, (double)aferirVoltasDesde(1));
+  webPost("/api/aferir/reducao?j=1&g=90");
+  rodarComWeb(200);
+  nota("reducao apos o escorregao: %.4f", (double)J1.reducao);
+  checar(fabsf(J1.reducao - 20.0f) < 0.05f, "U01e",
+         "eixo escorregando nao estraga a medida: quem conta e o encoder");
+}
+
+// =====================================================================
+//  U02 - O que a medida da reducao RECUSA
+// =====================================================================
+static void teste_U02_reducao_recusa() {
+  secao("U02  A medida da reducao recusa o que nao da para medir");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  const float redAntes = J1.reducao;
+
+  // 1. Sem marca.
+  int cod = webPost("/api/aferir/reducao?j=1&g=90");
+  rodarComWeb(150);
+  nota("sem marca: HTTP %d -- \"%s\"", cod, ultimaMensagem);
+  checar(fabsf(J1.reducao - redAntes) < 0.001f, "U02a",
+         "sem marca nao mede nada");
+
+  // 2. Movimento curto demais: mede o ruido, nao a engrenagem.
+  webPost("/api/aferir/marcar?j=1");
+  rodarComWeb(100);
+  const float cv = configEncoder.contagensPorVolta[0];
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao += (int32_t)lroundf(0.05f * cv);
+  rodarComWeb(400);
+  webPost("/api/aferir/reducao?j=1&g=90");
+  rodarComWeb(150);
+  nota("0,05 volta do motor: reducao %.3f -- \"%s\"",
+       (double)J1.reducao, ultimaMensagem);
+  checar(fabsf(J1.reducao - redAntes) < 0.001f, "U02b",
+         "menos de um quarto de volta do motor e recusado: mediria o ruido");
+
+  // 3. Angulo de referencia curto demais.
+  g_uart.escravo[0].posicao += (int32_t)lroundf(3.0f * cv);
+  rodarComWeb(400);
+  cod = webPost("/api/aferir/reducao?j=1&g=2");
+  rodarComWeb(150);
+  nota("referencia de 2 graus: HTTP %d, reducao %.3f", cod, (double)J1.reducao);
+  checar(cod != 200 && fabsf(J1.reducao - redAntes) < 0.001f, "U02c",
+         "angulo de referencia curto e recusado ja na porta: erro relativo enorme");
+
+  // 4. Resultado implausivel: a referencia informada nao bate com o eixo.
+  cod = webPost("/api/aferir/reducao?j=1&g=3000");
+  rodarComWeb(150);
+  nota("3 voltas do motor para 3000 graus: HTTP %d, reducao %.4f -- \"%s\"",
+       cod, (double)J1.reducao, ultimaMensagem);
+  checar(fabsf(J1.reducao - redAntes) < 0.001f, "U02d",
+         "reducao abaixo de 0,5 nao existe nesta maquina: recusa em vez de gravar");
+}
+
+// =====================================================================
+//  U03 - A area da mesa ensinada pelos cantos
+// =====================================================================
+static void teste_U03_area_da_mesa() {
+  secao("U03  A mesa ensinada pelos cantos, e o limite que ela cria");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado(120.0f);
+  // Elos conhecidos, para as contas do cenario serem verificaveis a mao.
+  webPost("/api/geometria?l1=200&l2=200&dobra=20&envY=-400&envR=20");
+  rodarComWeb(200);
+  protEnvelope = true;
+  rodarComWeb(50);
+
+  nota("de fabrica: mesa definida=%d, cantos=%u",
+       (int)areaMesa.definida, (unsigned)areaMesa.cantos);
+  checar(!areaMesa.definida, "U03a",
+         "maquina nova nao tem mesa: protecao inventada recusaria movimento valido");
+
+  // Ensina dois cantos opostos levando a ponta ate eles.
+  // Espera o comando ser CONSUMIDO antes de esperar o modo voltar: logo
+  // apos enviarComando() o modo ainda e MANUAL, e um "espere sair do
+  // manual" que comeca no manual termina antes de comecar.
+  auto irEEsperar = [&](float a, float b) {
+    enviarComando(CMD_MOVER_ANGULOS, 0, 0, a, b);
+    rodarComWeb(60);
+    uint32_t tt = 0;
+    while (modoAtual != MODO_MANUAL && tt < 15000) { rodarComWeb(20); tt += 20; }
+  };
+
+  irEEsperar(0.0f, 0.0f);            // ponta em (400, 0)
+  webPost("/api/mesa/canto");
+  rodarComWeb(200);
+  nota("canto 1: %u canto(s), definida=%d",
+       (unsigned)areaMesa.cantos, (int)areaMesa.definida);
+  checar(areaMesa.cantos == 1 && !areaMesa.definida, "U03b",
+         "um canto so nao faz retangulo");
+
+  irEEsperar(60.0f, -60.0f);
+  webPost("/api/mesa/canto");
+  rodarComWeb(200);
+  nota("canto 2: mesa X de %.0f a %.0f, Y de %.0f a %.0f -- \"%s\"",
+       (double)areaMesa.xMin, (double)areaMesa.xMax,
+       (double)areaMesa.yMin, (double)areaMesa.yMax, ultimaMensagem);
+  checar(areaMesa.definida, "U03c",
+         "dois cantos afastados definem a area util");
+
+  // Ponto DENTRO da area continua passando.
+  const char* m = nullptr;
+  const bool dentro = posturaValida(20.0f, -20.0f, &m);
+  nota("postura dentro da area: %s", dentro ? "aceita" : m);
+  checar(dentro, "U03d", "dentro da mesa o movimento continua valendo");
+
+  // Ponto FORA DA MESA mas DENTRO do curso: e o unico jeito de provar que
+  // quem recusou foi a mesa, e nao o limite da junta.
+  const float foraT1 = -60.0f;
+  const bool fora = posturaValida(foraT1, 0.0f, &m);
+  nota("postura fora da area: %s", fora ? "aceita (!)" : m);
+  checar(!fora && m && strstr(m, "mesa") != nullptr, "U03e",
+         "fora da mesa o movimento e recusado, dizendo qual borda foi passada");
+
+  // E o mais importante: a ponta parada FORA nao pode ficar presa la. A
+  // gravidade da violacao tem de apontar o caminho de volta.
+  const float gFora = gravidadeViolacao(foraT1, 0.0f);
+  const float gMais = gravidadeViolacao(foraT1 + 10.0f, 0.0f);
+  const float gMenos= gravidadeViolacao(foraT1 - 10.0f, 0.0f);
+  // Nao importa PARA QUE LADO: importa que exista um lado que melhora.
+  // E o criterio do jog de recuperacao ("nao piorar"), e e ele que
+  // impede o braco de se prender do lado de fora.
+  const float gMelhor = (gMais < gMenos) ? gMais : gMenos;
+  nota("gravidade fora: %.3f; dez graus para cada lado: %.3f e %.3f",
+       (double)gFora, (double)gMais, (double)gMenos);
+  checar(gFora > 0.0f && gMelhor < gFora, "U03f",
+         "ha sempre um lado que melhora: o braco nunca se prende para fora "
+         "da propria mesa");
+
+  // Sobrevive ao religamento e vai junto no backup do cartao.
+  const float x0 = areaMesa.xMin, x1 = areaMesa.xMax;
+  reiniciarSistemaMantendoNvs();
+  nota("depois de religar: definida=%d, X de %.0f a %.0f",
+       (int)areaMesa.definida, (double)areaMesa.xMin, (double)areaMesa.xMax);
+  checar(areaMesa.definida && fabsf(areaMesa.xMin - x0) < 0.5f &&
+         fabsf(areaMesa.xMax - x1) < 0.5f, "U03g",
+         "a mesa ensinada sobrevive a queda de energia");
+
+  prepararCartao();
+  enviarComandoNomeado(CMD_ARQ_SALVAR_CONFIG, "maquina");
+  esperarCartao();
+  mesaLimpar();
+  rodarComWeb(50);
+  checar(!areaMesa.definida, "U03h", "mesa apagada");
+  armSolicitar(TAR_CARREGAR_CONFIG, "maquina");
+  esperarCartao();
+  rodarComWeb(60);
+  nota("restaurado do cartao: definida=%d, X de %.0f a %.0f",
+       (int)areaMesa.definida, (double)areaMesa.xMin, (double)areaMesa.xMax);
+  checar(areaMesa.definida && fabsf(areaMesa.xMin - x0) < 0.5f, "U03i",
+         "e o backup do cartao a traz de volta junto com a calibracao");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -5584,6 +5807,9 @@ int main() {
   teste_T03_todo_json_valido();
   teste_T04_pausa_na_aproximacao();
   teste_T05_travamento_para_o_programa();
+  teste_U01_reducao_pelo_encoder();
+  teste_U02_reducao_recusa();
+  teste_U03_area_da_mesa();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

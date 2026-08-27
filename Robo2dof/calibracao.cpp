@@ -177,6 +177,100 @@ bool aferirPelosEncoder(uint8_t junta) {
   return true;
 }
 
+// ---------------------------------------------------------------------
+// Voltas do MOTOR desde a marca, pelo encoder. Este e o numero que o
+// encoder da de graca e com precisao -- e o que falta ao lado da junta e
+// uma referencia angular, uma so. Ver a nota longa em calibracao.h.
+// ---------------------------------------------------------------------
+float aferirVoltasDesde(uint8_t junta) {
+  if (junta != 1 && junta != 2) return 0.0f;
+  const uint8_t i = junta - 1;
+  if (!marcaFeita[i] || !marcaEncoderBoa[i]) return 0.0f;
+
+  const LeituraEncoder L = encoderLer(junta);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) return 0.0f;
+
+  const float cv = configEncoder.contagensPorVolta[i];
+  if (cv < 1.0f) return 0.0f;
+
+  // Complemento de dois: a volta do contador de 32 bits sai certa sozinha.
+  const int32_t d = (int32_t)((uint32_t)L.bruto - (uint32_t)marcaEncoder[i]);
+  return (float)d / cv;
+}
+
+bool aferirTemMarcaBoa(uint8_t junta) {
+  if (junta != 1 && junta != 2) return false;
+  return marcaFeita[junta - 1] && marcaEncoderBoa[junta - 1];
+}
+
+// ---------------------------------------------------------------------
+bool aferirReducaoPeloEncoder(uint8_t junta, float grausReais) {
+  if (junta != 1 && junta != 2) return false;
+  const uint8_t i = junta - 1;
+  Junta& j = (junta == 1) ? J1 : J2;
+
+  if (!marcaFeita[i]) {
+    definirMensagem("Marque o inicio antes de aferir a junta %u", (unsigned)junta);
+    return false;
+  }
+  if (!marcaEncoderBoa[i]) {
+    definirMensagem("A junta %u nao tinha leitura do encoder quando foi marcada",
+                    (unsigned)junta);
+    return false;
+  }
+  if (motoresEmMovimento()) {
+    definirMensagem("Espere o braco parar para aferir");
+    return false;
+  }
+  if (configEncoder.contagensPorVolta[i] < 1.0f) {
+    definirMensagem("Informe as contagens por volta do encoder antes de aferir");
+    return false;
+  }
+
+  const float voltas = fabsf(aferirVoltasDesde(junta));
+  const float g      = fabsf(grausReais);
+
+  // Um quarto de volta do motor e cinco graus de junta: abaixo disso a
+  // medida diz mais sobre o erro de leitura do que sobre a engrenagem.
+  if (voltas < 0.25f) {
+    definirMensagem("Junta %u: so %.2f volta do motor. Mova bem mais antes de aferir",
+                    (unsigned)junta, (double)voltas);
+    return false;
+  }
+  if (g < 5.0f) {
+    definirMensagem("Angulo de referencia curto demais (%.1f graus): use 90 graus "
+                    "de esquadro, ou o curso inteiro", (double)g);
+    return false;
+  }
+
+  const float red = voltas * 360.0f / g;
+  // Redutor abaixo de 1 seria multiplicador, e acima de 1000 nao existe
+  // nesta classe de maquina. Numero fora disso quer dizer que a
+  // referencia informada nao bate com o que o eixo andou -- gravar seria
+  // estragar a maquina em silencio.
+  if (red < 0.5f || red > 1000.0f) {
+    definirMensagem("Resultado implausivel: %.2f volta do motor para %.1f graus "
+                    "dariam reducao %.1f", (double)voltas, (double)g, (double)red);
+    return false;
+  }
+
+  const float antes = j.reducao;
+  j.reducao = red;
+  j.passosPorGrau = (float)j.passosPorVolta * j.reducao / 360.0f;
+
+  recalcularResolucao();
+  salvarConfiguracoes();
+  aplicarVelocidadeManual();
+  aplicarAceleracao();
+  marcaFeita[i] = false;
+
+  definirMensagem("Junta %u: reducao %.3f:1 medida pelo encoder (era %.3f). "
+                  "%.3f volta do motor para %.1f graus de junta",
+                  (unsigned)junta, (double)red, (double)antes,
+                  (double)voltas, (double)g);
+  return true;
+}
+
 long aferirPassosDesde(uint8_t junta) {
   if (junta != 1 && junta != 2) return 0;
   const uint8_t i = junta - 1;

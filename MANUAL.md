@@ -225,7 +225,8 @@ numa gaveta com três páginas:
 
 | página | o que tem |
 |---|---|
-| **Máquina** | elos, velocidades, acelerações, resolução, sentido dos eixos, proteções, calibração |
+| **Máquina** | elos, velocidades, acelerações, resolução, sentido dos eixos, proteções |
+| **Calibração** | resolução e redução medidas, curso das juntas, área da mesa |
 | **Encoder** | correção de posição, zero absoluto, ligação Modbus |
 | **Sistema** | saúde, registro de eventos, QR de conexão, firmware, modo operador, idioma |
 
@@ -250,7 +251,113 @@ travar ou a tela apagar, **o eixo para sozinho**.
 invertível (Ajustes, ou durante a etapa de referência da calibração):
 nem sempre o sentido das setas bate com o do motor.
 
-### 5.2 Calibração do curso
+### 5.2 Calibração
+
+Gaveta da engrenagem, página **Calibração**. Cinco coisas, medidas em
+ordem.
+
+#### A conta que a máquina faz
+
+```
+passosPorGrau = passosPorVolta × redução ÷ 360
+```
+
+São **dois** números, e cada um erra de um jeito diferente. Por isso os
+passos 1 e 2 medem um de cada vez.
+
+#### Passo 1 — Engrenagem eletrônica (sem instrumento)
+
+Quantos passos o driver precisa para dar uma volta no motor. É parâmetro
+do T3D e é o número que mais se erra: troca-se o driver, refaz-se um
+parâmetro, e o declarado deixa de bater. O sintoma é o braço andar menos
+(ou mais) do que a tela diz, sem nada apontar para o culpado.
+
+O encoder mede isso **sozinho**: manda-se um tanto conhecido de passos e
+pergunta-se quantas voltas o motor deu.
+
+#### Passo 2 — Redução mecânica
+
+> **Leia isto antes de achar que o encoder resolve sozinho.**
+>
+> O encoder está no eixo do **motor**, antes do redutor. O ângulo que ele
+> mostra na tela já é calculado assim:
+>
+> `graus da junta = voltas do motor × 360 ÷ redução`
+>
+> Ou seja: **o ângulo lido já depende da redução.** Não dá para tirar a
+> redução dele — seria tirar o número de uma conta que usa o próprio
+> número. Isso é física, não limitação de programa: com um sensor só, e
+> antes do redutor, a relação do redutor é invisível.
+
+O que o encoder dá de graça, e com muita precisão, é a contagem de
+**voltas do motor**. Falta **uma** referência do lado da junta. Com ela a
+redução sai exata:
+
+```
+redução = voltas do motor × 360 ÷ ângulo real da junta
+```
+
+**De onde tirar a referência**, da melhor para a pior:
+
+| | método | por quê |
+|---|---|---|
+| 1 | **Esquadro (90°)** | preciso, e todo mundo tem um. É o recomendado |
+| 2 | **Curso entre batentes** | maior ângulo disponível → menor erro relativo |
+| 3 | **Volta completa** | se a junta der uma, não precisa de instrumento nenhum |
+
+**Por que isto é melhor do que a medida antiga.** A anterior contava
+*pulsos comandados*: ela erra junto com a engrenagem eletrônica (se
+`passosPorVolta` estiver errado, a redução sai errada na mesma proporção)
+e erra junto com perda de passo (o eixo escorrega e a conta nem fica
+sabendo). Contar voltas reais do motor não tem nenhum dos dois problemas
+— o encoder mede o eixo, não a intenção. Cenário **U01** prova exatamente
+isso: mede certo com o eixo escorregando metade do caminho.
+
+O que a medida **recusa** (cenário **U02**): menos de um quarto de volta
+do motor, ângulo de referência menor que 5°, e qualquer resultado fora de
+0,5:1 a 1000:1 — que só pode significar que a referência informada não
+bate com o que o eixo andou.
+
+#### Passo 3 — Curso das juntas
+
+O assistente de sempre, agora acessível de dentro da aba. Ver §5.2.1.
+
+#### Passo 4 — Área da mesa
+
+A área útil deixou de ser dois números digitados e passou a ser
+**ensinada**: leva-se a ponta a cada canto e grava. O retângulo é a caixa
+que contém os cantos ensinados (dois opostos bastam; mais cantos só
+melhoram).
+
+Dali para fora **o braço não anda** — nem por programa, nem pelas setas.
+A checagem é da **ponta**, não do cotovelo: o cotovelo passa por cima da
+mesa o tempo todo e não solda nada.
+
+> Se a ponta parar fora da área, só o movimento que a traz de volta é
+> liberado. A área entra na mesma conta de gravidade que os limites de
+> curso, então o jog de recuperação funciona igual — **o braço nunca se
+> prende do lado de fora da própria mesa**. Cenário **U03f**.
+
+Sem área ensinada a máquina se protege como antes, pelo **Y mínimo** e
+pelo **raio morto da base** — que continuam valendo em qualquer caso: o
+raio da base é mecânica, não mesa.
+
+#### Passo 5 — Conferir
+
+O quadro do topo da página mostra **comandado × medido** para as duas
+juntas, ao vivo. Se os dois andarem juntos depois de um movimento, a
+resolução está certa. Se o medido andar menos, a redução declarada está
+maior que a real.
+
+#### Onde isto fica guardado
+
+Tudo — resolução, redução, curso, referência e a área da mesa — vai para
+a memória da máquina assim que se confirma, e sobrevive à queda de
+energia. No cartão, o backup em **Arquivos → ajustes** leva a calibração e
+a mesa **junto**. Backup gravado por uma versão anterior não apaga
+nenhuma das duas: o que o arquivo não traz, ele não mexe.
+
+### 5.2.1 Calibração do curso
 
 O braço tem **limite físico**: sem saber onde ele está, o firmware não
 tem como impedir uma batida. A calibração ensina isso.
@@ -345,6 +452,37 @@ no meio de um cordão:
 | exige o medido **claramente** parado | menos de um quinto do esperado |
 | por **meio segundo** | a leitura vem a 20 Hz: menos que isso seria julgar com duas ou três amostras |
 | **sem leitura, se cala** | cabo solto no encoder não pode parar o braço no meio de um cordão |
+
+### 5.2.2 O desenho mostra onde o braço ESTÁ
+
+O boneco 2D e o 3D eram desenhados com o ângulo **comandado** — a conta de
+pulsos do firmware. Isso desenha a intenção, não o braço: se o eixo
+escorregou, a tela continua mostrando tudo no lugar enquanto a peça sai
+torta.
+
+Agora o boneco é a posição **medida pelo encoder**. Quando as duas
+discordam de mais de meio grau, o comandado aparece por trás como um
+**fantasma tracejado**: dá para *ver* o desvio, em vez de só ler um
+número. A legenda do rodapé diz qual das duas está sendo desenhada.
+
+Sem leitura confiável (encoder desligado, cabo solto, leitura fora do
+curso) volta a valer o comandado — e a legenda diz isso. Um boneco que
+muda de significado sem avisar é pior que nenhum.
+
+A área da mesa ensinada aparece nas duas vistas, tracejada.
+
+**O 3D também mudou por dentro.** A ordem de desenho era fixa — base, elo
+1, cotovelo, elo 2 — e com o cotovelo dobrado *para trás* o elo 2 era
+pintado por cima do elo 1 mesmo estando atrás dele na cena. O braço saía
+recortado errado em metade das posturas, e era isso que fazia o desenho
+parecer quebrado. Agora cada peça declara a profundidade do seu ponto
+médio e o conjunto é pintado do fundo para a frente. As caixas dos elos
+ganharam tampa nas pontas e as laterais também são ordenadas.
+
+> O achatamento vertical do 3D é **exagero declarado**: um braço de 850 mm
+> de alcance tem 110 mm de altura, e na proporção real ele sai achatado a
+> ponto de não se ler qual elo passa por cima de qual. O exagero é só no
+> Z — X e Y saem na escala.
 
 ### 5.3 Mesa de traçado
 
@@ -716,6 +854,10 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/painel` | modo operador e senha do técnico |
 | `POST /api/ota` | envio do firmware (multipart) |
 | `POST /api/sd/prever`, `GET /api/sd/previa` | miniatura de uma peça do cartão |
+| `GET  /api/calibracao` | tudo da aba Calibração, num JSON |
+| `POST /api/aferir/reducao` | mede a redução pelo encoder (`j`, `g` = ângulo real) |
+| `POST /api/mesa/canto` | ensina um canto na posição atual da ponta |
+| `POST /api/mesa/limpar` | apaga a área ensinada |
 | `GET  /api/sd/*`, `POST /api/sd/*` | cartão |
 | `GET  /api/rede` | por onde chegar no painel |
 

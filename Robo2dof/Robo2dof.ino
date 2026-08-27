@@ -94,7 +94,8 @@ static const char* NOME_CMD[] = {
   "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","AFERIR_ENCODER",
   "ENSINAR_ZERO","ESQUECER_ZERO","INVERTER_EIXO",
   "APLICAR_ENCODER","ENCODER_ZERAR","APRENDER",
-  "PROG_PAUSAR","PROG_DESFAZER","PROG_REPETIR","MANUTENCAO_OK","JOG_XY",
+  "PROG_PAUSAR","PROG_DESFAZER","PROG_REPETIR","MANUTENCAO_OK",
+  "AFERIR_REDUCAO","MESA_CANTO","MESA_LIMPAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
 };
@@ -379,6 +380,56 @@ static void processarComando(const Comando& c) {
                 (unsigned long)(producao.ciclosSessao + 1));
       break;
     }
+
+    case CMD_AFERIR_REDUCAO:
+      if (modoAtual == MODO_MANUAL) aferirReducaoPeloEncoder((uint8_t)c.a, c.f1);
+      else definirMensagem("Afira com o robo parado no modo manual");
+      break;
+
+    case CMD_MESA_CANTO: {
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Ensine os cantos da mesa com o robo parado no manual");
+        break;
+      }
+      if (motoresEmMovimento()) {
+        definirMensagem("Espere o braco parar para gravar o canto");
+        break;
+      }
+      if (!J1.calibrada || !J2.calibrada) {
+        definirMensagem("Calibre as juntas antes de ensinar a mesa: sem curso "
+                        "medido nao ha coordenada confiavel");
+        break;
+      }
+      // O canto e onde a PONTA esta -- ela e a ferramenta, e a area util
+      // e dela. O cotovelo passa por cima da mesa o tempo todo.
+      float xc, yc, xp, yp;
+      cinematicaDireta(passosParaGraus(J1, posicaoJ1()),
+                       passosParaGraus(J2, posicaoJ2()), xc, yc, xp, yp);
+      mesaEnsinarCanto(xp, yp);
+      salvarConfiguracoes();
+      if (areaMesa.definida) {
+        definirMensagem("Canto %u gravado. Mesa: X de %.0f a %.0f, Y de %.0f a %.0f mm",
+                        (unsigned)areaMesa.cantos, (double)areaMesa.xMin,
+                        (double)areaMesa.xMax, (double)areaMesa.yMin,
+                        (double)areaMesa.yMax);
+      } else {
+        definirMensagem("Canto %u gravado em X=%.0f Y=%.0f. Grave outro canto, "
+                        "bem afastado deste", (unsigned)areaMesa.cantos,
+                        (double)xp, (double)yp);
+      }
+      break;
+    }
+
+    case CMD_MESA_LIMPAR:
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("So com o robo parado no modo manual");
+        break;
+      }
+      mesaLimpar();
+      salvarConfiguracoes();
+      definirMensagem("Area da mesa apagada: o braco volta a usar so o "
+                      "Y minimo e o raio da base");
+      break;
 
     case CMD_MANUTENCAO_OK:
       if (modoAtual != MODO_MANUAL) {

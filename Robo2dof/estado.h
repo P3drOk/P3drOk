@@ -208,6 +208,14 @@ struct ConfigPendente {
   bool     cal1, cal2;
   long     p1Min, p1Max, p2Min, p2Max;
   float    home1, home2;
+
+  // ---- AREA DA MESA ---------------------------------------------------
+  // Ensinada levando a ponta aos cantos: refazer isso a mao num backup
+  // custaria o mesmo trabalho de ensinar de novo.
+  bool     temMesa;
+  bool     mesaDefinida;
+  uint8_t  mesaCantos;
+  float    mesaXMin, mesaXMax, mesaYMin, mesaYMax;
 };
 extern ConfigPendente configPendente;
 
@@ -277,6 +285,35 @@ void aplicarEncoderPendente();           // core 1: grava e reconfigura
 
 void prepararConfigPendente();   // core 0: copia o estado vivo para a area
 void aplicarConfigPendente();    // core 1: copia de volta e recalcula
+
+// ---------------------------------------------------------------------
+// AREA DA MESA
+//
+// Ate aqui a protecao de espaco era dois numeros digitados: um Y minimo
+// e um raio morto em volta da base. Funcionam, mas descrevem mal uma
+// mesa de verdade -- que e um RETANGULO, num lugar especifico, e que o
+// operador conhece pelos cantos dela e nao por coordenadas.
+//
+// Aqui a area e ENSINADA: leva-se a ponta a cada canto e grava. O
+// retangulo e a caixa que contem os cantos ensinados. Dali para fora o
+// braco nao anda -- nem por programa, nem por jog.
+//
+// O raio morto da base continua existindo em separado: ele nao e da
+// mesa, e da mecanica (o braco nao pode dobrar por cima do proprio
+// eixo), e vale mesmo com a mesa inteira ensinada.
+// ---------------------------------------------------------------------
+struct AreaMesa {
+  bool    definida;      // ha retangulo valido
+  uint8_t cantos;        // quantos cantos ja foram ensinados
+  float   xMin, xMax;    // mm, nas coordenadas da maquina
+  float   yMin, yMax;
+};
+extern AreaMesa areaMesa;
+
+// Ensina um canto na posicao ATUAL da ponta. A area vira a caixa que
+// contem todos os cantos ensinados.
+void mesaEnsinarCanto(float x, float y);
+void mesaLimpar();
 
 // ---------------------------------------------------------------------
 // MODO OPERADOR x TECNICO
