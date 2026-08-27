@@ -638,11 +638,57 @@ Ferramentas de diagnóstico embutidas:
 | **Testar a linha agora** | eco no MAX485 + sondagem do driver, *dentro* do sistema rodando |
 | **Procurar o registrador** | acha o par da posição movendo o braço duas vezes no mesmo sentido |
 | **Voltar aos padrões medidos** | desfaz configuração antiga herdada do NVS |
+| **Tirar a foto / Comparar agora** | acha o endereço de um parâmetro do driver **sem escrever nada** |
 
 O diagnóstico sai **também no monitor serial**, uma linha a cada 5 s
 enquanto falha.
 
-### 5.6 Correção de posição pelo encoder
+### 5.6 Som do driver (e outros parâmetros) pelo RS485
+
+**Dá para ligar e desligar o bip do driver pela tela**, sem ir até o
+painel dele digitar P098. O Modbus tem escrita — função **06** (um
+registrador) e **16** (um bloco) — e é o mesmo fio que já lê a posição.
+
+O que **não** dá é adivinhar o endereço. O mapa Modbus do T3D não está
+publicado: o registrador da posição (90) foi achado procurando, não lendo
+manual. *P098 no painel* pode ser o registrador **98**, e essa é a
+primeira hipótese a testar — mas é hipótese.
+
+Por que a diferença importa: ler no registrador errado dá um número
+errado na tela. **Escrever** no registrador errado pode trocar a
+engrenagem eletrônica, o modo de controle, o sentido do eixo ou o limite
+de torque — e o eixo pode sair andando.
+
+Por isso o caminho tem três passos, na coluna **Encoder**, painel *Som do
+driver*:
+
+1. **Achar o endereço sem escrever.** *Tirar a foto* lê os registradores
+   0 a 255. Você vai ao painel do driver, muda o parâmetro lá (P098 para
+   1), volta e aperta *Comparar agora*. O que mudou entre as duas fotos é
+   o endereço daquele parâmetro. Isto é **só leitura**: nada é escrito.
+   Faça com o braço **parado** — se ele se mexer, o par da posição muda
+   junto e aparece na lista.
+2. **Gravar qual é o registrador**, com o valor que liga e o que desliga.
+   Fica no NVS junto com o resto da configuração.
+3. **O botão.** Depois disso é *Ligar o som* / *Desligar o som*, sem
+   digitar endereço nenhum.
+
+Depois de escrever, o firmware **relê o registrador e compara**. Driver
+que responde *aceitei* e guarda outra coisa existe (registrador só de
+leitura, escrita bloqueada por nível, parâmetro que só vale com o servo
+desabilitado) — sem a releitura a tela diria *pronto* e o bip continuaria
+tocando.
+
+**Travas da escrita avulsa** (*Escrever um registrador qualquer*): modo
+manual, braço parado, **servos desligados**, solda desligada, registrador
+e valor **digitados** (nada aqui deduz endereço) e confirmação explícita.
+Se o driver recusar a função 06 com exceção, ligue **funcão 16** — há
+driver que só aceita ela mesmo para um registrador só.
+
+O laço de leitura continua **só leitura**: a escrita é um caminho avulso,
+disparado por ação do operador, e não roda dentro do ciclo normal.
+
+### 5.7 Correção de posição pelo encoder
 
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o
 sistema dá um retoque curto.
@@ -711,18 +757,18 @@ dar o mesmo resultado que "mandei ir".
 > defeito e o assentamento nunca traria o braço de volta — seria trocar
 > uma correção por um disfarce. Cenário **M05** do banco.
 
-### 5.7 Solda
+### 5.8 Solda
 
 Relé com proteções: não liga sem servos, não fica ligado com o braço
 parado por engano, e a parada de emergência corta o arco antes de
 qualquer outra coisa.
 
-### 5.8 Cartão SD
+### 5.9 Cartão SD
 
 Programas, trajetórias e cópias de configuração. Tarefa própria no núcleo
 0. Ver [`CARTAO_SD.md`](CARTAO_SD.md).
 
-### 5.9 Rede
+### 5.10 Rede
 
 A máquina **cria** a rede `Robo2dof`. Não entra na rede de ninguém, não
 procura roteador, não fala com a internet.
@@ -737,7 +783,7 @@ do Windows, Android e iPhone levam redirecionamento para 192.168.4.1.
 
 ---
 
-### 5.10 Máquina: saúde, registro, conexão, firmware e modo operador
+### 5.11 Máquina: saúde, registro, conexão, firmware e modo operador
 
 Aba **Máquina**.
 
@@ -836,6 +882,11 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/encoder/padroes` | volta aos padrões medidos |
 | `POST /api/encoder/testar`, `GET /api/encoder/teste` | autoteste da linha |
 | `POST /api/encoder/cacar` | caçada do registrador |
+| `POST /api/encoder/diferenca` | acha um parâmetro comparando duas leituras — **não escreve** |
+| `POST /api/encoder/escrever` | escreve um registrador; exige manual, parado, servos e solda desligados, `confirmar=1` |
+| `GET  /api/encoder/escrita` | como foi a última escrita, **conferida por releitura** |
+| `POST /api/param/config` | grava qual registrador é o do som, e os valores de liga/desliga |
+| `POST /api/param/som` | o botão: `on=1` liga, `on=0` desliga |
 | `POST /api/encoder/zerar` | zera a contagem aqui |
 | `POST /api/correcao` | assentamento pelo encoder |
 | `POST /api/aferir/encoder` | afere a engrenagem eletrônica pelo encoder |

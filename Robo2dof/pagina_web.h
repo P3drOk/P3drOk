@@ -283,6 +283,9 @@ h4:first-child{margin-top:0}
  border-radius:2px;padding:8px 9px;font-family:var(--mono);font-size:12px;color:var(--letra)}
 .cp .un{font-family:var(--mono);font-size:9px;color:var(--letra3);width:34px}
 .nt{font-size:11.5px;color:var(--letra2);margin:0 0 10px;line-height:1.55}
+/* Aviso: mesma nota, mas com a tarja. Nao e decoracao -- e o que
+   separa "leia se quiser" de "leia antes de apertar". */
+.nt.av{border-left:3px solid var(--quente);padding-left:8px;color:var(--letra)}
 /* As explicacoes ensinam quem esta comecando e atrapalham quem ja opera
    todo dia: elas ocupam mais coluna que os controles. O botao "?" no
    cabecalho esconde todas de uma vez, e a escolha fica gravada. Esconder
@@ -798,6 +801,70 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             leitura nao vale, o driver respondeu outra coisa: veja a
             <b>funcao</b> e o <b>registrador</b>.</div>
             <div class="res" id="encQuadro">--</div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9835;</div>
+            <div class="tx"><div class="tt">Som do driver, e outros parametros</div>
+            <span class="sb">mudar pelo RS485 em vez de ir ao painel</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">Da para ligar e desligar o bip do driver daqui: o
+            Modbus tem escrita (funcao 06 e 16), e e o mesmo fio que ja le a
+            posicao. O que <b>nao</b> da e adivinhar o endereco. O mapa Modbus
+            do T3D nao esta publicado &mdash; o registrador da posicao foi achado
+            procurando, e nao lendo manual. <b>P098 no painel</b> pode ser o
+            registrador 98, e essa e a primeira hipotese a testar, mas e
+            hipotese.
+            <br><b>Por que isso importa:</b> ler no registrador errado da um
+            numero errado na tela. Escrever no registrador errado pode trocar a
+            engrenagem eletronica, o modo de controle, o sentido do eixo ou o
+            limite de torque &mdash; e o eixo pode sair andando. Por isso o
+            caminho comeca por achar o endereco <b>sem escrever nada</b>.</div>
+
+            <h4>1 &middot; Achar o endereco sem escrever</h4>
+            <button class="b mini" id="btPmFoto">Tirar a foto</button>
+            <button class="b mini" id="btPmComparar">Comparar agora</button>
+            <div class="pq2" id="qPmFoto"></div>
+            <div class="nt">Aperte <b>Tirar a foto</b>, va ate o painel do
+            driver e mude o parametro la (P098 para 1, por exemplo), volte e
+            aperte <b>Comparar agora</b>. O registrador que mudou e o endereco
+            daquele parametro. Isto e <b>so leitura</b>: nada e escrito no
+            driver. Faca com o braco <b>parado</b> &mdash; se ele se mexer, o par
+            da posicao muda junto e aparece na lista.
+            <br>O resultado sai no relatorio da linha, logo acima.</div>
+
+            <h4>2 &middot; Gravar qual e o registrador do som</h4>
+            <div class="cp"><label>Registrador</label><input type="number" id="pmReg" min="0" max="65535"></div>
+            <div class="cp"><label>Valor que LIGA</label><input type="number" id="pmOn" min="0" max="65535"></div>
+            <div class="cp"><label>Valor que DESLIGA</label><input type="number" id="pmOff" min="0" max="65535"></div>
+            <div class="cp"><label>Escrever pela funcao 16</label><div class="ch" id="pmF16"></div></div>
+            <button class="b mini" id="btPmSalvar">Gravar o endereco</button>
+            <div class="pq2" id="qPmSalvar"></div>
+            <div class="nt">Registrador <b>0</b> quer dizer "nenhum
+            configurado", e o botao do som some. A funcao 16 existe porque ha
+            driver que recusa a 06 mesmo para um registrador so: se a escrita
+            der excecao, tente por ela.</div>
+
+            <h4>3 &middot; O botao</h4>
+            <button class="b mini" id="btPmSomOn">Ligar o som</button>
+            <button class="b mini" id="btPmSomOff">Desligar o som</button>
+            <div class="pq2" id="qPmSom"></div>
+            <div class="res" id="pmEstado">--</div>
+            <div class="nt">Depois de escrever, o firmware <b>rele</b> o
+            registrador e compara. Driver que responde "aceitei" e guarda outra
+            coisa existe &mdash; sem a releitura a tela diria "pronto" e o bip
+            continuaria tocando.</div>
+
+            <h4>Escrever um registrador qualquer</h4>
+            <div class="cp"><label>Registrador</label><input type="number" id="pmWReg" min="0" max="65535"></div>
+            <div class="cp"><label>Valor</label><input type="number" id="pmWVal" min="0" max="65535"></div>
+            <button class="b mini" id="btPmEscrever">Escrever no driver</button>
+            <div class="pq2" id="qPmEscrever"></div>
+            <div class="nt av">So com o robo no <b>modo manual</b>, <b>parado</b>,
+            com os <b>servos desligados</b> e a <b>solda desligada</b> &mdash; e
+            com confirmacao. Nao e burocracia: e a diferenca entre um parametro
+            errado e um eixo energizado obedecendo a um parametro errado.</div>
           </div>
         </div>
       </section>
@@ -4177,7 +4244,14 @@ function encAplicar(d){
     $("encFunc").value=d.func;$("encPer").value=d.per;
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
+    $("pmReg").value=d.pmReg;$("pmOn").value=d.pmOn;$("pmOff").value=d.pmOff;
+    $("pmF16").className="ch"+(d.pmF16?" on":"");
   }
+  /* Sem registrador gravado o botao do som nao faz nada -- e botao que
+     nao faz nada e o defeito mais caro que esta interface ja teve. */
+  const temSom=d.pmReg>0;
+  $("btPmSomOn").disabled=!temSom;
+  $("btPmSomOff").disabled=!temSom;
   encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);zeroAplicar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
@@ -4235,6 +4309,63 @@ $("btEncComparar").onclick=function(){
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){
     encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
+};
+
+/* ---------- parametro do driver (o som) ----------
+   A procura sai no MESMO relatorio da linha: e sempre "o que o fio
+   respondeu por ultimo", e ter duas caixas de resultado so faria o
+   operador olhar para a errada. */
+$("btPmFoto").onclick=function(){
+  $("encRel").textContent="lendo a faixa toda...";
+  post("/api/encoder/diferenca").then(encBuscarRel);
+};
+$("btPmComparar").onclick=function(){
+  $("encRel").textContent="comparando...";
+  post("/api/encoder/diferenca?comparar=1").then(encBuscarRel);
+};
+$("pmF16").onclick=function(){$("pmF16").classList.toggle("on");};
+$("btPmSalvar").onclick=function(){
+  post("/api/param/config?reg="+($("pmReg").value||0)+
+       "&on="+($("pmOn").value||1)+"&off="+($("pmOff").value||0)+
+       "&f16="+($("pmF16").classList.contains("on")?1:0))
+   .then(function(){encCarregou=false;});
+};
+/* Depois de escrever o firmware rele o registrador e compara. Quem
+   mostra isso e esta funcao -- sem ela a tela diria "mandei", que nao e
+   a mesma coisa que "entrou". */
+const pmBuscarEscrita=function(){
+  let tentativas=0;
+  const buscar=function(){
+    fetch("/api/encoder/escrita").then(function(r){return r.json();})
+      .then(function(d){
+        if(!d.pedida){$("pmEstado").textContent="--";return;}
+        if(!d.fim){
+          $("pmEstado").textContent="escrevendo no registrador "+d.reg+"...";
+          if(++tentativas<25)setTimeout(buscar,400);
+          return;
+        }
+        $("pmEstado").textContent=(d.ok?"CONFERE":"NAO CONFERE")+
+          " \u00b7 registrador "+d.reg+" \u00b7 "+d.motivo;
+      }).catch(function(){});
+  };
+  setTimeout(buscar,500);
+};
+const pmSom=function(ligar){
+  $("pmEstado").textContent=ligar?"ligando o som...":"desligando o som...";
+  post("/api/param/som?on="+(ligar?1:0)).then(pmBuscarEscrita);
+};
+$("btPmSomOn").onclick =function(){pmSom(true);};
+$("btPmSomOff").onclick=function(){pmSom(false);};
+$("btPmEscrever").onclick=function(){
+  const r=$("pmWReg").value,v=$("pmWVal").value;
+  if(r===""||v===""){$("pmEstado").textContent="informe o registrador e o valor";return;}
+  if(!confirm("Escrever "+v+" no registrador "+r+" do driver?\n\n"+
+              "O mapa Modbus do T3D nao esta publicado. Registrador errado "+
+              "pode mudar engrenagem eletronica, modo de controle, sentido do "+
+              "eixo ou limite de torque.\n\nServos desligados e area livre?"))return;
+  $("pmEstado").textContent="escrevendo...";
+  post("/api/encoder/escrever?reg="+r+"&valor="+v+"&confirmar=1"+
+       "&f16="+($("pmF16").classList.contains("on")?1:0)).then(pmBuscarEscrita);
 };
 
 /* ---------- status ---------- */

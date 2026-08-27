@@ -15,9 +15,13 @@
 //  motor escorrega -- para isso o caminho e a saida PA/PB do driver num
 //  contador PCNT. Ver ROADMAP.md secao 1.4.
 //
-//  SO LEITURA. Nenhuma funcao aqui escreve registrador. Um defeito que
-//  escrevesse num parametro do servo estragaria a maquina de um jeito
-//  que nao se desfaz pela tela.
+//  O LACO DE LEITURA E SO LEITURA. Nada no ciclo normal escreve
+//  registrador nunca. Um defeito que escrevesse num parametro do servo
+//  estragaria a maquina de um jeito que nao se desfaz pela tela.
+//
+//  Ha UMA excecao, e ela e um caminho avulso, fora do ciclo: escrever um
+//  parametro por acao explicita do operador (o bip do driver). Ver
+//  encoderPedirEscrita() no fim deste arquivo, e as travas que a cercam.
 //
 //  O ENDERECO DO REGISTRADOR E CONFIGURAVEL
 //
@@ -124,6 +128,64 @@ bool encoderTesteRodando();
 // com o eixo e a posicao -- e o unico jeito honesto de achar isso num
 // driver cujo mapa Modbus nao esta publicado. Sai no mesmo relatorio.
 void encoderPedirCacada(bool comparar);
+
+// =====================================================================
+//  PARAMETRO DO DRIVER: achar e mudar
+//
+//  O mapa Modbus do T3D nao esta publicado -- e o que vale para a
+//  posicao vale para qualquer parametro do painel (P098 e companhia).
+//
+//  ACHAR sem escrever nada. Mesma ideia da cacada da posicao, virada do
+//  avesso: em vez de mover o braco e ver que registrador acompanha, voce
+//  MUDA O PARAMETRO NO PAINEL do driver e ve qual registrador mudou.
+//  Duas fotos da faixa inteira e uma comparacao. Zero escrita, zero
+//  risco -- e e assim que se descobre o endereco de um parametro sem
+//  manual.
+//
+//    1. encoderPedirDiferenca(false)   tira a primeira foto
+//    2. o operador muda o parametro no painel do driver
+//    3. encoderPedirDiferenca(true)    tira a segunda e lista o que mudou
+// =====================================================================
+void encoderPedirDiferenca(bool comparar);
+
+// =====================================================================
+//  ESCREVER um parametro. A EXCECAO da regra de so-leitura.
+//
+//  O LACO DE LEITURA CONTINUA SO-LEITURA. Nada no ciclo normal escreve
+//  nunca. Esta funcao e um caminho avulso, disparado por acao explicita
+//  do operador, e existe porque ha parametros que so se muda no painel
+//  do driver -- e o painel do driver fica atras da maquina.
+//
+//  POR QUE ISTO E MAIS PERIGOSO QUE LER. Ler no registrador errado da um
+//  numero errado na tela. Escrever no registrador errado num servo drive
+//  pode trocar a engrenagem eletronica, o modo de controle, o sentido do
+//  eixo ou o limite de torque -- numa maquina com tocha de solda na
+//  ponta. Alem disso, parametro costuma ir para EEPROM, que tem numero
+//  limitado de ciclos de escrita.
+//
+//  Por isso:
+//   - so com os SERVOS DESLIGADOS (varios drivers recusam escrever com o
+//     eixo habilitado, e um parametro trocado com torque ligado muda o
+//     comportamento na hora);
+//   - so com o braco parado, no modo manual, com a solda desligada;
+//   - o registrador e o valor sao digitados, nunca deduzidos;
+//   - depois de escrever, o firmware RELE o registrador e confere. Uma
+//     escrita que o driver ignorou em silencio e pior que uma recusada.
+//
+//  A funcao 6 escreve um registrador; a 16 escreve um bloco. Ha driver
+//  que so aceita a 16 mesmo para um registrador so -- por isso as duas.
+// =====================================================================
+struct EscritaParam {
+  bool     pedida;      // ha uma escrita em andamento ou concluida
+  bool     concluida;
+  bool     ok;
+  uint16_t reg;
+  uint16_t valor;       // o que se pediu
+  uint16_t lido;        // o que voltou na releitura
+  char     motivo[64];
+};
+void         encoderPedirEscrita(uint16_t reg, uint16_t valor, bool usarFuncao16);
+EscritaParam encoderEscritaResumo();
 
 #ifdef ROBO2DOF_TESTE
 // O banco bombeia a tarefa a mao, como faz com a do cartao.

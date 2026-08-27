@@ -871,6 +871,37 @@ O achatamento vertical passou de 0,62 para 0,80 -- exagero DECLARADO: um
 braco de 850 mm de alcance tem 110 mm de altura, e na proporcao real nao
 da para ler qual elo passa por cima de qual. O exagero e so no Z.
 
+## R78 · O som do driver pelo RS485: possivel, mas nao adivinhando  ✅
+
+O pedido era ligar e desligar o bip do driver pela tela em vez de ir ao
+painel digitar P098. Da para fazer: Modbus tem escrita (funcao 06 e 16) e
+e o mesmo fio que ja le a posicao. O que nao da e supor que "P098" seja o
+registrador 98 e mandar escrever la.
+
+Ler no registrador errado da um numero errado na tela. Escrever no
+registrador errado num servo drive pode trocar a engrenagem eletronica, o
+modo de controle, o sentido do eixo ou o limite de torque -- e o eixo pode
+sair andando. O mapa Modbus do T3D nao esta publicado: o registrador da
+posicao (90) foi achado procurando.
+
+Entao o caminho comeca por uma ferramenta que **nao escreve**: foto dos
+registradores 0 a 255, o operador muda o parametro no painel do driver,
+segunda foto, e o que mudou e o endereco. Gravado o endereco, vira um
+botao. A escrita avulsa existe, mas atras de modo manual, braco parado,
+servos desligados, solda desligada, registrador e valor digitados e
+confirmacao.
+
+E toda escrita e conferida **relendo o registrador**. Driver que responde
+"aceitei" e guarda outra coisa existe -- e sem a releitura a tela diria
+"pronto" com o bip ainda tocando. O mock do banco ganhou esse driver
+(`ignoraEscrita`), junto com o que recusa escrita e o que so aceita a
+funcao 16, porque um caso que o mock nao sabe encenar e um caso que o
+banco nao prova.
+
+O laco de leitura continua so-leitura: a escrita e um caminho avulso, e o
+cenario L05c -- que recusa `func=6` na configuracao do encoder -- continua
+passando.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -2475,8 +2506,8 @@ entre 0,3 e 0,6 s.
 
 | banco | rodada 20 | rodada 22 | agora |
 |-------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | **358 / 0** |
-| interface | 121 / 0 | 125 / 0 | **177 / 0** |
+| firmware | 229 / 0 | 241 / 0 | **375 / 0** |
+| interface | 121 / 0 | 125 / 0 | **186 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

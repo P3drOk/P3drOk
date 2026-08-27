@@ -8,7 +8,7 @@
 // Assinaturas iguais as do core do ESP32. Ver testes/mocks/LEIA-ME.md.
 #pragma once
 #include "Arduino.h"
-#include "Arduino.h"
+#include <map>
 #include <deque>
 #include <vector>
 
@@ -59,6 +59,32 @@ struct EscravoModbus {
     velocidade = contagensPorSegundo;
   }
   void parar() { girar(0); }
+
+  // ---- ESCRITA DE PARAMETRO ------------------------------------------
+  // O que foi escrito neste escravo. Parametro escrito passa a ser lido
+  // de volta com o valor novo -- e isso que permite ao firmware CONFERIR
+  // a escrita relendo, que e o que ele faz.
+  std::map<uint16_t, uint16_t> escritos;
+  uint32_t escritas      = 0;      // quantas escritas o escravo aceitou
+  bool     recusaEscrita = false;  // encena driver que nao deixa escrever
+  // Ha driver que so aceita a funcao 16, mesmo para um registrador so.
+  bool     soFuncao16    = false;
+  // Driver que responde "aceitei" e NAO grava. Existe: registrador so de
+  // leitura, escrita bloqueada por senha de nivel, parametro que so vale
+  // com o servo desabilitado. E o unico caso que a conferencia por
+  // releitura pega -- sem isto no mock, nada provaria que ela serve.
+  bool     ignoraEscrita = false;
+
+  // Valor parado de um endereco que nao e a posicao. Precisa ser sempre o
+  // mesmo para o mesmo endereco: a cacada compara duas leituras, e um
+  // valor que mudasse sozinho apareceria como se fosse o encoder.
+  static uint16_t parametroPadrao(uint16_t a) {
+    return (uint16_t)(((uint32_t)a * 2654435761u) >> 20) & 0x3FFF;
+  }
+  uint16_t parametro(uint16_t a) const {
+    const auto it = escritos.find(a);
+    return (it != escritos.end()) ? it->second : parametroPadrao(a);
+  }
 };
 
 class HardwareSerial {
@@ -108,12 +134,7 @@ class HardwareSerial {
  private:
   std::deque<uint8_t> fila;
 
-  // Valor parado de um endereco que nao e a posicao. Precisa ser sempre
-  // o mesmo para o mesmo endereco: a cacada compara duas leituras, e um
-  // valor que mudasse sozinho apareceria como se fosse o encoder.
-  static uint16_t parametro(uint16_t a) {
-    return (uint16_t)(((uint32_t)a * 2654435761u) >> 20) & 0x3FFF;
-  }
+
 
   bool ecoAgora() const {
     if (!moduloLigado || pinoRe < 0 || pinoRe >= 64) return false;
@@ -139,9 +160,11 @@ class HardwareSerial {
   }
 
   void responder(const uint8_t* q, size_t n) {
-    if (n != 8) return;
-    const uint16_t c = crc16(q, 6);
-    if (q[6] != (uint8_t)(c & 0xFF) || q[7] != (uint8_t)(c >> 8)) return;
+    // Leitura e escrita simples tem 8 bytes; escrever multiplos (16) tem
+    // 9 + 2*N. O quadro inteiro entra no CRC, nao so os seis primeiros.
+    if (n < 8) return;
+    const uint16_t c = crc16(q, n - 2);
+    if (q[n - 2] != (uint8_t)(c & 0xFF) || q[n - 1] != (uint8_t)(c >> 8)) return;
 
     for (EscravoModbus& e : escravo) {
       if (!e.existe || e.id != q[0]) continue;
@@ -155,6 +178,37 @@ class HardwareSerial {
         if (e.crcRuim) { fila.push_back(0); fila.push_back(0); }
         return;
       }
+
+      // ---- ESCRITA DE PARAMETRO ----------------------------------------
+      // Funcao 6 (um registrador) e 16 (varios). A resposta da 6 e o ECO
+      // do proprio pedido; a da 16 e endereco + quantidade. E assim que
+      // um driver responde, e o firmware confere isso.
+      if (q[1] == 6 || q[1] == 16) {
+        if (e.recusaEscrita || (e.soFuncao16 && q[1] == 6)) {
+          r = {e.id, (uint8_t)(q[1] | 0x80), 1};   // funcao ilegal
+          empurrar(r, true);
+          return;
+        }
+        const uint16_t reg = (uint16_t)((q[2] << 8) | q[3]);
+        if (q[1] == 6) {
+          if (!e.ignoraEscrita) e.escritos[reg] = (uint16_t)((q[4] << 8) | q[5]);
+          e.escritas++;
+          r.assign(q, q + 6);                      // eco, sem o CRC antigo
+        } else {
+          const uint16_t qtd = (uint16_t)((q[4] << 8) | q[5]);
+          if (n < (size_t)(9 + qtd * 2)) return;
+          if (!e.ignoraEscrita)
+            for (uint16_t k = 0; k < qtd; k++)
+              e.escritos[(uint16_t)(reg + k)] =
+                (uint16_t)((q[7 + k * 2] << 8) | q[8 + k * 2]);
+          e.escritas++;
+          r = {e.id, 16, q[2], q[3], q[4], q[5]};
+        }
+        empurrar(r, true);
+        return;
+      }
+
+      if (n != 8) return;
       if (q[1] != e.funcao) {
         r = {e.id, (uint8_t)(q[1] | 0x80), 1};   // funcao ilegal
         empurrar(r, true);
@@ -197,7 +251,7 @@ class HardwareSerial {
         if (a == e.regBase)          v = palavra[0];
         else if (a == e.regBase + 1) v = palavra[1];
         else if (a == e.ruidoReg)    v = e.ruidoValor;
-        else                         v = parametro(a);
+        else                         v = e.parametro(a);
         r.push_back((uint8_t)(v >> 8));
         r.push_back((uint8_t)(v & 0xFF));
       }

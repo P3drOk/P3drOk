@@ -374,10 +374,82 @@ static uint32_t encUltimoMs[2]   = {0, 0};
 static bool     encTinhaAntes[2] = {false, false};
 static int32_t  encBrutoAntes[2] = {0, 0};
 
+// Escrita de parametro: pedido do core 0, executado na tarefa do
+// encoder -- ela e a dona da UART e dos pinos do transceptor.
+static volatile bool     pedidoEscrita = false;
+static volatile uint16_t escReg = 0, escValor = 0;
+static volatile bool     escUsar16 = false;
+static EscritaParam      esc = {false, false, false, 0, 0, 0, ""};
+
+// Comparacao de parametro: duas fotos da faixa e o que mudou entre elas.
+static uint16_t difAntes[CACA_MAX];
+static bool     difTem[CACA_MAX];
+static bool     difMarcado = false;
+static volatile uint8_t pedidoDif = 0;   // 1 = fotografar, 2 = comparar
+
 static uint16_t cacaValor[CACA_MAX];   // antes de qualquer giro
 static uint16_t cacaMeio[CACA_MAX];    // depois do primeiro giro
 static bool     cacaTem[CACA_MAX];
 static uint8_t  cacaEtapa = 0;         // 0 = nada, 1 = marcado, 2 = meio lido
+
+// ---------------------------------------------------------------------
+// ESCREVER um registrador. Funcao 6 (um) ou 16 (bloco de um).
+//
+// A resposta da funcao 6 e o ECO do proprio pedido -- os mesmos oito
+// bytes de volta. A da 16 e endereco + quantidade. Conferir o eco e o
+// que separa "o driver aceitou" de "alguem respondeu qualquer coisa".
+// ---------------------------------------------------------------------
+static bool escreverReg(uint8_t i, uint16_t reg, uint16_t valor,
+                        bool usar16, uint8_t& motivo) {
+  motivo = MOTIVO_OK;
+
+  uint8_t q[11];
+  size_t nq;
+  q[0] = configEncoder.id[i];
+  q[2] = (uint8_t)(reg >> 8);
+  q[3] = (uint8_t)(reg & 0xFF);
+  if (!usar16) {
+    q[1] = 6;
+    q[4] = (uint8_t)(valor >> 8);
+    q[5] = (uint8_t)(valor & 0xFF);
+    nq = 6;
+  } else {
+    q[1] = 16;
+    q[4] = 0; q[5] = 1;          // um registrador
+    q[6] = 2;                    // dois bytes de dado
+    q[7] = (uint8_t)(valor >> 8);
+    q[8] = (uint8_t)(valor & 0xFF);
+    nq = 9;
+  }
+  const uint16_t c = crc16(q, nq);
+  q[nq]     = (uint8_t)(c & 0xFF);
+  q[nq + 1] = (uint8_t)(c >> 8);
+  nq += 2;
+
+  uint8_t r[16];
+  // Resposta boa das duas funcoes tem 8 bytes.
+  const size_t n = trocar(q, nq, r, sizeof(r), 8);
+
+  portENTER_CRITICAL(&travaEnc);
+  memcpy(ultimoEnvio, q, nq < sizeof(ultimoEnvio) ? nq : sizeof(ultimoEnvio));
+  nEnvio = (uint8_t)(nq < sizeof(ultimoEnvio) ? nq : sizeof(ultimoEnvio));
+  memcpy(ultimaResposta, r, n < sizeof(ultimaResposta) ? n : sizeof(ultimaResposta));
+  nResposta = (uint8_t)(n < sizeof(ultimaResposta) ? n : sizeof(ultimaResposta));
+  juntaDoQuadro = (uint8_t)(i + 1);
+  portEXIT_CRITICAL(&travaEnc);
+
+  if (n < 5) { motivo = MOTIVO_SILENCIO; return false; }
+  const uint16_t cc = crc16(r, n - 2);
+  if (r[n - 2] != (uint8_t)(cc & 0xFF) || r[n - 1] != (uint8_t)(cc >> 8)) {
+    motivo = MOTIVO_CRC; return false;
+  }
+  if (r[0] != configEncoder.id[i]) { motivo = MOTIVO_CRC; return false; }
+  if (r[1] & 0x80) { motivo = MOTIVO_EXCECAO; return false; }
+  if (r[1] != q[1]) { motivo = MOTIVO_FORMATO; return false; }
+  // O endereco tem de voltar igual nas duas funcoes.
+  if (r[2] != q[2] || r[3] != q[3]) { motivo = MOTIVO_FORMATO; return false; }
+  return true;
+}
 
 static uint16_t lerFaixa(uint16_t* destino, bool* tem) {
   uint16_t lidos = 0;
@@ -389,6 +461,156 @@ static uint16_t lerFaixa(uint16_t* destino, bool* tem) {
     lidos = (uint16_t)(lidos + 8);
   }
   return lidos;
+}
+
+// =====================================================================
+//  Achar um parametro SEM escrever: duas fotos e a diferenca
+// =====================================================================
+static void difFotografar() {
+  testeRodando = true;
+  for (uint16_t i = 0; i < CACA_MAX; i++) difTem[i] = false;
+  const uint16_t n = lerFaixa(difAntes, difTem);
+  difMarcado = (n > 0);
+
+  size_t p = 0;
+  relatorio[0] = '\0';
+  if (!difMarcado) {
+    anexar(p, "nenhum registrador respondeu na faixa 0..%u.\n"
+              "Confira a ligacao antes.", (unsigned)(CACA_MAX - 1));
+  } else {
+    anexar(p, "Foto tirada: %u registradores de 0 a %u.\n\n"
+              "AGORA mude o parametro NO PAINEL do driver (P098, por\n"
+              "exemplo) e aperte \"Comparar\". O que tiver mudado aparece\n"
+              "aqui, e e o endereco Modbus daquele parametro.\n\n"
+              "Nada foi escrito no driver: isto e so leitura.",
+           (unsigned)n, (unsigned)(CACA_MAX - 1));
+  }
+  testeRodando = false;
+}
+
+static void difComparar() {
+  testeRodando = true;
+  size_t p = 0;
+  relatorio[0] = '\0';
+
+  if (!difMarcado) {
+    anexar(p, "Tire a foto primeiro.");
+    testeRodando = false;
+    return;
+  }
+  uint16_t agora[CACA_MAX];
+  bool tem[CACA_MAX];
+  for (uint16_t i = 0; i < CACA_MAX; i++) tem[i] = false;
+  lerFaixa(agora, tem);
+
+  anexar(p, "Registradores que MUDARAM entre as duas fotos:\n\n");
+  uint16_t n = 0;
+  for (uint16_t a = 0; a < CACA_MAX; a++) {
+    if (!difTem[a] || !tem[a]) continue;
+    if (agora[a] == difAntes[a]) continue;
+    n++;
+    if (n <= 16) {
+      anexar(p, "  reg %3u : %5u -> %-5u  (0x%04X -> 0x%04X)\n",
+             (unsigned)a, (unsigned)difAntes[a], (unsigned)agora[a],
+             (unsigned)difAntes[a], (unsigned)agora[a]);
+    }
+  }
+  anexar(p, "\n");
+  if (n == 0) {
+    anexar(p, "Nada mudou. O parametro nao esta na faixa 0..%u,\n"
+              "ou a mudanca ainda nao foi confirmada no painel.",
+           (unsigned)(CACA_MAX - 1));
+  } else if (n == 1) {
+    anexar(p, "UM registrador so mudou: e esse o endereco do parametro.");
+  } else {
+    anexar(p, "%u registradores mudaram. Se o braco se mexeu entre as\n"
+              "fotos, o par da posicao muda junto -- repita com o braco\n"
+              "PARADO para sobrar so o parametro.", (unsigned)n);
+  }
+  testeRodando = false;
+}
+
+// =====================================================================
+//  Escrever um parametro, e CONFERIR relendo
+// =====================================================================
+static void executarEscrita() {
+  testeRodando = true;
+  const uint16_t reg = escReg, valor = escValor;
+  const bool usar16 = escUsar16;
+
+  esc.pedida    = true;
+  esc.concluida = false;
+  esc.ok        = false;
+  esc.reg       = reg;
+  esc.valor     = valor;
+  esc.lido      = 0;
+  esc.motivo[0] = '\0';
+
+  size_t p = 0;
+  relatorio[0] = '\0';
+  anexar(p, "Escrita no driver %u, registrador %u, valor %u (funcao %u).\n",
+         (unsigned)configEncoder.id[0], (unsigned)reg, (unsigned)valor,
+         usar16 ? 16u : 6u);
+
+  uint8_t motivo = MOTIVO_OK;
+  const bool aceitou = escreverReg(0, reg, valor, usar16, motivo);
+
+  anexar(p, "enviado:");
+  anexarHex(p, (const uint8_t*)ultimoEnvio, nEnvio);
+  anexar(p, "\nvoltou :");
+  if (nResposta) anexarHex(p, (const uint8_t*)ultimaResposta, nResposta);
+  else           anexar(p, " (nada)");
+  anexar(p, "\n\n");
+
+  if (!aceitou) {
+    snprintf(esc.motivo, sizeof(esc.motivo), "o driver nao aceitou (motivo %u)",
+             (unsigned)motivo);
+    anexar(p, "O driver NAO aceitou.\n");
+    if (motivo == MOTIVO_EXCECAO) {
+      anexar(p, "Excecao: ele esta ai e entendeu a pergunta, mas recusou.\n"
+                "Pode ser registrador que nao existe, escrita bloqueada, ou\n"
+                "funcao errada -- ha driver que so aceita a 16.");
+    } else if (motivo == MOTIVO_SILENCIO) {
+      anexar(p, "Silencio: ninguem respondeu naquele endereco.");
+    } else {
+      anexar(p, "Resposta fora do formato esperado.");
+    }
+    esc.concluida = true;
+    testeRodando = false;
+    return;
+  }
+
+  // A CONFERENCIA. Escrita que o driver ignorou em silencio e pior que
+  // escrita recusada: a tela diria "pronto" e nada teria mudado.
+  delay(30);
+  uint16_t volta[1];
+  uint8_t m2 = MOTIVO_OK;
+  if (!lerRegs(0, reg, 1, volta, m2)) {
+    snprintf(esc.motivo, sizeof(esc.motivo),
+             "escreveu, mas nao consegui reler para conferir");
+    anexar(p, "Escrita aceita, mas a releitura falhou.\n"
+              "Confira no painel do driver se o valor entrou.");
+    esc.concluida = true;
+    testeRodando = false;
+    return;
+  }
+  esc.lido = volta[0];
+  esc.ok   = (volta[0] == valor);
+  anexar(p, "Releitura: registrador %u vale %u.\n",
+         (unsigned)reg, (unsigned)volta[0]);
+  if (esc.ok) {
+    anexar(p, "CONFERE: o valor entrou.");
+    snprintf(esc.motivo, sizeof(esc.motivo), "conferido: %u", (unsigned)volta[0]);
+  } else {
+    anexar(p, "NAO CONFERE: pedi %u e voltou %u.\n"
+              "O driver aceitou o quadro e guardou outra coisa: pode ser\n"
+              "registrador de so-leitura, ou valor fora da faixa dele.",
+           (unsigned)valor, (unsigned)volta[0]);
+    snprintf(esc.motivo, sizeof(esc.motivo),
+             "pedi %u e voltou %u", (unsigned)valor, (unsigned)volta[0]);
+  }
+  esc.concluida = true;
+  testeRodando = false;
 }
 
 static void cacarMarcar() {
@@ -537,6 +759,25 @@ static void cacarComparar() {
 }
 
 void encoderPedirTeste() { pedidoTeste = true; }
+void encoderPedirDiferenca(bool comparar) {
+  pedidoDif = comparar ? 2 : 1;
+}
+
+void encoderPedirEscrita(uint16_t reg, uint16_t valor, bool usarFuncao16) {
+  escReg    = reg;
+  escValor  = valor;
+  escUsar16 = usarFuncao16;
+  esc.pedida    = true;
+  esc.concluida = false;
+  esc.ok        = false;
+  esc.reg       = reg;
+  esc.valor     = valor;
+  snprintf(esc.motivo, sizeof(esc.motivo), "escrevendo...");
+  pedidoEscrita = true;
+}
+
+EscritaParam encoderEscritaResumo() { return esc; }
+
 void encoderPedirCacada(bool comparar) { pedidoCaca = comparar ? 2 : 1; }
 bool encoderTesteRodando() { return testeRodando; }
 
@@ -791,6 +1032,22 @@ static void ciclo() {
     const uint8_t o = pedidoCaca;
     pedidoCaca = 0;
     if (o == 1) cacarMarcar(); else cacarComparar();
+    proximaEm = millis();
+    return;
+  }
+  if (pedidoDif) {
+    const uint8_t o = pedidoDif;
+    pedidoDif = 0;
+    if (o == 1) difFotografar(); else difComparar();
+    proximaEm = millis();
+    return;
+  }
+  // A escrita roda AQUI, na tarefa do encoder, pelo mesmo motivo do
+  // teste: ela dirige a linha, e fazer isso de outro nucleo por baixo de
+  // uma leitura em andamento corromperia os dois quadros.
+  if (pedidoEscrita) {
+    pedidoEscrita = false;
+    executarEscrita();
     proximaEm = millis();
     return;
   }

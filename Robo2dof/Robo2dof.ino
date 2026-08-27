@@ -97,14 +97,15 @@ static const char* NOME_CMD[] = {
   "PROG_PAUSAR","PROG_DESFAZER","PROG_REPETIR","MANUTENCAO_OK",
   "AFERIR_REDUCAO","MESA_CANTO","MESA_LIMPAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
-  "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG"
+  "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG",
+  "APLICAR_PARAM"
 };
 
 // Esta lista e indexada por c.tipo sem nenhuma conferencia de faixa: um
 // comando novo no enum sem o nome correspondente aqui faz o log ler
 // ponteiro fora do vetor -- e o crash aparece longe da causa, na
 // primeira vez que aquele comando for usado. Ja aconteceu.
-static_assert(sizeof(NOME_CMD) / sizeof(NOME_CMD[0]) == CMD_ARQ_SALVAR_CONFIG + 1,
+static_assert(sizeof(NOME_CMD) / sizeof(NOME_CMD[0]) == CMD_APLICAR_PARAM + 1,
               "NOME_CMD ficou fora de sincronia com TipoComando");
 
 // ---------------------------------------------------------------------
@@ -543,6 +544,13 @@ static void processarComando(const Comando& c) {
       // esta configurando, nao operando.
       if (modoAtual == MODO_MANUAL) aplicarEncoderPendente();
       else definirMensagem("Configure o encoder com o robo parado no modo manual");
+      break;
+
+    case CMD_APLICAR_PARAM:
+      // So grava o ENDERECO do parametro. Escrever no driver e outro
+      // caminho, avulso, e nao passa por aqui.
+      if (modoAtual == MODO_MANUAL) aplicarParamPendente();
+      else definirMensagem("Configure o parametro com o robo parado no modo manual");
       break;
 
     case CMD_ENCODER_ZERAR:

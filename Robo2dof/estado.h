@@ -243,6 +243,29 @@ struct ConfigEncoder {
 };
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
 
+// ---------------------------------------------------------------------
+// PARAMETRO DO DRIVER que o operador liga e desliga pela tela.
+//
+// O caso concreto e o BIP do driver (P098 no painel do T3D), mas o
+// mecanismo e generico: guarda-se o registrador uma vez, depois e um
+// botao. Zero = nenhum parametro configurado, e o botao nem aparece.
+//
+// O registrador NAO vem cravado no codigo: o mapa Modbus do T3D nao esta
+// publicado, e numero fixo aqui seria adivinhacao -- a mesma razao pela
+// qual o registrador da posicao e configuravel.
+// ---------------------------------------------------------------------
+struct ConfigParam {
+  uint16_t regSom;      // 0 = nao configurado
+  uint16_t somLigado;   // valor que LIGA o som
+  uint16_t somDesligado;
+  bool     usarFuncao16;  // ha driver que so aceita a funcao 16
+};
+extern ConfigParam configParam;      // vivo, so o core 1 escreve
+// Area de preparo, como a de ConfigPendente: o handler HTTP roda no core
+// 0 e nao escreve no vivo. Ver o bloco de ConfigPendente abaixo.
+extern ConfigParam paramPendente;
+void aplicarParamPendente();
+
 // Assentamento pelo encoder. Ver correcao.h para as regras.
 struct ConfigCorrecao {
   bool  ativa;             // assentar no fim de cada movimento

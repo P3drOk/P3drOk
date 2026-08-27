@@ -3245,6 +3245,154 @@ static void teste_L11_autoteste_dentro_do_sistema() {
 // acha de um jeito so: ler tudo, mover o eixo, e ver o que andou junto.
 // Isso estava so no programa de bancada; agora esta na maquina.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// O operador quer calar o BIP do driver pela tela, sem ir ate o painel
+// digitar P098. Da para fazer: Modbus tem funcao de escrita. O que nao
+// da e ADIVINHAR o endereco -- e escrever no registrador errado num servo
+// drive nao da numero errado na tela, muda o comportamento do eixo.
+//
+// Por isso o caminho e: achar o endereco comparando duas leituras (zero
+// escrita), gravar qual e, e so entao virar um botao.
+// ---------------------------------------------------------------------
+static void teste_L14_parametro_do_driver() {
+  secao("L14  Ligar e desligar o som do driver pelo RS485");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 61346);
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(60);
+
+  // ---- achar o endereco SEM escrever ----------------------------------
+  const uint32_t escritasAntes = g_uart.escravo[0].escritas;
+  webPost("/api/encoder/diferenca");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "Foto tirada") != nullptr, "L14a",
+         "a foto da faixa inteira e tirada, e a tela diz o que fazer no painel");
+
+  // O operador vai ao painel do driver e muda P098. No mock isso e o
+  // registrador 98 passando a valer outra coisa -- exatamente o que o
+  // driver de verdade faria.
+  g_uart.escravo[0].escritos[98] = 1;
+  webPost("/api/encoder/diferenca?comparar=1");
+  rodarComWeb(900);
+  webGet("/api/encoder/teste");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "reg  98") != nullptr, "L14b",
+         "a comparacao aponta o registrador que o operador mexeu no painel");
+  checar(strstr(webCorpo(), "UM registrador so mudou") != nullptr, "L14c",
+         "e diz que so um mudou, que e o que torna a resposta confiavel");
+  nota("escritas no driver durante a procura: %lu",
+       (unsigned long)(g_uart.escravo[0].escritas - escritasAntes));
+  checar(g_uart.escravo[0].escritas == escritasAntes, "L14d",
+         "achar o endereco NAO escreve nada no driver");
+
+  // ---- as travas da escrita -------------------------------------------
+  int cod = webPost("/api/encoder/escrever?reg=98&valor=0");
+  nota("sem confirmar: HTTP %d -- \"%s\"", cod, webCorpo());
+  checar(cod == 400 && g_uart.escravo[0].parametro(98) == 1, "L14e",
+         "escrita sem a segunda confirmacao nao chega ao driver");
+
+  cod = webPost("/api/encoder/escrever?valor=0&confirmar=1");
+  nota("sem registrador: HTTP %d -- \"%s\"", cod, webCorpo());
+  checar(cod == 400, "L14f",
+         "sem registrador digitado nao ha escrita: nada aqui deduz endereco");
+
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(60);
+  cod = webPost("/api/encoder/escrever?reg=98&valor=0&confirmar=1");
+  nota("com servo ligado: HTTP %d -- \"%s\"", cod, webCorpo());
+  checar(cod == 400 && strstr(webCorpo(), "servos") != nullptr, "L14g",
+         "com o eixo energizado a escrita e recusada, e a tela diz por que");
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(60);
+
+  // ---- a escrita, e a conferencia por releitura ------------------------
+  cod = webPost("/api/encoder/escrever?reg=98&valor=0&confirmar=1");
+  rodarComWeb(600);
+  webGet("/api/encoder/escrita");
+  nota("HTTP %d -- %s", cod, webCorpo());
+  checar(cod == 200 && strstr(webCorpo(), "\"ok\":true") != nullptr &&
+         g_uart.escravo[0].parametro(98) == 0, "L14h",
+         "com as travas atendidas o valor entra no driver, e a releitura confirma");
+
+  // Driver que responde "aceitei" e nao grava. E o unico defeito que a
+  // releitura pega -- sem ela a tela diria "pronto" e o bip continuaria.
+  g_uart.escravo[0].ignoraEscrita = true;
+  webPost("/api/encoder/escrever?reg=98&valor=7&confirmar=1");
+  rodarComWeb(600);
+  webGet("/api/encoder/escrita");
+  nota("%s", webCorpo());
+  checar(strstr(webCorpo(), "\"ok\":false") != nullptr, "L14i",
+         "driver que aceita e ignora e denunciado, em vez de virar \"pronto\"");
+  g_uart.escravo[0].ignoraEscrita = false;
+
+  // Driver que so aceita a funcao 16.
+  g_uart.escravo[0].soFuncao16 = true;
+  webPost("/api/encoder/escrever?reg=98&valor=1&confirmar=1");
+  rodarComWeb(600);
+  webGet("/api/encoder/escrita");
+  nota("funcao 6 num driver que so aceita a 16: %s", webCorpo());
+  checar(strstr(webCorpo(), "\"ok\":false") != nullptr, "L14j",
+         "recusa do driver aparece como recusa, nao como sucesso");
+  webPost("/api/encoder/escrever?reg=98&valor=1&confirmar=1&f16=1");
+  rodarComWeb(600);
+  webGet("/api/encoder/escrita");
+  nota("mesma escrita pela funcao 16: %s", webCorpo());
+  checar(strstr(webCorpo(), "\"ok\":true") != nullptr &&
+         g_uart.escravo[0].parametro(98) == 1, "L14k",
+         "e a funcao 16 resolve o driver que nao aceita a 6");
+  g_uart.escravo[0].soFuncao16 = false;
+
+  // ---- o botao ---------------------------------------------------------
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 61346);
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(60);
+
+  cod = webPost("/api/param/som?on=0");
+  nota("sem registrador configurado: HTTP %d -- \"%s\"", cod, webCorpo());
+  checar(cod == 400, "L14l",
+         "o botao do som nao existe antes de alguem gravar o endereco");
+
+  cod = webPost("/api/param/config?reg=98&on=1&off=0");
+  rodarComWeb(60);
+  nota("gravado: reg %u, liga com %u, desliga com %u",
+       (unsigned)configParam.regSom, (unsigned)configParam.somLigado,
+       (unsigned)configParam.somDesligado);
+  checar(cod == 200 && configParam.regSom == 98, "L14m",
+         "o endereco achado fica gravado, e a partir dai e um botao so");
+
+  const int codIgual = webPost("/api/param/config?reg=98&on=1&off=1");
+  nota("ligado e desligado com o mesmo valor: HTTP %d -- \"%s\"",
+       codIgual, webCorpo());
+  checar(codIgual == 400 && configParam.somDesligado == 0, "L14n",
+         "valor igual para ligar e desligar e recusado: seria um botao mudo");
+
+  g_uart.escravo[0].escritos[98] = 1;
+  webPost("/api/param/som?on=0");
+  rodarComWeb(600);
+  nota("depois do botao: reg 98 = %u", (unsigned)g_uart.escravo[0].parametro(98));
+  checar(g_uart.escravo[0].parametro(98) == 0, "L14o",
+         "o botao desliga o som escrevendo o valor gravado, sem digitar nada");
+
+  webPost("/api/param/som?on=1");
+  rodarComWeb(600);
+  nota("religando: reg 98 = %u", (unsigned)g_uart.escravo[0].parametro(98));
+  checar(g_uart.escravo[0].parametro(98) == 1, "L14p",
+         "e liga de volta pelo mesmo botao");
+
+  // E depois de tudo isso a leitura de posicao continua funcionando: a
+  // escrita e um caminho avulso, nao mexe no laco.
+  rodarComWeb(600);
+  nota("leitura normal: valida=%d, %lu leituras",
+       (int)encoderLer(1).valido, (unsigned long)encoderLer(1).leituras);
+  checar(encoderLer(1).valido, "L14q",
+         "a leitura de posicao volta sozinha depois da escrita");
+}
+
 static void teste_L12_cacar_o_registrador() {
   secao("L12  Achar o registrador da posicao sem manual nenhum");
   reiniciarSistema();
@@ -4724,7 +4872,8 @@ static const char* ROTAS_POST[] = {
   "/api/calib/confirmar", "/api/calib/iniciar", "/api/config",
   "/api/config/reset", "/api/correcao", "/api/encoder/cacar",
   "/api/encoder/config", "/api/encoder/padroes", "/api/encoder/testar",
-  "/api/encoder/zerar", "/api/geometria", "/api/gravar/iniciar",
+  "/api/encoder/zerar", "/api/encoder/diferenca", "/api/encoder/escrever",
+  "/api/param/config", "/api/param/som", "/api/geometria", "/api/gravar/iniciar",
   "/api/gravar/parar", "/api/home", "/api/jog", "/api/jogxy",
   "/api/manutencao/ok", "/api/mover", "/api/mover_xy", "/api/painel",
   "/api/parar", "/api/ponto/gravar", "/api/ponto/ir", "/api/ponto/remover",
@@ -4738,7 +4887,8 @@ static const char* ROTAS_POST[] = {
   "/api/zero/ensinar", "/api/zero/esquecer"
 };
 static const char* ROTAS_GET[] = {
-  "/api/encoder", "/api/encoder/teste", "/api/pontos", "/api/rede",
+  "/api/encoder", "/api/encoder/teste", "/api/encoder/escrita",
+  "/api/pontos", "/api/rede",
   "/api/registro", "/api/saude", "/api/sd", "/api/sd/lista",
   "/api/sd/previa", "/api/status", "/api/trajetoria"
 };
@@ -4751,7 +4901,8 @@ static const char* CHAVES[] = {
   "velCordao","velC","acel1","acel2","ppv1","ppv2","red1","red2","suav",
   "escala","t1","t2","x","y","fx","fy","dir","junta","reg","reg1","reg2",
   "id1","id2","cv1","cv2","baud","par","func","per","b32","lo","ativo",
-  "tol","max","alr","tent","vig","sin","ir","pts","n","de","ate","modo"
+  "tol","max","alr","tent","vig","sin","ir","pts","n","de","ate","modo",
+  "valor","confirmar","f16","off"
 };
 
 static const char* VALORES[] = {
@@ -5777,6 +5928,7 @@ int main() {
   teste_L11_autoteste_dentro_do_sistema();
   teste_L12_cacar_o_registrador();
   teste_L13_velocidade_sentido_e_passos();
+  teste_L14_parametro_do_driver();
 
   teste_M01_assentar_no_fim_do_movimento();
   teste_M02_nao_retoca_quando_nao_deve();

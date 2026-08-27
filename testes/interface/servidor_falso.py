@@ -120,7 +120,18 @@ import math as _mm
 # nao responde -- os dois casos escrevem coisas diferentes na tela.
 _enc = {"n": 0, "reg2": 0, "motivo2": 1,
         "trvOn": False, "trvJ": 0, "trvN": 0,
-        "zEn1": True}
+        "zEn1": True,
+        # Sem registrador de som gravado: e como a maquina sai de fabrica,
+        # e e o estado em que o botao do som NAO pode funcionar.
+        "pmReg": 0, "pmOn": 1, "pmOff": 0, "pmF16": False,
+        "rel": "Registradores que MUDARAM entre as duas fotos:\n\n"
+               "  reg  98 :     0 -> 1      (0x0000 -> 0x0001)\n\n"
+               "UM registrador so mudou: e esse o endereco do parametro."}
+# Ultima escrita de parametro, como o firmware a devolve em
+# /api/encoder/escrita: "mandei" e "entrou" sao coisas diferentes, e a
+# tela so pode dizer a segunda depois da releitura.
+_esc = {"pedida": False, "fim": False, "ok": False,
+        "reg": 0, "valor": 0, "lido": 0, "motivo": ""}
 def _encoder():
     _enc["n"] += 1
     # erro pequeno e oscilante na junta 1, junta 2 sem leitura
@@ -136,6 +147,8 @@ def _encoder():
             "zEn1": _enc["zEn1"], "zEn2": False,
             "zEst": 3, "zG1": 12.40, "zG2": 0.0,
             "zMot": "posicao recuperada do encoder",
+            "pmReg": _enc["pmReg"], "pmOn": _enc["pmOn"],
+            "pmOff": _enc["pmOff"], "pmF16": _enc["pmF16"],
             "id1": 1, "id2": 2, "reg1": 90, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],
@@ -204,6 +217,10 @@ class H(BaseHTTPRequestHandler):
             return self._envia(json.dumps({"pts": TRAJ}))
         if caminho == "/api/encoder":
             return self._envia(json.dumps(_encoder()))
+        if caminho == "/api/encoder/escrita":
+            return self._envia(json.dumps(_esc))
+        if caminho == "/api/encoder/teste":
+            return self._envia(_enc["rel"], "text/plain")
         if caminho == "/api/calibracao":
             return self._envia(json.dumps(CALIBRACAO))
         if caminho == "/api/saude":
@@ -253,6 +270,18 @@ class H(BaseHTTPRequestHandler):
             return self._envia("ok", "text/plain")
         if caminho == "/teste/encoder":
             _enc.update(json.loads(corpo or b"{}"))
+            return self._envia("ok", "text/plain")
+        if caminho == "/teste/escrita":
+            _esc.update(json.loads(corpo or b"{}"))
+            return self._envia("ok", "text/plain")
+        # As rotas de escrita respondem como o firmware: 200 e texto. O
+        # que a tela mostra depois vem de /api/encoder/escrita, e o banco
+        # encena esse resultado por /teste/escrita.
+        if caminho == "/api/param/config":
+            _enc["pmReg"] = int(q.get("reg", ["0"])[0])
+            _enc["pmOn"] = int(q.get("on", ["1"])[0])
+            _enc["pmOff"] = int(q.get("off", ["0"])[0])
+            _enc["pmF16"] = q.get("f16", ["0"])[0] == "1"
             return self._envia("ok", "text/plain")
         return self._envia("ok", "text/plain")
 

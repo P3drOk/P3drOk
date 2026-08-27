@@ -989,6 +989,101 @@ async function fecharGaveta(pag) {
   checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
          enc.w + ' px');
 
+  // ---- parametro do driver: o som pelo RS485 ----
+  // Botao que nao faz nada e o defeito mais caro que esta interface ja
+  // teve. Sem registrador gravado o botao do som TEM de estar desligado,
+  // e nao apenas escrever num endereco que ninguem conferiu.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btPmFoto').closest('.et');
+    document.querySelectorAll('#pnEnc .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(300);
+  checar(await t.locator('#btPmSomOn').isDisabled(),
+         'Som: sem registrador gravado o botao do som nao pode ser apertado');
+
+  // Achar o endereco: as duas fotos sao SO LEITURA, e e isso que a rota
+  // chamada tem de provar -- nada de /escrever aqui.
+  rotas.length = 0;
+  await t.locator('#btPmFoto').click();
+  await t.waitForTimeout(300);
+  await t.locator('#btPmComparar').click();
+  await t.waitForTimeout(300);
+  const proc = rotas.filter(u => u.indexOf('/api/encoder/') === 0);
+  checar(proc.indexOf('/api/encoder/diferenca') === 0 &&
+         proc.some(u => u.indexOf('/api/encoder/diferenca?comparar=1') === 0) &&
+         !proc.some(u => u.indexOf('/api/encoder/escrever') === 0),
+         'Som: achar o endereco chama so a rota de comparar, que nao escreve',
+         proc.join(' '));
+  const relTxt = await t.evaluate(() =>
+    document.getElementById('encRel').textContent);
+  checar(/reg  98/.test(relTxt),
+         'Som: o registrador que mudou entre as fotos aparece na tela',
+         relTxt.replace(/\n/g, ' | '));
+
+  // Gravado o registrador, o botao acorda.
+  await t.evaluate(() => {
+    document.getElementById('pmReg').value = 98;
+    document.getElementById('pmOn').value = 1;
+    document.getElementById('pmOff').value = 0;
+  });
+  await t.locator('#btPmSalvar').click();
+  await t.waitForTimeout(900);
+  checar(!(await t.locator('#btPmSomOn').isDisabled()),
+         'Som: gravado o registrador, o botao do som passa a valer');
+
+  // A escrita so pode dizer "entrou" depois da releitura. Encenamos o
+  // driver que aceita e guarda outra coisa: a tela nao pode dizer pronto.
+  await t.request.post(BASE + '/teste/escrita',
+    { data: { pedida: true, fim: true, ok: false, reg: 98, valor: 0,
+              lido: 1, motivo: 'pedi 0 e voltou 1' } });
+  rotas.length = 0;
+  await t.locator('#btPmSomOff').click();
+  await t.waitForTimeout(1200);
+  const somTxt = await t.evaluate(() =>
+    document.getElementById('pmEstado').textContent);
+  checar(rotas.some(u => u.indexOf('/api/param/som?on=0') === 0),
+         'Som: o botao manda desligar pelo registrador gravado, sem digitar nada',
+         rotas.join(' '));
+  checar(/NAO CONFERE/.test(somTxt),
+         'Som: driver que aceita e guarda outra coisa aparece como NAO CONFERE',
+         somTxt);
+
+  await t.request.post(BASE + '/teste/escrita',
+    { data: { pedida: true, fim: true, ok: true, reg: 98, valor: 1,
+              lido: 1, motivo: 'conferido: 1' } });
+  await t.locator('#btPmSomOn').click();
+  await t.waitForTimeout(1200);
+  const somOk = await t.evaluate(() =>
+    document.getElementById('pmEstado').textContent);
+  checar(/CONFERE/.test(somOk) && !/NAO CONFERE/.test(somOk),
+         'Som: e quando o valor entra de verdade a tela diz CONFERE', somOk);
+
+  // Escrever um registrador qualquer PERGUNTA antes. Recusar a pergunta
+  // nao pode deixar nada sair no fio. O banco aceita todo dialogo por
+  // padrao; aqui a recusa e o proprio caso de teste, entao o ouvinte e
+  // trocado e devolvido em seguida.
+  rotas.length = 0;
+  t.removeAllListeners('dialog');
+  t.on('dialog', d => d.dismiss());
+  await t.evaluate(() => {
+    document.getElementById('pmWReg').value = 98;
+    document.getElementById('pmWVal').value = 1;
+  });
+  await t.locator('#btPmEscrever').click();
+  await t.waitForTimeout(500);
+  checar(!rotas.some(u => u.indexOf('/api/encoder/escrever') === 0),
+         'Som: recusada a confirmacao, nada e escrito no driver',
+         rotas.join(' ') || '(nenhum pedido)');
+
+  t.removeAllListeners('dialog');
+  t.on('dialog', d => d.accept());
+  await t.locator('#btPmEscrever').click();
+  await t.waitForTimeout(500);
+  checar(rotas.some(u => u.indexOf('/api/encoder/escrever?reg=98&valor=1&confirmar=1') === 0),
+         'Som: confirmada, a escrita vai com registrador e valor digitados',
+         rotas.join(' '));
+
   // ---- analise detalhada ----
   await t.evaluate(() => {
     const alvo = document.getElementById('tabEnc').closest('.et');

@@ -1051,7 +1051,18 @@ static void handleEncoder() {
   encoderUltimoQuadro(quadro, sizeof(quadro));
   out += ",\"quadro\":\"";
   out += quadro;   // hex e palavras fixas: nada para escapar
-  out += "\"}";
+  out += "\"";
+
+  // Parametro do driver. Vai fora do cabecalho porque aquele snprintf ja
+  // esta perto do limite do buffer, e cabecalho truncado vira JSON
+  // invalido -- a interface inteira apagaria por causa de quatro campos.
+  char pm[96];
+  snprintf(pm, sizeof(pm), ",\"pmReg\":%u,\"pmOn\":%u,\"pmOff\":%u,\"pmF16\":%s",
+           (unsigned)configParam.regSom, (unsigned)configParam.somLigado,
+           (unsigned)configParam.somDesligado,
+           configParam.usarFuncao16 ? "true" : "false");
+  out += pm;
+  out += "}";
   server.send(200, "application/json", out);
 }
 
@@ -1245,6 +1256,148 @@ static void handleEncoderCacar() {
 static void handleEncoderZerar() {
   registrarContatoOperador();
   enfileirar(CMD_ENCODER_ZERAR, argL("j", 0));
+}
+
+// =====================================================================
+//  PARAMETRO DO DRIVER PELO RS485
+//
+//  O pedido concreto: ligar e desligar o BIP do driver pela tela, em vez
+//  de ir ate o painel dele digitar P098. Da para fazer -- Modbus tem a
+//  funcao 06 (escrever um registrador) e a 16 (escrever varios), e o
+//  T3D responde Modbus RTU, que e como o firmware ja le a posicao.
+//
+//  O QUE FALTA E O ENDERECO. O mapa Modbus do T3D nao esta publicado: o
+//  registrador da posicao (90) foi achado procurando, nao lendo manual.
+//  "P098 no painel" pode ser o registrador 98, e essa e a primeira
+//  hipotese a testar -- mas e hipotese, e escrever no registrador errado
+//  de um servo drive nao da numero errado na tela: muda engrenagem
+//  eletronica, modo de controle, sentido do eixo, limite de torque.
+//
+//  Por isso sao TRES rotas e nao uma:
+//    /api/encoder/diferenca  acha o endereco SEM ESCREVER NADA
+//    /api/encoder/escrever   escreve um registrador, com travas
+//    /api/param/som          o botao, depois que o endereco esta gravado
+// =====================================================================
+
+// Achar o endereco por comparacao: foto, o operador muda no painel do
+// driver, segunda foto, e o que mudou aparece. Zero escrita. O relatorio
+// sai pela rota /api/encoder/teste, que ja e a janela do encoder.
+static void handleEncoderDiferenca() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  Snapshot s;
+  lerSnapshot(s);
+  // Com o braco andando o par da posicao muda entre as duas fotos e
+  // aparece na lista junto com o parametro -- e o operador nao teria como
+  // saber qual dos dois e o que ele mexeu no painel.
+  if (s.emMovimento) { erro("pare o braco antes: a posicao muda entre as fotos"); return; }
+  const bool comparar = argL("comparar", 0) != 0;
+  encoderPedirDiferenca(comparar);
+  server.send(200, "text/plain", comparar ? "comparando..." : "tirando a foto...");
+}
+
+// Travas da escrita. Nao sao burocracia: um parametro escrito no
+// registrador errado enquanto o braco esta energizado pode fazer o eixo
+// sair andando. Servo desligado e a trava que importa -- as outras
+// impedem escrever no meio de um trabalho.
+static bool exigirBancadaParada() {
+  Snapshot s;
+  lerSnapshot(s);
+  if (s.modo != MODO_MANUAL)  { erro("escreva no driver so no modo manual"); return false; }
+  if (s.emMovimento)          { erro("pare o braco antes de escrever no driver"); return false; }
+  if (s.servosLigados)        { erro("desligue os servos antes de escrever no driver"); return false; }
+  if (s.solda)                { erro("desligue a solda antes de escrever no driver"); return false; }
+  return true;
+}
+
+static void handleEncoderEscrever() {
+  registrarContatoOperador();
+  if (!exigirBancadaParada()) return;
+
+  // Registrador e valor sao DIGITADOS, nunca deduzidos: nada aqui adivinha
+  // endereco a partir do numero do painel.
+  if (!server.hasArg("reg") || !server.hasArg("valor")) {
+    erro("informe o registrador e o valor"); return;
+  }
+  const long reg   = argL("reg",   -1);
+  const long valor = argL("valor", -1);
+  if (reg   < 0 || reg   > 65535) { erro("registrador fora de faixa (0 a 65535)"); return; }
+  if (valor < 0 || valor > 65535) { erro("valor fora de faixa (0 a 65535)"); return; }
+  // Segunda batida: a tela pergunta antes, e a porta confere de novo.
+  // Sem isto um toque errado na tela chega ao driver.
+  if (argL("confirmar", 0) != 1) { erro("confirme a escrita: ela muda o driver"); return; }
+
+  logEvento("driver: escrever reg %ld = %ld (funcao %d)",
+            reg, valor, argL("f16", configParam.usarFuncao16 ? 1 : 0) ? 16 : 6);
+  encoderPedirEscrita((uint16_t)reg, (uint16_t)valor,
+                      argL("f16", configParam.usarFuncao16 ? 1 : 0) != 0);
+  server.send(200, "text/plain", "escrevendo no driver...");
+}
+
+// Como foi a ultima escrita. A releitura e que diz se ela pegou: driver
+// que responde "aceitei" e ignora o valor existe, e sem conferir relendo
+// a tela mentiria.
+static void handleEncoderEscrita() {
+  registrarContatoOperador();
+  const EscritaParam e = encoderEscritaResumo();
+  char motivo[sizeof(e.motivo) * 2];
+  jsonTexto(motivo, sizeof(motivo), e.motivo);
+  char json[220];
+  snprintf(json, sizeof(json),
+           "{\"pedida\":%s,\"fim\":%s,\"ok\":%s,"
+           "\"reg\":%u,\"valor\":%u,\"lido\":%u,\"motivo\":\"%s\"}",
+           e.pedida    ? "true" : "false",
+           e.concluida ? "true" : "false",
+           e.ok        ? "true" : "false",
+           (unsigned)e.reg, (unsigned)e.valor, (unsigned)e.lido, motivo);
+  server.send(200, "application/json", json);
+}
+
+// Gravar QUAL registrador e o do som, e que valor liga e desliga. Depois
+// disto o operador nao digita mais endereco: vira um botao.
+static void handleParamConfig() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+
+  ConfigParam c = configParam;
+  c.regSom       = (uint16_t)argL("reg", c.regSom);
+  c.somLigado    = (uint16_t)argL("on",  c.somLigado);
+  c.somDesligado = (uint16_t)argL("off", c.somDesligado);
+  c.usarFuncao16 = argL("f16", c.usarFuncao16 ? 1 : 0) != 0;
+
+  if (argL("reg", 0) < 0 || argL("reg", 0) > 65535) {
+    erro("registrador fora de faixa (0 a 65535)"); return;
+  }
+  // Ligar e desligar com o mesmo valor deixaria um botao que nao faz
+  // nada, e o operador culparia o RS485.
+  if (c.regSom && c.somLigado == c.somDesligado) {
+    erro("o valor de ligado e o de desligado nao podem ser iguais"); return;
+  }
+  paramPendente = c;
+  enfileirar(CMD_APLICAR_PARAM);
+}
+
+// O botao. So existe depois que o registrador foi gravado.
+//
+// Aqui NAO se exige servo desligado: o endereco ja foi conferido uma vez
+// por quem o gravou, e um parametro de bip nao mexe em movimento. Exigir
+// desligar os servos para calar o driver faria o operador simplesmente
+// nao usar o botao.
+static void handleParamSom() {
+  registrarContatoOperador();
+  if (!configParam.regSom) {
+    erro("nenhum registrador de som configurado: ache o endereco primeiro");
+    return;
+  }
+  Snapshot s;
+  lerSnapshot(s);
+  if (s.emMovimento) { erro("pare o braco antes"); return; }
+  const bool ligar = argL("on", 1) != 0;
+  const uint16_t v = ligar ? configParam.somLigado : configParam.somDesligado;
+  logEvento("driver: som %s (reg %u = %u)", ligar ? "ligado" : "desligado",
+            (unsigned)configParam.regSom, (unsigned)v);
+  encoderPedirEscrita(configParam.regSom, v, configParam.usarFuncao16);
+  server.send(200, "text/plain", ligar ? "ligando o som..." : "desligando o som...");
 }
 
 // ---------------------------------------------------------------------
@@ -1553,6 +1706,11 @@ void servidorIniciar() {
   server.on("/api/encoder/teste",  HTTP_GET,  handleEncoderTeste);
   server.on("/api/encoder/cacar",  HTTP_POST, handleEncoderCacar);
   server.on("/api/encoder/zerar",  HTTP_POST, handleEncoderZerar);
+  server.on("/api/encoder/diferenca", HTTP_POST, handleEncoderDiferenca);
+  server.on("/api/encoder/escrever",  HTTP_POST, handleEncoderEscrever);
+  server.on("/api/encoder/escrita",   HTTP_GET,  handleEncoderEscrita);
+  server.on("/api/param/config",      HTTP_POST, handleParamConfig);
+  server.on("/api/param/som",         HTTP_POST, handleParamSom);
 
   server.onNotFound(handleNaoEncontrado);
   server.begin();

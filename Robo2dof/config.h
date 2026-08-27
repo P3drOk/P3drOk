@@ -490,7 +490,11 @@ enum TipoComando : uint8_t {
   CMD_ARQ_SALVAR_TRAJ,     // core 1: empresta o buffer e pede a gravacao
   CMD_ARQ_CARREGAR_TRAJ,   // core 1: empresta o buffer e pede a leitura
   CMD_ARQ_LIBERAR_TRAJ,    // core 1: devolve o buffer (postado pela tarefa SD)
-  CMD_ARQ_SALVAR_CONFIG    // core 1: prepara a area e pede a gravacao
+  CMD_ARQ_SALVAR_CONFIG,   // core 1: prepara a area e pede a gravacao
+
+  // Registrador do parametro do driver (o bip, por exemplo). O core 0
+  // preenche paramPendente e o core 1 grava. Ver estado.h.
+  CMD_APLICAR_PARAM
 };
 
 struct Comando {

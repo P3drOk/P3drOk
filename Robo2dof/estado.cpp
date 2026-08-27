@@ -279,6 +279,11 @@ void carregarConfiguracoes() {
 
   // Chaves NOVAS: as antigas guardavam Hz, e reler 3000 como 3000 graus/s
   // seria absurdo. Quem atualiza recebe os padroes em graus/s.
+  configParam.regSom       = (uint16_t)prefs.getUInt("pmSom",  0);
+  configParam.somLigado    = (uint16_t)prefs.getUInt("pmOn",   1);
+  configParam.somDesligado = (uint16_t)prefs.getUInt("pmOff",  0);
+  configParam.usarFuncao16 = prefs.getBool("pmF16", false);
+
   areaMesa.definida = prefs.getBool ("mesaOn", false);
   areaMesa.cantos   = (uint8_t)prefs.getUInt("mesaN", 0);
   areaMesa.xMin     = prefs.getFloat("mesaX0", 0.0f);
@@ -390,6 +395,7 @@ void carregarConfiguracoes() {
 
   recalcularResolucao();
   prepararConfigPendente();   // a area de preparo nasce coerente com o vivo
+  paramPendente = configParam;
 
   Serial.println("[NVS] Configuracoes carregadas.");
 }
@@ -402,6 +408,11 @@ void carregarConfiguracoes() {
 // ensinou -- protecao inventada por padrao recusaria movimento valido na
 // primeira vez que a maquina liga.
 AreaMesa areaMesa = {false, 0, 0.0f, 0.0f, 0.0f, 0.0f};
+
+// De fabrica nao ha parametro configurado: o botao do som so aparece
+// depois que alguem descobrir e gravar o registrador.
+ConfigParam configParam  = {0, 1, 0, false};
+ConfigParam paramPendente = {0, 1, 0, false};
 
 void mesaEnsinarCanto(float x, float y) {
   if (areaMesa.cantos == 0) {
@@ -524,6 +535,10 @@ void salvarConfiguracoes() {
   // encoder absoluto: ensinada uma vez, vale para sempre.
   prefs.putBool ("zrEn1",  configZero.ensinado[0]);
   prefs.putBool ("zrEn2",  configZero.ensinado[1]);
+  prefs.putUInt ("pmSom", configParam.regSom);
+  prefs.putUInt ("pmOn",  configParam.somLigado);
+  prefs.putUInt ("pmOff", configParam.somDesligado);
+  prefs.putBool ("pmF16", configParam.usarFuncao16);
   prefs.putBool ("mesaOn", areaMesa.definida);
   prefs.putUInt ("mesaN",  areaMesa.cantos);
   prefs.putFloat("mesaX0", areaMesa.xMin);
@@ -560,6 +575,18 @@ void salvarConfiguracoes() {
 // Gravada separada do resto: mexer no encoder nao pode reescrever
 // calibracao, e salvar calibracao nao pode reescrever o registrador que
 // o operador levou uma tarde para achar.
+// Grava o registrador do parametro do driver. Vem do core 0 pela fila,
+// como toda configuracao: quem escreve no vivo e no NVS e o core 1.
+void aplicarParamPendente() {
+  configParam = paramPendente;
+  salvarConfiguracoes();
+  if (configParam.regSom)
+    definirMensagem("Parametro do driver: registrador %u gravado",
+                    (unsigned)configParam.regSom);
+  else
+    definirMensagem("Parametro do driver: nenhum registrador configurado");
+}
+
 void aplicarEncoderPendente() {
   configEncoder = encoderPendente;
   if (configEncoder.periodoMs < ENC_PERIODO_MIN_MS)
