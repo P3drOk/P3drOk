@@ -208,6 +208,38 @@ escreve registrador):
 
 ## 5. Funcionalidades
 
+### 5.0 Onde fica cada coisa na tela
+
+A tela de trabalho tem cinco abas, e só elas:
+
+| aba | para quê |
+|---|---|
+| **Mesa** | traçado, desenho e a vista 2D/3D do braço |
+| **Mover** | joystick, ir para ângulo, atalhos |
+| **Programa** | ensinar o caminho, ensaiar, soldar, produção |
+| **Arquivos** | cartão: peças, trajetórias, backups |
+| **Encoder** | a leitura ao vivo, análise e diagnóstico da linha |
+
+Tudo que se ajusta **uma vez** mora atrás da **engrenagem** do cabeçalho,
+numa gaveta com três páginas:
+
+| página | o que tem |
+|---|---|
+| **Máquina** | elos, velocidades, acelerações, resolução, sentido dos eixos, proteções, calibração |
+| **Encoder** | correção de posição, zero absoluto, ligação Modbus |
+| **Sistema** | saúde, registro de eventos, QR de conexão, firmware, modo operador, idioma |
+
+A divisão é essa: **operar** fica nas abas, **instalar** fica na gaveta.
+
+> O **cabeçalho e a barra de abas ficam acima da gaveta**, e continuam
+> clicáveis com ela aberta. O botão PARAR mora no cabeçalho — parada de
+> emergência que exige fechar uma janela antes não é parada de
+> emergência.
+
+A gaveta fecha pelo X, pelo **Esc**, tocando fora dela, ou escolhendo uma
+aba de trabalho. No modo operador ela abre direto em **Sistema**, com as
+duas páginas de instalação escondidas.
+
 ### 5.1 Comando manual
 
 **Joystick** dos dois eixos: quanto mais longe do centro, mais rápido.
@@ -525,6 +557,15 @@ vermelha. É o que transforma "acho que está em 30 graus" em "está em
 o braço está solto e o encoder é a única coisa que sabe onde ele foi
 parar. A contagem é acertada pela leitura, e "movi com a mão" passa a
 dar o mesmo resultado que "mandei ir".
+
+> **Toda leitura passa por um teste de possibilidade física.** O braço
+> não pode estar fora do curso que o próprio operador mediu (com 10° de
+> folga para o batente). Leitura dali para fora não vira posição, não é
+> seguida e não aparece na tela como medida boa — ela é denunciada, com o
+> número, para o operador conferir registrador e contagens por volta.
+> Sem isso, uma leitura errada virava a posição oficial da máquina e o
+> "ir ao zero" mandava um curso inteiro de pulso contra o batente. Ver
+> `ACHADOS.md`, R78, e o cenário **T01**.
 
 > **Só com o torque desligado.** Com servo ligado o motor segura a
 > posição: se o eixo saiu do lugar mesmo assim, isso é **perda de

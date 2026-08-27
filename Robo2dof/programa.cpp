@@ -490,6 +490,13 @@ bool progRetomar(const char** motivo) {
     marcaTempo = millis();
     if (fase == FASE_DESLOCANDO) {
       moverCoordenado(pontos[idx + 1].p1, pontos[idx + 1].p2, velAuto);
+    } else if (fase == FASE_INDO_INICIO) {
+      // A APROXIMACAO tem de ser reemitida. Sem isto o proximo ciclo ve o
+      // braco parado, conclui "cheguei ao ponto 1" e abre o arco onde a
+      // pausa pegou -- podendo ser dezenas de graus antes do inicio do
+      // cordao -- e depois arrasta a ponta ate la com o arco aberto,
+      // riscando a peca no caminho.
+      moverCoordenado(pontos[0].p1, pontos[0].p2, velAuto);
     }
   }
   aplicarAceleracao();

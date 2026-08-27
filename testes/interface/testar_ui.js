@@ -13,6 +13,29 @@ function checar(ok, texto, extra) {
   if (extra) console.log('           \x1b[2m' + extra + '\x1b[0m');
 }
 
+// ---------------------------------------------------------------------
+// Gaveta de configuracao (a engrenagem). Os ajudantes sao IDEMPOTENTES
+// de proposito: `abrirGaveta` numa gaveta ja aberta nao pode fecha-la.
+// O botao e um alternador, e um teste que dependa de "quantas vezes ja
+// clicaram" quebra na primeira reordenacao.
+// ---------------------------------------------------------------------
+async function abrirGaveta(pag, alvo) {
+  if (!(await pag.locator('#veuCfg.on').count())) {
+    await pag.locator('#btCfg').click();
+    await pag.waitForTimeout(220);
+  }
+  if (alvo) {
+    await pag.locator('#cfgAbas button[data-cfg="' + alvo + '"]').click();
+    await pag.waitForTimeout(250);
+  }
+}
+async function fecharGaveta(pag) {
+  if (await pag.locator('#veuCfg.on').count()) {
+    await pag.locator('#cfgFechar').click();
+    await pag.waitForTimeout(220);
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
 
@@ -75,7 +98,8 @@ function checar(ok, texto, extra) {
 
   // Barra de abas presente e com as cinco abas
   const nAbas = await p.locator('#abas button').count();
-  checar(nAbas === 7, 'barra de abas inferior com 7 abas', nAbas + ' abas encontradas');
+  checar(nAbas === 5, 'barra de abas inferior com 5 abas de trabalho',
+         nAbas + ' abas encontradas');
 
   // Aba inicial = Mover, com o joystick visivel
   const joyVis = await p.locator('#joy').isVisible();
@@ -154,12 +178,11 @@ function checar(ok, texto, extra) {
   checar(parouEscondido, 'app indo para segundo plano para o jog na hora');
   await p.mouse.up();
 
-  // ---- abas ----
+  // ---- abas de trabalho ----
   for (const [aba, alvo, nome] of [
     ['prog',   '#e2',      'Programa'],
     ['arq',    '#sdBar',   'Arquivos'],
     ['enc',    '#cvEnc',   'Encoder'],
-    ['ajuste', '#e1',      'Ajustes'],
     ['mesa',   '#cv',      'Mesa'],
   ]) {
     await p.locator('#abas button[data-aba="' + aba + '"]').click();
@@ -168,6 +191,51 @@ function checar(ok, texto, extra) {
     checar(vis, 'aba ' + nome + ' mostra o seu conteudo (' + alvo + ')');
     await p.screenshot({ path: SAIDA + '/celular-3-' + aba + '.png' });
   }
+
+  // ---- a gaveta da engrenagem ----
+  // Os ajustes sairam da barra de abas. A barra ficou so com o que se usa
+  // no turno; instalacao mora atras da engrenagem.
+  await abrirGaveta(p);
+  const gaveta = await p.evaluate(() => ({
+    aberta: document.getElementById('veuCfg').classList.contains('on'),
+    abas: [...document.querySelectorAll('#cfgAbas button')].map(b => b.textContent.trim()),
+  }));
+  checar(gaveta.aberta, 'a engrenagem abre a gaveta de configuracao');
+  checar(gaveta.abas.length === 3, 'com as tres paginas de ajuste',
+         gaveta.abas.join(' | '));
+  for (const [cfg, alvo, nome] of [
+    ['maquina', '#e1',        'Maquina'],
+    ['encoder', '#sbCorr',    'Encoder'],
+    ['sistema', '#saudeG',    'Sistema'],
+  ]) {
+    await p.locator('#cfgAbas button[data-cfg="' + cfg + '"]').click();
+    await p.waitForTimeout(300);
+    const vis = await p.locator(alvo).isVisible();
+    checar(vis, 'gaveta: pagina ' + nome + ' mostra o seu conteudo (' + alvo + ')');
+  }
+  await p.screenshot({ path: SAIDA + '/celular-3-gaveta.png' });
+
+  // Fechar pelo Esc, que e o gesto que todo mundo tenta.
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(300);
+  const fechou = await p.evaluate(() =>
+    !document.getElementById('veuCfg').classList.contains('on'));
+  checar(fechou, 'e o Esc fecha a gaveta');
+
+  // O botao de PARAR fica FORA da gaveta e continua alcancavel com ela
+  // aberta: emergencia que depende de fechar uma janela nao e emergencia.
+  await abrirGaveta(p);
+  // "Visivel" nao basta: um veu por cima deixa o botao visivel e morto.
+  // A pergunta certa e QUEM esta no ponto onde o dedo vai encostar.
+  const pararClicavel = await p.evaluate(() => {
+    const b = document.getElementById('btParar');
+    const r = b.getBoundingClientRect();
+    const alvo = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!alvo && (alvo === b || b.contains(alvo));
+  });
+  checar(pararClicavel,
+         'o botao PARAR continua CLICAVEL com a gaveta aberta, nao so visivel');
+  await fecharGaveta(p);
 
   // A mesa de tracado desenha depois de trocar de aba
   const dim = await p.evaluate(() => { const c = document.getElementById('cv'); return [c.width, c.height]; });
@@ -262,12 +330,20 @@ function checar(ok, texto, extra) {
   // A coluna do Encoder fica ABERTA enquanto se usa o resto: e para isso
   // que ela saiu da barra de abas. Trocar de aba para olhar o erro seria
   // perder justamente o momento em que ele acontece.
-  for (const aba of ['mover', 'prog', 'ajuste']) {
+  for (const aba of ['mover', 'prog', 'arq']) {
     await q.locator('#abasTopo button[data-aba="' + aba + '"]').click();
     await q.waitForTimeout(220);
     const vis = await q.locator('#cvEnc').isVisible();
     checar(vis, 'Encoder: a coluna continua aberta com a aba ' + aba + ' escolhida');
   }
+  // E continua aberta tambem com a gaveta de configuracao na tela: quem
+  // esta mexendo no registrador Modbus e exatamente quem precisa ver a
+  // leitura reagir.
+  await abrirGaveta(q);
+  const encComGaveta = await q.locator('#cvEnc').isVisible();
+  checar(encComGaveta,
+         'Encoder: a coluna continua visivel com a gaveta de configuracao aberta');
+  await fecharGaveta(q);
   const botaoEnc = await q.evaluate(() => {
     const b = document.querySelector('#abasTopo button[data-aba="enc"]');
     return b ? getComputedStyle(b).display !== 'none' : false;
@@ -281,9 +357,11 @@ function checar(ok, texto, extra) {
   // Zero absoluto: a secao nasce TRANCADA em toda visita. O tranco existe
   // para nao se mexer sem querer -- e "sem querer" inclui ter deixado
   // aberto ontem. Errar ali desloca a area util inteira.
+  // O zero absoluto e ajuste: mora na gaveta, pagina Encoder.
+  await abrirGaveta(q, 'encoder');
   await q.evaluate(() => {
     const alvo = document.getElementById('etZero');
-    document.querySelectorAll('#pnEnc .et')
+    document.querySelectorAll('#cfgEncoder .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await q.waitForTimeout(300);
@@ -329,7 +407,7 @@ function checar(ok, texto, extra) {
   // que ninguem leu -- e este quer dizer eixo forcando contra ferro.
   await q.evaluate(() => {
     const alvo = document.getElementById('crTrav').closest('.et');
-    document.querySelectorAll('#pnEnc .et')
+    document.querySelectorAll('#cfgEncoder .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await q.waitForTimeout(300);
@@ -349,6 +427,9 @@ function checar(ok, texto, extra) {
   await q.request.post(BASE + '/teste/encoder',
                        { data: { trvOn: false, trvJ: 0, trvN: 0 } });
   await q.waitForTimeout(700);
+  // Fecha a gaveta: daqui para a frente o teste volta a mexer na tela de
+  // trabalho, e o veu dela intercepta os cliques.
+  await fecharGaveta(q);
 
   // As explicacoes ensinam quem comeca e atrapalham quem opera todo dia.
   // O "?" esconde todas, e a escolha fica gravada. Esconder nao pode
@@ -466,7 +547,9 @@ function checar(ok, texto, extra) {
          'joystick visivel: ' + joyDepois + ', "Gravar ponto" visivel: ' + gravDepois);
 
   // Clica cada botao de cada secao, uma secao aberta por vez.
-  const PANES = { mover: '#pnMover', prog: '#pnProg', arq: '#pnArq', ajuste: '#pnAjuste' };
+  // Ajustes saiu da barra de abas e virou aba da gaveta da engrenagem.
+  const PANES = { mover: '#pnMover', prog: '#pnProg', arq: '#pnArq' };
+  const CFG_PANES = { maquina: '#cfgMaquina', encoder: '#cfgEncoder', sistema: '#cfgSistema' };
   const mortos = [], mudos = [];
   let clicados = 0;
   // Abrir o seletor de arquivo E a acao do botao de importar DXF: ele nao
@@ -474,8 +557,17 @@ function checar(ok, texto, extra) {
   // varredura marca o botao como morto.
   let abriuArquivo = 0;
   t.on('filechooser', fc => { abriuArquivo++; fc.setFiles([]).catch(() => {}); });
-  for (const [aba, sel] of Object.entries(PANES)) {
-    await t.locator('#abas button[data-aba="' + aba + '"]').click();
+  // Percorre os paineis de trabalho e DEPOIS as abas da gaveta: um botao
+  // mudo escondido atras da engrenagem continua sendo um botao mudo.
+  const TUDO = Object.entries(PANES).concat(
+    Object.entries(CFG_PANES).map(([k, v]) => ['cfg:' + k, v]));
+  for (const [aba, sel] of TUDO) {
+    if (aba.startsWith('cfg:')) {
+      await abrirGaveta(t, aba.slice(4));
+    } else {
+      await fecharGaveta(t);
+      await t.locator('#abas button[data-aba="' + aba + '"]').click();
+    }
     await t.waitForTimeout(250);
     const nSec = await t.locator(sel + ' .et').count();
     for (let k = 0; k < nSec; k++) {
@@ -493,6 +585,20 @@ function checar(ok, texto, extra) {
         });
       }, [sel, k]);
       for (const a of alvos) {
+        // Escondidos DE PROPOSITO, cada um com o seu motivo. A regra
+        // existe para pegar botao escondido por acidente; sem esta lista
+        // ela vira ruido e para de ser lida.
+        //   btTravOk    so existe quando ha travamento para reconhecer
+        //   btZensinar  campos do zero absoluto: nascem atras do cadeado
+        //   btZesquecer  idem
+        //   btZsalvar    idem
+        //   btOta       so aparece com particao de OTA no firmware
+        const ESCONDIDO_DE_PROPOSITO =
+          ['btTravOk', 'btZensinar', 'btZesquecer', 'btZsalvar', 'btOta'];
+        if (ESCONDIDO_DE_PROPOSITO.includes(a.id)) continue;
+        // btIdioma recarrega a pagina inteira: clicar nele no meio da
+        // varredura invalida todo o resto. Tem cenario proprio.
+        if (a.id === 'btIdioma') continue;
         if (!a.vis) { mortos.push(a.id + ' (invisivel na propria secao)'); continue; }
         if (a.dis) { if (!a.motivo) mudos.push(a.id); continue; }
         rotas = [];
@@ -515,6 +621,7 @@ function checar(ok, texto, extra) {
   }
   checar(mortos.length === 0, 'todo botao visivel e habilitado dispara uma acao',
          mortos.length ? 'mortos: ' + mortos.join(', ') : clicados + ' botoes clicados, todos responderam');
+  await fecharGaveta(t);
   checar(mudos.length === 0, 'botao desabilitado explica o motivo na tela',
          mudos.length ? 'sem motivo: ' + mudos.join(', ') : 'todos os bloqueios sao explicados');
 
@@ -988,9 +1095,11 @@ function checar(ok, texto, extra) {
 
   // Abre a secao PELO CONTEUDO, nao pelo indice: acrescentar uma secao
   // nova no painel nao pode quebrar um teste que nao e sobre ela.
+  // A ligacao Modbus e ajuste: mora na gaveta, pagina Encoder.
+  await abrirGaveta(t, 'encoder');
   await t.evaluate(() => {
     const alvo = document.getElementById('encReg1').closest('.et');
-    document.querySelectorAll('#pnEnc .et')
+    document.querySelectorAll('#cfgEncoder .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(300);
@@ -1004,6 +1113,13 @@ function checar(ok, texto, extra) {
          'reg ' + cfg.reg1 + ', ' + cfg.baud + ' bps');
 
   rotas = [];
+  await abrirGaveta(t, 'encoder');
+  await t.evaluate(() => {
+    const alvo = document.getElementById('encReg1').closest('.et');
+    document.querySelectorAll('#cfgEncoder .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(300);
   await t.locator('#encReg1').fill('8192');
   await t.locator('#btEncSalvar').click();
   await t.waitForTimeout(400);
@@ -1012,6 +1128,9 @@ function checar(ok, texto, extra) {
          'Encoder: mudar o registrador vai pela rota de configuracao',
          salvou || 'nada');
 
+  // "Zerar a contagem aqui" ficou no painel de LEITURA, nao na gaveta:
+  // e uma acao que se faz olhando o numero mudar.
+  await fecharGaveta(t);
   rotas = [];
   await t.evaluate(() => {
     const alvo = document.getElementById('btEncZerar').closest('.et');
@@ -1023,11 +1142,12 @@ function checar(ok, texto, extra) {
   await t.waitForTimeout(300);
   checar(rotas.some(x => x.split('?')[0] === '/api/encoder/zerar'),
          'Encoder: "Zerar a contagem aqui" chama a rota certa');
+  await fecharGaveta(t);
 
   // Rede: a maquina tem Wi-Fi proprio, o painel so diz por onde chegar.
-  await t.locator('#abas button[data-aba="ajuste"]').click();
+  await abrirGaveta(t, 'maquina');
   await t.waitForTimeout(250);
-  await t.evaluate(() => document.querySelectorAll('#pnAjuste .et')
+  await t.evaluate(() => document.querySelectorAll('#cfgMaquina .et')
     .forEach(x => x.classList.toggle('aberta', x.id === 'eRede')));
   await t.waitForTimeout(600);
   const endereco = (await t.locator('#redeEnd').textContent()).replace(/\n/g, ' | ');
@@ -1049,9 +1169,9 @@ function checar(ok, texto, extra) {
   checar(rotas.some(x => x.split('?')[0] === '/api/referenciar'),
          '"Zerar a maquina aqui" pede confirmacao e chama /api/referenciar');
 
-  await t.locator('#abas button[data-aba="ajuste"]').click();
+  await abrirGaveta(t, 'maquina');
   await t.waitForTimeout(250);
-  await t.evaluate(() => document.querySelectorAll('#pnAjuste .et')
+  await t.evaluate(() => document.querySelectorAll('#cfgMaquina .et')
     .forEach(x => x.classList.toggle('aberta', x.id === 'e5')));
   await t.waitForTimeout(200);
   rotas = [];
@@ -1231,7 +1351,7 @@ function checar(ok, texto, extra) {
   // ------------------------------------------------------------------
   // Aba Maquina: saude, registro, QR e modo operador.
   // ------------------------------------------------------------------
-  await t.locator('#abas button[data-aba="maq"]').click();
+  await abrirGaveta(t, 'sistema');
   await t.waitForTimeout(700);
   const saude = await t.evaluate(() => ({
     n: document.querySelectorAll('#saudeG .sl').length,
@@ -1249,7 +1369,7 @@ function checar(ok, texto, extra) {
   // Os dois QR tem de ser DESENHADOS, nao so existir como canvas vazio.
   await t.evaluate(() => {
     const alvo = document.getElementById('qrRede').closest('.et');
-    document.querySelectorAll('#pnMaq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+    document.querySelectorAll('#cfgSistema .et').forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(500);
   const qr = await t.evaluate(() => {
@@ -1271,13 +1391,13 @@ function checar(ok, texto, extra) {
   await t.request.post(BASE + '/teste/estado', { data: { op: true } });
   await t.waitForTimeout(700);
   const opLigado = await t.evaluate(() => ({
-    ajuste: !!document.querySelector('#abas button[data-aba="ajuste"]').offsetParent,
-    enc:    !!document.querySelector('#abas button[data-aba="enc"]').offsetParent,
+    ajuste: !!document.querySelector('#cfgAbas button[data-cfg="maquina"]').offsetParent,
+    enc:    !!document.querySelector('#cfgAbas button[data-cfg="encoder"]').offsetParent,
     prog:   !!document.querySelector('#abas button[data-aba="prog"]').offsetParent,
     aba:    document.body.dataset.aba,
   }));
   checar(!opLigado.ajuste && !opLigado.enc,
-         'Operador: as abas de instalacao somem no modo operador',
+         'Operador: as abas de instalacao somem de dentro da gaveta',
          'ajuste visivel: ' + opLigado.ajuste + ', encoder: ' + opLigado.enc);
   checar(opLigado.prog,
          'Operador: o que faz peca continua na tela', 'programa visivel: ' + opLigado.prog);
@@ -1285,7 +1405,7 @@ function checar(ok, texto, extra) {
   await t.request.post(BASE + '/teste/estado', { data: { op: false } });
   await t.waitForTimeout(600);
   const opDesligado = await t.evaluate(() =>
-    !!document.querySelector('#abas button[data-aba="ajuste"]').offsetParent);
+    !!document.querySelector('#cfgAbas button[data-cfg="maquina"]').offsetParent);
   checar(opDesligado, 'Operador: saindo do modo, os ajustes voltam');
 
 
@@ -1350,11 +1470,11 @@ function checar(ok, texto, extra) {
   // Idiomas. O que interessa e a ida E a volta: uma traducao que nao
   // desfaz deixa a maquina em ingles para sempre.
   // ------------------------------------------------------------------
-  await t.locator('#abas button[data-aba="maq"]').click();
+  await abrirGaveta(t, 'sistema');
   await t.waitForTimeout(500);
   await t.evaluate(() => {
     const alvo = document.getElementById('btIdioma').closest('.et');
-    document.querySelectorAll('#pnMaq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+    document.querySelectorAll('#cfgSistema .et').forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(300);
   await t.locator('#btIdioma').click();
@@ -1364,7 +1484,7 @@ function checar(ok, texto, extra) {
     servos: document.getElementById('btServos').textContent.trim(),
     idioma: (() => { try { return localStorage.getItem('idioma'); } catch (e) { return null; } })(),
   }));
-  checar(ingles.abas.includes('Program') && ingles.abas.includes('Machine'),
+  checar(ingles.abas.includes('Program') && ingles.abas.includes('Table'),
          'Idioma: as abas ficam em ingles', ingles.abas.join(' '));
   checar(/servos/i.test(ingles.servos) && /able/i.test(ingles.servos),
          'Idioma: os botoes principais tambem', ingles.servos);
@@ -1380,18 +1500,18 @@ function checar(ok, texto, extra) {
          'Idioma: as notas longas seguem em portugues, como documentado',
          nota1.slice(0, 50));
 
-  await t.locator('#abas button[data-aba="maq"]').click();
+  await abrirGaveta(t, 'sistema');
   await t.waitForTimeout(400);
   await t.evaluate(() => {
     const alvo = document.getElementById('btIdioma').closest('.et');
-    document.querySelectorAll('#pnMaq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+    document.querySelectorAll('#cfgSistema .et').forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(300);
   await t.locator('#btIdioma').click();
   await t.waitForTimeout(1200);
   const voltou = await t.evaluate(() =>
     [...document.querySelectorAll('#abas button span')].map(e => e.textContent.trim()));
-  checar(voltou.includes('Programa') && voltou.includes('Maquina'),
+  checar(voltou.includes('Programa') && voltou.includes('Mesa'),
          'Idioma: e a volta para o portugues funciona', voltou.join(' '));
 
   checar(errosT.length === 0, 'nenhum erro de JavaScript em toda a varredura',

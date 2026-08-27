@@ -387,6 +387,52 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 .pane{display:none}
 .pane.on{display:block}
 
+/* ---------------------------------------------------------------------
+   GAVETA DE CONFIGURACAO
+   Ela e larga e alta de proposito: o que mora aqui sao formularios de
+   instalacao, nao botoes de turno. Ocupar a tela toda enquanto se ajusta
+   e melhor do que espremer campos numa coluna.
+   --------------------------------------------------------------------- */
+/* A gaveta NAO cobre o cabecalho.
+   O botao PARAR mora la em cima, e parada de emergencia que exige fechar
+   uma janela antes nao e parada de emergencia. O veu continua cobrindo o
+   resto (para o toque fora fechar), mas o cabecalho sobe acima dele e
+   continua clicavel -- PARAR, as lampadas, a ajuda e a propria
+   engrenagem.
+   A altura do cabecalho e medida em tempo de execucao: ela muda com a
+   largura da tela, e chutar um valor deixaria a gaveta escondida atras
+   dele em algum telefone. */
+.placa{position:relative;z-index:80}
+.cfgVeu{align-items:flex-start;
+ padding-top:calc(var(--altCab, 82px) + 8px);
+ padding-bottom:calc(var(--altAbas, 0px) + 8px)}
+.cfgVeu .cfgCx{max-width:760px;width:100%;
+ height:calc(100vh - var(--altCab, 82px) - var(--altAbas, 0px) - 24px);
+ display:flex;flex-direction:column;padding:0;overflow:hidden}
+.cfgTopo{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;
+ border-bottom:1px solid var(--linha)}
+.cfgTopo h2{flex:1;margin:0}
+.cfgTopo .b{margin:0;width:auto;flex:0 0 auto}
+.cfgAbas{display:flex;gap:4px;padding:10px 16px 0;border-bottom:1px solid var(--linha)}
+.cfgAbas button{flex:1;background:none;border:none;border-bottom:2px solid transparent;
+ color:var(--fraca);font:inherit;font-size:12px;padding:8px 4px 9px;cursor:pointer;
+ border-radius:3px 3px 0 0}
+.cfgAbas button:hover{color:var(--letra)}
+.cfgAbas button.on{color:var(--arco);border-bottom-color:var(--arco)}
+.cfgRol{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px 18px;
+ scrollbar-width:thin;min-width:0}
+/* A engrenagem gira devagar ao passar o dedo: e a unica animacao da tela
+   e existe para dizer que ali se MEXE em coisa, em vez de operar. */
+.ajd.eng{padding:0;display:inline-flex;align-items:center;justify-content:center}
+.ajd.eng svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;
+ stroke-linecap:round;stroke-linejoin:round;transition:transform .4s ease}
+.ajd.eng:hover svg{transform:rotate(45deg)}
+.ajd.eng.on{background:var(--arco);border-color:var(--arco);color:#fff}
+/* No modo operador some o que e instalacao; sobra o painel Sistema, que
+   e por onde ele sai do modo. */
+body.operador .cfgAbas button[data-cfg="maquina"],
+body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
+
 /* Botao de parada sempre alcancavel, em qualquer aba. */
 .estop{flex:0 0 auto}
 
@@ -518,8 +564,12 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
   .coluna{max-height:none}
 
   .app{grid-template-rows:auto minmax(0,1fr) auto}
+  /* A barra de abas fica ACIMA da gaveta, como o cabecalho: tocar numa
+     aba de trabalho com a configuracao aberta e o gesto natural de
+     "voltar ao trabalho", e nao pode esbarrar num veu. */
   .abas{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;
    background:var(--painel);border-top:1px solid var(--linha);
+   position:relative;z-index:80;
    padding-bottom:env(safe-area-inset-bottom)}
   .abas button{background:none;border:none;padding:9px 2px 8px;cursor:pointer;
    display:grid;justify-items:center;gap:3px;color:var(--letra3);
@@ -570,6 +620,9 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
     <div class="nome">ROBO<b>2DOF</b></div>
     <div class="mod">ESTACAO DE SOLDA<br>2 EIXOS · SERVO AC</div>
     <button class="ajd" id="btAjuda" title="Mostrar ou esconder as explicacoes">?</button>
+    <button class="ajd eng" id="btCfg" title="Configuracao">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.4a3.4 3.4 0 100-6.8 3.4 3.4 0 000 6.8z"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-2.9 1.2V21a2 2 0 11-4 0v-.11A1.7 1.7 0 007 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 002.6 15H2.5a2 2 0 110-4h.11A1.7 1.7 0 004.6 7a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 2.6h.11A2 2 0 0113 2.5v.11A1.7 1.7 0 0017 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0021.4 9v.11a2 2 0 110 4h-.11a1.7 1.7 0 00-1.89 1.89z"/></svg>
+    </button>
     <div class="lamps">
       <div class="lp" id="lModo"><i class="olho"></i><span id="lModoT">--</span></div>
       <div class="lp" id="lServo"><i class="olho"></i><span>servo</span></div>
@@ -624,50 +677,6 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
             graus da junta, nos ultimos instantes. Linha reta em zero quer dizer
             que o braco foi para onde foi mandado. <b>Degrau ou deriva quer dizer
             passo perdido</b> &mdash; e o valor nao volta sozinho.</div>
-          </div>
-        </div>
-
-        <div class="et">
-          <div class="cab"><div class="mk">&#9678;</div>
-            <div class="tx"><div class="tt">Correcao de posicao</div>
-            <span class="sb" id="sbCorr">assentamento pelo encoder</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            <div class="encGrade">
-              <div class="encCel"><span class="rot">estado</span><b id="crEst">--</b></div>
-              <div class="encCel"><span class="rot">assentamentos</span><b id="crOk">--</b></div>
-              <div class="encCel"><span class="rot">avisos</span><b id="crAlerta">--</b></div>
-            </div>
-            <div class="res" id="crMotivo">--</div>
-            <div id="crTrav" style="display:none">
-              <div class="res" id="crTravTxt"></div>
-              <button class="b mini" id="btTravOk">Resolvido, limpar o aviso</button>
-              <div class="pq2" id="qTravOk"></div>
-            </div>
-            <div class="nt">Quando o braco chega, o encoder diz onde ele
-            <b>realmente</b> parou e o sistema da um retoque curto se precisar.
-            E isto que faz <b>sair de uma posicao e voltar cair no mesmo
-            lugar</b>: sem assentamento, o erro de um movimento entra no
-            proximo e o desvio cresce sem nunca voltar.</div>
-
-            <div class="tr"><div class="ch" id="crOnCh"><i></i></div>
-              <span>assentar no fim de cada movimento</span></div>
-            <div class="tr"><div class="ch" id="crVigCh"><i></i></div>
-              <span>avisar quando o eixo sair de posicao parado</span></div>
-            <div class="cp"><label>Tolerancia</label><input type="number" id="crTol" min="0.01" max="5" step="0.01"><span class="un">&deg;</span></div>
-            <div class="cp"><label>Teto do retoque</label><input type="number" id="crMax" min="0.05" max="15" step="0.05"><span class="un">&deg;</span></div>
-            <div class="cp"><label>Aviso de desvio</label><input type="number" id="crAlr" min="0.05" max="30" step="0.05"><span class="un">&deg;</span></div>
-            <div class="cp"><label>Tentativas</label><input type="number" id="crTent" min="1" max="10" step="1"></div>
-            <button class="b pri" id="btCorrSalvar">Salvar correcao</button>
-            <div class="pq2" id="qCorrSalvar"></div>
-            <div class="nt"><b>Tolerancia</b>: abaixo disso ja esta bom, e o
-            eixo nao fica cutucando. <b>Teto do retoque</b>: acima disso o
-            sistema NAO corrige, ele <b>denuncia</b> &mdash; erro de varios
-            graus nao e folga, e acoplamento solto, registrador errado ou
-            reducao errada, e empurrar o braco achando que esta consertando e
-            o jeito mais rapido de bater a ferramenta em alguma coisa.
-            <br>O retoque nunca sai do curso calibrado, nunca acontece com a
-            solda ligada, e a parada de emergencia cancela ele junto com todo
-            o resto.</div>
           </div>
         </div>
 
@@ -786,106 +795,6 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
             leitura nao vale, o driver respondeu outra coisa: veja a
             <b>funcao</b> e o <b>registrador</b>.</div>
             <div class="res" id="encQuadro">--</div>
-          </div>
-        </div>
-
-        <div class="et" id="etZero">
-          <div class="cab"><div class="mk">&#9910;</div>
-            <div class="tx"><div class="tt">Zero absoluto da maquina</div>
-            <span class="sb" id="sbZero">avancado</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            <div class="res" id="zEstado">--</div>
-            <div class="nt">O encoder do servo guarda a posicao com a maquina
-            <b>desligada</b>. Se alguem empurrar o braco a mao com tudo apagado,
-            ao ligar ele sabe onde esta. Isso dispensa fim de curso: em vez de
-            procurar batente, a maquina <b>le</b> onde esta.
-            <br>Para isso ela precisa saber uma coisa so: <b>qual contagem do
-            encoder corresponde a 0 grau</b>. Ensina-se uma vez.</div>
-
-            <div class="cadeado" id="zCadeado">
-              <div class="ic">&#128274;</div>
-              <div><b>Ajustes de origem</b>
-              <span>errar aqui desloca a area util inteira &mdash; toque para abrir</span></div>
-            </div>
-
-            <div class="trancavel">
-              <h4>Ensinar o zero</h4>
-              <div class="nt">Leve o braco ate uma postura que voce sabe medir
-              (o batente, um gabarito, o esquadro), meca o angulo <b>de
-              verdade</b> e informe. Nao precisa ser 0: informe o angulo em que
-              a junta esta agora, e o sistema calcula o resto.</div>
-              <div class="cp"><label>Junta</label>
-                <select id="zJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
-              <div class="cp"><label>Esta agora em</label><input type="number" id="zG" step="0.1" value="0"><span class="un">&deg;</span></div>
-              <button class="b pri mini" id="btZensinar">Gravar este angulo como referencia</button>
-              <div class="pq2" id="qZensinar"></div>
-              <button class="b mini" id="btZesquecer">Esquecer o zero absoluto</button>
-              <div class="pq2" id="qZesquecer"></div>
-              <div class="nt">Esquecer faz a maquina voltar a ligar como antes:
-              sem se localizar, e sem ir a lugar nenhum sozinha.</div>
-
-              <h4>Ao ligar a maquina</h4>
-              <div class="tr"><div class="ch" id="zSinCh"><i></i></div>
-                <span>recuperar a posicao pelo encoder</span></div>
-              <div class="tr"><div class="ch" id="zIrCh"><i></i></div>
-                <span>e depois ir para 0 grau</span></div>
-              <div class="cp"><label>Ja considero no zero</label><input type="number" id="zTol" min="0.05" max="10" step="0.05"><span class="un">&deg;</span></div>
-              <button class="b pri mini" id="btZsalvar">Salvar</button>
-              <div class="pq2" id="qZsalvar"></div>
-              <div class="nt"><b>O braco so anda depois que voce habilita os
-              servos</b>, que e uma acao sua na tela. Enquanto ninguem habilitar,
-              ele nao tem como se mexer &mdash; por mais que esta chave esteja
-              ligada. E se o zero estiver fora do curso calibrado, ele nao vai:
-              furar a protecao seria pior que nao ir.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="et">
-          <div class="cab"><div class="mk">&#9881;</div>
-            <div class="tx"><div class="tt">Ligacao Modbus</div>
-            <span class="sb">endereco, registrador, formato</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            <div class="tr"><div class="ch" id="encAtivo"><i></i></div>
-              <span>ler o encoder pelos drivers</span></div>
-            <h4>Barramento</h4>
-            <div class="cp"><label>Velocidade</label><input type="number" id="encBaud" min="1200"><span class="un">bps</span></div>
-            <div class="cp"><label>Paridade</label>
-              <select id="encPar"><option value="0">8N1</option><option value="1">8E1</option><option value="2">8O1</option></select></div>
-            <div class="cp"><label>Funcao Modbus</label>
-              <select id="encFunc"><option value="3">3 &middot; holding</option><option value="4">4 &middot; input</option></select></div>
-            <div class="cp"><label>Periodo de leitura</label><input type="number" id="encPer" min="20" max="2000" step="10"><span class="un">ms</span></div>
-            <h4>Junta 1</h4>
-            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId1" min="1" max="247"></div>
-            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg1" min="0" max="65535"></div>
-            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv1" min="1"></div>
-            <h4>Junta 2</h4>
-            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
-            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
-            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
-            <h4>Formato do valor</h4>
-            <div class="tr"><div class="ch" id="enc32"><i></i></div>
-              <span>posicao em 32 bits (dois registradores)</span></div>
-            <div class="tr"><div class="ch" id="encLo"><i></i></div>
-              <span>palavra baixa vem primeiro</span></div>
-            <div class="nt">Muito driver Modbus manda a palavra baixa antes da
-            alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
-            vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
-            <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
-            <div class="pq2" id="qEncSalvar"></div>
-            <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
-            <div class="pq2" id="qEncPadroes"></div>
-            <div class="nt">Configuracao salva por uma <b>versao anterior</b> do
-            firmware continua valendo depois de atualizar &mdash; o que esta
-            gravado ganha do padrao novo. Se voce atualizou e a leitura parou,
-            este botao e o primeiro a tentar: ele volta tudo para o que foi
-            medido nesta maquina (19200 8N1, funcao 4, registrador 5, palavra
-            baixa primeiro, 131072 contagens).</div>
-            <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
-            drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
-            estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
-            ou tente um endereco aqui e olhe o grafico &mdash; o certo acompanha o
-            eixo quando voce move o braco.</div>
           </div>
         </div>
       </section>
@@ -1211,7 +1120,46 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
       </section>
 
       <!-- =========================== ENCODER =========================== -->
-      <section class="pane" id="pnAjuste">
+
+      <!-- ========================== MAQUINA =========================== -->
+    </div></aside>
+  </div>
+
+  <nav class="abas" id="abas"></nav>
+</div>
+
+<!-- Miniatura de uma peca do cartao, sem trocar a que esta na maquina. -->
+<div class="veu" id="veuPeca"><div class="cx">
+  <h2 id="pvNome">--</h2>
+  <div class="pp">previa do cartao</div>
+  <canvas id="pvTela" width="340" height="240" class="pvTela"></canvas>
+  <div class="res" id="pvInfo">--</div>
+  <div class="perigo" id="pvAviso" style="display:none"></div>
+  <div class="nt">Linha grossa e cordao; tracejado e deslocamento sem arco.
+  O ponto maior e o inicio. Isto le o arquivo <b>sem</b> trocar o programa
+  que esta na maquina.</div>
+  <button class="b pri" id="pvCarregar">Carregar esta peca na maquina</button>
+  <button class="b" id="pvFechar">Fechar</button>
+</div></div>
+
+<!-- =====================================================================
+     GAVETA DE CONFIGURACAO (a engrenagem do topo)
+     Tudo que se ajusta UMA VEZ mora aqui dentro. A tela de trabalho fica
+     com o que se usa o dia inteiro: mesa, mover, programa e arquivos.
+     ===================================================================== -->
+<div class="veu cfgVeu" id="veuCfg"><div class="cx cfgCx">
+  <div class="cfgTopo">
+    <h2>Configuracao</h2>
+    <button class="b mini" id="cfgFechar">Fechar</button>
+  </div>
+  <nav class="cfgAbas" id="cfgAbas">
+    <button data-cfg="maquina" class="on">Maquina</button>
+    <button data-cfg="encoder">Encoder</button>
+    <button data-cfg="sistema">Sistema</button>
+  </nav>
+  <div class="cfgRol">
+    <div class="pane on" id="cfgMaquina">
+      
         <div class="et aberta" id="e1" data-e="1">
           <div class="cab"><div class="mk">1</div>
             <div class="tx"><div class="tt">Preparar a maquina</div>
@@ -1359,10 +1307,157 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
             <button class="b mini" id="btReset">Restaurar padroes</button>
           </div>
         </div>
-      </section>
+      
+    </div>
+    <div class="pane" id="cfgEncoder">
 
-      <!-- ========================== MAQUINA =========================== -->
-      <section class="pane" id="pnMaq">
+        <div class="et">
+          <div class="cab"><div class="mk">&#9678;</div>
+            <div class="tx"><div class="tt">Correcao de posicao</div>
+            <span class="sb" id="sbCorr">assentamento pelo encoder</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="encGrade">
+              <div class="encCel"><span class="rot">estado</span><b id="crEst">--</b></div>
+              <div class="encCel"><span class="rot">assentamentos</span><b id="crOk">--</b></div>
+              <div class="encCel"><span class="rot">avisos</span><b id="crAlerta">--</b></div>
+            </div>
+            <div class="res" id="crMotivo">--</div>
+            <div id="crTrav" style="display:none">
+              <div class="res" id="crTravTxt"></div>
+              <button class="b mini" id="btTravOk">Resolvido, limpar o aviso</button>
+              <div class="pq2" id="qTravOk"></div>
+            </div>
+            <div class="nt">Quando o braco chega, o encoder diz onde ele
+            <b>realmente</b> parou e o sistema da um retoque curto se precisar.
+            E isto que faz <b>sair de uma posicao e voltar cair no mesmo
+            lugar</b>: sem assentamento, o erro de um movimento entra no
+            proximo e o desvio cresce sem nunca voltar.</div>
+
+            <div class="tr"><div class="ch" id="crOnCh"><i></i></div>
+              <span>assentar no fim de cada movimento</span></div>
+            <div class="tr"><div class="ch" id="crVigCh"><i></i></div>
+              <span>avisar quando o eixo sair de posicao parado</span></div>
+            <div class="cp"><label>Tolerancia</label><input type="number" id="crTol" min="0.01" max="5" step="0.01"><span class="un">&deg;</span></div>
+            <div class="cp"><label>Teto do retoque</label><input type="number" id="crMax" min="0.05" max="15" step="0.05"><span class="un">&deg;</span></div>
+            <div class="cp"><label>Aviso de desvio</label><input type="number" id="crAlr" min="0.05" max="30" step="0.05"><span class="un">&deg;</span></div>
+            <div class="cp"><label>Tentativas</label><input type="number" id="crTent" min="1" max="10" step="1"></div>
+            <button class="b pri" id="btCorrSalvar">Salvar correcao</button>
+            <div class="pq2" id="qCorrSalvar"></div>
+            <div class="nt"><b>Tolerancia</b>: abaixo disso ja esta bom, e o
+            eixo nao fica cutucando. <b>Teto do retoque</b>: acima disso o
+            sistema NAO corrige, ele <b>denuncia</b> &mdash; erro de varios
+            graus nao e folga, e acoplamento solto, registrador errado ou
+            reducao errada, e empurrar o braco achando que esta consertando e
+            o jeito mais rapido de bater a ferramenta em alguma coisa.
+            <br>O retoque nunca sai do curso calibrado, nunca acontece com a
+            solda ligada, e a parada de emergencia cancela ele junto com todo
+            o resto.</div>
+          </div>
+        </div>
+
+        <div class="et" id="etZero">
+          <div class="cab"><div class="mk">&#9910;</div>
+            <div class="tx"><div class="tt">Zero absoluto da maquina</div>
+            <span class="sb" id="sbZero">avancado</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="res" id="zEstado">--</div>
+            <div class="nt">O encoder do servo guarda a posicao com a maquina
+            <b>desligada</b>. Se alguem empurrar o braco a mao com tudo apagado,
+            ao ligar ele sabe onde esta. Isso dispensa fim de curso: em vez de
+            procurar batente, a maquina <b>le</b> onde esta.
+            <br>Para isso ela precisa saber uma coisa so: <b>qual contagem do
+            encoder corresponde a 0 grau</b>. Ensina-se uma vez.</div>
+
+            <div class="cadeado" id="zCadeado">
+              <div class="ic">&#128274;</div>
+              <div><b>Ajustes de origem</b>
+              <span>errar aqui desloca a area util inteira &mdash; toque para abrir</span></div>
+            </div>
+
+            <div class="trancavel">
+              <h4>Ensinar o zero</h4>
+              <div class="nt">Leve o braco ate uma postura que voce sabe medir
+              (o batente, um gabarito, o esquadro), meca o angulo <b>de
+              verdade</b> e informe. Nao precisa ser 0: informe o angulo em que
+              a junta esta agora, e o sistema calcula o resto.</div>
+              <div class="cp"><label>Junta</label>
+                <select id="zJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
+              <div class="cp"><label>Esta agora em</label><input type="number" id="zG" step="0.1" value="0"><span class="un">&deg;</span></div>
+              <button class="b pri mini" id="btZensinar">Gravar este angulo como referencia</button>
+              <div class="pq2" id="qZensinar"></div>
+              <button class="b mini" id="btZesquecer">Esquecer o zero absoluto</button>
+              <div class="pq2" id="qZesquecer"></div>
+              <div class="nt">Esquecer faz a maquina voltar a ligar como antes:
+              sem se localizar, e sem ir a lugar nenhum sozinha.</div>
+
+              <h4>Ao ligar a maquina</h4>
+              <div class="tr"><div class="ch" id="zSinCh"><i></i></div>
+                <span>recuperar a posicao pelo encoder</span></div>
+              <div class="tr"><div class="ch" id="zIrCh"><i></i></div>
+                <span>e depois ir para 0 grau</span></div>
+              <div class="cp"><label>Ja considero no zero</label><input type="number" id="zTol" min="0.05" max="10" step="0.05"><span class="un">&deg;</span></div>
+              <button class="b pri mini" id="btZsalvar">Salvar</button>
+              <div class="pq2" id="qZsalvar"></div>
+              <div class="nt"><b>O braco so anda depois que voce habilita os
+              servos</b>, que e uma acao sua na tela. Enquanto ninguem habilitar,
+              ele nao tem como se mexer &mdash; por mais que esta chave esteja
+              ligada. E se o zero estiver fora do curso calibrado, ele nao vai:
+              furar a protecao seria pior que nao ir.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="et">
+          <div class="cab"><div class="mk">&#9881;</div>
+            <div class="tx"><div class="tt">Ligacao Modbus</div>
+            <span class="sb">endereco, registrador, formato</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="tr"><div class="ch" id="encAtivo"><i></i></div>
+              <span>ler o encoder pelos drivers</span></div>
+            <h4>Barramento</h4>
+            <div class="cp"><label>Velocidade</label><input type="number" id="encBaud" min="1200"><span class="un">bps</span></div>
+            <div class="cp"><label>Paridade</label>
+              <select id="encPar"><option value="0">8N1</option><option value="1">8E1</option><option value="2">8O1</option></select></div>
+            <div class="cp"><label>Funcao Modbus</label>
+              <select id="encFunc"><option value="3">3 &middot; holding</option><option value="4">4 &middot; input</option></select></div>
+            <div class="cp"><label>Periodo de leitura</label><input type="number" id="encPer" min="20" max="2000" step="10"><span class="un">ms</span></div>
+            <h4>Junta 1</h4>
+            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId1" min="1" max="247"></div>
+            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg1" min="0" max="65535"></div>
+            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv1" min="1"></div>
+            <h4>Junta 2</h4>
+            <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
+            <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
+            <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
+            <h4>Formato do valor</h4>
+            <div class="tr"><div class="ch" id="enc32"><i></i></div>
+              <span>posicao em 32 bits (dois registradores)</span></div>
+            <div class="tr"><div class="ch" id="encLo"><i></i></div>
+              <span>palavra baixa vem primeiro</span></div>
+            <div class="nt">Muito driver Modbus manda a palavra baixa antes da
+            alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
+            vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
+            <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
+            <div class="pq2" id="qEncSalvar"></div>
+            <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
+            <div class="pq2" id="qEncPadroes"></div>
+            <div class="nt">Configuracao salva por uma <b>versao anterior</b> do
+            firmware continua valendo depois de atualizar &mdash; o que esta
+            gravado ganha do padrao novo. Se voce atualizou e a leitura parou,
+            este botao e o primeiro a tentar: ele volta tudo para o que foi
+            medido nesta maquina (19200 8N1, funcao 4, registrador 5, palavra
+            baixa primeiro, 131072 contagens).</div>
+            <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
+            drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
+            estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
+            ou tente um endereco aqui e olhe o grafico &mdash; o certo acompanha o
+            eixo quando voce move o braco.</div>
+          </div>
+        </div>
+
+    </div>
+    <div class="pane" id="cfgSistema">
+      
         <div class="et aberta">
           <div class="cab"><div class="mk">&#9829;</div>
             <div class="tx"><div class="tt">Saude da maquina</div>
@@ -1458,25 +1553,9 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
             util todo dia, e so isso.</div>
           </div>
         </div>
-      </section>
-    </div></aside>
+      
+    </div>
   </div>
-
-  <nav class="abas" id="abas"></nav>
-</div>
-
-<!-- Miniatura de uma peca do cartao, sem trocar a que esta na maquina. -->
-<div class="veu" id="veuPeca"><div class="cx">
-  <h2 id="pvNome">--</h2>
-  <div class="pp">previa do cartao</div>
-  <canvas id="pvTela" width="340" height="240" class="pvTela"></canvas>
-  <div class="res" id="pvInfo">--</div>
-  <div class="perigo" id="pvAviso" style="display:none"></div>
-  <div class="nt">Linha grossa e cordao; tracejado e deslocamento sem arco.
-  O ponto maior e o inicio. Isto le o arquivo <b>sem</b> trocar o programa
-  que esta na maquina.</div>
-  <button class="b pri" id="pvCarregar">Carregar esta peca na maquina</button>
-  <button class="b" id="pvFechar">Fechar</button>
 </div></div>
 
 <div class="veu" id="veu"><div class="cx">
@@ -1581,9 +1660,12 @@ document.querySelectorAll(".cab").forEach(function(c){
     if(!ja)et.classList.add("aberta");});
 });
 function abrir(n){
-  /* As etapas moram em abas diferentes: abrir a etapa 2 sem trazer a aba
-     junto deixaria o operador olhando para uma tela que nao mudou. */
-  irAba(n<=1||n>=5?"ajuste":"prog");
+  /* As etapas moram em lugares diferentes: abrir a etapa 2 sem trazer a
+     tela junto deixaria o operador olhando para algo que nao mudou.
+     As etapas 1 e 5+ sao de instalacao e agora vivem na gaveta da
+     engrenagem, nao mais numa aba. */
+  if(n<=1||n>=5){ abrirCfg(); irCfg("maquina"); }
+  else            irAba("prog");
   const e=$("e"+n);
   if(!e)return;
   const painel=e.closest(".pane")||document;
@@ -3885,10 +3967,11 @@ function aplicar(d){
 
   /* Modo operador: esconde o que e ajuste de instalacao. */
   document.body.classList.toggle("operador", !!d.op);
-  /* Se o modo operador entrou com uma aba de tecnico aberta, sair dela
-     e obrigatorio -- senao o painel fica numa tela que a propria regra
-     acabou de esconder, sem nenhuma aba acesa. */
-  if(d.op&&(abaAtual==="ajuste"||abaAtual==="enc"))irAba("mover");
+  /* Entrando no modo operador com a gaveta aberta numa aba de
+     instalacao, cai-se para Sistema -- que e por onde ele sai do modo.
+     Sem isto a gaveta ficaria aberta numa aba que a regra acabou de
+     esconder, sem nenhuma acesa. */
+  if(d.op&&cfgAtual!=="sistema"&&$("veuCfg").classList.contains("on"))irCfg("sistema");
   $("btOp").textContent=tr(d.op?"Sair do modo operador":"Entrar no modo operador");
   $("btOp").className="b "+(d.op?"pri":"");
   $("sbOp").textContent=tr(d.op?"ligado: ajustes escondidos":"desligado: tudo visivel");
@@ -4202,11 +4285,12 @@ const ABAS=[
  ["mover","Mover","M12 4v16M4 12h16M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3"],
  ["prog","Programa","M5 6h14M5 12h9M5 18h5M17 15l2 2 3-4"],
  ["arq","Arquivos","M4 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"],
- ["ajuste","Ajustes","M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 4.6a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 11a2 2 0 110 4 1.7 1.7 0 00-1.6 0z"],
  ["enc","Encoder","M12 3a9 9 0 100 18 9 9 0 000-18zM12 12l5-3M12 12v-4"],
- ["maq","Maquina","M12 3a9 9 0 100 18 9 9 0 000-18zM9 12h6M12 9v6"],
 ];
-const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAjuste",maq:"pnMaq"};
+/* Paineis da tela de TRABALHO. Ajustes, configuracao do encoder e
+   sistema sairam daqui: moram na gaveta da engrenagem, porque sao coisa
+   de instalar uma vez, nao de usar no turno. */
+const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc"};
 
 (function montarAbas(){
   let h="",t="";
@@ -4214,7 +4298,9 @@ const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAju
     /* Ajustes e Encoder sao instalacao, nao operacao: somem no modo
        operador. A Mesa, o Mover, o Programa e os Arquivos ficam --
        e com eles a maquina continua fazendo peca o dia inteiro. */
-    const cl=(a[0]==="ajuste"||a[0]==="enc")?' class="soTecnico"':'';
+    /* Nao ha mais aba de instalacao na barra: o que sobrou aqui e tudo
+       tela de trabalho, e o modo operador nao precisa esconder nada. */
+    const cl='';
     h+='<button'+cl+' data-aba="'+a[0]+'"><svg viewBox="0 0 24 24"><path d="'+a[2]+'"/></svg>'+
        '<span>'+a[1]+'</span></button>';
     t+='<button'+cl+' data-aba="'+a[0]+'">'+a[1]+'</button>';
@@ -4222,13 +4308,94 @@ const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc",ajuste:"pnAju
   $("abas").innerHTML=h;
   $("abasTopo").innerHTML=t;
   traduzirDom($("abas")); traduzirDom($("abasTopo"));
-  document.querySelectorAll("[data-aba]").forEach(function(b){
-    b.addEventListener("click",function(){irAba(b.dataset.aba);});
-  });
+  /* SO os botoes das duas barras. O seletor generico "[data-aba]" tambem
+     casava com o proprio <body>, que carrega data-aba para o CSS -- e o
+     resultado era um ouvinte de clique no body inteiro: TODO clique da
+     pagina (arrastar na mesa, digitar num campo, apertar qualquer botao)
+     chamava irAba() de novo, regravava o localStorage e, na aba Mesa,
+     remedia o canvas. Passava despercebido porque trocar para a aba em
+     que ja se esta nao muda nada visivel. */
+  document.querySelectorAll("#abas [data-aba], #abasTopo [data-aba]")
+    .forEach(function(b){
+      b.addEventListener("click",function(){irAba(b.dataset.aba);});
+    });
 })();
+
+
+/* =====================================================================
+   GAVETA DE CONFIGURACAO
+   Abre pela engrenagem do cabecalho. Tudo que se ajusta uma vez mora
+   aqui; a tela de trabalho fica so com o que se usa no turno.
+   ===================================================================== */
+let cfgAtual = "maquina";
+
+function irCfg(qual){
+  const validas = {maquina:"cfgMaquina", encoder:"cfgEncoder", sistema:"cfgSistema"};
+  if(!validas[qual]) qual = "maquina";
+  cfgAtual = qual;
+  for(const k in validas) $(validas[k]).classList.toggle("on", k === qual);
+  document.querySelectorAll("#cfgAbas button").forEach(function(b){
+    b.classList.toggle("on", b.dataset.cfg === qual);});
+  /* A tela de saude e o registro so sao buscados quando aparecem: sao
+     duas requisicoes que nao fazem falta enquanto ninguem olha. */
+  if(qual === "sistema"){ saudeAtualizar(); pintarQR(); }
+  try{localStorage.setItem("cfg", qual);}catch(e){}
+}
+
+/* Mede o cabecalho e guarda a altura numa variavel de CSS. Sem isto a
+   gaveta ou cobriria o botao PARAR ou deixaria um buraco: a altura muda
+   com a largura da tela. */
+function medirCabecalho(){
+  const h = document.querySelector("header.placa");
+  if(h) document.documentElement.style.setProperty("--altCab", h.offsetHeight + "px");
+  const a = document.getElementById("abas");
+  // No computador a barra de abas nao existe (display:none) e offsetHeight
+  // e zero -- que e exatamente o valor certo para a conta.
+  document.documentElement.style.setProperty("--altAbas",
+    (a ? a.offsetHeight : 0) + "px");
+}
+addEventListener("resize", medirCabecalho);
+medirCabecalho();
+
+function abrirCfg(){
+  medirCabecalho();
+  /* No modo operador as duas abas de instalacao estao escondidas por
+     CSS; abrir numa delas deixaria a gaveta em branco. */
+  if(D.op && cfgAtual !== "sistema") cfgAtual = "sistema";
+  irCfg(cfgAtual);
+  $("veuCfg").classList.add("on");
+  $("btCfg").classList.add("on");
+}
+function fecharCfg(){
+  $("veuCfg").classList.remove("on");
+  $("btCfg").classList.remove("on");
+}
+
+$("btCfg").onclick = function(){
+  if($("veuCfg").classList.contains("on")) fecharCfg(); else abrirCfg();
+};
+$("cfgFechar").onclick = fecharCfg;
+document.querySelectorAll("#cfgAbas button").forEach(function(b){
+  b.onclick = function(){ irCfg(b.dataset.cfg); };
+});
+/* Clicar no veu, fora da caixa, fecha. Tocar fora para sair e o gesto
+   que todo mundo ja tenta. */
+$("veuCfg").addEventListener("click", function(e){
+  if(e.target === $("veuCfg")) fecharCfg();
+});
+/* Esc fecha, e a gaveta nao pode engolir a parada de emergencia: o
+   botao PARAR fica no cabecalho, fora dela, e continua alcancavel. */
+addEventListener("keydown", function(e){
+  if(e.key === "Escape" && $("veuCfg").classList.contains("on")) fecharCfg();
+});
+try{ const g = localStorage.getItem("cfg"); if(g) cfgAtual = g; }catch(e){}
+irCfg(cfgAtual);
 
 let abaAtual="";
 function irAba(nome){
+  /* Escolher uma aba de trabalho e dizer "voltei ao trabalho": a gaveta
+     de configuracao sai da frente sozinha. */
+  if(typeof fecharCfg === "function") fecharCfg();
   if(!PANES[nome]&&nome!=="mesa")nome="mover";
   abaAtual=nome;
   document.body.dataset.aba=nome;
@@ -4240,7 +4407,6 @@ function irAba(nome){
     b.classList.toggle("on",b.dataset.aba===nome);});
   if(nome==="mesa")medir();
   if(nome==="arq")sdAtualizar(true);
-  if(nome==="maq"){saudeAtualizar();pintarQR();}
   try{localStorage.setItem("aba",nome);}catch(e){}
 }
 

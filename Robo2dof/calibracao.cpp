@@ -4,6 +4,7 @@
 #include "cinematica.h"
 #include "solda.h"
 #include "encoder.h"
+#include <math.h>   // fabsf/lroundf das contas de curso
 
 bool calibAtiva() { return estadoCalib != CAL_INATIVO; }
 

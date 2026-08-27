@@ -203,6 +203,11 @@ void correcaoAtualizar() {
 static ResumoZero z;
 static uint32_t zeroDesde = 0;
 static bool     zeroComecou = false;
+// Uma leitura chegou, mas era impossivel. Guardado para a mensagem
+// distinguir "o encoder nao respondeu" de "o encoder respondeu besteira"
+// -- sao dois defeitos diferentes, com conserto diferente.
+static bool  zImplausivel[2]      = {false, false};
+static float zGrausImplausivel[2] = {0.0f, 0.0f};
 
 ResumoZero zeroResumo() { return z; }
 
@@ -213,6 +218,42 @@ static void dizerZero(const char* m) {
 
 // Acerta a contagem de passos de uma junta para bater com o encoder.
 // Nenhum pulso sai no fio: o eixo NAO se mexe, so a conta muda.
+// ---------------------------------------------------------------------
+// A leitura e FISICAMENTE possivel?
+//
+// O encoder e a unica testemunha de onde o braco esta, e escrever a
+// leitura na contagem de passos e obedecer a essa testemunha sem
+// conferir nada. Se ela mentir uma vez -- registrador errado, contagens
+// por volta erradas, ruido que passou no CRC -- a mentira vira a posicao
+// oficial da maquina, e a partir dali TODA protecao de curso se apoia num
+// numero inventado.
+//
+// A conferencia nao e estatistica, e fisica: o braco nao pode estar fora
+// do curso que o proprio operador mediu. A folga cobre o que sobra
+// depois do limite (o batente fica um pouco alem, e da para empurrar o
+// braco a mao ate ele). Alem disso nao e posicao, e defeito.
+//
+// Junta sem curso medido nao tem contra o que conferir -- e ali nada
+// anda mesmo, porque todo posicionamento exige calibracao.
+// ---------------------------------------------------------------------
+static const float FOLGA_PLAUSIVEL_GRAUS = 10.0f;
+
+static bool leituraPlausivel(uint8_t k, float graus) {
+  const Junta& j = (k == 1) ? J1 : J2;
+  if (!j.calibrada) return true;
+  if (graus != graus) return false;                 // NaN nao e angulo
+  return graus >= j.grausMin - FOLGA_PLAUSIVEL_GRAUS &&
+         graus <= j.grausMax + FOLGA_PLAUSIVEL_GRAUS;
+}
+
+bool leituraConfiavel(uint8_t junta) {
+  if (junta != 1 && junta != 2) return false;
+  if (configEncoder.reg[junta - 1] == 0) return false;
+  const LeituraEncoder L = encoderLer(junta);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) return false;
+  return leituraPlausivel(junta, L.graus);
+}
+
 static bool localizar(uint8_t k) {
   Junta& j = (k == 1) ? J1 : J2;
   if (configEncoder.reg[k - 1] == 0) return false;   // junta nao ligada
@@ -223,6 +264,15 @@ static bool localizar(uint8_t k) {
   const LeituraEncoder L = encoderLer(k);
   if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) return false;
   if (j.passosPorGrau <= 0.0f) return false;
+
+  // Localizar-se por uma leitura impossivel e pior que nao se localizar:
+  // a maquina passaria a operar com uma posicao inventada, e o "ir ao
+  // zero" mandaria um curso inteiro de pulso contra o batente.
+  if (!leituraPlausivel(k, L.graus)) {
+    zImplausivel[k - 1] = true;
+    zGrausImplausivel[k - 1] = L.graus;
+    return false;
+  }
 
   ajustarContagem(j, grausParaPassos(j, L.graus));
   z.graus[k - 1] = L.graus;
@@ -276,8 +326,20 @@ void zeroAtualizar() {
     // maquina que liga sem saber onde esta.
     if ((uint32_t)(millis() - zeroDesde) > 5000) {
       z.estado = ZERO_SEM_ENCODER;
-      dizerZero("sem encoder no boot: posicao nao recuperada");
-      definirMensagem("Sem leitura do encoder ao ligar: refira a maquina a mao");
+      // "Nao respondeu" e "respondeu besteira" pedem conserto diferente:
+      // um e cabo, o outro e registrador ou contagens por volta.
+      if (zImplausivel[0] || zImplausivel[1]) {
+        const uint8_t k = zImplausivel[0] ? 1 : 2;
+        dizerZero("leitura fora do curso: nao me localizei");
+        definirMensagem("Junta %u: o encoder diz %.1f graus, fora do curso "
+                        "%.0f a %.0f. Confira registrador e contagens por volta",
+                        (unsigned)k, (double)zGrausImplausivel[k - 1],
+                        (double)((k == 1) ? J1.grausMin : J2.grausMin),
+                        (double)((k == 1) ? J1.grausMax : J2.grausMax));
+      } else {
+        dizerZero("sem encoder no boot: posicao nao recuperada");
+        definirMensagem("Sem leitura do encoder ao ligar: refira a maquina a mao");
+      }
     }
     return;
   }
@@ -340,6 +402,20 @@ void zeroAtualizar() {
 // =====================================================================
 //  Seguir o eixo movido a mao. Ver correcao.h.
 // =====================================================================
+// Avisa, no maximo uma vez a cada 10 s por junta: com o eixo solto a
+// leitura ruim se repete 20 vezes por segundo, e uma tira de mensagem
+// piscando esconde tudo o que importa.
+static void avisarImplausivel(uint8_t k, float graus) {
+  static uint32_t ultimo[2] = {0, 0};
+  const uint32_t agora = millis();
+  if (ultimo[k - 1] && (uint32_t)(agora - ultimo[k - 1]) < 10000) return;
+  ultimo[k - 1] = agora;
+  const Junta& j = (k == 1) ? J1 : J2;
+  definirMensagem("Junta %u: encoder diz %.1f graus, fora do curso %.0f a %.0f. "
+                  "Posicao nao acompanhada", (unsigned)k, (double)graus,
+                  (double)j.grausMin, (double)j.grausMax);
+}
+
 void seguirEixoSolto() {
   // Regra unica e dura: servo ligado, nao segue. Com servo ligado uma
   // divergencia e perda de passo, e quem cuida disso e o assentamento.
@@ -358,6 +434,13 @@ void seguirEixoSolto() {
 
     const LeituraEncoder L = encoderLer(k);
     if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) continue;
+    // Mao nenhuma leva o braco para fora do curso que ele tem. Leitura
+    // dali para fora nao e o eixo: e defeito, e obedecer a ela poria a
+    // maquina inteira operando com uma posicao inventada.
+    if (!leituraPlausivel(k, L.graus)) {
+      avisarImplausivel(k, L.graus);
+      continue;
+    }
 
     const float conta = passosParaGraus(j, (k == 1) ? posicaoJ1() : posicaoJ2());
     const float dif = L.graus - conta;
@@ -399,9 +482,11 @@ static void vigiarTravamento() {
 
     // Sem leitura, sem julgamento: um cabo solto no encoder nao pode
     // parar o braco no meio de um cordao.
-    if (configEncoder.reg[i] == 0) { desde[i] = 0; continue; }
+    // Leitura que nao merece confianca nao pode PARAR o braco no meio de
+    // um cordao. "Confiavel" aqui e o mesmo criterio de todo o resto:
+    // valida, recente e fisicamente possivel.
+    if (!leituraConfiavel(k)) { desde[i] = 0; continue; }
     const LeituraEncoder L = encoderLer(k);
-    if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) { desde[i] = 0; continue; }
 
     const float esperado = esperadoContagensPorSeg(k);
     // So julga quando o comando esta CLARAMENTE andando. Perto de zero a
@@ -478,6 +563,8 @@ void correcaoVigiar() {
 
 #ifdef ROBO2DOF_TESTE
 void correcaoReiniciarTeste() {
+  zImplausivel[0] = zImplausivel[1] = false;
+  zGrausImplausivel[0] = zGrausImplausivel[1] = 0.0f;
   memset(&r, 0, sizeof(r));
   esperaAte = 0;
   alvo1Original = alvo2Original = 0;

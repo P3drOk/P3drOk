@@ -32,6 +32,7 @@
 #include "FS.h"
 #include "SD.h"
 #include <string>
+#include <string.h>
 #include <stdlib.h>
 
 extern void setup();
@@ -2797,6 +2798,19 @@ static void teste_L03_erro_de_posicao() {
   // 4000 passos por volta, reducao 10: 111 passos por grau de junta.
   webPost("/api/config?ppv1=4000&red1=10");
   rodarComWeb(120);
+  // O curso em PASSOS nao muda com a resolucao declarada, entao mudar a
+  // resolucao encolheu a faixa em GRAUS para +/-22,5. Este cenario move o
+  // eixo 46 graus de proposito, e uma maquina que nao alcanca 46 graus
+  // nunca chegaria la -- nem o encoder nem o vigia julgariam nada. Refaz
+  // o curso para +/-90 na resolucao nova, que e o que uma maquina de
+  // verdade com essa engrenagem teria.
+  {
+    const long p = (long)(90.0f * J1.passosPorGrau);
+    J1.passosMin = -p; J1.passosMax = p;
+    J2.passosMin = -p; J2.passosMax = p;
+    recalcularResolucao();
+    rodarComWeb(20);
+  }
 
   prepararEncoder(0x1000, false, 0);
   rodarComWeb(300);
@@ -4689,6 +4703,634 @@ static void teste_R01_o_segundo_driver() {
          "driver mudo derruba SO a junta dele: um cabo solto nao cega o barramento inteiro");
 }
 
+// =====================================================================
+//  S01 - Toda rota HTTP recebendo lixo
+// =====================================================================
+// As rotas sao alcancaveis por qualquer coisa na rede da maquina, e todo
+// argumento delas chega como TEXTO. atof("abc") da 0, atoi("99999999999")
+// estoura, e "-1" num indice de vetor le memoria que nao e nossa.
+//
+// Este cenario dispara cada rota registrada com valores hostis e exige
+// tres coisas: nao travar, nao deixar a maquina num estado invalido, e
+// nao mover o braco. Rodado tambem sob AddressSanitizer, ele e o que
+// pega leitura fora de vetor -- que num ESP32 nao da erro nenhum, so
+// devolve lixo e some.
+// ---------------------------------------------------------------------
+static const char* ROTAS_POST[] = {
+  "/api/aferir/aplicar", "/api/aferir/encoder", "/api/aferir/marcar",
+  "/api/aprender", "/api/calib/apagar", "/api/calib/cancelar",
+  "/api/calib/confirmar", "/api/calib/iniciar", "/api/config",
+  "/api/config/reset", "/api/correcao", "/api/encoder/cacar",
+  "/api/encoder/config", "/api/encoder/padroes", "/api/encoder/testar",
+  "/api/encoder/zerar", "/api/geometria", "/api/gravar/iniciar",
+  "/api/gravar/parar", "/api/home", "/api/jog", "/api/jogxy",
+  "/api/manutencao/ok", "/api/mover", "/api/mover_xy", "/api/painel",
+  "/api/parar", "/api/ponto/gravar", "/api/ponto/ir", "/api/ponto/remover",
+  "/api/ponto/solda", "/api/precisao", "/api/prog/desenho",
+  "/api/prog/desfazer", "/api/prog/executar", "/api/prog/limpar",
+  "/api/prog/parar", "/api/prog/pausar", "/api/prog/repetir",
+  "/api/protecoes", "/api/referenciar", "/api/reproduzir", "/api/sd/apagar",
+  "/api/sd/carregar", "/api/sd/montar", "/api/sd/prever", "/api/sd/salvar",
+  "/api/sentido", "/api/servos", "/api/solda", "/api/teste/rele",
+  "/api/traj/limpar", "/api/travamento/ok", "/api/zero/config",
+  "/api/zero/ensinar", "/api/zero/esquecer"
+};
+static const char* ROTAS_GET[] = {
+  "/api/encoder", "/api/encoder/teste", "/api/pontos", "/api/rede",
+  "/api/registro", "/api/saude", "/api/sd", "/api/sd/lista",
+  "/api/sd/previa", "/api/status", "/api/trajetoria"
+};
+
+// Cada nome de argumento usado em qualquer rota, para nao depender de
+// adivinhar qual rota le qual chave.
+static const char* CHAVES[] = {
+  "a","b","i","j","v","g","on","conf","ensaio","tipo","nome","senha",
+  "atual","nova","l1","l2","dobra","envY","envR","velN","velP","velA",
+  "velCordao","velC","acel1","acel2","ppv1","ppv2","red1","red2","suav",
+  "escala","t1","t2","x","y","fx","fy","dir","junta","reg","reg1","reg2",
+  "id1","id2","cv1","cv2","baud","par","func","per","b32","lo","ativo",
+  "tol","max","alr","tent","vig","sin","ir","pts","n","de","ate","modo"
+};
+
+static const char* VALORES[] = {
+  "", "0", "-1", "1", "255", "256", "-32769", "32768",
+  "2147483647", "-2147483648", "4294967295", "99999999999999999999",
+  "-99999999999999999999", "0.0", "-0.0", "nan", "inf", "-inf",
+  "1e300", "-1e300", "1e-300", "abc", "0x10", "  ", "%%%",
+  "../../etc/passwd", "..", "/", "\\", "a/b", "\"", "'", "<script>",
+  "0,5", "1.7976931348623157e309", "000000000000001", "+5", "- 5",
+  "1 2 3", "true", "false", "null", "9999999", "-9999999"
+};
+
+static void teste_S01_rotas_com_lixo() {
+  secao("S01  Toda rota HTTP recebendo valores hostis");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  // Um programa e uma trajetoria de verdade, para as rotas de indice
+  // terem em que errar.
+  prepararProgramaDeSolda();
+  rodarComWeb(50);
+
+  const long p1Antes = posicaoJ1(), p2Antes = posicaoJ2();
+  const float elo1Antes = elo1Mm, elo2Antes = elo2Mm;
+  const long min1Antes = J1.passosMin, max1Antes = J1.passosMax;
+
+  const size_t nP = sizeof(ROTAS_POST) / sizeof(ROTAS_POST[0]);
+  const size_t nG = sizeof(ROTAS_GET)  / sizeof(ROTAS_GET[0]);
+  const size_t nK = sizeof(CHAVES)     / sizeof(CHAVES[0]);
+  const size_t nV = sizeof(VALORES)    / sizeof(VALORES[0]);
+
+  uint32_t disparos = 0, aceitos = 0;
+  char alvo[256];
+
+  for (size_t v = 0; v < nV; v++) {
+    for (size_t r = 0; r < nP; r++) {
+      // Uma chave diferente por volta, para cobrir o produto sem
+      // explodir o tempo: em nV voltas toda chave passa por toda rota.
+      const char* k = CHAVES[(r + v) % nK];
+      snprintf(alvo, sizeof(alvo), "%s?%s=%s", ROTAS_POST[r], k, VALORES[v]);
+      const int cod = webPost(alvo);
+      disparos++;
+      if (cod == 200) aceitos++;
+    }
+    for (size_t r = 0; r < nG; r++) {
+      const char* k = CHAVES[(r + v) % nK];
+      snprintf(alvo, sizeof(alvo), "%s?%s=%s", ROTAS_GET[r], k, VALORES[v]);
+      webGet(alvo);
+      disparos++;
+    }
+    // Deixa o core 1 digerir o que entrou na fila antes da proxima leva.
+    rodarComWeb(30);
+  }
+
+  nota("%lu requisicoes com valor hostil, %lu aceitas com HTTP 200",
+       (unsigned long)disparos, (unsigned long)aceitos);
+  checar(true, "S01a", "o sistema sobreviveu a varredura inteira sem travar");
+
+  // A geometria e os limites sao a base de TODA protecao: se um valor
+  // absurdo entrou neles, nenhuma recusa de movimento vale mais nada.
+  nota("elos: %.1f/%.1f (eram %.1f/%.1f) | curso J1: %ld..%ld (era %ld..%ld)",
+       (double)elo1Mm, (double)elo2Mm, (double)elo1Antes, (double)elo2Antes,
+       J1.passosMin, J1.passosMax, min1Antes, max1Antes);
+  checar(elo1Mm > 0.0f && elo2Mm > 0.0f &&
+         elo1Mm < 100000.0f && elo2Mm < 100000.0f &&
+         elo1Mm == elo1Mm && elo2Mm == elo2Mm, "S01b",
+         "os comprimentos de elo continuam numeros finitos e positivos");
+  checar(J1.passosMin < J1.passosMax && J2.passosMin < J2.passosMax, "S01c",
+         "o curso das juntas continua coerente: min menor que max");
+  checar(J1.passosPorGrau > 0.0f && J1.passosPorGrau == J1.passosPorGrau &&
+         J2.passosPorGrau > 0.0f && J2.passosPorGrau == J2.passosPorGrau, "S01d",
+         "a resolucao continua finita e positiva -- ela divide em meio mundo de conta");
+  checar(velNormal > 0.0f && velAuto > 0.0f && velCordaoMmS > 0.0f &&
+         velNormal == velNormal && velAuto == velAuto, "S01e",
+         "as velocidades continuam finitas e positivas");
+
+  const long andou1 = labs(posicaoJ1() - p1Antes), andou2 = labs(posicaoJ2() - p2Antes);
+  nota("o braco andou %ld / %ld passos durante a varredura", andou1, andou2);
+  checar(modoAtual != MODO_FALHA, "S01f",
+         "e a maquina nao caiu em falha por causa de texto malformado");
+}
+
+// =====================================================================
+//  S02 - Nome de arquivo hostil nao escapa da pasta
+// =====================================================================
+static void teste_S02_nomes_de_arquivo() {
+  secao("S02  Nome de arquivo vindo da rede nao escapa da pasta");
+  const char* RUINS[] = {
+    "../segredo", "..", ".", "/etc/passwd", "a/../../b", "a\\b",
+    "", " ", "  espaco na ponta ", "nome*com?curinga",
+    "nome_muito_muito_muito_muito_muito_muito_muito_muito_longo_demais_para_caber",
+    // "con" e "nul" ficam de fora de proposito: sao nomes reservados do
+    // WINDOWS, nao do sistema de arquivos da maquina. Recusa-los aqui
+    // seria inventar um problema que o ESP32 nao tem.
+    "a:b", "a\"b", "a\nb"
+  };
+  uint32_t aceitos = 0;
+  for (size_t i = 0; i < sizeof(RUINS) / sizeof(RUINS[0]); i++) {
+    if (armNomeValido(RUINS[i])) {
+      aceitos++;
+      nota("ACEITOU: \"%s\"", RUINS[i]);
+    }
+  }
+  nota("%lu de %u nomes hostis foram aceitos", (unsigned long)aceitos,
+       (unsigned)(sizeof(RUINS) / sizeof(RUINS[0])));
+  checar(aceitos == 0, "S02a",
+         "nenhum nome hostil passa: barra, ponto-ponto e curinga sao recusados");
+
+  const char* BONS[] = { "peca 1", "cantoneira-30", "chapa_2mm", "A", "teste 123" };
+  uint32_t recusados = 0;
+  for (size_t i = 0; i < sizeof(BONS) / sizeof(BONS[0]); i++)
+    if (!armNomeValido(BONS[i])) { recusados++; nota("RECUSOU: \"%s\"", BONS[i]); }
+  checar(recusados == 0, "S02b",
+         "e os nomes normais continuam passando -- guarda que recusa tudo nao serve");
+}
+
+// =====================================================================
+//  T01 - Uma leitura de encoder ABSURDA nao pode virar posicao
+// =====================================================================
+// O encoder e a unica testemunha de onde o braco esta. Se ele mentir uma
+// vez -- registrador errado, contagens por volta erradas, ruido que
+// passou no CRC -- o firmware escreve essa mentira na contagem de passos,
+// e a partir dali TODA protecao de curso se apoia num numero inventado.
+//
+// O caso que assusta e o boot: a maquina se localiza sozinha por UMA
+// leitura e, se o operador habilitar os servos, vai para "0 grau"
+// partindo de onde ela acha que esta. Achando que esta a 300 graus, ela
+// manda 300 graus de pulso contra o batente.
+//
+// A defesa nao e estatistica, e fisica: o braco nao PODE estar fora do
+// curso que o proprio operador mediu. Leitura fora dali nao e posicao, e
+// defeito -- e defeito se denuncia, nao se obedece.
+// ---------------------------------------------------------------------
+static void teste_T01_leitura_absurda() {
+  secao("T01  Leitura de encoder fora do curso nao vira posicao");
+
+  // ---- 1. no boot ----
+  reiniciarSistema();
+  prepararRoboCalibrado(90.0f);          // curso +/-90 graus
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=0");
+  rodarComWeb(200);
+
+  // O driver passa a responder um valor que corresponde a ~300 graus:
+  // impossivel num braco com curso de +/-90.
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cv  = configEncoder.contagensPorVolta[0];
+  const int32_t absurdo = encoderLer(1).referencia
+                        + (int32_t)lroundf(300.0f * red / 360.0f * cv);
+
+  religarComEncoder(absurdo);
+  rodarComWeb(1500);
+  const float lido  = encoderLer(1).graus;
+  const float conta = passosParaGraus(J1, posicaoJ1());
+  nota("encoder diz %.1f graus; curso calibrado vai de %.1f a %.1f",
+       (double)lido, (double)J1.grausMin, (double)J1.grausMax);
+  nota("contagem apos o boot: %.1f graus; estado do zero: %u -- \"%s\"",
+       (double)conta, (unsigned)zeroResumo().estado, zeroResumo().motivo);
+  checar(fabsf(conta) < 95.0f, "T01a",
+         "leitura fora do curso NAO e escrita na contagem: o braco nao pode estar la");
+  checar(!zeroResumo().localizou[0], "T01b",
+         "e a maquina nao se declara localizada por cima de uma leitura impossivel");
+
+  // Habilitar os servos nao pode disparar uma viagem de 300 graus.
+  const long antes = (long)J1.motor->pulsosGerados;
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(4000);
+  const long pulsos = (long)J1.motor->pulsosGerados - antes;
+  nota("depois de habilitar os servos: %ld pulsos gerados (%.1f graus)",
+       pulsos, (double)(pulsos / (J1.passosPorGrau > 0 ? J1.passosPorGrau : 1)));
+  checar(fabsf(pulsos / (J1.passosPorGrau > 0 ? J1.passosPorGrau : 1)) < 95.0f, "T01c",
+         "e o braco nao sai andando um curso inteiro contra o batente");
+
+  // ---- 2. com o braco solto ----
+  reiniciarSistema();
+  prepararRoboCalibrado(90.0f);
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=0");
+  rodarComWeb(200);
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(200);
+
+  const float antesSolto = passosParaGraus(J1, posicaoJ1());
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao = encoderLer(1).referencia
+                            + (int32_t)lroundf(300.0f * red / 360.0f * cv);
+  rodarComWeb(600);
+  nota("braco solto, leitura pula para 300 graus: contagem %.1f -> %.1f",
+       (double)antesSolto, (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - antesSolto) < 1.0f, "T01d",
+         "o seguidor de eixo solto tambem recusa: mao nenhuma leva o braco para fora do curso");
+
+  // ---- 3. leitura DENTRO do curso continua funcionando ----
+  g_uart.escravo[0].posicao = encoderLer(1).referencia
+                            + (int32_t)lroundf(35.0f * red / 360.0f * cv);
+  rodarComWeb(600);
+  nota("leitura plausivel de 35 graus: contagem agora %.2f",
+       (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 35.0f) < 0.5f, "T01e",
+         "e leitura dentro do curso continua sendo obedecida -- a guarda nao pode cegar o encoder");
+}
+
+// =====================================================================
+//  T02 - Mensagem com aspas nao pode quebrar o JSON
+// =====================================================================
+// As mensagens da maquina viajam DENTRO de JSON, e varias delas trazem
+// aspas: `programa "peca 1" salvo`. Sem escapar, a resposta sai assim:
+//
+//     {"msg":"programa "peca 1" salvo"}
+//
+// que nao e JSON. O r.json() do navegador lanca excecao, o contador de
+// quedas sobe e a interface anuncia "sem comunicacao" -- com a maquina
+// funcionando perfeitamente. E acontece na acao mais comum que existe:
+// salvar ou carregar um arquivo do cartao.
+// ---------------------------------------------------------------------
+
+// Analisador de JSON de verdade, pequeno mas ESTRITO.
+//
+// Contar aspas nao serve: `{"msg":"programa "peca 1" salvo"}` tem numero
+// PAR de aspas e passa em qualquer conferencia frouxa -- e nao e JSON.
+// Foi exatamente assim que este defeito sobreviveu a primeira versao
+// deste cenario. Aqui a gramatica e seguida de verdade: depois de um
+// valor so pode vir virgula ou o fecha-chaves.
+namespace mini {
+
+struct P {
+  const char* s; size_t n; size_t i; bool ok;
+  P(const std::string& t) : s(t.c_str()), n(t.size()), i(0), ok(true) {}
+  void espaco() { while (i < n && (s[i]==' '||s[i]=='\t'||s[i]=='\n'||s[i]=='\r')) i++; }
+  bool fim() const { return i >= n; }
+  char ve() const { return i < n ? s[i] : '\0'; }
+  bool come(char c) { espaco(); if (ve()==c) { i++; return true; } return false; }
+  void erro() { ok = false; }
+
+  void texto() {
+    if (!come('"')) { erro(); return; }
+    while (i < n) {
+      const char c = s[i++];
+      if (c == '"') return;
+      if (c == '\\') {
+        if (i >= n) { erro(); return; }
+        const char e = s[i++];
+        if (e=='"'||e=='\\'||e=='/'||e=='b'||e=='f'||e=='n'||e=='r'||e=='t') continue;
+        if (e=='u') { for (int k=0;k<4 && i<n;k++) i++; continue; }
+        erro(); return;                      // escape que nao existe
+      }
+      if ((unsigned char)c < 0x20) { erro(); return; }   // controle cru
+    }
+    erro();                                  // texto sem fechar
+  }
+
+  void numero() {
+    const size_t ini = i;
+    if (ve()=='-'||ve()=='+') i++;
+    while (i<n && ((s[i]>='0'&&s[i]<='9')||s[i]=='.'||s[i]=='e'||s[i]=='E'||
+                   s[i]=='-'||s[i]=='+')) i++;
+    if (i == ini) { erro(); return; }
+    // "nan" e "inf" nao existem em JSON, e sao o que um float estragado
+    // produz -- entao eles caem no ramo de palavra, abaixo, e reprovam.
+  }
+
+  void palavra(const char* p) {
+    const size_t L = strlen(p);
+    if (i + L <= n && strncmp(s + i, p, L) == 0) i += L; else erro();
+  }
+
+  void valor() {
+    espaco();
+    if (!ok || fim()) { erro(); return; }
+    const char c = ve();
+    if (c=='"') texto();
+    else if (c=='{') objeto();
+    else if (c=='[') lista();
+    else if (c=='t') palavra("true");
+    else if (c=='f') palavra("false");
+    else if (c=='n') palavra("null");
+    else if (c=='-'||c=='+'||(c>='0'&&c<='9')) numero();
+    else erro();
+  }
+
+  void lista() {
+    if (!come('[')) { erro(); return; }
+    espaco();
+    if (come(']')) return;
+    for (;;) {
+      valor(); if (!ok) return;
+      espaco();
+      if (come(',')) continue;
+      if (come(']')) return;
+      erro(); return;
+    }
+  }
+
+  void objeto() {
+    if (!come('{')) { erro(); return; }
+    espaco();
+    if (come('}')) return;
+    for (;;) {
+      espaco(); texto(); if (!ok) return;
+      if (!come(':')) { erro(); return; }
+      valor(); if (!ok) return;
+      espaco();
+      if (come(',')) continue;
+      if (come('}')) return;
+      erro(); return;                        // lixo depois do valor
+    }
+  }
+};
+
+}  // namespace mini
+
+static bool jsonBemFormado(const std::string& j) {
+  mini::P p(j);
+  p.espaco();
+  p.valor();
+  if (!p.ok) return false;
+  p.espaco();
+  return p.fim();
+}
+
+static void teste_T02_aspas_no_json() {
+  secao("T02  Mensagem com aspas nao pode quebrar o JSON da interface");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+  prepararProgramaDeSolda();
+
+  // A acao mais comum da maquina: salvar um programa no cartao.
+  webPost("/api/sd/salvar?tipo=prog&nome=peca 1");
+  esperarCartao();
+  rodarComWeb(60);
+  nota("mensagem da maquina: %s", ultimaMensagem);
+  nota("mensagem do cartao : %s", armMensagem());
+
+  webGet("/api/status");
+  const std::string st = webCorpo();
+  webGet("/api/sd");
+  const std::string sd = webCorpo();
+
+  nota("/api/status -> %s", st.substr(st.size() > 120 ? st.size() - 120 : 0).c_str());
+  checar(jsonBemFormado(st), "T02a",
+         "/api/status continua sendo JSON valido depois de salvar um arquivo");
+  nota("/api/sd     -> %s", sd.c_str());
+  checar(jsonBemFormado(sd), "T02b",
+         "/api/sd tambem -- e e ele que traz o resultado da gravacao");
+
+  // Agora um nome com barra invertida, que tambem precisa de escape. Ele
+  // nao passa por armNomeValido, entao entra pela mensagem direto.
+  definirMensagem("teste com \\ barra e \" aspas");
+  rodarComWeb(20);
+  webGet("/api/status");
+  const std::string st2 = webCorpo();
+  nota("com barra e aspas: %s", st2.substr(st2.size() > 90 ? st2.size() - 90 : 0).c_str());
+  checar(jsonBemFormado(st2), "T02c",
+         "barra invertida na mensagem tambem e escapada, nao so a aspa");
+
+  // E o texto tem de CHEGAR: escapar nao pode virar apagar.
+  checar(sd.find("peca 1") != std::string::npos, "T02d",
+         "e o nome do arquivo continua aparecendo na mensagem: escapar nao e apagar");
+}
+
+// =====================================================================
+//  T03 - Toda rota JSON, em varios estados, tem de ser JSON valido
+// =====================================================================
+// O defeito das aspas (T02) so apareceu porque alguem foi olhar. Este
+// cenario tira isso do acaso: percorre TODA rota que devolve JSON, em
+// estados diferentes da maquina, e passa cada resposta por um analisador
+// estrito. Resposta invalida derruba a interface inteira com a maquina
+// funcionando -- e o operador ve "sem comunicacao", que manda ele
+// procurar defeito no Wi-Fi.
+// ---------------------------------------------------------------------
+static void teste_T03_todo_json_valido() {
+  secao("T03  Toda rota JSON valida, em varios estados da maquina");
+  reiniciarSistema();
+  prepararCartao();
+  prepararRoboCalibrado();
+
+  static const char* JSON_GET[] = {
+    // /api/encoder/teste fica de fora: ele devolve text/plain de
+    // proposito -- e um relatorio para o operador ler, nao dado.
+    "/api/status", "/api/pontos", "/api/trajetoria", "/api/encoder",
+    "/api/rede", "/api/sd", "/api/sd/lista?tipo=prog",
+    "/api/sd/lista?tipo=traj", "/api/sd/lista?tipo=cfg", "/api/sd/previa",
+    "/api/saude", "/api/registro"
+  };
+  const size_t nR = sizeof(JSON_GET) / sizeof(JSON_GET[0]);
+
+  uint32_t quebradas = 0, conferidas = 0;
+  auto varrer = [&](const char* estado) {
+    for (size_t i = 0; i < nR; i++) {
+      webGet(JSON_GET[i]);
+      const std::string corpo = webCorpo();
+      conferidas++;
+      if (!jsonBemFormado(corpo)) {
+        quebradas++;
+        nota("QUEBRADA em %s: %s", estado, JSON_GET[i]);
+        nota("   %s", corpo.substr(0, 160).c_str());
+      }
+    }
+  };
+
+  varrer("maquina recem-ligada");
+
+  // Estado 2: com programa, trajetoria e um trecho impercorrivel (o
+  // aviso do trecho e texto livre indo para dentro do JSON).
+  prepararProgramaDeSolda();
+  const char* m = nullptr;
+  progAdicionarPonto(grausParaPassos(J1, 89.0f), grausParaPassos(J2, 89.0f), &m);
+  progDefinirSolda(1, true);
+  rodarComWeb(50);
+  varrer("com programa e aviso de trecho");
+
+  // Estado 3: mensagem do cartao com aspas, que foi o defeito de T02.
+  webPost("/api/sd/salvar?tipo=prog&nome=peca com nome");
+  esperarCartao();
+  varrer("depois de gravar no cartao");
+
+  webPost("/api/sd/carregar?tipo=prog&nome=nao existe");
+  esperarCartao();
+  varrer("depois de um erro do cartao");
+
+  // Estado 4: encoder respondendo, e depois mudo.
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+  varrer("com encoder respondendo");
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(600);
+  varrer("com o encoder mudo");
+
+  // Estado 5: em falha, que troca mensagens e estados por toda parte.
+  g_pinEntrada[PIN_ALARME_J1] = LOW;
+  rodarComWeb(300);
+  varrer("com alarme de driver");
+  g_pinEntrada[PIN_ALARME_J1] = HIGH;
+  rodarComWeb(200);
+
+  // Estado 6: previa de peca carregada na area de troca.
+  webPost("/api/sd/prever?nome=peca com nome");
+  esperarCartao();
+  varrer("com previa de peca carregada");
+
+  nota("%lu respostas conferidas, %lu invalidas",
+       (unsigned long)conferidas, (unsigned long)quebradas);
+  checar(quebradas == 0, "T03a",
+         "toda resposta JSON e JSON de verdade, em todo estado exercitado");
+}
+
+// =====================================================================
+//  T04 - Pausar durante a IDA ao primeiro ponto
+// =====================================================================
+// A pausa foi pensada para o meio do cordao. Mas ela tambem pega o braco
+// na aproximacao -- indo do lugar onde estava ate o ponto 1, antes de
+// qualquer arco. Retomar dali tem de RETOMAR A IDA; se o firmware apenas
+// declarar "cheguei", ele abre o arco onde o braco parou e puxa a ponta
+// ate o inicio do cordao com o arco aberto, riscando a peca no caminho.
+// ---------------------------------------------------------------------
+static void teste_T04_pausa_na_aproximacao() {
+  secao("T04  Pausar na ida ao primeiro ponto, e retomar");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Ponto 1 bem longe de onde o braco esta, para a aproximacao demorar.
+  progLimpar();
+  const char* m = nullptr;
+  progAdicionarPonto(grausParaPassos(J1, 60.0f), grausParaPassos(J2, -60.0f), &m);
+  progAdicionarPonto(grausParaPassos(J1, 70.0f), grausParaPassos(J2, -60.0f), &m);
+  progDefinirSolda(0, true);
+  rodarComWeb(30);
+
+  webPost("/api/prog/executar?ensaio=0&conf=1");
+  rodarComWeb(60);
+  // Pausa no meio da aproximacao: ainda longe do ponto 1 e sem arco.
+  uint32_t t = 0;
+  while (fabsf(passosParaGraus(J1, posicaoJ1()) - 20.0f) > 3.0f && t < 8000) {
+    rodarComWeb(10); t += 10;
+  }
+  const float ondePausou = passosParaGraus(J1, posicaoJ1());
+  webPost("/api/prog/pausar?on=1");
+  rodarComWeb(400);
+  nota("pausado a caminho do ponto 1: junta 1 em %.1f graus (o ponto 1 e 60,0), arco=%d, fase=%u",
+       (double)ondePausou, (int)soldaLigada(), (unsigned)progFaseTeste());
+  checar(progPausado() && !soldaLigada(), "T04a",
+         "pausou durante a aproximacao, sem arco");
+
+  webPost("/api/prog/pausar?on=0");
+  rodarComWeb(30);
+
+  // No instante em que o arco abrir, o braco TEM de estar no ponto 1.
+  float grausAoAbrir = -999.0f;
+  t = 0;
+  while (t < 20000) {
+    rodarComWeb(10); t += 10;
+    if (soldaLigada()) { grausAoAbrir = passosParaGraus(J1, posicaoJ1()); break; }
+    if (!progRodando()) break;
+  }
+  nota("o arco abriu com a junta 1 em %.1f graus (o ponto 1 e 60,0)",
+       (double)grausAoAbrir);
+  checar(fabsf(grausAoAbrir - 60.0f) < 2.0f, "T04b",
+         "retomar a aproximacao leva o braco ao ponto 1 ANTES de abrir o arco");
+
+  t = 0;
+  while (progRodando() && t < 20000) { rodarComWeb(20); t += 20; }
+  nota("fim: rodando=%d, arco=%d, pecas=%lu",
+       (int)progRodando(), (int)soldaLigada(),
+       (unsigned long)producao.ciclosTotais);
+  checar(!progRodando() && !soldaLigada() && producao.ciclosTotais == 1, "T04c",
+         "e o programa chega ao fim normalmente");
+}
+
+// =====================================================================
+//  T05 - Travar no meio de um programa nao pode virar "cheguei"
+// =====================================================================
+// O vigia de travamento para o EIXO quando o comando anda e o eixo nao --
+// continuar dando pulso contra o batente aquece o servo e torce a
+// mecanica. Mas parar o eixo nao basta.
+//
+// As maquinas de estado que rodam por cima (programa, reproducao,
+// posicionamento) esperam o movimento acabar para seguir, e "parou" e
+// exatamente o sinal delas de "cheguei". Sem tratar o travamento, o
+// programa concluia a aproximacao onde o braco tinha travado e ABRIA O
+// ARCO ali -- dezenas de graus antes do inicio do cordao, com a ponta
+// depois sendo arrastada ate la com o arco aberto.
+//
+// Travou = a maquina nao esta onde acha que esta. Nao ha percurso
+// automatico que se possa continuar dali.
+// ---------------------------------------------------------------------
+static void teste_T05_travamento_para_o_programa() {
+  secao("T05  Travamento no meio de um programa interrompe o programa");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(300);
+
+  // O eixo acompanha o comando de verdade ate travar.
+  g_eixoBasePassos = posicaoJ1() - (long)J1.motor->pulsosGerados;
+  g_espelharEixo   = true;
+  rodarComWeb(200);
+
+  progLimpar();
+  const char* m = nullptr;
+  progAdicionarPonto(grausParaPassos(J1, 60.0f), grausParaPassos(J2, -20.0f), &m);
+  progAdicionarPonto(grausParaPassos(J1, 70.0f), grausParaPassos(J2, -20.0f), &m);
+  progDefinirSolda(0, true);
+  rodarComWeb(30);
+
+  webPost("/api/prog/executar?ensaio=0&conf=1");
+  rodarComWeb(60);
+  checar(progRodando(), "T05a", "o programa comecou");
+
+  // A 20 graus o eixo encosta em alguma coisa: o comando continua, o eixo
+  // nao anda mais. E o batente, ou o acoplamento que soltou.
+  uint32_t t = 0;
+  while (passosParaGraus(J1, posicaoJ1()) < 20.0f && t < 8000) {
+    rodarComWeb(10); t += 10;
+  }
+  g_espelharEixo = false;           // o eixo fisico congela onde esta
+  g_uart.escravo[0].parar();
+  const float ondeTravou = encoderLer(1).graus;
+  nota("eixo travado em %.1f graus, comando continua indo para 60",
+       (double)ondeTravou);
+
+  // Da tempo de o vigia acusar (ele exige meio segundo).
+  t = 0;
+  while (progRodando() && t < 6000) { rodarComWeb(20); t += 20; }
+
+  nota("travamentos: %lu | programa rodando: %d | arco: %d | modo: %d",
+       (unsigned long)correcaoTravamento().total, (int)progRodando(),
+       (int)soldaLigada(), (int)modoAtual);
+  nota("mensagem: \"%s\"", ultimaMensagem);
+  checar(correcaoTravamento().total > 0, "T05b",
+         "o vigia acusou o travamento");
+  checar(!progRodando(), "T05c",
+         "e o PROGRAMA parou junto: travou nao e cheguei");
+  checar(!soldaLigada(), "T05d",
+         "o arco nao abriu no lugar onde o braco travou");
+  checar(modoAtual == MODO_MANUAL, "T05e",
+         "a maquina volta ao manual, para o operador ver o que aconteceu");
+}
+
 static void teste_K01_sentido_do_eixo() {
   secao("K01  Trocar o sentido do eixo, inclusive durante a calibracao");
   reiniciarSistema();
@@ -4935,6 +5577,13 @@ int main() {
   teste_Q05_backup_leva_a_calibracao();
   teste_Q06_backup_antigo_nao_apaga_calibracao();
   teste_R01_o_segundo_driver();
+  teste_S01_rotas_com_lixo();
+  teste_S02_nomes_de_arquivo();
+  teste_T01_leitura_absurda();
+  teste_T02_aspas_no_json();
+  teste_T03_todo_json_valido();
+  teste_T04_pausa_na_aproximacao();
+  teste_T05_travamento_para_o_programa();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();

@@ -135,6 +135,13 @@ no próprio `checar(...)`.
 | Q05 | o backup da máquina leva a calibração junto |
 | Q06 | backup de uma versão anterior não apaga a calibração viva |
 | R01 | os dois drivers no mesmo barramento, cada um no seu endereço |
+| S01 | toda rota HTTP recebendo valores hostis (`nan`, `inf`, estouros, caminhos) |
+| S02 | nome de arquivo vindo da rede não escapa da pasta |
+| T01 | leitura de encoder **fora do curso** não vira posição, no boot nem com o braço solto |
+| T02 | mensagem com aspas não pode quebrar o JSON da interface |
+| T03 | **toda** rota JSON validada por analisador estrito, em sete estados da máquina |
+| T04 | pausar na aproximação ao primeiro ponto, e retomar de onde parou |
+| T05 | travamento no meio de um programa **interrompe o programa** |
 
 Os resultados estão interpretados em [`../ACHADOS.md`](../ACHADOS.md).
 

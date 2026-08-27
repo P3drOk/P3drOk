@@ -656,6 +656,141 @@ Três decisões de segurança:
 Desconexão do aplicativo manda o zero na borda; o heartbeat de 350 ms do
 firmware é a segunda rede.
 
+## R78 · Uma leitura absurda do encoder virava a posicao da maquina  ✅
+
+O pior desta rodada. O encoder e a unica testemunha de onde o braco esta,
+e o firmware escrevia a leitura na contagem de passos **sem conferir
+nada**. Uma leitura errada -- registrador errado, contagens por volta
+erradas, ruido que passou no CRC -- virava a posicao oficial, e a partir
+dali toda protecao de curso se apoiava num numero inventado.
+
+O caso que assusta e o boot: a maquina se localiza por UMA leitura e, com
+"ir ao zero" ligado, sai andando de onde acha que esta. Achando que esta
+a 300 graus num braco de +/-90, ela manda 300 graus de pulso contra o
+batente. E `zeroAtualizar()` chama `moverCoordenado()` direto, sem passar
+pela porta que valida caminho.
+
+A defesa nao e estatistica, e fisica: **o braco nao pode estar fora do
+curso que o proprio operador mediu**. `leituraPlausivel()` recusa o que
+cai fora dele (com 10 graus de folga para o batente e o empurrao a mao), e
+`leituraConfiavel()` junta os tres criterios -- valida, recente e
+possivel -- num lugar so, usado pela localizacao, pelo seguidor de eixo
+solto, pelo vigia de travamento e pela leitura que aparece na tela.
+Cenario `T01`.
+
+Sintoma colateral que isto tambem resolve: a regua chegava a mostrar
+"177667 graus medido" com ar de leitura boa.
+
+## R79 · Travar no meio de um programa era lido como "cheguei"  ✅
+
+O vigia de travamento parava o EIXO -- continuar dando pulso contra o
+batente aquece o servo. Mas as maquinas de estado que rodam por cima
+(programa, reproducao, posicionamento) esperam o movimento acabar para
+seguir, e "parou" e exatamente o sinal delas de **cheguei**.
+
+Resultado: um travamento no caminho ate o primeiro ponto fazia o programa
+concluir a aproximacao ali mesmo e **abrir o arco onde o braco travou**,
+dezenas de graus antes do inicio do cordao -- e depois arrastar a ponta
+ate la com o arco aberto.
+
+Agora um travamento durante movimento automatico interrompe o movimento
+automatico. Travou = a maquina nao esta onde acha que esta; nao ha
+percurso que se possa continuar dali. Cenario `T05`.
+
+## R80 · Pausar na aproximacao retomava do lugar errado  ✅
+
+Da mesma familia. Pausar durante a ida ao primeiro ponto guardava a fase,
+mas retomar nao reemitia o movimento -- o ciclo seguinte via o braco
+parado e concluia "cheguei". Cenario `T04`.
+
+## R81 · Mensagem com aspas quebrava o JSON e derrubava a tela  ✅
+
+Oito mensagens do firmware trazem aspas. A mais comum sai **toda vez que
+alguem grava no cartao**:
+
+    {"msg":"programa "peca 1" salvo"}
+
+Isso nao e JSON. O `r.json()` do navegador lanca excecao, o contador de
+quedas sobe e a interface anuncia **"sem comunicacao"** -- com a maquina
+funcionando perfeitamente, mandando o operador procurar defeito no Wi-Fi.
+
+O detalhe que explica por que sobreviveu tanto tempo: o numero de aspas
+fica **par**. Nenhuma conferencia frouxa pega -- a primeira versao do
+proprio cenario que caca isto passou com o defeito na tela. So um
+analisador de gramatica de verdade reprova.
+
+Escapar virou trabalho de quem escreve o JSON (`jsonTexto()`), nao de
+quem escreve a mensagem: nenhum modulo deveria precisar saber que o texto
+dele um dia viaja entre aspas. Cenarios `T02` e `T03`, este ultimo
+varrendo TODA rota JSON em sete estados diferentes da maquina.
+
+## R82 · O mock de String transformava numero em byte cru  ✅
+
+Achado pelo `T03`. `String` do banco herda de `std::string`, que nao tem
+`operator+=(int)` -- entao `out += (int)n` caia no `operator+=(char)` por
+conversao implicita e acrescentava **um byte cru** no lugar do numero.
+
+O String do core acrescenta o numero em decimal. Enquanto isso faltou, o
+banco conferiu um JSON diferente do que a maquina produz: `{"n":<0x01>}`
+aqui, `{"n":1}` la. Duas rotas (`/api/registro` e `/api/pontos`) estavam
+sendo validadas contra a saida errada.
+
+E o caso mais puro da regra do projeto: **a assinatura do mock e a
+assinatura do core, nao a conveniente.** Um mock que aceita mais que a
+biblioteca de verdade nao falha -- ele mente.
+
+## R83 · Todo clique da pagina disparava a troca de aba  ✅
+
+`document.querySelectorAll("[data-aba]")` tambem casava com o proprio
+`<body>`, que carrega `data-aba` para o CSS. O resultado era um ouvinte de
+clique no body inteiro: **todo** clique da pagina chamava `irAba()`,
+regravava o `localStorage` e, na aba Mesa, remedia o canvas.
+
+Passou anos despercebido porque trocar para a aba em que ja se esta nao
+muda nada visivel. Apareceu na hora em que `irAba()` ganhou uma acao de
+verdade (fechar a gaveta de configuracao): a gaveta fechava sozinha no
+instante seguinte ao clique que a abriu.
+
+## R84 · A gaveta cobria o botao de emergencia  ✅
+
+Pego pelo proprio teste que eu tinha escrito errado: ele conferia
+`isVisible()`, e visivel nao e clicavel -- um veu por cima deixa o botao
+perfeitamente visivel e completamente morto. O teste passou a perguntar
+**quem esta no ponto onde o dedo vai encostar** (`elementFromPoint`), e ai
+reprovou.
+
+Cabecalho e barra de abas ficam acima da gaveta. Parada de emergencia que
+exige fechar uma janela antes nao e parada de emergencia.
+
+## R85 · Achados menores da mesma rodada  ✅
+
+- **Teste de rele contava como hora de arco.** O teste de saida existe
+  para ver o rele clicar na bancada, sem tocha nem arame; somar aqueles
+  segundos faria o contador mandar trocar bico antes da hora.
+- **`math.h` faltando** em tres arquivos que usam `cosf`, `fabsf` e
+  `lroundf`. Funcionava por chegar de carona em outro cabecalho -- o tipo
+  de dependencia que quebra na primeira reorganizacao.
+- **`btCalApagar` desabilitava sem dizer por que**, o unico botao do
+  painel que ainda escapava da regra.
+- **O espelho do eixo do banco so existia para a junta 1**, e a etapa 1
+  do assistente apontava para uma aba que deixou de existir.
+
+## Ferramentas novas
+
+- `testes/sanitizar.sh` -- o banco inteiro sob AddressSanitizer e
+  UndefinedBehaviorSanitizer. Num ESP32 ler um vetor uma posicao alem nao
+  da erro: devolve o byte que estiver la e a maquina segue com um numero
+  errado que aparece meia hora depois, em outro lugar. Aqui o mesmo acesso
+  para o programa e aponta a linha.
+- `testes/conferir_qr.py` -- ja existia; segue rodando antes de cada
+  compilacao.
+- Cenario `S01` -- 2948 requisicoes com valor hostil em toda rota
+  (`nan`, `inf`, `-2147483648`, `../../etc/passwd`, texto vazio) exigindo
+  que elos, curso, resolucao e velocidades continuem numeros finitos e
+  positivos depois.
+- Cenario `T03` -- analisador de JSON estrito aplicado a toda rota, em
+  sete estados da maquina.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -2260,8 +2395,11 @@ entre 0,3 e 0,6 s.
 
 | banco | rodada 20 | rodada 22 | agora |
 |-------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | **314 / 0** |
-| interface | 121 / 0 | 125 / 0 | **163 / 0** |
+| firmware | 229 / 0 | 241 / 0 | **340 / 0** |
+| interface | 121 / 0 | 125 / 0 | **170 / 0** |
+
+E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
+(`testes/sanitizar.sh`).
 
 Guardas automaticas antes de cada compilacao: fiacao, rotas, pagina
 comprimida e **os codigos QR lidos por um decodificador de verdade**.

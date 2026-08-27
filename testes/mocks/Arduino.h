@@ -99,6 +99,36 @@ struct String : std::string {
   }
   float toFloat() const { return empty() ? 0.0f : (float)atof(c_str()); }
   long  toInt()   const { return empty() ? 0L   : atol(c_str()); }
+
+  // ---------------------------------------------------------------------
+  // operator+= NUMERICO. Sem estes, `out += (int)n` cai no
+  // operator+=(char) herdado de std::string por conversao implicita, e
+  // acrescenta UM BYTE CRU no lugar do numero.
+  //
+  // Isso nao e detalhe de mock: o String do core acrescenta o numero em
+  // DECIMAL. Enquanto faltaram, o banco conferia um JSON diferente do que
+  // a maquina produz -- `{"n":<byte 0x01>,...}` aqui e `{"n":1,...}` la.
+  // Um mock que aceita mais que a biblioteca de verdade e pior que um
+  // mock que nao compila.
+  //
+  // O `using` e obrigatorio: declarar qualquer operator+= aqui esconde
+  // TODOS os da classe base, inclusive os de char e const char*.
+  // ---------------------------------------------------------------------
+  using std::string::operator+=;
+  String& operator+=(int v)           { return juntar("%d",   v); }
+  String& operator+=(unsigned int v)  { return juntar("%u",   v); }
+  String& operator+=(long v)          { return juntar("%ld",  v); }
+  String& operator+=(unsigned long v) { return juntar("%lu",  v); }
+  // O core imprime float e double com DUAS casas neste operador.
+  String& operator+=(float v)  { char b[32]; snprintf(b, sizeof(b), "%.2f", (double)v); append(b); return *this; }
+  String& operator+=(double v) { char b[32]; snprintf(b, sizeof(b), "%.2f", v);         append(b); return *this; }
+
+ private:
+  template <typename T>
+  String& juntar(const char* fmt, T v) {
+    char b[32]; snprintf(b, sizeof(b), fmt, v); append(b); return *this;
+  }
+ public:
 };
 
 // IPAddress do core do ESP32. A assinatura importa: ela NAO converte para

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <math.h>   // fabsf/lroundf dos derivados da leitura
 
 // UART2. Os pinos SEMPRE vao explicitos no begin(): o padrao da UART2 e
 // GPIO 16 e 17, que neste projeto sao o passo e a direcao da junta 1.

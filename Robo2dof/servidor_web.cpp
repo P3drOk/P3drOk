@@ -11,6 +11,7 @@
 #include "aprender.h"
 #include "ota.h"
 #include "pagina_web_gz.h"
+#include <math.h>   // cosf/sinf/M_PI da previa de peca
 
 static WebServer server(80);
 
@@ -40,6 +41,39 @@ static void enfileirar(TipoComando tipo, int32_t a = 0, int32_t b = 0,
 static void enfileirarNomeado(TipoComando tipo, const char* nome) {
   if (enviarComandoNomeado(tipo, nome)) ok();
   else server.send(503, "text/plain", "fila cheia: comando nao aceito");
+}
+
+// ---------------------------------------------------------------------
+// Texto livre indo para dentro de JSON.
+//
+// Varias mensagens da maquina trazem aspas -- `programa "peca 1" salvo`
+// e a mais comum de todas, sai toda vez que alguem grava no cartao. Sem
+// escapar, a resposta vira:
+//
+//     {"msg":"programa "peca 1" salvo"}
+//
+// que NAO e JSON. O r.json() do navegador lanca excecao, o contador de
+// quedas sobe, e a interface anuncia "sem comunicacao" com a maquina
+// funcionando perfeitamente. Repare que o numero de aspas fica PAR:
+// nenhuma conferencia frouxa pega isso, so um analisador de verdade.
+//
+// Escapar e trabalho de quem escreve o JSON, nao de quem escreve a
+// mensagem: nenhum modulo do firmware deveria precisar saber que o texto
+// dele um dia vai viajar dentro de aspas.
+// ---------------------------------------------------------------------
+static void jsonTexto(char* destino, size_t tam, const char* origem) {
+  if (!destino || tam == 0) return;
+  size_t k = 0;
+  for (size_t i = 0; origem && origem[i] && k + 2 < tam; i++) {
+    const unsigned char c = (unsigned char)origem[i];
+    if (c == '"' || c == '\\') { destino[k++] = '\\'; destino[k++] = (char)c; }
+    else if (c == '\n')          { destino[k++] = '\\'; destino[k++] = 'n'; }
+    else if (c == '\r')          { destino[k++] = '\\'; destino[k++] = 'r'; }
+    else if (c == '\t')          { destino[k++] = '\\'; destino[k++] = 't'; }
+    else if (c < 0x20)           { continue; }   // controle cru nao tem lugar
+    else                         { destino[k++] = (char)c; }
+  }
+  destino[k] = '\0';
 }
 
 static float argF(const char* nome, float padrao) {
@@ -147,6 +181,10 @@ static void handleStatus() {
   const LeituraEncoder lidoJ1 = encoderLer(1);
   const LeituraEncoder lidoJ2 = encoderLer(2);
 
+  // Dobro do tamanho da mensagem: no pior caso todo caractere vira dois.
+  char msgSegura[sizeof(s.mensagem) * 2];
+  jsonTexto(msgSegura, sizeof(msgSegura), s.mensagem);
+
   char json[1400];
   snprintf(json, sizeof(json),
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
@@ -203,10 +241,12 @@ static void handleStatus() {
     // operador quer de relance: onde o braco esta de verdade, e nao onde
     // a contagem de pulsos acha que ele esta.
     lidoJ1.graus, lidoJ2.graus,
-    (lidoJ1.valido && lidoJ1.idadeMs <= ENC_IDADE_MAX_MS) ? "true" : "false",
-    (lidoJ2.valido && lidoJ2.idadeMs <= ENC_IDADE_MAX_MS) ? "true" : "false",
+    // Nao basta ser recente: tem de ser possivel. Sem isto a regua
+    // mostrava "177667 graus medido" com ar de leitura boa.
+    leituraConfiavel(1) ? "true" : "false",
+    leituraConfiavel(2) ? "true" : "false",
     (unsigned)progFracaoTrecho(),
-    s.mensagem);
+    msgSegura);
 
   server.send(200, "application/json", json);
 }
@@ -285,7 +325,9 @@ static void handlePontos() {
     if (conferir && i + 1 < n) {
       char aviso[176];
       if (!progConferirTrecho(i, aviso, sizeof(aviso))) {
-        out += ",\"av\":\""; out += aviso; out += '"';
+        char avSeguro[sizeof(aviso) * 2];
+        jsonTexto(avSeguro, sizeof(avSeguro), aviso);
+        out += ",\"av\":\""; out += avSeguro; out += '"';
       }
     }
     out += '}';
@@ -861,10 +903,10 @@ static void handleSaude() {
     (unsigned long)producao.horasArcoS, (unsigned long)producao.desdeManutencao,
     (unsigned long)e1.leituras, (unsigned long)e1.falhas,
     (unsigned)(tent1 ? e1.leituras * 100 / tent1 : 0),
-    (unsigned long)e1.idadeMs, e1.graus, e1.valido ? "true" : "false",
+    (unsigned long)e1.idadeMs, e1.graus, leituraConfiavel(1) ? "true" : "false",
     (unsigned long)e2.leituras, (unsigned long)e2.falhas,
     (unsigned)(tent2 ? e2.leituras * 100 / tent2 : 0),
-    (unsigned long)e2.idadeMs, e2.graus, e2.valido ? "true" : "false",
+    (unsigned long)e2.idadeMs, e2.graus, leituraConfiavel(2) ? "true" : "false",
     (unsigned long)tv.total, (unsigned long)correcaoAlertas(),
     J1.alarme ? "true" : "false", J2.alarme ? "true" : "false",
     armBytesTotais() > 0 ? "true" : "false",
@@ -883,6 +925,11 @@ static void handleEncoder() {
   const ResumoCorrecao rc = correcaoResumo();
   const Travamento     tv = correcaoTravamento();
   const ResumoZero     rz = zeroResumo();
+
+  char motivoCorr[sizeof(rc.motivo) * 2];
+  char motivoZero[sizeof(rz.motivo) * 2];
+  jsonTexto(motivoCorr, sizeof(motivoCorr), rc.motivo);
+  jsonTexto(motivoZero, sizeof(motivoZero), rz.motivo);
 
   String out;
   out.reserve(1900);
@@ -911,14 +958,14 @@ static void handleEncoder() {
     configCorrecao.alertaGraus, (unsigned)configCorrecao.tentativas,
     (unsigned)rc.estado, (unsigned)rc.tentativas,
     (unsigned long)rc.totalOk, (unsigned long)rc.totalDesistiu,
-    (unsigned long)correcaoAlertas(), rc.motivo,
+    (unsigned long)correcaoAlertas(), motivoCorr,
     tv.ativo ? "true" : "false", (unsigned)tv.junta, (unsigned long)tv.total,
     configZero.sincronizar ? "true" : "false",
     configZero.irParaZero  ? "true" : "false",
     configZero.toleranciaGraus,
     configZero.ensinado[0] ? "true" : "false",
     configZero.ensinado[1] ? "true" : "false",
-    (unsigned)rz.estado, rz.graus[0], rz.graus[1], rz.motivo,
+    (unsigned)rz.estado, rz.graus[0], rz.graus[1], motivoZero,
     (unsigned)configEncoder.id[0], (unsigned)configEncoder.id[1],
     (unsigned)configEncoder.reg[0], (unsigned)configEncoder.reg[1],
     configEncoder.contagensPorVolta[0], configEncoder.contagensPorVolta[1],
@@ -1164,8 +1211,12 @@ static const char* NOMES_ARM[] = {
 
 static void handleSdEstado() {
   registrarContatoOperador();
-  char json[320];
+  char json[400];
   const uint8_t e = (uint8_t)armEstado();
+  // A mensagem do cartao e a que MAIS traz aspas: `programa "peca 1"
+  // salvo` sai toda vez que alguem grava um arquivo.
+  char msgSegura[192];
+  jsonTexto(msgSegura, sizeof(msgSegura), armMensagem());
   snprintf(json, sizeof(json),
     "{\"estado\":\"%s\",\"ocupado\":%s,\"seq\":%lu,"
     "\"totalMB\":%lu,\"livreMB\":%lu,\"msg\":\"%s\"}",
@@ -1174,7 +1225,7 @@ static void handleSdEstado() {
     (unsigned long)armSequencia(),
     (unsigned long)(armBytesTotais() / (1024ULL * 1024ULL)),
     (unsigned long)(armBytesLivres() / (1024ULL * 1024ULL)),
-    armMensagem());
+    msgSegura);
   server.send(200, "application/json", json);
 }
 

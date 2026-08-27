@@ -16,6 +16,7 @@ void soldaIniciar() {
 }
 
 void soldaDesligar() {
+  const bool eraTeste = emTeste;
   emTeste = false;
   if (ligada) {
     digitalWrite(PIN_RELE_SOLDA, LOW);
@@ -23,7 +24,12 @@ void soldaDesligar() {
     // Horas de arco: e o numero que diz quando trocar bico e difusor.
     // Contado no fechamento, que e o unico instante em que se sabe
     // quanto tempo o arco ficou aberto.
-    producaoSomarArco(millis() - inicioArco);
+    //
+    // O TESTE DE SAIDA nao entra na conta: ele existe para ver o rele
+    // clicar na bancada, sem tocha, sem gas e sem arame. Somar aqueles
+    // segundos faria o contador de consumivel mentir para o lado errado
+    // -- ele mandaria trocar bico antes da hora.
+    if (!eraTeste) producaoSomarArco(millis() - inicioArco);
     Serial.println("[SOLDA] Rele desligado.");
   } else {
     // Reforca o nivel mesmo se o estado interno ja indicava desligado.

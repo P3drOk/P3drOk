@@ -941,6 +941,37 @@ void loop() {
   seguirEixoSolto();
   aprenderAtualizar();
   correcaoVigiar();
+
+  // ---------------------------------------------------------------------
+  // TRAVAMENTO NO MEIO DE UM MOVIMENTO AUTOMATICO
+  //
+  // O vigia para o EIXO -- continuar dando pulso contra o batente aquece
+  // o servo. Mas parar o eixo nao basta: as maquinas de estado que rodam
+  // por cima (programa, reproducao, posicionamento) esperam o movimento
+  // acabar para seguir, e "parou" e exatamente o sinal delas de "cheguei".
+  //
+  // Sem isto, um travamento no caminho ate o primeiro ponto fazia o
+  // programa concluir a aproximacao ali mesmo e ABRIR O ARCO onde o braco
+  // tinha travado, dezenas de graus antes do inicio do cordao.
+  //
+  // Travou = a maquina nao esta onde acha que esta. Nao ha como continuar
+  // um percurso automatico a partir dai.
+  // ---------------------------------------------------------------------
+  {
+    static uint32_t travamentosVistos = 0;
+    const Travamento tv = correcaoTravamento();
+    if (tv.total != travamentosVistos) {
+      travamentosVistos = tv.total;
+      if (modoAtual == MODO_EXECUTANDO || modoAtual == MODO_REPRODUZINDO ||
+          modoAtual == MODO_POSICIONANDO) {
+        // nullptr preserva a mensagem que o vigia acabou de escrever, que
+        // e mais especifica do que qualquer coisa que se diga aqui.
+        pararTudo(nullptr);
+        logEvento("travamento da junta %u interrompeu o movimento automatico",
+                  (unsigned)tv.junta);
+      }
+    }
+  }
   publicar();
   vTaskDelay(pdMS_TO_TICKS(1));
 }

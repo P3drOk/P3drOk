@@ -149,6 +149,15 @@ struct ResumoZero {
 //  nunca traria o braco de volta -- seria trocar uma correcao por um
 //  disfarce.
 // =====================================================================
+// A leitura desta junta serve para alguma coisa?
+//
+// Junta o que ja era conferido em tres lugares diferentes: leitura
+// valida, recente, e FISICAMENTE possivel -- dentro do curso que o
+// proprio operador mediu, com folga. Uma leitura de 300 graus num braco
+// de +/-90 nao e posicao, e defeito: nao pode virar contagem, e nao pode
+// aparecer na tela como se fosse medida boa.
+bool       leituraConfiavel(uint8_t junta);
+
 void       seguirEixoSolto();    // core 1: chamada do loop
 
 void       zeroAtualizar();      // core 1: chamada do loop
