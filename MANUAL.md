@@ -228,7 +228,7 @@ numa gaveta com três páginas:
 | **Máquina** | elos, velocidades, acelerações, resolução, sentido dos eixos, proteções |
 | **Calibração** | resolução e redução medidas, curso das juntas, área da mesa |
 | **Encoder** | correção de posição, zero absoluto, ligação Modbus |
-| **Sistema** | saúde, registro de eventos, QR de conexão, firmware, modo operador, idioma |
+| **Sistema** | saúde, registro de eventos, QR de conexão, firmware, cópia no cartão, idioma, apagar tudo |
 
 A divisão é essa: **operar** fica nas abas, **instalar** fica na gaveta.
 
@@ -238,8 +238,10 @@ A divisão é essa: **operar** fica nas abas, **instalar** fica na gaveta.
 > emergência.
 
 A gaveta fecha pelo X, pelo **Esc**, tocando fora dela, ou escolhendo uma
-aba de trabalho. No modo operador ela abre direto em **Sistema**, com as
-duas páginas de instalação escondidas.
+aba de trabalho. Ela tem o **próprio** botão `?` de explicações, que nasce
+desligado: na tela de trabalho as notas são poucas e curtas, mas aqui são
+dezenas de parágrafos de manual e cabia uma página de texto entre um
+campo e o próximo.
 
 ### 5.1 Comando manual
 
@@ -252,6 +254,26 @@ invertível (Ajustes, ou durante a etapa de referência da calibração):
 nem sempre o sentido das setas bate com o do motor.
 
 ### 5.2 Calibração
+
+Página **Calibração** da gaveta. No topo, o cartão **Calibração guiada**:
+quatro passos, **nesta ordem**, porque cada um usa o resultado do
+anterior.
+
+| | passo | por que aqui |
+|---|---|---|
+| 1 | **Sentido dos eixos** | o braço tem de girar para o lado que o desenho mostra — se estiver trocado, tudo o que vier depois é medido ao contrário |
+| 2 | **Redução de cada eixo** | é ela que faz o desenho bater com o braço |
+| 3 | **Curso das juntas** | até onde cada junta pode ir; é medido em **graus**, então depende da redução |
+| 4 | **Área da mesa** | onde a peça fica; os cantos são gravados com a ponta, e a ponta só vai aonde o curso deixa |
+
+O que já estiver pronto aparece marcado, e o cartão diz em palavras qual
+é o próximo. **Ele não refaz nenhum passo**: toca-se num e ele abre o
+cartão que faz o trabalho, logo abaixo. Duplicar a ação ali seria
+duplicar a regra, e regra duplicada é regra que diverge.
+
+O passo do sentido não tem medida — é uma conferência, e a marca dela
+fica no navegador, não na máquina.
+
 
 Gaveta da engrenagem, página **Calibração**. Cinco coisas, medidas em
 ordem.
@@ -773,7 +795,7 @@ manual.
 Depois de apagar, **o braço precisa ser calibrado de novo** antes de
 trabalhar.
 
-### 5.11 Máquina: saúde, registro, conexão, firmware e modo operador
+### 5.11 Máquina: saúde, registro, conexão, firmware e idioma
 
 Aba **Máquina**.
 
@@ -826,23 +848,19 @@ Antes de começar, o módulo desabilita os servos: o ESP32 reinicia no fim,
 e um driver habilitado com o gerador de pulso morto é um eixo que ninguém
 está comandando.
 
-### Modo operador × técnico
-
-O modo operador **esconde** as abas de instalação (Ajustes e Encoder).
-Entrar não pede nada — trancar a máquina para o turno tem de ser rápido.
-Sair pede uma senha curta (de fábrica `1234`, trocável na própria tela).
-
-> **Isto não é segurança de rede.** A máquina serve o próprio Wi-Fi, e
-> quem estiver nele alcança a API direto, sem passar pela tela. É uma
-> trava contra toque errado — útil todo dia, e só isso.
-
 ### Idiomas
 
-Traduz o que o operador toca: abas, botões, rótulos, a tela de saúde e a
-tira de estado. **As notas longas de explicação continuam em
-português** — elas são o manual embutido desta máquina, escritas para
-quem a monta, e traduzir mal um texto que explica por que o arco fecha na
-pausa é pior do que deixá-lo como está.
+**Português e inglês, e só. O padrão é português.** Traduz o que o
+operador toca: abas, botões, rótulos, a tela de saúde e a tira de estado.
+**As notas longas de explicação continuam em português** — elas são o
+manual embutido desta máquina, escritas para quem a monta, e traduzir mal
+um texto que explica por que o arco fecha na pausa é pior do que
+deixá-lo como está.
+
+> O **modo operador** foi removido. Ele escondia as abas de instalação
+> atrás de uma senha que não era segurança de rede — quem está no Wi-Fi
+> da máquina alcança a API direto — e obrigava toda tela a consultar mais
+> um estado. As quatro páginas da gaveta ficam sempre à mão.
 
 ---
 
@@ -889,7 +907,6 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/manutencao/ok` | zera o contador de peças desde a manutenção |
 | `GET  /api/saude` | tudo que responde "está tudo bem?" |
 | `GET  /api/registro` | as últimas linhas do log, da memória |
-| `POST /api/painel` | modo operador e senha do técnico |
 | `POST /api/ota` | envio do firmware (multipart) |
 | `POST /api/sd/prever`, `GET /api/sd/previa` | miniatura de uma peça do cartão |
 | `GET  /api/calibracao` | tudo da aba Calibração, num JSON |

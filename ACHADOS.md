@@ -939,6 +939,97 @@ descobre na bancada, com o robo aberto. testes/ferramentas/ troca os
 enfeites do Arduino por equivalentes de PC e o compilador confere a
 sintaxe dos dois a cada rodada.
 
+## R82 · Puxar para baixo recarregava a pagina no meio do trabalho  ✅
+
+Rolar uma secao ate o topo e continuar puxando disparava o
+puxar-para-atualizar do celular. Num painel de maquina isso nao e um
+incomodo de navegacao: perde a aba aberta, os campos meio preenchidos e o
+heartbeat que segura o movimento.
+
+overscroll-behavior:none no body ja estava la e nao bastava -- quem rola
+aqui sao os paineis de dentro, e o excesso deles sobe em cadeia ate o
+documento. A trava foi para cada rolagem e para o html. WebView antigo e
+iPhone velho ignoram a propriedade, entao ha uma trava de reserva em
+JavaScript, estreita de proposito: so barra quando o dedo desce E o
+container debaixo dele ja esta no topo.
+
+## R83 · O modo operador saiu  ✅
+
+Ele escondia as abas de instalacao atras de uma senha que nao era
+seguranca de rede -- quem esta no Wi-Fi da maquina alcanca a API direto
+-- e obrigava toda tela a consultar mais um estado. Nesta maquina ninguem
+usava. Saiu inteiro: ConfigPainel, /api/painel, o campo "op" do status, a
+chave do NVS, o CSS e o cartao.
+
+## R84 · "Iniciar gravacao" parecia um botao morto  ✅
+
+A trajetoria a mao livre funcionava. O que faltava era dizer isso: o
+estado da gravacao aparecia so num rotulo de 9,5 px no cabecalho do
+cartao, e o operador aperta, nada visivel muda na tela em que ele esta, e
+conclui que o botao nao faz nada. Foi exatamente a queixa -- e o defeito
+nao era de firmware.
+
+Agora o cartao tem tarja de estado: parado, GRAVANDO com a contagem de
+amostras subindo, ou o que ficou na memoria. E diz o que fazer em
+seguida, que era o que faltava. Nao troca de aba sozinho: a tela pular
+embaixo do dedo assusta mais do que ajuda.
+
+## R85 · Um seletor de tres posicoes para tres coisas diferentes  ✅
+
+A biblioteca do cartao era uma lista so com um seletor -- programas,
+trajetorias, ajustes -- e nunca se sabia qual estava na tela. Agora
+programas e trajetorias sao dois cartoes, visiveis ao mesmo tempo. Os
+ajustes sairam da biblioteca: eles se copiam sozinhos para o cartao, num
+arquivo reservado que nunca colide com backup gravado a mao, e voltam por
+um botao na gaveta.
+
+A copia e um ESPELHO, nao um ponto de restauracao -- calibracao refeita
+errado e espelhada errada. Esta escrito na tela com essas palavras.
+
+## R86 · Graus por segundo ao quadrado nao sao linguagem de operador  ✅
+
+"Queria algo mais simples, de forma que um operador nao experiente
+consiga entender no que ele esta mexendo."
+
+Nenhum numero saiu da maquina. O que mudou foi a ordem: na frente, tres
+botoes que qualquer um entende (Lento / Normal / Rapido para velocidade,
+Macia / Media / Firme para a partida) e uma linha de resumo em palavras.
+Atras de "Ajustar", os campos de sempre. Atras de "Avancado", resolucao,
+sentido dos eixos e as margens de seguranca -- com um aviso de que mexer
+ali sem medir muda a escala de tudo.
+
+As protecoes viraram uma frase antes de virarem tres chaves, e a frase
+diz o que se perde ao desligar cada uma: nao aumenta a area de trabalho,
+tira o aviso.
+
+## R87 · Calibracao guiada: a ordem e que era o problema  ✅
+
+A pagina tinha cinco cartoes de calibracao, todos igualmente disponiveis,
+e nenhum dizia por onde comecar. Mas a ordem importa e cada passo usa o
+anterior: sentido antes de reducao (senao mede-se ao contrario), reducao
+antes de curso (o curso e medido em graus), curso antes de mesa (os
+cantos sao gravados com a ponta).
+
+O cartao guiado nao refaz nenhum passo -- diz qual e o proximo, marca o
+que ja esta pronto e abre o cartao que faz o trabalho. Duplicar a acao
+ali seria duplicar a regra, e regra duplicada e regra que diverge.
+
+## R88 · A pagina servia os proprios comentarios  ✅
+
+pagina_web.h tem os comentarios mais longos do projeto -- sao a
+documentacao da interface. Eles viajavam pelo Wi-Fi do robo e ocupavam
+flash: um quinto da pagina comprimida.
+
+O gerador agora os tira do que VAI PARA A MAQUINA e deixa todos no
+arquivo-fonte. A regra e deliberadamente burra, e e isso que a torna
+segura: so sai a LINHA INTEIRA que e comentario, dentro de style ou
+script. Nenhuma linha com codigo e tocada, entao nao ha como cortar
+dentro de uma string ou de uma expressao regular -- que e como
+minificador ingenuo quebra uma pagina. O resto do risco esta coberto pelo
+banco de interface, que serve exatamente esta saida.
+
+Comprimida: 80.836 -> 61.159 bytes, com a interface maior do que antes.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -2544,7 +2635,7 @@ entre 0,3 e 0,6 s.
 | banco | rodada 20 | rodada 22 | agora |
 |-------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | **367 / 0** |
-| interface | 121 / 0 | 125 / 0 | **189 / 0** |
+| interface | 121 / 0 | 125 / 0 | **209 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

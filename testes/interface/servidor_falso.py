@@ -18,10 +18,14 @@ import gzip as _gzip
 import pathlib as _pl
 import re as _re
 
-fonte = open(RAIZ, encoding="utf-8").read()
-i = fonte.index('R"rawliteral(') + len('R"rawliteral(')
-j = fonte.rindex(')rawliteral"')
-PAGINA = fonte[i:j].encode()
+# A extracao e a MESMA do gerador -- inclusive a limpeza de comentarios.
+# Duas copias da regra divergiriam, e o banco passaria a servir uma pagina
+# que o robo nao serve.
+import sys as _sys
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+from gerar_pagina_gz import extrair_html as _extrair_html
+
+PAGINA = _extrair_html(open(RAIZ, encoding="utf-8").read())
 
 _gzh = _pl.Path(RAIZ).parent / "pagina_web_gz.h"
 PAGINA_GZ = None

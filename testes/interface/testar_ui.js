@@ -714,7 +714,17 @@ async function fecharGaveta(pag) {
       await t.evaluate(([sel, k]) => {
         document.querySelectorAll(sel + ' .et').forEach((x, i) => x.classList.toggle('aberta', i === k));
       }, [sel, k]);
-      await t.waitForTimeout(120);
+      // Sub-bloco recolhido dentro da secao ("Avancado") tambem abre:
+      // senao os botoes de dentro contariam como invisiveis e a regra
+      // pararia de cobri-los -- que e como um botao morto se esconde.
+      await t.evaluate(([sel, k]) => {
+        const et = document.querySelectorAll(sel + ' .et')[k];
+        et.querySelectorAll('h4.dobra').forEach(h => {
+          const alvo = h.nextElementSibling;
+          if (alvo && alvo.classList.contains('oculto')) h.click();
+        });
+      }, [sel, k]);
+      await t.waitForTimeout(160);
       const alvos = await t.evaluate(([sel, k]) => {
         const et = document.querySelectorAll(sel + ' .et')[k];
         return [...et.querySelectorAll('button[id]')].map(e => {
@@ -1757,6 +1767,172 @@ async function fecharGaveta(pag) {
          'Idioma: o padrao e portugues, e o unico outro e ingles',
          JSON.stringify(idioma));
 
+
+  // ------------------------------------------------------------------
+  // CALIBRACAO GUIADA: quatro passos, na ordem que importa.
+  // O pedido era "uma calibracao automatica guiada"; o que a maquina
+  // precisa de fato e sentido, reducao, curso e mesa -- nessa ordem,
+  // porque cada um usa o anterior. O cartao nao refaz nenhum deles: diz
+  // qual e o proximo e abre quem faz o trabalho.
+  // ------------------------------------------------------------------
+  // O passo do sentido nao tem medida: e uma conferencia, e a marca dela
+  // vive no navegador. Limpa-se antes para o cenario comecar com um
+  // passo pendente de verdade -- senao a maquina do banco ja nasce toda
+  // calibrada e a lista nunca mostra o "proximo".
+  await t.evaluate(() => { try { localStorage.removeItem('guiaSentido'); } catch (e) {} });
+  await t.reload({ waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(800);
+  await t.evaluate(() => {
+    if (!document.getElementById('veuCfg').classList.contains('on'))
+      document.getElementById('btCfg').click();
+  });
+  await t.waitForTimeout(300);
+  await t.locator('#cfgAbas button[data-cfg="calib"]').click();
+  await t.waitForTimeout(800);
+
+  const guia = await t.evaluate(() => {
+    const ps = [...document.querySelectorAll('#guiaLista .gp')];
+    return {
+      n: ps.length,
+      ordem: ps.map(e => e.dataset.guia),
+      ok: ps.filter(e => e.classList.contains('ok')).map(e => e.dataset.guia),
+      agora: ps.filter(e => e.classList.contains('agora')).map(e => e.dataset.guia),
+      frase: document.getElementById('guiaAgora').textContent.trim(),
+      sub: document.getElementById('sbGuia').textContent.trim(),
+      guardado: [...document.querySelectorAll('#cfgCalib .tt')]
+                  .some(e => /Onde isto fica guardado/.test(e.textContent)),
+    };
+  });
+  checar(guia.n === 4 &&
+         guia.ordem.join(',') === 'sentido,reducao,curso,mesa',
+         'Calibracao guiada: quatro passos, na ordem em que um depende do outro',
+         guia.ordem.join(' > '));
+  checar(guia.agora.length === 1 && guia.agora[0] === 'sentido' &&
+         guia.ok.indexOf('sentido') < 0,
+         'Calibracao guiada: exatamente UM passo marcado como o proximo',
+         'agora: ' + guia.agora + ', prontos: ' + guia.ok);
+  checar(/proximo passo|prontos/.test(guia.frase) && guia.sub.length > 0,
+         'Calibracao guiada: e diz em palavras o que falta fazer agora',
+         guia.frase + '  |  ' + guia.sub);
+  checar(!guia.guardado,
+         'Calibracao: o cartao "Onde isto fica guardado" saiu; nao dizia o que fazer');
+
+  // O passo aponta para quem faz o trabalho -- e o cartao abre.
+  await t.locator('#guiaLista [data-guia="mesa"]').click();
+  await t.waitForTimeout(500);
+  const abriu = await t.evaluate(() => {
+    const bt = document.getElementById('btMesaCanto');
+    return { visivel: !!bt.offsetParent,
+             cartaoAberto: bt.closest('.et').classList.contains('aberta') };
+  });
+  checar(abriu.visivel && abriu.cartaoAberto,
+         'Calibracao guiada: tocar num passo abre o cartao que faz aquilo',
+         JSON.stringify(abriu));
+
+  // Conferir o sentido marca o passo 1 -- e o proximo anda.
+  await t.locator('#cfgAbas button[data-cfg="calib"]').click();
+  await t.waitForTimeout(300);
+  await t.locator('#btGuiaSentidoOk').click();
+  await t.waitForTimeout(900);
+  const depois = await t.evaluate(() => {
+    const ps = [...document.querySelectorAll('#guiaLista .gp')];
+    return { ok: ps.filter(e => e.classList.contains('ok')).map(e => e.dataset.guia),
+             agora: ps.filter(e => e.classList.contains('agora')).map(e => e.dataset.guia) };
+  });
+  checar(depois.ok.indexOf('sentido') >= 0 && depois.agora.indexOf('sentido') < 0,
+         'Calibracao guiada: conferido o sentido, o passo fecha e o proximo assume',
+         JSON.stringify(depois));
+
+  // ------------------------------------------------------------------
+  // AJUSTES DA MAQUINA em linguagem de operador.
+  // A queixa: "queria algo mais simples, de forma que um operador nao
+  // experiente consiga entender no que ele esta mexendo". Os numeros
+  // continuam todos la -- o que mudou e a ordem: tres botoes na frente,
+  // graus por segundo ao quadrado atras de "Ajustar".
+  // ------------------------------------------------------------------
+  // O btCfg ALTERNA: clicar nele com a gaveta ja aberta a fecha, e o
+  // clique seguinte cai num botao invisivel.
+  await t.evaluate(() => {
+    if (!document.getElementById('veuCfg').classList.contains('on'))
+      document.getElementById('btCfg').click();
+  });
+  await t.waitForTimeout(300);
+  await t.locator('#cfgAbas button[data-cfg="maquina"]').click();
+  await t.waitForTimeout(250);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('segVel').closest('.et');
+    document.querySelectorAll('#cfgMaquina .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(600);
+
+  const aj = await t.evaluate(() => ({
+    velAceso: [...document.querySelectorAll('#segVel button')]
+                .filter(b => b.classList.contains('on')).map(b => b.dataset.v),
+    rampaAceso: [...document.querySelectorAll('#segRampa button')]
+                .filter(b => b.classList.contains('on')).map(b => b.dataset.r),
+    numerosVel: !!document.getElementById('velCustom').offsetParent,
+    avancado: !!document.getElementById('avancado').offsetParent,
+    resumo: document.getElementById('resumoVel').textContent.trim(),
+    sub: document.getElementById('sbAjustes').textContent.trim(),
+  }));
+  checar(aj.velAceso.length === 1 && aj.rampaAceso.length === 1,
+         'Ajustes: a tela abre com a velocidade e a partida atuais ACESAS',
+         'velocidade: ' + aj.velAceso + ', partida: ' + aj.rampaAceso);
+  checar(!aj.numerosVel && !aj.avancado,
+         'Ajustes: os numeros crus comecam recolhidos, nao apagados',
+         JSON.stringify({ velCustom: aj.numerosVel, avancado: aj.avancado }));
+  checar(/°\/s/.test(aj.resumo) && /mm\/s/.test(aj.resumo),
+         'Ajustes: e o resumo em uma linha diz o que aqueles botoes valem',
+         aj.resumo);
+  checar(aj.sub.length > 0,
+         'Ajustes: o cabecalho do cartao ja adianta em que pe esta', aj.sub);
+
+  // Escolher um preset grava de verdade -- nao e so pintar botao.
+  rotas = [];
+  await t.locator('#segVel button[data-v="lento"]').click();
+  await t.waitForTimeout(500);
+  const gravou = rotas.find(u => u.indexOf('/api/config?') === 0);
+  checar(!!gravou && /velN=8/.test(gravou) && /velCordao=3/.test(gravou),
+         'Ajustes: escolher "Lento" grava os quatro numeros de uma vez',
+         gravou);
+
+  // "Ajustar" revela os campos, e nao mexe em nada sozinho.
+  rotas = [];
+  await t.locator('#segVel button[data-v="custom"]').click();
+  await t.waitForTimeout(400);
+  const custom = await t.evaluate(() => ({
+    visivel: !!document.getElementById('velCustom').offsetParent,
+    campos: ['inVn', 'inVp', 'inVa', 'inVc2'].every(i =>
+      !!document.getElementById(i) && document.getElementById(i).value !== ''),
+  }));
+  checar(custom.visivel && custom.campos &&
+         !rotas.some(u => u.indexOf('/api/config?') === 0),
+         'Ajustes: "Ajustar" so mostra os campos -- nao grava sozinho',
+         JSON.stringify(custom));
+
+  // O "Avancado" existe e abre. Era o pedido oposto ao de simplificar:
+  // simples na frente, completo atras -- nada some da maquina.
+  await t.locator('#hAvancado').click();
+  await t.waitForTimeout(300);
+  const av = await t.evaluate(() => ({
+    aberto: !!document.getElementById('avancado').offsetParent,
+    temResolucao: !!document.getElementById('inPv1').offsetParent,
+    temMargens: !!document.getElementById('inEy').offsetParent,
+    temSentido: !!document.getElementById('sInv1').offsetParent,
+  }));
+  checar(av.aberto && av.temResolucao && av.temMargens && av.temSentido,
+         'Ajustes: o "Avancado" guarda resolucao, sentido e margens -- nada sumiu',
+         JSON.stringify(av));
+
+  // As protecoes viraram uma frase antes de virarem tres chaves.
+  const prot = await t.evaluate(() =>
+    document.getElementById('resumoArea').textContent.trim());
+  checar(/protec/.test(prot),
+         'Ajustes: as protecoes se resumem em uma frase antes das chaves', prot);
+
+  await t.locator('#cfgFechar').click();
+  await t.waitForTimeout(250);
 
   // ------------------------------------------------------------------
   // Biblioteca de pecas: ver a miniatura ANTES de carregar.

@@ -21,7 +21,58 @@ SAIDA = RAIZ / "Robo2dof" / "pagina_web_gz.h"
 def extrair_html(texto: str) -> bytes:
     i = texto.index('R"rawliteral(') + len('R"rawliteral(')
     j = texto.rindex(')rawliteral"')
-    return texto[i:j].encode("utf-8")
+    return enxugar(texto[i:j]).encode("utf-8")
+
+
+def enxugar(html: str) -> str:
+    """Tira do que VAI PARA A MAQUINA o que so serve para quem le o codigo.
+
+    Os comentarios de pagina_web.h sao a documentacao deste projeto e
+    continuam todos no arquivo-fonte. O que eles nao precisam e viajar
+    pelo Wi-Fi do robo e ocupar flash: sao um quinto da pagina.
+
+    A REGRA E DELIBERADAMENTE BURRA, e e isso que a torna segura: so sai
+    a LINHA INTEIRA que e comentario, dentro de <style> ou <script>.
+    Nenhuma linha que contenha codigo e tocada, entao nao ha como cortar
+    dentro de uma string ou de uma expressao regular -- que e como um
+    minificador ingenuo quebra uma pagina.
+
+    O que sobra de risco esta coberto pelo banco de interface: ele serve
+    ESTA saida e exige mais de duzentos comportamentos e o console limpo.
+    """
+    fora, dentro_bloco, em_codigo = [], False, False
+    for linha in html.split("\n"):
+        t = linha.strip()
+
+        if "<style" in t or "<script" in t:
+            em_codigo = True
+        if not em_codigo:
+            fora.append(linha)
+            continue
+
+        if dentro_bloco:
+            # A linha so pode sair inteira se o bloco fechar no fim dela.
+            if "*/" in t:
+                dentro_bloco = False
+                if not t.endswith("*/"):
+                    fora.append(t[t.index("*/") + 2:].strip())
+            continue
+
+        if t.startswith("/*"):
+            if "*/" not in t:
+                dentro_bloco = True
+                continue
+            if t.endswith("*/"):
+                continue          # comentario de uma linha so
+        elif t.startswith("//"):
+            continue
+
+        if "</style>" in t or "</script>" in t:
+            em_codigo = False
+
+        if t:
+            fora.append(t)        # sem a indentacao, que tambem viaja
+    return "\n".join(fora)
 
 
 def gerar():

@@ -211,6 +211,19 @@ aberto e a IDE reclamando.
 compilador para conferir a sintaxe. Roda a cada `compilar.sh`, junto com
 as outras guardas. Não executa nada.
 
+## A página servida não é o arquivo-fonte
+
+`testes/gerar_pagina_gz.py` tira os comentários de `pagina_web.h` antes de
+comprimir: eles são a documentação da interface e continuam todos no
+arquivo, mas não precisam viajar pelo Wi-Fi do robô — eram um quinto da
+página. A regra é deliberadamente burra e por isso segura: só sai a
+**linha inteira** que é comentário, dentro de `<style>` ou `<script>`.
+Nenhuma linha com código é tocada.
+
+O servidor falso do banco de interface usa **a mesma função** de
+extração. Duas cópias da regra divergiriam, e o banco passaria a servir
+uma página que o robô não serve.
+
 ## Conferência da fiação
 
 ```sh

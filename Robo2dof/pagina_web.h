@@ -560,6 +560,29 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 .sdBar .tx{flex:1;font-family:var(--mono);font-size:10.5px;color:var(--letra2);
  line-height:1.45}
 .sdBar .tx b{color:var(--letra);font-weight:600}
+/* Bloco que so aparece quando o operador pede. Nada e removido da tela:
+   o que muda e quem precisa olhar. */
+.oculto{display:none}
+/* Titulo que abre um bloco. A seta diz que ali ha mais coisa -- sem ela o
+   operador nao descobre o "Avancado" e reclama que sumiu. */
+h4.dobra{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+h4.dobra::before{content:"\25B8";font-size:9px;transition:transform .15s;display:inline-block}
+h4.dobra.aberto::before{transform:rotate(90deg)}
+/* Lista de passos da calibracao guiada. Cada linha diz o estado antes de
+   dizer o nome: o operador precisa saber o que FALTA, nao o que existe. */
+.guia{display:grid;gap:6px;margin-bottom:10px}
+.gp{display:flex;align-items:center;gap:9px;padding:9px 10px;cursor:pointer;
+ background:var(--painel);border:1px solid var(--linha);border-radius:4px}
+.gp .n{flex:0 0 auto;width:20px;height:20px;border-radius:50%;display:grid;
+ place-items:center;font-family:var(--mono);font-size:9.5px;font-weight:700;
+ background:var(--face);color:var(--letra2);border:1px solid var(--linha)}
+.gp .tt2{flex:1;min-width:0;font-size:12.5px}
+.gp .tt2 small{display:block;font-family:var(--mono);font-size:9px;
+ color:var(--letra2);letter-spacing:.04em;text-transform:uppercase}
+.gp.ok{border-color:var(--pronto)}
+.gp.ok .n{background:var(--pronto);color:#052a17;border-color:var(--pronto)}
+.gp.agora{border-color:var(--arco);box-shadow:inset 3px 0 0 var(--arco)}
+.gp.agora .n{background:var(--arco);color:#0c1530;border-color:var(--arco)}
 .seg{display:flex;gap:0;margin-bottom:9px;border:1px solid var(--linha);
  border-radius:3px;overflow:hidden}
 .seg button{flex:1;background:var(--painel);border:none;padding:9px 4px;
@@ -1149,10 +1172,8 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
             estado do arco em cada instante. Serve para percurso organico; para
             cordao reto use os pontos acima, que saem em reta de verdade.</div>
             <div class="nt"><b>Sem mover o braco:</b> na mesa de tracado, o botao
-            <b>DES</b> deixa voce riscar o caminho com o dedo em cima do desenho.
-            O traco vira programa de pontos na hora &mdash; da para ensaiar,
-            repetir, corrigir ponto a ponto e salvar no cartao como qualquer
-            outro.</div>
+            <b>DES</b> deixa riscar o caminho com o dedo em cima do desenho. O
+            traco vira programa de pontos na hora.</div>
             <div class="gravBox" id="gravBox">
               <div class="pt"></div>
               <div class="tx"><b id="gravTit">--</b><br><span id="gravMsg">--</span></div>
@@ -1316,73 +1337,149 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
         <div class="et" id="e5" data-e="5">
           <div class="cab"><div class="mk"><svg class="ic"><use href="#i-regua"/></svg></div>
             <div class="tx"><div class="tt">Ajustes da maquina</div>
-            <span class="sb">resolucao, velocidades, area util</span></div><div class="chv">&#9654;</div></div>
+            <span class="sb" id="sbAjustes">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">Os ajustes so sao aceitos com o robo parado no modo manual.</div>
-            <h4>Resolucao da junta 1</h4>
-            <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv1" min="1"></div>
-            <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd1" min="0.01" step="0.01"><span class="un">: 1</span></div>
-            <h4>Resolucao da junta 2</h4>
-            <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv2" min="1"></div>
-            <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd2" min="0.01" step="0.01"><span class="un">: 1</span></div>
-            <h4>Sentido dos eixos</h4>
-            <div class="tr"><div class="ch" id="sInv1"><i></i></div>
-              <span>inverter a junta 1</span></div>
-            <div class="tr"><div class="ch" id="sInv2"><i></i></div>
-              <span>inverter a junta 2</span></div>
-            <div class="nt">Se o braco vai para um lado e o desenho na tela vai
-            para o outro, o sinal do eixo esta trocado &mdash; nenhuma calibracao
-            conserta isso, porque o erro nao e de escala, e de sinal. Marque aqui
-            em vez de trocar fio no driver.<br><br>A cinematica espera angulo
-            crescente no sentido <b>anti-horario</b>, com a junta 1 em zero
-            apontando para a <b>direita</b>.</div>
-            <div class="res" id="resumoRes">--</div>
-            <h4>Velocidades</h4>
-            <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
-            <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="0.1" step="0.1"><span class="un">°/s</span></div>
-            <div class="cp"><label>Deslocamento</label><input type="number" id="inVa" min="0.1" step="0.5"><span class="un">°/s</span></div>
-            <div class="nt">Em <b>graus por segundo</b>, nao em pulsos. Hz significa
-            velocidades diferentes em cada junta: com reducao 16,5 numa e 4 na
-            outra, os mesmos 3000 Hz davam 6,5 °/s numa e 27 na outra &mdash; uma
-            andava quatro vezes mais rapido que a outra. Em graus por segundo as
-            duas acompanham.</div>
-            <div class="cp"><label>Cordao</label><input type="number" id="inVc2" min="0.5" step="0.5"><span class="un">mm/s</span></div>
-            <div class="nt">O joystick usa a velocidade de jog como teto: no centro do disco o eixo fica parado, na borda ele anda nessa velocidade.</div>
-            <div class="res" id="resumoVel">--</div>
-            <h4>Rampa</h4>
-            <div class="cp"><label>Junta 1</label><input type="number" id="inA1" min="1" step="5"><span class="un">°/s²</span></div>
-            <div class="cp"><label>Junta 2</label><input type="number" id="inA2" min="1" step="5"><span class="un">°/s²</span></div>
-            <div class="nt">Tambem em graus, pelo mesmo motivo. Rampa alta demais
-            e a causa mais comum de <b>perda de passo</b>: o driver recebe o pulso
-            e o motor nao acompanha. Se o braco estiver perdendo posicao, baixe
-            aqui antes de mexer em qualquer outra coisa.</div>
-            <div class="cp"><label>Suavidade da partida</label><input type="number" id="inSuav" min="0" max="255" step="10"></div>
-            <div class="nt">Rampa em <b>S</b>. Com zero a aceleracao entra de uma vez
-            e a partida da o <b>tranco</b> que voce sente; quanto maior o numero,
-            mais devagar a propria aceleracao cresce e mais macia fica a saida.
-            De 100 a 150 costuma ficar bom. Numero muito alto atrasa a chegada na
-            velocidade cheia, o que so incomoda em movimento curto.</div>
-            <button class="b pri" id="btSalvar">Salvar ajustes</button>
-            <h4>Area util</h4>
-            <div class="cp"><label>Folga de dobra</label><input type="number" id="inDb" min="0" max="90"><span class="un">°</span></div>
-            <div class="cp"><label>Y minimo</label><input type="number" id="inEy"><span class="un">mm</span></div>
-            <div class="cp"><label>Raio morto</label><input type="number" id="inEr" min="0"><span class="un">mm</span></div>
-            <div class="nt">Dobra impede o elo 2 de fechar sobre o elo 1. Y minimo protege a mesa. Raio morto impede o antebraco de varrer sobre a base.</div>
-            <button class="b pri" id="btSalvarGeo">Salvar area util</button>
+            <div class="nt">Os ajustes so sao aceitos com o robo parado no modo
+            manual.</div>
 
-            <h4>Protecoes ativas</h4>
+            <h4>Velocidade do braco</h4>
+            <div class="seg" id="segVel">
+              <button data-v="lento">Lento</button>
+              <button data-v="normal">Normal</button>
+              <button data-v="rapido">Rapido</button>
+              <button data-v="custom">Ajustar</button>
+            </div>
+            <div class="res" id="resumoVel">--</div>
+            <div class="nt">Tres velocidades prontas cobrem o dia a dia.
+            <b>Lento</b> para posicionar peca e aprender a maquina, <b>Normal</b>
+            para trabalhar, <b>Rapido</b> so para deslocamento longo entre
+            cordoes. O cordao anda mais devagar que o resto de proposito: e ele
+            que define a penetracao.</div>
+            <div id="velCustom" class="oculto">
+              <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
+              <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="0.1" step="0.1"><span class="un">°/s</span></div>
+              <div class="cp"><label>Deslocamento</label><input type="number" id="inVa" min="0.1" step="0.5"><span class="un">°/s</span></div>
+              <div class="cp"><label>Cordao</label><input type="number" id="inVc2" min="0.5" step="0.5"><span class="un">mm/s</span></div>
+              <div class="nt">Em <b>graus por segundo</b>, nao em pulsos. Hz
+              significa velocidades diferentes em cada junta: com reducao 16,5
+              numa e 4 na outra, os mesmos 3000 Hz davam 6,5 °/s numa e 27 na
+              outra. Em graus por segundo as duas acompanham. O joystick usa a
+              velocidade de jog como teto: no centro do disco o eixo fica
+              parado, na borda ele anda nessa velocidade.</div>
+            </div>
+
+            <h4>Partida e parada</h4>
+            <div class="seg" id="segRampa">
+              <button data-r="macia">Macia</button>
+              <button data-r="media">Media</button>
+              <button data-r="firme">Firme</button>
+              <button data-r="custom">Ajustar</button>
+            </div>
+            <div class="res" id="resumoRampa">--</div>
+            <div class="nt"><b>Macia</b> sai e para sem tranco: e o que se usa
+            quando o braco esta perdendo posicao, porque tranco e a causa numero
+            um de perda de passo. <b>Firme</b> chega antes, e util em movimento
+            curto. Na duvida, <b>Media</b>.</div>
+            <div id="rampaCustom" class="oculto">
+              <div class="cp"><label>Aceleracao da junta 1</label><input type="number" id="inA1" min="1" step="5"><span class="un">°/s²</span></div>
+              <div class="cp"><label>Aceleracao da junta 2</label><input type="number" id="inA2" min="1" step="5"><span class="un">°/s²</span></div>
+              <div class="cp"><label>Suavidade da partida</label><input type="number" id="inSuav" min="0" max="255" step="10"></div>
+              <div class="nt">A aceleracao esta em graus por segundo ao quadrado
+              &mdash; quantos °/s o eixo ganha a cada segundo. 60 quer dizer que
+              ele leva um segundo para chegar a 60 °/s. A <b>suavidade</b> e a
+              rampa em S: com zero a aceleracao entra de uma vez e a partida da
+              o tranco que voce sente; quanto maior, mais devagar a propria
+              aceleracao cresce.</div>
+            </div>
+
+            <button class="b pri" id="btSalvar">Salvar velocidade e partida</button>
+            <div class="pq2" id="qSalvar"></div>
+
+            <h4>Ate onde o braco pode ir</h4>
+            <div class="res" id="resumoArea">--</div>
+            <div class="nt">Sao os travoes que recusam um movimento <b>antes</b>
+            de ele acontecer. Nao mudam o que a maquina sabe fazer: mudam o que
+            ela aceita fazer.
+            <br><b>Fim de curso</b> &mdash; nao passa dos limites medidos na
+            calibracao. <b>Cotovelo</b> &mdash; nao deixa o antebraco fechar
+            sobre o braco e bater nele mesmo. <b>Mesa e base</b> &mdash; nao
+            deixa a ponta descer sobre a mesa nem varrer por cima da propria
+            base.</div>
             <div class="tr"><div class="ch" id="pCur"><i></i></div>
               <span>fim de curso das juntas</span></div>
             <div class="tr"><div class="ch" id="pDob"><i></i></div>
-              <span>dobra do cotovelo</span></div>
+              <span>cotovelo</span></div>
             <div class="tr"><div class="ch" id="pEnv"><i></i></div>
-              <span>mesa e base (Y minimo / raio morto)</span></div>
-            <div class="nt">A protecao de mesa e base depende do comprimento dos elos estar correto. Ligue depois de conferir as medidas na etapa 1, senao ela recusa posicoes que sao validas.</div>
+              <span>mesa e base</span></div>
+            <div class="nt av">Desligar um destes nao aumenta a area de trabalho
+            &mdash; tira o aviso. O braco passa a aceitar a postura que ia bater.
+            Desligue so para diagnosticar, e ligue de volta.</div>
+
+            <h4 class="dobra" id="hAvancado">Avancado &mdash; numeros da montagem</h4>
+            <div id="avancado" class="oculto">
+              <div class="nt av">Daqui para baixo sao numeros de montagem. Mexer
+              neles sem medir muda a escala de tudo: o desenho na tela para de
+              bater com o braco, e a area util passa a proteger o lugar errado.
+              A pagina <b>Calibracao</b> acha estes valores medindo, em vez de
+              adivinhar.</div>
+
+              <h4>Resolucao da junta 1</h4>
+              <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv1" min="1"></div>
+              <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd1" min="0.01" step="0.01"><span class="un">: 1</span></div>
+              <h4>Resolucao da junta 2</h4>
+              <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv2" min="1"></div>
+              <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd2" min="0.01" step="0.01"><span class="un">: 1</span></div>
+              <div class="res" id="resumoRes">--</div>
+
+              <h4>Sentido dos eixos</h4>
+              <div class="tr"><div class="ch" id="sInv1"><i></i></div>
+                <span>inverter a junta 1</span></div>
+              <div class="tr"><div class="ch" id="sInv2"><i></i></div>
+                <span>inverter a junta 2</span></div>
+              <div class="nt">Se o braco vai para um lado e o desenho na tela vai
+              para o outro, o sinal do eixo esta trocado &mdash; nenhuma
+              calibracao conserta isso, porque o erro nao e de escala, e de
+              sinal. Marque aqui em vez de trocar fio no driver.<br>A cinematica
+              espera angulo crescente no sentido <b>anti-horario</b>, com a junta
+              1 em zero apontando para a <b>direita</b>.</div>
+
+              <h4>Margens de seguranca</h4>
+              <div class="cp"><label>Folga de dobra</label><input type="number" id="inDb" min="0" max="90"><span class="un">°</span></div>
+              <div class="cp"><label>Y minimo</label><input type="number" id="inEy"><span class="un">mm</span></div>
+              <div class="cp"><label>Raio morto</label><input type="number" id="inEr" min="0"><span class="un">mm</span></div>
+              <div class="nt">Sao os numeros por tras das tres protecoes acima.
+              <b>Folga de dobra</b>: quantos graus antes de o cotovelo fechar de
+              todo o movimento e recusado. <b>Y minimo</b>: a linha, em
+              milimetros, abaixo da qual a ponta nao desce. <b>Raio morto</b>: o
+              circulo em volta do centro da base por onde o antebraco nao
+              passa.</div>
+              <button class="b pri" id="btSalvarGeo">Salvar margens</button>
+              <div class="pq2" id="qSalvarGeo"></div>
+            </div>
           </div>
         </div>
       
+      
     </div>
     <div class="pane" id="cfgCalib">
+      <div class="et aberta" id="etGuia">
+        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-mira"/></svg></div>
+          <div class="tx"><div class="tt">Calibracao guiada</div>
+          <span class="sb" id="sbGuia">--</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="nt">Quatro passos, nesta ordem. <b>A ordem importa</b>: cada
+          um usa o resultado do anterior, e fazer fora de ordem obriga a refazer.
+          O que ja estiver pronto aparece marcado &mdash; da para parar no meio e
+          voltar depois.</div>
+          <div class="guia" id="guiaLista"></div>
+          <div class="res" id="guiaAgora">--</div>
+          <button class="b mini" id="btGuiaSentidoOk">Ja conferi o sentido dos eixos</button>
+          <div class="pq2" id="qGuiaSentidoOk"></div>
+          <div class="nt">Cada passo abre o cartao que faz o trabalho, logo
+          abaixo. Nada aqui e atalho: e o mesmo caminho, na ordem certa.</div>
+        </div>
+      </div>
+
       <div class="et aberta">
         <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
           <div class="tx"><div class="tt">Como a maquina esta agora</div>
@@ -1429,23 +1526,19 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
           <div class="tx"><div class="tt">Reducao mecanica</div>
           <span class="sb">precisa de uma referencia, uma so</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt"><b>Leia isto antes de achar que o encoder resolve
-          sozinho.</b> O encoder esta no eixo do <b>motor</b>, antes do redutor.
-          O angulo que ele mostra na tela ja e calculado assim:<br><br>
-          &nbsp;&nbsp;<b>graus da junta = voltas do motor &times; 360 &divide; reducao</b><br><br>
-          Ou seja: o angulo lido <b>ja depende da reducao</b>. Nao da para tirar a
-          reducao dele &mdash; seria tirar o numero de uma conta que usa o proprio
-          numero. Isso e fisica, nao limitacao de programa: com um sensor so, e
-          antes do redutor, a relacao do redutor e invisivel.<br><br>
-          O que o encoder da de graca, e com muita precisao, e a contagem de
-          <b>voltas do motor</b>. Falta <b>uma</b> referencia do lado da junta.
-          Com ela a reducao sai exata:<br><br>
-          &nbsp;&nbsp;<b>reducao = voltas do motor &times; 360 &divide; angulo real</b></div>
-          <div class="nt"><b>Por que isto e melhor do que medir por pulsos.</b> A
-          medida antiga contava pulsos comandados: ela erra junto com a
-          engrenagem eletronica e erra junto com perda de passo. Contar voltas
-          reais do motor nao tem nenhum dos dois problemas &mdash; o encoder mede
-          o eixo, nao a intencao.</div>
+          <div class="nt">O encoder esta no eixo do <b>motor</b>, antes do
+          redutor, e o angulo que ele mostra ja e calculado com a reducao
+          &mdash; entao <b>nao da para tirar a reducao dele</b>: seria tirar o
+          numero de uma conta que usa o proprio numero. Com um sensor so, e
+          antes do redutor, a relacao do redutor e invisivel. Isso e fisica,
+          nao limitacao de programa.
+          <br>O que ele da de graca, e com muita precisao, e a contagem de
+          <b>voltas do motor</b>. Falta <b>uma</b> referencia do lado da junta,
+          e a reducao sai exata:<br>
+          &nbsp;&nbsp;<b>reducao = voltas do motor &times; 360 &divide; angulo real</b>
+          <br>Contar voltas reais e melhor que contar pulsos comandados: pulso
+          erra junto com a engrenagem eletronica e junto com perda de passo. O
+          encoder mede o eixo, nao a intencao.</div>
           <div class="cp"><label>Junta</label>
             <select id="rdJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
           <button class="b mini" id="btRdMarcar">1 &middot; Marcar o inicio aqui</button>
@@ -1516,21 +1609,6 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
         </div>
       </div>
 
-      <div class="et">
-        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-disco"/></svg></div>
-          <div class="tx"><div class="tt">Onde isto fica guardado</div>
-          <span class="sb">NVS e cartao</span></div><div class="chv">&#9654;</div></div>
-        <div class="dentro">
-          <div class="nt">Tudo desta pagina &mdash; resolucao, reducao, curso,
-          referencia e a area da mesa &mdash; e gravado na memoria da maquina
-          assim que voce confirma, e sobrevive a queda de energia.<br><br>
-          No cartao, o backup em <b>Arquivos &rarr; ajustes</b> leva a calibracao
-          <b>junto</b>. E isso que faz o backup ser um backup da maquina, e nao so
-          das velocidades: restaurar devolve o curso medido e a mesa ensinada, sem
-          refazer o assistente.</div>
-          <button class="b mini" id="btIrArquivos">Ir para Arquivos</button>
-        </div>
-      </div>
     </div>
     <div class="pane" id="cfgEncoder">
 
@@ -2032,6 +2110,68 @@ function salvar(vc){
     "&suav="+$("inSuav").value);
 }
 $("btSalvar").onclick=function(){salvar($("inVc2").value);};
+
+/* =====================================================================
+   AJUSTES EM LINGUAGEM DE OPERADOR
+   Os numeros continuam todos aqui -- nada foi tirado da maquina. O que
+   mudou e a ordem em que aparecem: primeiro tres botoes que qualquer um
+   entende, e os graus por segundo ao quadrado atras de "Ajustar".
+   Quem monta a maquina mexe nos numeros; quem trabalha nela escolhe
+   Lento, Normal ou Rapido e vai fazer peca.
+   ===================================================================== */
+const PRE_VEL={
+  /* velN, velP, velA, cordao */
+  lento: [ 8, 1.5,  6, 3],
+  normal:[20, 2.0, 12, 5],
+  rapido:[35, 3.0, 25, 8]
+};
+const PRE_RAMPA={
+  /* acel, suavidade */
+  macia:[ 30, 200],
+  media:[ 60, 120],
+  firme:[140,  40]
+};
+/* Reconhece o ajuste atual como um dos prontos. Sem isto a tela abriria
+   com nenhum botao aceso e o operador nao saberia em que velocidade a
+   maquina esta. */
+function qualPreset(tab,vals){
+  const perto=function(a,b){return Math.abs(a-b)<0.051;};
+  for(const k in tab){
+    if(tab[k].every(function(v,i){return perto(v,vals[i]);}))return k;
+  }
+  return "custom";
+}
+function mostrarPreset(seg,cx,qual){
+  document.querySelectorAll("#"+seg+" button").forEach(function(b){
+    b.classList.toggle("on",b.dataset.v===qual||b.dataset.r===qual);});
+  $(cx).className=(qual==="custom")?"":"oculto";
+}
+document.querySelectorAll("#segVel button").forEach(function(b){
+  b.onclick=function(){
+    const q=b.dataset.v;
+    mostrarPreset("segVel","velCustom",q);
+    if(q==="custom")return;
+    const v=PRE_VEL[q];
+    $("inVn").value=v[0];$("inVp").value=v[1];$("inVa").value=v[2];
+    $("inVc2").value=v[3];$("inVc").value=v[3];
+    salvar(v[3]).then(function(){carregou=false;});
+  };
+});
+document.querySelectorAll("#segRampa button").forEach(function(b){
+  b.onclick=function(){
+    const q=b.dataset.r;
+    mostrarPreset("segRampa","rampaCustom",q);
+    if(q==="custom")return;
+    const v=PRE_RAMPA[q];
+    $("inA1").value=v[0];$("inA2").value=v[0];$("inSuav").value=v[1];
+    salvar($("inVc2").value).then(function(){carregou=false;});
+  };
+});
+$("hAvancado").onclick=function(){
+  const abrir=$("avancado").classList.contains("oculto");
+  $("avancado").className=abrir?"":"oculto";
+  $("hAvancado").classList.toggle("aberto",abrir);
+};
 $("inVc").onchange   =function(){salvar($("inVc").value);$("inVc2").value=$("inVc").value;};
 function prot(){
   return post("/api/protecoes?curso="+(D.protCurso?1:0)+
@@ -2104,6 +2244,8 @@ function calibAtualizar(){
     if($("afConta")) $("afConta").textContent=conta(jA);
     if($("rdConta")) $("rdConta").textContent=conta(jR);
 
+    guiaPintar(j);
+
     /* Comandado x medido: a conferencia final. */
     const cmp=function(n){
       const c=(n===1?D.t1:D.t2)||0, m=(n===1?D.m1:D.m2)||0;
@@ -2121,6 +2263,103 @@ setInterval(function(){
   if($("veuCfg")&&$("veuCfg").classList.contains("on")&&cfgAtual==="calib")
     calibAtualizar();
 }, 500);
+
+/* =====================================================================
+   CALIBRACAO GUIADA
+   O pedido: "necessito apenas encontrar a posicao [de referencia], poder
+   se mover pela mesa, e saber a reducao mecanica de cada eixo para o
+   desenho ser preciso".
+   Sao quatro passos, e a ORDEM importa -- cada um usa o anterior:
+     1. sentido   o eixo gira para o lado que a cinematica espera?
+                  Se nao, todo o resto e medido ao contrario.
+     2. reducao   quantas voltas do motor cabem num grau da junta. Sem
+                  ela o desenho na tela nao bate com o braco.
+     3. curso     ate onde cada junta vai. Depende da reducao: o curso e
+                  medido em graus.
+     4. mesa      onde a peca fica. Depende do curso: os cantos sao
+                  gravados com a ponta, e a ponta so vai aonde o curso
+                  deixa.
+   Este cartao nao refaz nenhum deles: ele diz qual e o proximo e abre o
+   cartao que faz o trabalho. Duplicar a acao aqui seria duplicar a
+   regra, e regra duplicada e regra que diverge.
+   ===================================================================== */
+const GUIA=[
+  {id:"sentido", n:"Sentido dos eixos",
+   por:"o braco tem de girar para o lado que o desenho mostra",
+   alvo:"sInv1"},
+  {id:"reducao", n:"Reducao de cada eixo",
+   por:"e ela que faz o desenho bater com o braco",
+   alvo:"btRdMarcar"},
+  {id:"curso",   n:"Curso das juntas",
+   por:"ate onde cada junta pode ir",
+   alvo:"btCalIni2"},
+  {id:"mesa",    n:"Area da mesa",
+   por:"onde a peca fica -- fora dela o braco nao se move",
+   alvo:"btMesaCanto"}
+];
+/* O sentido nao tem "pronto" gravado: nao ha o que medir, so o que
+   conferir. Fica marcado quando o operador diz que conferiu, e isso vive
+   no navegador -- e uma nota para ele mesmo, nao configuracao da
+   maquina. */
+function guiaSentidoOk(){
+  try{ return localStorage.getItem("guiaSentido")==="1"; }catch(e){ return false; }
+}
+function guiaPintar(j){
+  const feito={
+    sentido: guiaSentidoOk(),
+    /* Reducao 1,000 e o valor de fabrica: enquanto os dois eixos
+       estiverem nele, ninguem mediu nada. */
+    reducao: (Math.abs(j.red1-1)>0.001)||(Math.abs(j.red2-1)>0.001),
+    curso:   !!(j.cal1&&j.cal2),
+    mesa:    !!j.mesaOn
+  };
+  let prox=null;
+  let h="";
+  GUIA.forEach(function(p,i){
+    const ok=feito[p.id];
+    if(!ok&&!prox)prox=p;
+    h+='<div class="gp'+(ok?" ok":(prox===p?" agora":""))+'" data-guia="'+p.id+'">'+
+       '<div class="n">'+(ok?"\u2713":(i+1))+'</div>'+
+       '<div class="tt2">'+p.n+'<small>'+(ok?"pronto":p.por)+'</small></div></div>';
+  });
+  $("guiaLista").innerHTML=h;
+  $("guiaLista").querySelectorAll("[data-guia]").forEach(function(e){
+    e.onclick=function(){guiaIr(e.dataset.guia);};});
+
+  $("guiaAgora").textContent = prox
+    ? ("proximo passo: "+prox.n+" \u2014 "+prox.por)
+    : "os quatro passos estao prontos. O desenho na tela representa o braco de verdade.";
+  $("sbGuia").textContent = prox
+    ? (GUIA.filter(function(p){return feito[p.id];}).length+" de 4 prontos")
+    : "calibrada";
+}
+/* Abrir o cartao que faz o trabalho e levar o olho ate ele. */
+function guiaIr(id){
+  const p=GUIA.filter(function(x){return x.id===id;})[0];
+  if(!p)return;
+  const el=$(p.alvo);
+  if(!el)return;
+  if(id==="sentido"){
+    const av=$("avancado");
+    /* O sentido mora no "Avancado" da pagina Maquina: abrir a gaveta na
+       pagina certa e revelar o bloco, senao o passo aponta para o nada. */
+    irCfg("maquina");
+    const et=el.closest(".et");
+    if(et)et.classList.add("aberta");
+    if(av&&av.classList.contains("oculto"))$("hAvancado").click();
+  }else{
+    const et=el.closest(".et");
+    if(et)et.classList.add("aberta");
+  }
+  setTimeout(function(){
+    el.scrollIntoView({behavior:"smooth",block:"center"});
+  },80);
+}
+$("btGuiaSentidoOk").onclick=function(){
+  try{localStorage.setItem("guiaSentido","1");}catch(e){}
+  acao("GuiaSentidoOk","sentido conferido.");
+  calibAtualizar();
+};
 
 $("btRdMarcar").onclick=function(){
   post("/api/aferir/marcar?j="+$("rdJ").value).then(calibAtualizar);};
@@ -2143,7 +2382,6 @@ $("btMesaLimpar").onclick=function(){
    handler em vez de duplicar a regra. */
 $("btCalIni2").onclick=function(){ if($("btCalib"))$("btCalib").click(); };
 $("btCalApagar2").onclick=function(){ if($("btCalApagar"))$("btCalApagar").click(); };
-$("btIrArquivos").onclick=function(){ fecharCfg(); irAba("arq"); };
 
 /* ---------- zerar aqui e aferir a reducao ---------- */
 /* Os pulsos contados desde a marca aparecem em tempo real: sem isso o
@@ -4583,13 +4821,38 @@ function aplicar(d){
 
   $("resumoRes").textContent=
     "J1 · "+d.ppg1.toFixed(2)+" pulsos por grau"+
-    "\nJ2 · "+d.ppg2.toFixed(2)+" pulsos por grau";
-  /* O que cada junta vai pedir ao driver na velocidade de jog: e aqui
-     que se ve se algum eixo esta perto do teto do T3D. */
+    "\nJ2 · "+d.ppg2.toFixed(2)+" pulsos por grau"+
+    /* O que cada junta vai pedir ao driver na velocidade de jog: e aqui
+       que se ve se algum eixo esta perto do teto do T3D. */
+    "\nno jog o driver recebe "+Math.round(d.velN*d.ppg1)+" Hz e "+
+    Math.round(d.velN*d.ppg2)+" Hz";
+
+  /* Em palavras, nao em campos: o resumo e o que o operador le antes de
+     decidir se precisa mexer em alguma coisa. */
+  const qv=qualPreset(PRE_VEL,[d.velN,d.velP,d.velA,d.velCordao]);
+  const qr=qualPreset(PRE_RAMPA,[d.acel1,d.suav]);
   $("resumoVel").textContent=
-    "no jog normal ("+d.velN.toFixed(1)+" °/s) o driver recebe"+
-    "\nJ1 · "+Math.round(d.velN*d.ppg1)+" Hz"+
-    "\nJ2 · "+Math.round(d.velN*d.ppg2)+" Hz";
+    (qv==="custom"?"ajuste proprio":qv)+
+    " · jog "+d.velN.toFixed(0)+" °/s · precisao "+d.velP.toFixed(1)+
+    " °/s · deslocamento "+d.velA.toFixed(0)+" °/s · cordao "+
+    d.velCordao.toFixed(1)+" mm/s";
+  $("resumoRampa").textContent=
+    (qr==="custom"?"ajuste proprio":qr)+
+    " · aceleracao "+d.acel1.toFixed(0)+" °/s² · suavidade "+d.suav;
+  $("sbAjustes").textContent=
+    (qv==="custom"?"velocidade propria":"velocidade "+qv)+
+    " · partida "+(qr==="custom"?"propria":qr);
+  const nProt=(d.protCurso?1:0)+(d.protDobra?1:0)+(d.protEnv?1:0);
+  $("resumoArea").textContent = nProt===3
+    ? "as tres protecoes ligadas"
+    : nProt===0 ? "NENHUMA protecao ligada: o braco aceita qualquer postura"
+    : nProt+" de 3 protecoes ligadas -- "+
+      (!d.protCurso?"fim de curso ":"")+(!d.protDobra?"cotovelo ":"")+
+      (!d.protEnv?"mesa e base ":"")+"desligada(s)";
+  if(!carregou){
+    mostrarPreset("segVel","velCustom",qv);
+    mostrarPreset("segRampa","rampaCustom",qr);
+  }
 
   if(!carregou){
     carregou=true;
