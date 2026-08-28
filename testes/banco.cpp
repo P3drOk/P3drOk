@@ -229,11 +229,15 @@ static void reiniciarSistema() {
   // O barramento RS485 tambem e estado: um cenario que terminou com o
   // driver mudo deixava o seguinte gastando o tempo esgotado de cada
   // leitura, e o relogio do banco corria mais rapido que o movimento.
-  // Cada cenario comeca com o driver 1 respondendo e o 2 ausente, que e
-  // a bancada do operador.
+  // Cada cenario comeca com os DOIS drivers no barramento -- que e a
+  // maquina de verdade, e o que o habilita exige: o SON vai por Modbus
+  // desde que deixou de ser fio, e cortar o torque de um driver so
+  // deixaria meio braco energizado. Quem quiser encenar a bancada do
+  // operador (um driver so) desliga o segundo no proprio cenario, como
+  // os testes de encoder fazem.
   g_uart.escravo[0] = EscravoModbus{};
   g_uart.escravo[1] = EscravoModbus{};
-  g_uart.escravo[1].existe = false;
+  g_uart.escravo[1].id = 2;
   g_uart.escravo[0].velocidade = g_uart.escravo[1].velocidade = 0;
   g_uart.moduloLigado = false;
   g_uart.pinoRe       = -1;
@@ -764,6 +768,7 @@ static void teste_A10_json_status() {
     "\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
+    "\"sonReg\":%u,\"sonL\":%u,\"sonD\":%u,\"sonF16\":%s,\"sonEst\":%u,"
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
@@ -782,6 +787,7 @@ static void teste_A10_json_status() {
     "false","false", 4294967295UL, 4294967295UL,
     -999.99f, -999.99f, "false", "false", 100u,
     "false", -9999.0f, 9999.0f, -9999.0f, 9999.0f,
+    65535u, 65535u, 65535u, "false", 255u,
     msg);
 
   checar(n < 1520, "A10a", "o JSON de status precisa caber no buffer de 1520 bytes");
@@ -2809,7 +2815,14 @@ static void prepararEncoder(uint16_t reg, bool baixaPrimeiro, int32_t posicao) {
   g_uart.escravo[0].regBase = reg;
   g_uart.escravo[0].baixaPrimeiro = baixaPrimeiro;
   g_uart.escravo[0].posicao = posicao;
-  g_uart.escravo[1].existe = false;    // o segundo driver ainda nao existe
+  // O driver 2 continua NO BARRAMENTO -- so a POSICAO da junta 2 e que
+  // nao esta configurada (reg[1] = 0, abaixo). Sao coisas diferentes, e
+  // a diferenca passou a importar quando o habilita virou Modbus: o SON
+  // vai para os dois drivers, e um driver ausente recusaria habilitar a
+  // maquina inteira num cenario que so queria testar leitura de um eixo.
+  g_uart.escravo[1] = EscravoModbus{};
+  g_uart.escravo[1].id = 2;
+  g_uart.escravo[1].velocidade = 0;
 
   encoderPendente = configEncoder;
   encoderPendente.ativo         = true;
@@ -3790,7 +3803,13 @@ static void religarComEncoder(int32_t bruto, bool mudo = false) {
   g_uart.escravo[0].baixaPrimeiro = true;
   g_uart.escravo[0].posicao = bruto;
   g_uart.escravo[0].mudo = mudo;
-  g_uart.escravo[1].existe = false;
+  // O driver 2 volta ao ar junto com o 1: religar a maquina nao tira um
+  // driver do barramento, e sem ele o habilita (que agora e Modbus nos
+  // dois) recusaria energizar depois do boot.
+  g_uart.escravo[1] = EscravoModbus{};
+  g_uart.escravo[1].id = 2;
+  g_uart.escravo[1].mudo = mudo;
+  g_uart.escravo[1].velocidade = 0;
 
   correcaoReiniciarTeste();
 }
@@ -4284,6 +4303,178 @@ static void teste_P05_o_que_encerra_o_aprendizado() {
 // Com contato NC ligado ao GND e pull-up interno, fio partido e
 // indistinguivel de botao apertado -- e e assim que tem de ser. Se
 // alguem trocar a polaridade de novo, este cenario reprova.
+// =====================================================================
+//  V - O habilita (SON) pelo barramento
+//
+//  O SON deixou de ser fio. Isso trocou uma coisa que falhava sozinha
+//  para o lado seguro por uma que nao falha para lado nenhum: RS485
+//  rompido deixa o driver como estava. O que segue e a rede que se pos
+//  no lugar -- toda escrita conferida relendo, e desabilitar que nao
+//  confirma virando FALHA em vez de silencio.
+// =====================================================================
+static void teste_V01_habilita_pelo_barramento() {
+  secao("V01  Habilitar e desabilitar pelo Modbus, com prova de releitura");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  const uint16_t reg = configSon.reg;
+  nota("registrador do habilita: %u (liga=%u, desliga=%u)",
+       (unsigned)reg, (unsigned)configSon.valLiga, (unsigned)configSon.valDesliga);
+
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(60);
+  const auto& d1 = g_uart.escravo[0].escritos;
+  const auto& d2 = g_uart.escravo[1].escritos;
+  const bool gravou1 = d1.count(reg) && d1.at(reg) == configSon.valLiga;
+  const bool gravou2 = d2.count(reg) && d2.at(reg) == configSon.valLiga;
+  nota("apos habilitar: servos=%d | driver 1 gravou=%d, driver 2 gravou=%d",
+       (int)servosLigados, (int)gravou1, (int)gravou2);
+  checar(servosLigados && gravou1 && gravou2, "V01a",
+         "habilitar escreve o valor nos DOIS drivers, nao so no primeiro");
+
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(60);
+  const bool zerou1 = d1.count(reg) && d1.at(reg) == configSon.valDesliga;
+  const bool zerou2 = d2.count(reg) && d2.at(reg) == configSon.valDesliga;
+  nota("apos desabilitar: servos=%d | driver 1=%u, driver 2=%u",
+       (int)servosLigados,
+       (unsigned)(d1.count(reg) ? d1.at(reg) : 9999),
+       (unsigned)(d2.count(reg) ? d2.at(reg) : 9999));
+  checar(!servosLigados && zerou1 && zerou2, "V01b",
+         "desabilitar tambem vai nos dois: meio braco com torque e pior que nenhum");
+
+  // Habilitar e desabilitar dao os dois SON_OK. Se a supervisao olhasse
+  // o codigo de resultado em vez do pedido, esta sequencia nao teria
+  // transicao para ver e a tela ficaria em "habilitado" com o braco solto.
+  enviarComando(CMD_SERVOS, 1); rodarComWeb(60);
+  const bool ligouDeNovo = servosLigados;
+  enviarComando(CMD_SERVOS, 0); rodarComWeb(60);
+  nota("liga -> desliga em sequencia: ligou=%d, desligou=%d",
+       (int)ligouDeNovo, (int)!servosLigados);
+  checar(ligouDeNovo && !servosLigados, "V01c",
+         "dois pedidos seguidos com o mesmo resultado nao se confundem");
+}
+
+static void teste_V02_escrita_que_nao_confirma() {
+  secao("V02  Driver que responde \"aceitei\" e guarda o valor velho");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Parte do desabilitado: reescrever o valor que ja esta la confirmaria
+  // sozinho, e o cenario nao provaria nada.
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(60);
+
+  // O driver que MENTE. Existe de verdade: registrador so de leitura,
+  // escrita bloqueada por nivel de acesso, parametro que so vale com o
+  // servo parado. E o motivo de a escrita ser conferida relendo.
+  g_uart.escravo[0].escritaMuda = true;
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(80);
+  nota("driver que aceita e nao guarda: servos=%d -- \"%s\"",
+       (int)servosLigados, ultimaMensagem);
+  checar(!servosLigados, "V02a",
+         "escrita sem releitura confirmada NAO conta como habilitado");
+  checar(modoAtual != MODO_FALHA, "V02b",
+         "habilitar que falha e so um comando que nao pegou: o braco segue sem torque");
+
+  // Agora o caso grave: o eixo esta ENERGIZADO e o desabilita se perde.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(60);
+  const bool estavaLigado = servosLigados;
+
+  g_uart.escravo[0].escritaMuda = true;
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(80);
+  nota("desabilitar perdido com o eixo energizado: modo=%d -- \"%s\"",
+       (int)modoAtual, ultimaMensagem);
+  checar(estavaLigado && modoAtual == MODO_FALHA, "V02c",
+         "desabilitar que nao confirma derruba a maquina em FALHA");
+  checar(!servosLigados, "V02d",
+         "e o firmware nao segue dizendo que o braco esta habilitado");
+}
+
+static void teste_V03_barramento_mudo_e_sem_registrador() {
+  secao("V03  Barramento mudo, e o registrador que ninguem configurou");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  g_uart.escravo[0].mudo = true;
+  g_uart.escravo[1].mudo = true;
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(200);
+  nota("barramento mudo: servos=%d -- \"%s\"", (int)servosLigados, ultimaMensagem);
+  checar(!servosLigados, "V03a",
+         "sem resposta no fio a maquina nao se declara habilitada");
+
+  // Sem registrador nao ha habilita. Dizer que habilitou seria a tela
+  // mentindo sobre um braco que ninguem energizou.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  // A propria rota recusa mexer no registrador com o braco energizado
+  // (ver V05), entao o cenario tira o torque antes.
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(60);
+  webPost("/api/son/config?reg=0&liga=1&desl=0&f16=0");
+  rodarComWeb(20);
+  const uint32_t antes = g_uart.escravo[0].escritas;
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(60);
+  nota("registrador 0: servos=%d, escritas no fio=%lu -- \"%s\"",
+       (int)servosLigados,
+       (unsigned long)(g_uart.escravo[0].escritas - antes), ultimaMensagem);
+  checar(!servosLigados, "V03b",
+         "registrador 0 e \"nao configurado\": a maquina recusa habilitar");
+  checar(g_uart.escravo[0].escritas == antes, "V03c",
+         "e nao escreve em endereco nenhum -- o 0 e a tabela de parametros do driver");
+}
+
+static void teste_V04_driver_que_so_aceita_funcao_16() {
+  secao("V04  Driver que recusa a funcao 06");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  g_uart.escravo[0].soFuncao16 = true;
+  g_uart.escravo[1].soFuncao16 = true;
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(80);
+  nota("driver so-16 com o firmware na 06: servos=%d", (int)servosLigados);
+  checar(!servosLigados, "V04a",
+         "excecao na escrita nao vira habilitado por otimismo");
+
+  // Nao manda desabilitar aqui: o braco nunca chegou a ter torque, e um
+  // desabilita que tambem seria recusado cairia em FALHA -- e em FALHA a
+  // rota de configuracao e recusada, que e justamente o que o operador
+  // precisa alcancar para consertar. O caminho de saida existe (rearmar
+  // limpa a FALHA), mas o cenario aqui e outro.
+  webPost("/api/son/config?reg=98&liga=1&desl=0&f16=1");
+  rodarComWeb(20);
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(80);
+  nota("mesmo driver com a funcao 16 marcada: servos=%d", (int)servosLigados);
+  checar(servosLigados, "V04b",
+         "marcada a funcao 16 na tela, o mesmo driver passa a obedecer");
+}
+
+static void teste_V05_registrador_nao_muda_com_torque() {
+  secao("V05  Trocar o registrador do habilita com o braco energizado");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(60);
+
+  const uint16_t antes = configSon.reg;
+  const int cod = webPost("/api/son/config?reg=120&liga=1&desl=0&f16=0");
+  rodarComWeb(20);
+  nota("troca com servos ligados: HTTP %d, registrador segue %u -- \"%s\"",
+       cod, (unsigned)configSon.reg, ultimaMensagem);
+  checar(cod != 200 && configSon.reg == antes, "V05a",
+         "trocar o registrador com torque escreveria o desabilita no endereco "
+         "novo e deixaria o antigo ligado, sem ninguem saber");
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -5885,6 +6076,11 @@ int main() {
   teste_P04_sem_encoder_nao_solta_o_braco();
   teste_P05_o_que_encerra_o_aprendizado();
   teste_P06_pela_tela_tambem();
+  teste_V01_habilita_pelo_barramento();
+  teste_V02_escrita_que_nao_confirma();
+  teste_V03_barramento_mudo_e_sem_registrador();
+  teste_V04_driver_que_so_aceita_funcao_16();
+  teste_V05_registrador_nao_muda_com_torque();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

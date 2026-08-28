@@ -15,8 +15,9 @@
 #define PIN_J2_PULSO      18
 #define PIN_J2_DIR        19
 
-// Habilitacao dos servos (SON dos dois drivers, via optoacoplador)
-#define PIN_SERVO_ON      23
+// O habilita dos servos NAO tem pino. Ele vai por Modbus/RS485, no
+// registrador provado na bancada -- ver SON_REG_PADRAO mais abaixo e a
+// secao "Habilita (SON)" do LIGACOES.md. O GPIO 23 fica LIVRE.
 
 // Alarme dos drivers (ALM). GPIO 34/35 sao SOMENTE ENTRADA e nao possuem
 // pull-up interno: use pull-up externo de 10k para 3V3.
@@ -177,6 +178,49 @@ static const bool     ENC_BAIXA_PRIMEIRO = true;
 // bits, que e o que estes servos usam. Se a leitura andar rapido ou
 // devagar demais em graus, e este numero que se ajusta na tela.
 static const float    ENC_CONTAGENS_PADRAO = 131072.0f;   // encoder de 17 bits
+// ---------------------------------------------------------------------
+// HABILITA (SON) PELO MODBUS -- O UNICO CAMINHO
+//
+// Ate a versao anterior o habilita era um fio (GPIO 23, por
+// optoacoplador, no SON dos dois drivers). Ele saiu: nesta maquina o
+// P098 do painel governa o torque, e com ele em 1 o terminal externo nao
+// tinha efeito nenhum -- o fio ja era decorativo antes de sair.
+//
+// O QUE ISSO CUSTA, DITO SEM RODEIO
+//
+// Fio de SON rompido desabilitava o motor. Fio de RS485 rompido NAO
+// desabilita nada: deixa o eixo como estava. ESP32 travado idem. O
+// caminho do habilita deixou de ser falha segura, e nao ha configuracao
+// que o traga de volta.
+//
+// O QUE SOBRA NO LUGAR, E QUE PASSOU A SER OBRIGATORIO
+//
+//   1. CONTATOR em serie com a potencia dos drivers, aberto pelo contato
+//      NC do botao de emergencia. E o unico corte que funciona com o
+//      ESP32 morto. Ver LIGACOES.md secao 6.
+//   2. Escrita de desabilita que nao confirma na releitura derruba a
+//      maquina em MODO_FALHA e recusa comando. Melhor parar dizendo que
+//      nao sabe do que seguir achando que desligou.
+//
+// O REGISTRADOR FOI PROVADO, NAO CHUTADO
+//
+// Bancada com ferramentas/teste_rs485, modos d / d2 / s: o P098 do
+// painel e o registrador Modbus 98, habilita=1, desabilita=0, funcao 06,
+// id 1, 19200 8N1. reg = 0 significa NAO CONFIGURADO e nada e escrito --
+// registrador 0 e onde comeca a tabela de parametros do driver.
+static const uint16_t SON_REG_PADRAO      = 98;
+static const uint16_t SON_VAL_LIGA_PADRAO = 1;
+static const uint16_t SON_VAL_DESL_PADRAO = 0;
+// Quantas vezes insistir numa escrita que nao confirmou na releitura.
+// Desabilitar que se perde no fio e a falha que importa, entao a
+// insistencia existe para ela. Curta de proposito: ninguem pode ficar
+// preso esperando o barramento com o eixo energizado.
+static const uint8_t  SON_TENTATIVAS      = 3;
+// Prazo para a tarefa do core 0 confirmar o que o core 1 pediu. Passou
+// disso sem confirmar, e falha. Um ciclo da tarefa custa 5 ms e a
+// escrita com releitura cabe em ~60 ms; 500 ms e folga, nao chute.
+static const uint32_t SON_PRAZO_MS        = 500;
+
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;
 // Tempo maximo esperando a resposta do driver. 100 ms e o que o monitor

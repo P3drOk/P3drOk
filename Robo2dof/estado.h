@@ -243,6 +243,28 @@ struct ConfigEncoder {
 };
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
 
+// ---------------------------------------------------------------------
+// HABILITA (SON) PELO MODBUS
+//
+// O UNICO CAMINHO DO HABILITA. O fio do GPIO 23 saiu -- ver config.h
+// para o que isso custa e o que passou a ser obrigatorio no lugar.
+//
+// Usa os enderecos de escravo de configEncoder.id[]: sao os mesmos dois
+// drivers, no mesmo barramento. Duplicar o endereco aqui so criaria uma
+// segunda verdade para divergir da primeira.
+//
+// reg = 0 significa NAO CONFIGURADO, e nesse estado nada e escrito --
+// registrador 0 e onde comeca a tabela de parametros do driver. Sem
+// registrador a maquina nao habilita, e diz por que.
+// ---------------------------------------------------------------------
+struct ConfigSon {
+  uint16_t reg;          // registrador do habilita (0 = nao configurado)
+  uint16_t valLiga;
+  uint16_t valDesliga;
+  bool     funcao16;     // false = funcao 06, true = funcao 16
+};
+extern ConfigSon configSon;
+
 // Assentamento pelo encoder. Ver correcao.h para as regras.
 struct ConfigCorrecao {
   bool  ativa;             // assentar no fim de cada movimento

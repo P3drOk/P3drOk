@@ -1293,6 +1293,10 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="dentro">
             <button class="b pri" id="btServos">Habilitar servos</button>
             <div class="nt">Sem servo habilitado o braco fica sem torque, o arco fica travado e o jog e recusado.</div>
+            <div class="pq2" id="qSon"></div>
+            <div class="nt" id="ntSonFio">O habilita vai pelo <b>RS485</b>, nao por fio.
+            Se o barramento cair, o driver fica como estava &mdash; quem corta de
+            verdade e o <b>contator</b> da emergencia.</div>
             <h4>Medidas do braco</h4>
             <div class="cp"><label>Elo 1 · base ao cotovelo</label><input type="number" id="inL1" min="1"><span class="un">mm</span></div>
             <div class="cp"><label>Elo 2 · cotovelo a ponta</label><input type="number" id="inL2" min="1"><span class="un">mm</span></div>
@@ -1730,6 +1734,28 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
             <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
             <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
+            <h4 class="dobra">Habilita (SON)</h4>
+            <div class="sub">
+            <div class="nt">O habilita dos servos vai por este mesmo barramento.
+            O registrador nao se adivinha: ache com <b>ferramentas/teste_rs485</b>
+            (modos <b>d</b>, <b>d2</b>, <b>s</b>) e grave o numero aqui.
+            Escrever em parametro errado de um servo drive troca engrenagem
+            eletronica, modo de controle ou limite de torque &mdash; e isso nao
+            se desfaz por esta tela.</div>
+            <div class="cp"><label>Registrador do habilita</label><input type="number" id="sonReg" min="0" max="65535"></div>
+            <div class="cp"><label>Valor que habilita</label><input type="number" id="sonL" min="0" max="65535"></div>
+            <div class="cp"><label>Valor que desabilita</label><input type="number" id="sonD" min="0" max="65535"></div>
+            <div class="tr"><div class="ch" id="sonF16"><i></i></div>
+              <span>escrever pela funcao 16 (em vez da 06)</span></div>
+            <div class="nt">Ha driver que recusa a funcao 06 mesmo para um
+            registrador so. Se a escrita nao confirmar, marque aqui.</div>
+            <button class="b pri" id="btSonSalvar">Salvar habilita</button>
+            <div class="pq2" id="qSonSalvar"></div>
+            <div class="nt">Registrador <b>0</b> significa <b>nao configurado</b>:
+            nesse estado a maquina recusa habilitar e diz o motivo, em vez de
+            escrever num endereco chutado.</div>
+            </div>
+
             <h4>Formato do valor</h4>
             <div class="tr"><div class="ch" id="enc32"><i></i></div>
               <span>posicao em 32 bits (dois registradores)</span></div>
@@ -4601,6 +4627,39 @@ $("btEncSalvar").onclick=function(){
        "&id2="+$("encId2").value+"&reg2="+$("encReg2").value+"&cv2="+$("encCv2").value)
    .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
 };
+/* O habilita. Carrega uma vez do status para nao apagar o que o operador
+   esta digitando a cada atualizacao de tela. */
+var sonCarregou=false;
+$("sonF16").onclick=function(){$("sonF16").classList.toggle("on");};
+$("btSonSalvar").onclick=function(){
+  post("/api/son/config?reg="+$("sonReg").value+
+       "&liga="+$("sonL").value+"&desl="+$("sonD").value+
+       "&f16="+($("sonF16").classList.contains("on")?1:0),"qSonSalvar")
+   .then(function(){sonCarregou=false;});
+};
+
+/* Estado do ultimo pedido de habilita. SON_OCIOSO=0 PENDENTE=1 OK=2 FALHOU=3.
+   O caso que importa e o 3 depois de um desabilitar: o eixo pode estar
+   energizado e nao ha segundo caminho para cortar. */
+function sonPintar(d){
+  if(!sonCarregou&&d.sonReg!==undefined){
+    sonCarregou=true;
+    $("sonReg").value=d.sonReg;$("sonL").value=d.sonL;$("sonD").value=d.sonD;
+    $("sonF16").className="ch"+(d.sonF16?" on":"");
+  }
+  const q=$("qSon");if(!q)return;
+  if(d.sonReg===0){
+    q.textContent=tr("Habilita sem registrador: configure em Ajustes");
+    q.className="pq2 ruim";return;
+  }
+  if(d.sonEst===1){q.textContent=tr("falando com os drivers...");q.className="pq2";return;}
+  if(d.sonEst===3){
+    q.textContent=tr("o barramento nao confirmou o ultimo comando de habilita");
+    q.className="pq2 ruim";return;
+  }
+  q.textContent="";q.className="pq2";
+}
+
 $("btEncPadroes").onclick=function(){
   post("/api/encoder/padroes").then(function(){
     encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
@@ -4697,6 +4756,7 @@ function lamp(el,cls,txt){
 function aplicar(d){
   Object.assign(D,d);
   if(!jaEnquadrou){jaEnquadrou=true;autoEnquadrar();}
+  sonPintar(d);
   const pronto=d.cal1&&d.cal2&&d.servos;
   const rodando=(d.modo==="EXECUTANDO");
   const movendo=d.movendo;

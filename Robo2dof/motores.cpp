@@ -1,9 +1,23 @@
 #include "motores.h"
 #include "cinematica.h"
 #include "solda.h"
+#include "encoder.h"
 #include <math.h>
 
 static FastAccelStepperEngine engine = FastAccelStepperEngine();
+
+// O ultimo pedido de habilita, e se ele ainda espera resposta. Escritos
+// e lidos so pelo core 1, que e quem chama servosHabilitar e quem
+// supervisiona.
+//
+// A supervisao acompanha o PEDIDO, nao o codigo de resultado. Comparar
+// resultados parece equivalente e nao e: habilitar que deu certo e
+// desabilitar que deu certo sao os dois SON_OK, entao um desabilita logo
+// depois de um habilita nao teria transicao nenhuma para ver -- e a tela
+// continuaria dizendo "habilitado" com o braco ja solto.
+static bool sonPedidoEraLigar = false;
+static bool sonAguardando     = false;
+
 
 static int8_t   jogDir[2]     = {0, 0};
 static uint32_t jogUltimoMs[2] = {0, 0};
@@ -27,8 +41,13 @@ bool motoresIniciar() {
   J1.pinoPulso = PIN_J1_PULSO; J1.pinoDir = PIN_J1_DIR; J1.pinoAlarme = PIN_ALARME_J1;
   J2.pinoPulso = PIN_J2_PULSO; J2.pinoDir = PIN_J2_DIR; J2.pinoAlarme = PIN_ALARME_J2;
 
-  pinMode(PIN_SERVO_ON, OUTPUT);
-  digitalWrite(PIN_SERVO_ON, LOW);
+  sonPedidoEraLigar = false;
+  sonAguardando     = false;
+
+  // O habilita nao tem pino: vai por Modbus, na tarefa do encoder. No
+  // boot ninguem escreveu nada ainda, entao o que o firmware SABE e que
+  // nao habilitou -- nao que o driver esteja desabilitado. Sao coisas
+  // diferentes, e a segunda so se descobre escrevendo.
   servosLigados = false;
 
   if (ALARME_FISICO_INSTALADO) {
@@ -62,9 +81,80 @@ void servosHabilitar(bool ligar) {
     pararSuave();
     soldaDesligar();
   }
-  digitalWrite(PIN_SERVO_ON, ligar ? HIGH : LOW);
-  servosLigados = ligar;
-  definirMensagem(ligar ? "Servos habilitados" : "Servos desabilitados (sem torque)");
+
+  // Sem registrador nao ha habilita. Dizer "habilitado" aqui seria a
+  // tela mentindo sobre um braco que ninguem energizou -- ou, pior, um
+  // desabilita que nunca saiu.
+  if (configSon.reg == 0) {
+    servosLigados = false;
+    definirMensagem("Habilita nao configurado: ache o registrador em "
+                    "Ajustes antes de mover a maquina");
+    return;
+  }
+
+  sonPedidoEraLigar = ligar;
+  sonAguardando     = true;
+  encoderPedirSon(ligar);
+  // O pedido e assincrono, e quem confere e supervisionarSon() a cada
+  // ciclo. Ate a confirmacao chegar, o firmware assume o lado SEGURO: ao
+  // habilitar so acredita depois do OK; ao desabilitar ja para de deixar
+  // a maquina andar, mesmo antes de o driver responder.
+  servosLigados = false;
+  definirMensagem(ligar ? "Habilitando os servos pelo barramento..."
+                        : "Desabilitando os servos pelo barramento...");
+}
+
+// ---------------------------------------------------------------------
+// A confirmacao do habilita, olhada a cada ciclo pelo core 1.
+//
+// Existe porque o caminho do habilita deixou de ser falha segura quando
+// o fio saiu. Um pino errado se percebe na hora; um quadro Modbus que se
+// perdeu no barramento nao se percebe nunca, a menos que alguem olhe.
+//
+// Devolve true quando uma escrita de DESABILITAR falhou -- o caso em que
+// a maquina tem de cair em FALHA, porque nao se sabe se o eixo esta
+// energizado e nao ha outro caminho para tirar o torque.
+// ---------------------------------------------------------------------
+bool servosSupervisionar(bool& habilitouAgora) {
+  habilitouAgora = false;
+  if (!sonAguardando) return false;
+
+  const uint8_t e = encoderSonEstado();
+  if (e == SON_PENDENTE || e == SON_OCIOSO) return false;
+  sonAguardando = false;
+
+  const bool pedidoEraLigar = sonPedidoEraLigar;
+
+  if (e == SON_OK) {
+    if (pedidoEraLigar) {
+      servosLigados = true;
+      habilitouAgora = true;
+      definirMensagem("Servos habilitados");
+    } else {
+      servosLigados = false;
+      definirMensagem("Servos desabilitados (sem torque)");
+    }
+    return false;
+  }
+
+  if (e == SON_FALHOU) {
+    char motivo[96];
+    encoderSonMotivo(motivo, sizeof(motivo));
+    servosLigados = false;
+    if (pedidoEraLigar) {
+      // Habilitar que falhou e so um comando que nao pegou: o braco
+      // continua sem torque, que e o estado seguro. Diz e segue.
+      definirMensagem("Nao consegui habilitar: %s", motivo);
+      return false;
+    }
+    // Desabilitar que falhou e outra coisa inteiramente. O eixo pode
+    // estar energizado, o firmware nao sabe, e nao existe segundo
+    // caminho para cortar. Isso e FALHA.
+    definirMensagem("DESABILITAR NAO CONFIRMOU: %s. "
+                    "Corte a potencia dos drivers pelo contator.", motivo);
+    return true;
+  }
+  return false;
 }
 
 bool motoresLerAlarmes() {

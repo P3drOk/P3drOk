@@ -55,9 +55,14 @@ o script `testes/conferir_ligacoes.py` reprova se ela discordar de
 | J1 direção | 17 | `DIR+` |
 | J2 pulso | 18 | |
 | J2 direção | 19 | |
-| Habilita servos | 23 | `SON` dos dois drivers, via optoacoplador |
 | Alarme J1 | 34 | **só entrada**, precisa de pull-up externo de 10 k |
 | Alarme J2 | 35 | idem |
+
+> **O habilita não está nesta tabela.** Ele deixou de ser fio: vai por
+> **Modbus**, no registrador **98** (o `P098` do painel), pelo mesmo
+> RS485 que lê o encoder. O GPIO 23 ficou livre. Em troca, o **contator**
+> da emergência passou a ser obrigatório — é o único corte que funciona
+> com o ESP32 travado. Ver `LIGACOES.md` §3.3 e §6.
 
 > GPIO 34 e 35 não têm pull-up interno. Sem o resistor externo, o pino
 > flutua e o firmware lê ruído. O flag `ALARME_FISICO_INSTALADO` fica
@@ -560,8 +565,8 @@ braço está solto. É por isso que o modo depende do encoder, e não de
 mais um sensor.
 
 **Quando o braço NÃO é solto.** Só quando as duas juntas estão no
-barramento com o zero absoluto ensinado. O SON é um fio só para os dois
-drivers: soltar por causa da junta 1 solta a 2 junto, e uma junta que
+barramento com o zero absoluto ensinado. O habilita é um comando só para
+os dois drivers: soltar por causa da junta 1 solta a 2 junto, e uma junta que
 cai sem ninguém medindo grava ponto torto sem avisar. Faltando isso o
 modo entra assim mesmo, com torque — você posiciona pelas setas e grava
 igual. A tela diz qual dos dois está valendo.

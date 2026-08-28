@@ -232,6 +232,162 @@ static bool lerPosicao(uint8_t i, int32_t& valor, uint8_t& motivo) {
 }
 
 // =====================================================================
+//  ESCRITA -- o habilita (SON) dos drivers
+//
+//  Este modulo lia e so lia. O habilita deixou de ser um pino e passou a
+//  morar aqui, entao a escrita entrou -- mas por uma porta estreita: um
+//  registrador so, o configurado em configSon, e nada mais. Nenhuma
+//  outra funcao deste arquivo escreve.
+//
+//  Toda escrita e CONFERIDA RELENDO. Driver que responde "aceitei" e
+//  guarda outra coisa existe: registrador so de leitura, escrita
+//  bloqueada por nivel de acesso, parametro que so vale com o servo
+//  parado. Sem reler, o firmware diria "desabilitado" com o eixo
+//  energizado -- que e exatamente a mentira que nao se pode contar aqui.
+// =====================================================================
+static volatile uint8_t  pedidoSon   = 0;   // 0 nada, 1 ligar, 2 desligar
+static volatile uint8_t  estadoSon   = SON_OCIOSO;
+static volatile uint32_t sonPedidoMs = 0;
+static char sonMotivo[96] = "";
+
+// Declarada aqui porque escreverUm() a usa para conferir, e ela vem
+// logo abaixo -- a confirmacao e parte da escrita, nao um passo a parte.
+static bool lerUmaPalavra(uint8_t id, uint16_t reg, uint16_t& valor);
+
+// Um quadro de escrita, ja conferido relendo. 'id' e explicito porque
+// aqui nao se escreve "para a junta i" e sim para um endereco do
+// barramento -- os dois drivers podem compartilhar o mesmo.
+static bool escreverUm(uint8_t id, uint16_t reg, uint16_t valor, bool usar16) {
+  uint8_t q[11];
+  size_t nq = 0;
+  q[0] = id;
+  if (usar16) {
+    // Funcao 16: ha driver que recusa a 06 mesmo para um registrador so.
+    q[1] = 16;
+    q[2] = (uint8_t)(reg >> 8);   q[3] = (uint8_t)(reg & 0xFF);
+    q[4] = 0;                     q[5] = 1;      // um registrador
+    q[6] = 2;                                    // dois bytes
+    q[7] = (uint8_t)(valor >> 8); q[8] = (uint8_t)(valor & 0xFF);
+    nq = 9;
+  } else {
+    q[1] = 6;
+    q[2] = (uint8_t)(reg >> 8);   q[3] = (uint8_t)(reg & 0xFF);
+    q[4] = (uint8_t)(valor >> 8); q[5] = (uint8_t)(valor & 0xFF);
+    nq = 6;
+  }
+  const uint16_t c = crc16(q, nq);
+  q[nq]     = (uint8_t)(c & 0xFF);
+  q[nq + 1] = (uint8_t)(c >> 8);
+  nq += 2;
+
+  // As duas funcoes respondem com 8 bytes: eco do cabecalho e CRC.
+  uint8_t r[16];
+  const size_t n = trocar(q, nq, r, sizeof(r), 8);
+
+  portENTER_CRITICAL(&travaEnc);
+  memcpy(ultimoEnvio, q, nq < sizeof(ultimoEnvio) ? nq : sizeof(ultimoEnvio));
+  nEnvio = (uint8_t)(nq < sizeof(ultimoEnvio) ? nq : sizeof(ultimoEnvio));
+  memcpy(ultimaResposta, r, n < sizeof(ultimaResposta) ? n : sizeof(ultimaResposta));
+  nResposta = (uint8_t)(n < sizeof(ultimaResposta) ? n : sizeof(ultimaResposta));
+  portEXIT_CRITICAL(&travaEnc);
+
+  if (n < 5) return false;
+  const uint16_t cc = crc16(r, n - 2);
+  if (r[n - 2] != (uint8_t)(cc & 0xFF) || r[n - 1] != (uint8_t)(cc >> 8)) return false;
+  if (r[0] != id) return false;
+  if (r[1] & 0x80) return false;          // o driver recusou a escrita
+
+  // A prova nao e o "aceitei": e o valor de volta.
+  uint16_t lido = 0;
+  if (!lerUmaPalavra(id, reg, lido)) return false;
+  return lido == valor;
+}
+
+// Le um registrador pela funcao 3 (holding), que e onde parametro mora.
+// A funcao 4 e so de leitura e nunca guardaria o que acabamos de
+// escrever, entao a confirmacao tem de vir pela 3 mesmo que o encoder
+// esteja configurado na 4.
+static bool lerUmaPalavra(uint8_t id, uint16_t reg, uint16_t& valor) {
+  uint8_t q[8];
+  q[0] = id;  q[1] = 3;
+  q[2] = (uint8_t)(reg >> 8);  q[3] = (uint8_t)(reg & 0xFF);
+  q[4] = 0;                    q[5] = 1;
+  const uint16_t c = crc16(q, 6);
+  q[6] = (uint8_t)(c & 0xFF);  q[7] = (uint8_t)(c >> 8);
+
+  uint8_t r[16];
+  const size_t n = trocar(q, 8, r, sizeof(r), 7);
+  if (n < 7) return false;
+  const uint16_t cc = crc16(r, n - 2);
+  if (r[n - 2] != (uint8_t)(cc & 0xFF) || r[n - 1] != (uint8_t)(cc >> 8)) return false;
+  if (r[0] != id || r[1] != 3 || r[2] != 2) return false;
+  valor = (uint16_t)((r[3] << 8) | r[4]);
+  return true;
+}
+
+// Escreve o habilita nos DOIS drivers. Os dois tem de confirmar: meio
+// braco energizado e pior que nenhum, porque parece que obedeceu.
+//
+// Enderecos iguais = um driver so na bancada, e ai se escreve uma vez.
+static void executarSon(bool ligar) {
+  const uint16_t valor = ligar ? configSon.valLiga : configSon.valDesliga;
+  const uint8_t  idA   = configEncoder.id[0];
+  const uint8_t  idB   = configEncoder.id[1];
+
+  bool tudoOk = true;
+  uint8_t falhou = 0;
+  for (uint8_t k = 0; k < 2; k++) {
+    const uint8_t id = k ? idB : idA;
+    if (k == 1 && idB == idA) break;      // um driver so
+
+    bool ok = false;
+    for (uint8_t t = 0; t < SON_TENTATIVAS && !ok; t++)
+      ok = escreverUm(id, configSon.reg, valor, configSon.funcao16);
+    if (!ok) { tudoOk = false; falhou = id; }
+  }
+
+  if (tudoOk) {
+    estadoSon = SON_OK;
+    sonMotivo[0] = '\0';
+  } else {
+    estadoSon = SON_FALHOU;
+    snprintf(sonMotivo, sizeof(sonMotivo),
+             "driver %u nao confirmou %s no registrador %u",
+             (unsigned)falhou, ligar ? "habilitar" : "DESABILITAR",
+             (unsigned)configSon.reg);
+  }
+}
+
+// Chamado pelo CORE 1. So deixa recado: quem fala no barramento e a
+// tarefa do core 0, e escrever daqui por baixo de uma leitura em
+// andamento corromperia os dois quadros.
+void encoderPedirSon(bool ligar) {
+  sonMotivo[0] = '\0';
+  estadoSon   = SON_PENDENTE;
+  sonPedidoMs = millis();
+  pedidoSon   = ligar ? 1 : 2;
+}
+
+uint8_t encoderSonEstado() {
+  // Pedido que nao foi atendido no prazo e falha, nao espera eterna. A
+  // tarefa do core 0 pode ter morrido, e ficar "pendente" para sempre
+  // seria a tela dizendo "calma" com o eixo energizado.
+  if (estadoSon == SON_PENDENTE &&
+      (int32_t)(millis() - sonPedidoMs) > (int32_t)SON_PRAZO_MS) {
+    estadoSon = SON_FALHOU;
+    if (!sonMotivo[0])
+      snprintf(sonMotivo, sizeof(sonMotivo),
+               "o barramento nao respondeu em %u ms", (unsigned)SON_PRAZO_MS);
+  }
+  return estadoSon;
+}
+
+void encoderSonMotivo(char* destino, size_t tam) {
+  if (!destino || !tam) return;
+  snprintf(destino, tam, "%s", sonMotivo);
+}
+
+// =====================================================================
 //  Autoteste dentro do sistema rodando. Ver encoder.h.
 // =====================================================================
 static volatile bool pedidoTeste  = false;
@@ -781,6 +937,17 @@ static void ciclo() {
   // O teste roda AQUI, na tarefa do encoder: ele mexe no modo da UART e
   // nos pinos do transceptor, e fazer isso de outro nucleo por baixo de
   // uma leitura em andamento corromperia o quadro.
+  // O habilita vem primeiro. Ele e o unico caminho que sobrou para tirar
+  // torque do braco: nao pode ficar atras de um autoteste de 3 segundos
+  // na fila.
+  if (pedidoSon) {
+    const uint8_t o = pedidoSon;
+    pedidoSon = 0;
+    executarSon(o == 1);
+    proximaEm = millis();
+    return;
+  }
+
   if (pedidoTeste) {
     pedidoTeste = false;
     executarTeste();
@@ -890,6 +1057,9 @@ void encoderReiniciarTeste() {
   // setup(), e uma cacada marcada num cenario valeria no seguinte.
   pedidoTeste  = false;
   pedidoCaca   = 0;
+  pedidoSon    = 0;
+  estadoSon    = SON_OCIOSO;
+  sonMotivo[0] = '\0';
   testeRodando = false;
   cacaEtapa    = 0;
   strcpy(relatorio, "nenhum teste rodado ainda");

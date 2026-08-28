@@ -62,6 +62,14 @@ ConfigCorrecao configCorrecao = {
 // esta chave esteja ligada.
 ConfigZero configZero = { true, true, 0.30f, {false, false} };
 
+// O habilita, agora que ele mora no barramento e nao num pino. Os
+// padroes sao os PROVADOS na bancada desta maquina (teste_rs485, modos
+// d/d2/s): P098 do painel = registrador 98, 1 habilita, 0 desabilita,
+// pela funcao 06.
+ConfigSon configSon = {
+  SON_REG_PADRAO, SON_VAL_LIGA_PADRAO, SON_VAL_DESL_PADRAO, false
+};
+
 ConfigEncoder encoderPendente = configEncoder;
 
 Modo        modoAtual     = MODO_MANUAL;
@@ -366,6 +374,10 @@ void carregarConfiguracoes() {
   configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", 0);
   configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", ENC_CONTAGENS_PADRAO);
   configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", ENC_CONTAGENS_PADRAO);
+  configSon.reg        = (uint16_t)prefs.getUInt("sonRg", SON_REG_PADRAO);
+  configSon.valLiga    = (uint16_t)prefs.getUInt("sonVL", SON_VAL_LIGA_PADRAO);
+  configSon.valDesliga = (uint16_t)prefs.getUInt("sonVD", SON_VAL_DESL_PADRAO);
+  configSon.funcao16   = prefs.getBool("sonF16", false);
   // Registrador 0 e o inicio da tabela de parametros, nunca a posicao.
   // Um 0 gravado por uma versao anterior significa "nunca foi
   // configurado" -- vale o padrao medido, nao um endereco que so pode
@@ -541,6 +553,10 @@ void salvarConfiguracoes() {
   prefs.putUInt ("encRg2", configEncoder.reg[1]);
   prefs.putFloat("encCv1", configEncoder.contagensPorVolta[0]);
   prefs.putFloat("encCv2", configEncoder.contagensPorVolta[1]);
+  prefs.putUInt ("sonRg",  configSon.reg);
+  prefs.putUInt ("sonVL",  configSon.valLiga);
+  prefs.putUInt ("sonVD",  configSon.valDesliga);
+  prefs.putBool ("sonF16", configSon.funcao16);
 
   prefs.end();
   Serial.println("[NVS] Configuracoes salvas.");

@@ -2630,12 +2630,72 @@ dele: gerador de QR, aba Maquina inteira, miniatura de peca, dicionario
 de ingles e os controles de producao. No Wi-Fi do proprio robo, 80 KB sao
 entre 0,3 e 0,6 s.
 
+## R89 · O habilita saiu do fio e foi para o barramento  ✅
+
+Na bancada, com `ferramentas/teste_rs485`, ficou provado que o **P098** do
+painel governa o torque deste driver — e que ele corresponde ao
+**registrador Modbus 98**, habilita=1, desabilita=0, função 06. A prova
+foi por foto da faixa (`d`), mudança no painel e comparação (`d2`), com um
+único registrador mudando; depois `s 98` confirmou o eixo travando e
+soltando.
+
+Isso mudou o diagnóstico do fio: com o P098 em 1, o terminal externo não
+tinha efeito nenhum. **O SON do GPIO 23 já era decorativo antes de sair.**
+
+O habilita passou a ir por Modbus (`configSon`, `encoderPedirSon()`), o
+GPIO 23 ficou livre, e `encoder.h` deixou de ser só-leitura — por uma
+porta estreita: um registrador, o configurado, e nenhum outro.
+
+**O que isso custa, e está escrito em três lugares.** Fio de SON rompido
+desabilitava o motor; fio de RS485 rompido não desabilita nada. O caminho
+do habilita deixou de ser falha segura e não há configuração que traga
+isso de volta. O que se pôs no lugar:
+
+1. **Contator** em série com a potência dos drivers, aberto pelo contato
+   NC da emergência — deixou de ser recomendação (`LIGACOES.md` §6).
+2. Toda escrita é conferida **relendo**, e desabilitar que não confirma
+   derruba a máquina em `FALHA` em vez de seguir achando que desligou.
+
+Dois defeitos apareceram enquanto isso era construído, e valem registro:
+
+- **A supervisão comparava o código de resultado**, não o pedido.
+  Habilitar que deu certo e desabilitar que deu certo são os dois
+  `SON_OK`: um desabilita logo depois de um habilita não teria transição
+  nenhuma para ver, e a tela continuaria dizendo "habilitado" com o braço
+  já solto. Passou a acompanhar o pedido pendente. Cenário **V01c**.
+- **O banco tratava "junta 2 sem posição configurada" como "driver 2 fora
+  do barramento".** São coisas diferentes, e a diferença só passou a
+  importar quando o habilita virou Modbus — o SON vai para os dois
+  drivers, e cortar o torque de um só deixaria meio braço energizado.
+
+Cenários **V01** a **V05**: escrita nos dois drivers, driver que responde
+"aceitei" e guarda o valor velho, barramento mudo, registrador 0 (não
+configurado, e nada é escrito), driver que só aceita a função 16, e a
+recusa de trocar o registrador com o braço energizado.
+
+## R90 · O alarme pelo barramento: ler é uma coisa, rearmar é outra  ✅
+
+O `ALM` continua sendo fio. Pelo Modbus dá para ler o **código** da falha
+em vez de só "tem falha" — o fio é um bit, o registrador é o motivo.
+
+Os modos entraram no sketch de bancada, não no firmware, e a separação é
+deliberada: `a <reg>` lê ao vivo e não escreve nada; `a <reg> <valor>`
+rearma, escreve, e confere relendo. A forma do comando é que diz qual é
+qual — a diferença entre olhar e mexer não podia depender de o operador
+lembrar de uma letra diferente.
+
+**O firmware não rearma alarme.** Alarme que volta sozinho é a máquina
+dizendo que algo está errado; rearmar repetido esconde exatamente o que
+precisa ser visto, gasta a EEPROM do driver e deixa o eixo energizando e
+desenergizando sem ninguém no controle. Isso é decisão de quem está na
+frente da máquina, com os olhos nela.
+
 ## Cobertura
 
-| banco | rodada 20 | rodada 22 | agora |
-|-------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | **367 / 0** |
-| interface | 121 / 0 | 125 / 0 | **209 / 0** |
+| banco | rodada 20 | rodada 22 | rodada 24 | agora |
+|-------|-----------|-----------|-----------|-------|
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **380 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **214 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

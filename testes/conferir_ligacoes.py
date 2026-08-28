@@ -18,7 +18,6 @@ ESPERADO = {
     "PIN_J1_DIR":    "Driver J1 · DIR+",
     "PIN_J2_PULSO":  "Driver J2 · PUL+",
     "PIN_J2_DIR":    "Driver J2 · DIR+",
-    "PIN_SERVO_ON":  "SON dos dois drivers",
     "PIN_ALARME_J1": "Driver J1 · ALM",
     "PIN_ALARME_J2": "Driver J2 · ALM",
     "PIN_ESTOP":     "Botão de emergência",

@@ -11,6 +11,13 @@ bool motoresIniciar();
 // Desabilitar tira o torque: use apenas com o braco apoiado.
 void servosHabilitar(bool ligar);
 
+// Confere, a cada ciclo do core 1, o que o barramento respondeu ao
+// ultimo pedido de habilita. Devolve true quando um DESABILITAR nao
+// confirmou -- caso em que a maquina tem de cair em FALHA: nao se sabe
+// se o eixo esta energizado e nao ha segundo caminho para cortar.
+// 'habilitouAgora' sai true no ciclo em que o habilita foi confirmado.
+bool servosSupervisionar(bool& habilitouAgora);
+
 // Le os pinos ALM dos drivers. Retorna true se houver alguma falha.
 bool motoresLerAlarmes();
 

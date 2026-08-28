@@ -1185,6 +1185,164 @@ static void diferenca(uint16_t ini, uint16_t fim, bool comparar) {
 }
 
 // =====================================================================
+//  MODO a -- o ALARME do driver: ler ao vivo e rearmar
+//
+//  O alarme e a outra metade do que o firmware precisa saber do driver.
+//  Ate aqui ele vinha por fio (ALM nos GPIO 34/35, com optoacoplador e
+//  pull-up). Pelo barramento da para ler o CODIGO da falha, e nao so
+//  "tem falha" -- o fio e um bit, o registrador e o motivo.
+//
+//  DUAS COISAS DIFERENTES, e a distincao importa:
+//
+//    LER      nao muda nada no driver. Pode rodar com a maquina inteira
+//             montada, com o eixo parado ou andando.
+//    REARMAR  escreve. So limpa alarme cuja CAUSA ja foi resolvida. Se o
+//             motivo continua la, o driver rearma e alarma de novo no
+//             mesmo instante -- e isso nao e defeito do rearme, e o
+//             driver fazendo o trabalho dele.
+//
+//  NUNCA REARME EM LACO. Alarme que volta sozinho e informacao: alguma
+//  coisa esta errada na maquina. Rearmar repetido esconde exatamente o
+//  que voce precisa ver, gasta a EEPROM do driver e deixa o eixo
+//  energizando e desenergizando sem ninguem no controle.
+//
+//  COMO ACHAR O REGISTRADOR: e a mesma receita do P098, com o gatilho
+//  trocado -- `d` para a foto, PROVOQUE UM ALARME de verdade (desligue o
+//  cabo do encoder do driver, ou force sobrecarga empurrando o eixo
+//  travado), e `d2`. O que mudou e o alarme. Ver RS485_T3D.md.
+// =====================================================================
+
+// Mostra o valor como numero, hex e bits. Alarme quase sempre e mascara
+// de bits: o codigo bruto sozinho nao diz nada, os bits dizem qual.
+static void imprimirAlarme(uint16_t v) {
+  Serial.print(v);
+  Serial.print("  0x");
+  if (v < 0x1000) Serial.print('0');
+  if (v < 0x100)  Serial.print('0');
+  if (v < 0x10)   Serial.print('0');
+  Serial.print(v, HEX);
+  Serial.print("  bits ");
+  for (int8_t b = 15; b >= 0; b--) {
+    Serial.print((v >> b) & 1);
+    if (b == 8) Serial.print(' ');
+  }
+  if (v == 0) Serial.print("   (sem alarme)");
+}
+
+// LER: vigia o registrador e avisa quando ele muda. So leitura.
+static void vigiarAlarme(uint16_t reg) {
+  Serial.println();
+  Serial.println("== ALARME AO VIVO (nada e escrito) ==");
+  Serial.print("driver "); Serial.print((int)idAtual);
+  Serial.print(", registrador "); Serial.println(reg);
+  Serial.println("Provoque a falha e veja o valor mudar.");
+  Serial.println("Aperte qualquer tecla para parar.");
+  Serial.println();
+
+  while (Serial.available()) Serial.read();
+  uint16_t anterior = 0;
+  bool     tinha    = false;
+  uint32_t falhas   = 0;
+  const uint32_t inicio = millis();
+
+  while (!Serial.available()) {
+    uint16_t v = 0; uint8_t c = 0;
+    if (lerUm(reg, v, c) == 1) {
+      if (!tinha || v != anterior) {
+        Serial.print("t+");
+        Serial.print((millis() - inicio) / 1000);
+        Serial.print("s  ");
+        imprimirAlarme(v);
+        if (tinha) { Serial.print("   <- mudou de "); Serial.print(anterior); }
+        Serial.println();
+        anterior = v;
+        tinha    = true;
+      }
+    } else if (++falhas % 20 == 1) {
+      Serial.println("  sem resposta -- confira id e velocidade (modo 3)");
+    }
+    delay(200);
+  }
+  while (Serial.available()) Serial.read();
+
+  Serial.println();
+  if (tinha) {
+    Serial.print("ultimo valor: "); imprimirAlarme(anterior); Serial.println();
+    Serial.println("Anote o valor COM falha e o valor SEM falha: sao eles");
+    Serial.println("que dizem ao firmware o que e alarme neste driver.");
+  } else {
+    Serial.println("nao consegui ler nenhuma vez. Rode o modo 3.");
+  }
+}
+
+// REARMAR: escreve o valor de limpeza e confere se o alarme saiu.
+static void rearmarAlarme(uint16_t reg, uint16_t valor, bool usar16) {
+  Serial.println();
+  Serial.println("== REARMAR ALARME ==");
+  Serial.print("driver "); Serial.print((int)idAtual);
+  Serial.print(", registrador "); Serial.print(reg);
+  Serial.print(", escrevendo "); Serial.println(valor);
+  Serial.println();
+  Serial.println("O EIXO PODE ENERGIZAR ao sair do alarme.");
+  Serial.println("Causa da falha ja resolvida? Area livre?");
+  Serial.println("Digite S para confirmar, qualquer outra coisa cancela.");
+  while (!Serial.available()) { }
+  const String conf = Serial.readStringUntil('\n');
+  if (conf.length() == 0 || (conf[0] != 'S' && conf[0] != 's')) {
+    Serial.println("cancelado.");
+    return;
+  }
+
+  uint16_t antes = 0; uint8_t c = 0;
+  const bool leuAntes = (lerUm(reg, antes, c) == 1);
+  if (leuAntes) { Serial.print("antes:  "); imprimirAlarme(antes); Serial.println(); }
+  else          { Serial.println("nao consegui ler antes de escrever."); }
+
+  uint8_t cod = 0;
+  const uint8_t r = escreverUm(reg, valor, usar16, cod);
+  if (r == 2) {
+    Serial.print("  EXCECAO ao escrever: "); Serial.println(textoExcecao(cod));
+    Serial.println("  Ha driver que rearma por outro registrador, ou so");
+    Serial.println("  com o servo desabilitado. Tente o SON em 0 antes.");
+    return;
+  }
+  if (r != 1) {
+    Serial.println("  sem resposta a escrita.");
+    return;
+  }
+
+  // O driver leva um tempo para reprocessar a falha. Ler no mesmo
+  // instante mostra o valor velho e faz o rearme parecer que falhou.
+  delay(300);
+
+  uint16_t depois = 0;
+  if (lerUm(reg, depois, c) != 1) {
+    Serial.println("escrevi, mas nao consegui reler. Sem prova de nada.");
+    return;
+  }
+  Serial.print("depois: "); imprimirAlarme(depois); Serial.println();
+  Serial.println();
+
+  if (leuAntes && depois == antes && antes != 0) {
+    Serial.println("O valor NAO mudou. Ou este registrador nao e o rearme,");
+    Serial.println("ou a causa da falha continua presente. Veja o painel:");
+    Serial.println("se o codigo ainda esta la, resolva a causa primeiro.");
+  } else if (depois == 0) {
+    Serial.println("Alarme limpo. Anote:");
+    Serial.print("  reg="); Serial.print(reg);
+    Serial.print("  rearme="); Serial.print(valor);
+    Serial.print("  funcao="); Serial.println(usar16 ? 16 : 6);
+  } else {
+    Serial.println("Mudou, mas nao zerou. Pode ser outra falha ainda ativa,");
+    Serial.println("ou este registrador guarda historico e nao estado.");
+    Serial.println("Use o modo a <reg> para ver o valor sem falha nenhuma.");
+  }
+  Serial.println();
+  Serial.println("NAO rearme em laco. Alarme que volta sozinho e a maquina");
+  Serial.println("dizendo que algo esta errado -- e nao ruido para calar.");
+}
+
+// =====================================================================
 //  MODO s -- testar o SON (habilita) por RS485, com o motor desacoplado
 //
 //  O QUE ISTO NAO E: nao e um jeito de habilitar o motor em operacao. No
@@ -1292,6 +1450,9 @@ static void menu() {
   Serial.println(" W 98 1         o mesmo pela funcao 16");
   Serial.println(" s 98           testar SON: habilita, voce confere, desabilita");
   Serial.println(" s 98 1 0       o mesmo dizendo os valores de habilita/desabilita");
+  Serial.println(" a 100          ALARME ao vivo: le e avisa quando muda (nao escreve)");
+  Serial.println(" a 100 0        REARMAR: escreve 0 no 100 e confere se limpou");
+  Serial.println(" A 100 0        o mesmo pela funcao 16");
   Serial.println(" b 19200        fixar a velocidade");
   Serial.println(" p 1            paridade: 0=8N1 1=8E1 2=8O1");
   Serial.println(" i 2            fixar o endereco do escravo");
@@ -1349,6 +1510,25 @@ void loop() {
     }
     case 'w': escrever(resto, false); break;
     case 'W': escrever(resto, true);  break;
+    // Um argumento = LER ao vivo. Dois = REARMAR (escreve). A diferenca
+    // entre olhar e mexer nao pode depender de o operador lembrar de uma
+    // letra diferente, entao ela esta na forma do comando.
+    case 'a':
+    case 'A': {
+      if (!resto.length()) {
+        Serial.println("uso: a <registrador>            ler ao vivo");
+        Serial.println("     a <registrador> <valor>    rearmar");
+        break;
+      }
+      const int esp = resto.indexOf(' ');
+      const uint16_t reg = (uint16_t)atol(
+          (esp > 0 ? resto.substring(0, esp) : resto).c_str());
+      if (esp <= 0) { vigiarAlarme(reg); break; }
+      const uint16_t val = (uint16_t)atol(resto.substring(esp + 1).c_str());
+      rearmarAlarme(reg, val, c == 'A');
+      break;
+    }
+
     case 's': {
       if (!resto.length()) { Serial.println("uso: s <registrador> [liga] [desliga]"); break; }
       uint16_t reg = 0, vL = 1, vD = 0;

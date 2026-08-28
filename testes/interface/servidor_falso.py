@@ -60,6 +60,8 @@ estado = {
     "pausa": False, "desf": False, "ciclos": 137, "cicSes": 9,
     "mesaOn": True, "mesaX0": 180.0, "mesaX1": 640.0,
     "mesaY0": -260.0, "mesaY1": 260.0,
+    # O habilita mora no barramento desde que o SON deixou de ser fio.
+    "sonReg": 98, "sonL": 1, "sonD": 0, "sonF16": False, "sonEst": 2,
     "m1": 9.02, "m2": -14.38, "m1ok": True, "m2ok": True, "trecho": 0,
     "msg": "Pronto. Habilite os servos para comecar",
 }
@@ -108,6 +110,7 @@ CALIBRACAO = {
     "passos1": 0, "passos2": 0, "enc1": True, "enc2": False,
     "mesaOn": True, "mesaN": 3,
     "mesaX0": 180.0, "mesaX1": 640.0, "mesaY0": -260.0, "mesaY1": 260.0,
+    "sonReg": 98, "sonL": 1, "sonD": 0, "sonF16": False, "sonEst": 2,
     "envY": -150.0, "envR": 40.0,
 }
 

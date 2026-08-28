@@ -205,6 +205,7 @@ static void handleStatus() {
     "\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
+    "\"sonReg\":%u,\"sonL\":%u,\"sonD\":%u,\"sonF16\":%s,\"sonEst\":%u,"
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
@@ -248,6 +249,9 @@ static void handleStatus() {
     (unsigned)progFracaoTrecho(),
     areaMesa.definida ? "true" : "false",
     areaMesa.xMin, areaMesa.xMax, areaMesa.yMin, areaMesa.yMax,
+    (unsigned)configSon.reg, (unsigned)configSon.valLiga,
+    (unsigned)configSon.valDesliga, configSon.funcao16 ? "true" : "false",
+    (unsigned)encoderSonEstado(),
     msgSegura);
 
   server.send(200, "application/json", json);
@@ -1178,6 +1182,47 @@ static void handleCorrecao() {
   ok();
 }
 
+// ---------------------------------------------------------------------
+// O habilita (SON), agora que ele mora no barramento.
+//
+// O registrador nao vem de fabrica adivinhado: vem PROVADO na bancada
+// com ferramentas/teste_rs485 (modos d / d2 / s). Esta porta existe para
+// gravar o numero que saiu de la, nao para experimentar em producao --
+// escrever em parametro errado de um servo drive troca engrenagem
+// eletronica, modo de controle ou limite de torque, e isso nao se desfaz
+// pela tela.
+// ---------------------------------------------------------------------
+static void handleSonConfig() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+
+  ConfigSon c = configSon;
+  c.reg        = (uint16_t)constrain(argL("reg", c.reg), 0, 65535);
+  c.valLiga    = (uint16_t)constrain(argL("liga", c.valLiga), 0, 65535);
+  c.valDesliga = (uint16_t)constrain(argL("desl", c.valDesliga), 0, 65535);
+  c.funcao16   = argL("f16", c.funcao16 ? 1 : 0) != 0;
+
+  if (c.valLiga == c.valDesliga) {
+    erro("habilita e desabilita nao podem ter o mesmo valor"); return;
+  }
+  // Trocar o registrador com o braco energizado escreveria o desabilita
+  // no endereco novo e deixaria o antigo ligado, sem ninguem sabendo.
+  if (servosLigados) {
+    erro("desabilite os servos antes de mexer no registrador do habilita");
+    return;
+  }
+
+  configSon = c;
+  salvarConfiguracoes();
+  if (c.reg == 0)
+    definirMensagem("Habilita sem registrador: a maquina nao energiza ate configurar");
+  else
+    definirMensagem("Habilita no registrador %u (liga=%u, desliga=%u, funcao %s)",
+                    (unsigned)c.reg, (unsigned)c.valLiga, (unsigned)c.valDesliga,
+                    c.funcao16 ? "16" : "06");
+  ok();
+}
+
 static void handleEncoderPadroes() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -1546,6 +1591,7 @@ void servidorIniciar() {
   server.on("/api/encoder",        HTTP_GET,  handleEncoder);
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);
   server.on("/api/encoder/padroes", HTTP_POST, handleEncoderPadroes);
+  server.on("/api/son/config",     HTTP_POST, handleSonConfig);
   server.on("/api/correcao",       HTTP_POST, handleCorrecao);
   server.on("/api/aprender",       HTTP_POST, handleAprender);
   server.on("/api/aferir/encoder", HTTP_POST, handleAferirEncoder);

@@ -1992,6 +1992,71 @@ async function fecharGaveta(pag) {
 
 
   // ------------------------------------------------------------------
+  // O habilita (SON) pelo barramento. O fio do GPIO 23 saiu, e o que
+  // ficou no lugar tem de estar alcancavel pela tela -- registrador
+  // errado aqui e maquina que nao energiza, ou pior, energiza escrevendo
+  // em parametro que ninguem queria.
+  // ------------------------------------------------------------------
+  await abrirGaveta(t, 'encoder');
+  await t.waitForTimeout(400);
+  await t.evaluate(() => {
+    document.querySelectorAll('#cfgEncoder .et').forEach(x => x.classList.add('aberta'));
+    document.querySelectorAll('#cfgEncoder h4.dobra').forEach(h => h.classList.add('aberta'));
+    document.querySelectorAll('#cfgEncoder .sub').forEach(d => { d.style.display = 'block'; });
+  });
+  await t.waitForTimeout(300);
+
+  const campos = await t.evaluate(() => ({
+    reg: document.getElementById('sonReg') ? document.getElementById('sonReg').value : null,
+    liga: document.getElementById('sonL') ? document.getElementById('sonL').value : null,
+    desl: document.getElementById('sonD') ? document.getElementById('sonD').value : null,
+    temF16: !!document.getElementById('sonF16'),
+    temBotao: !!document.getElementById('btSonSalvar'),
+  }));
+  checar(campos.temBotao && campos.temF16,
+         'Habilita: o bloco do SON existe na tela, com registrador e funcao',
+         JSON.stringify(campos));
+  checar(campos.reg === '98' && campos.liga === '1' && campos.desl === '0',
+         'Habilita: os campos vem preenchidos com o que a maquina respondeu',
+         'reg=' + campos.reg + ' liga=' + campos.liga + ' desl=' + campos.desl);
+
+  rotas = [];
+  await t.locator('#btSonSalvar').click();
+  await t.waitForTimeout(600);
+  const salvouSon = rotas.find(x => x.split('?')[0] === '/api/son/config');
+  checar(!!salvouSon && /reg=98/.test(salvouSon) &&
+         /liga=1/.test(salvouSon) && /desl=0/.test(salvouSon),
+         'Habilita: salvar manda registrador e os dois valores para a maquina',
+         salvouSon || rotas.join(' '));
+
+  // Registrador 0 = nao configurado. A tela tem de dizer isso, senao o
+  // operador aperta "habilitar servos" e nao entende por que nada acontece.
+  await t.request.post(BASE + '/teste/estado', { data: { sonReg: 0 } });
+  await t.waitForTimeout(900);
+  const semReg = await t.evaluate(() => {
+    const q = document.getElementById('qSon');
+    return { txt: q ? q.textContent.trim() : '', cls: q ? q.className : '' };
+  });
+  checar(/registrador/i.test(semReg.txt) && /ruim/.test(semReg.cls),
+         'Habilita: sem registrador a tela avisa, em vez de ficar muda',
+         semReg.txt);
+
+  // O caso grave: o barramento nao confirmou. Nao da para deixar isso
+  // so no log -- e o unico caminho que existe para tirar torque.
+  await t.request.post(BASE + '/teste/estado', { data: { sonReg: 98, sonEst: 3 } });
+  await t.waitForTimeout(900);
+  const naoConfirmou = await t.evaluate(() => {
+    const q = document.getElementById('qSon');
+    return { txt: q ? q.textContent.trim() : '', cls: q ? q.className : '' };
+  });
+  checar(/confirm/i.test(naoConfirmou.txt) && /ruim/.test(naoConfirmou.cls),
+         'Habilita: barramento que nao confirmou aparece na tela',
+         naoConfirmou.txt);
+
+  await t.request.post(BASE + '/teste/estado', { data: { sonReg: 98, sonEst: 2 } });
+  await t.waitForTimeout(700);
+
+  // ------------------------------------------------------------------
   // Idiomas. O que interessa e a ida E a volta: uma traducao que nao
   // desfaz deixa a maquina em ingles para sempre.
   // ------------------------------------------------------------------

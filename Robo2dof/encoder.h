@@ -15,9 +15,19 @@
 //  motor escorrega -- para isso o caminho e a saida PA/PB do driver num
 //  contador PCNT. Ver ROADMAP.md secao 1.4.
 //
-//  SO LEITURA. Nenhuma funcao aqui escreve registrador. Um defeito que
-//  escrevesse num parametro do servo estragaria a maquina de um jeito
-//  que nao se desfaz pela tela.
+//  ESCREVE UM REGISTRADOR SO: o habilita (SON), em configSon.reg.
+//
+//  Ate a versao anterior este modulo nao escrevia nada, e o habilita era
+//  um fio no GPIO 23. O fio saiu -- nesta maquina o P098 do painel
+//  governa o torque e o terminal externo nao tinha efeito. A escrita
+//  entrou por uma porta estreita e continua estreita: um registrador,
+//  o configurado, e nenhum outro. Um defeito que escrevesse em parametro
+//  qualquer do servo estragaria a maquina de um jeito que nao se desfaz
+//  pela tela.
+//
+//  Toda escrita e conferida RELENDO. Driver que responde "aceitei" e
+//  guarda outra coisa existe, e dizer "desabilitado" com o eixo
+//  energizado e a unica mentira que este arquivo nao pode contar.
 //
 //  O ENDERECO DO REGISTRADOR E CONFIGURAVEL
 //
@@ -115,6 +125,25 @@ void encoderUltimoQuadro(char* destino, size_t tam);
 //
 // Sai um relatorio de texto, com os bytes crus de cada passo.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// HABILITA (SON) pelo barramento.
+//
+// O core 1 so PEDE; quem fala no fio e a tarefa do core 0. O resultado
+// se consulta depois, por encoderSonEstado() -- e quem pediu para
+// DESABILITAR tem obrigacao de olhar: escrita que nao confirmou com o
+// eixo energizado e falha, nao detalhe.
+// ---------------------------------------------------------------------
+enum EstadoSon : uint8_t {
+  SON_OCIOSO = 0,   // nada pedido desde o boot
+  SON_PENDENTE,     // o core 0 ainda nao atendeu
+  SON_OK,           // escrito nos dois drivers e conferido relendo
+  SON_FALHOU        // nao confirmou, ou o prazo estourou
+};
+
+void    encoderPedirSon(bool ligar);
+uint8_t encoderSonEstado();
+void    encoderSonMotivo(char* destino, size_t tam);
+
 void encoderPedirTeste();                        // core 1 / web: so pede
 void encoderRelatorio(char* destino, size_t tam);
 bool encoderTesteRodando();

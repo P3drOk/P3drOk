@@ -11,6 +11,7 @@
 #include "Arduino.h"
 #include <deque>
 #include <vector>
+#include <map>
 
 #ifndef SERIAL_8N1
 #define SERIAL_8N1 0x800001cu
@@ -44,6 +45,20 @@ struct EscravoModbus {
   // como ser testado.
   uint16_t ruidoReg   = 0xFFFF;   // 0xFFFF = nenhum
   uint16_t ruidoValor = 0;
+
+  // ---- ESCRITA (o habilita mora aqui desde que o SON deixou de ser fio)
+  //
+  // O escravo guarda o que foi escrito e devolve na releitura, que e
+  // como um driver de verdade se comporta -- e e a releitura que o
+  // firmware usa como prova. Um mock que aceitasse a escrita e
+  // continuasse devolvendo o valor velho reprovaria codigo correto; um
+  // que devolvesse o valor novo sem guardar nada nao pegaria o driver
+  // que mente. Por isso a tabela e de verdade.
+  std::map<uint16_t, uint16_t> escritos;
+  bool     recusaEscrita = false;  // encena driver so-leitura (excecao 2)
+  bool     escritaMuda   = false;  // aceita, responde, e NAO guarda
+  bool     soFuncao16    = false;  // recusa a 06, como ha driver que faz
+  uint32_t escritas      = 0;      // quantas chegaram, para o banco contar
   uint32_t perguntas = 0;
 
   // Onde o eixo esta AGORA, andando desde posicaoT0 na velocidade dada.
@@ -138,7 +153,51 @@ class HardwareSerial {
     for (uint8_t b : r) fila.push_back(b);
   }
 
+  // Escrita: funcao 06 (8 bytes) e funcao 16 de um registrador (11).
+  // Devolve true se tratou o quadro -- a leitura nem chega a ser tentada.
+  bool responderEscrita(const uint8_t* q, size_t n) {
+    const bool f06 = (n == 8  && q[1] == 6);
+    const bool f16 = (n == 11 && q[1] == 16);
+    if (!f06 && !f16) return false;
+
+    const size_t corpo = n - 2;
+    const uint16_t c = crc16(q, corpo);
+    if (q[corpo] != (uint8_t)(c & 0xFF) || q[corpo + 1] != (uint8_t)(c >> 8)) return true;
+
+    for (EscravoModbus& e : escravo) {
+      if (!e.existe || e.id != q[0]) continue;
+      e.perguntas++;
+      e.escritas++;
+      if (e.mudo) return true;
+
+      std::vector<uint8_t> r;
+      if (e.recusaEscrita || (e.soFuncao16 && f06)) {
+        r = {e.id, (uint8_t)(q[1] | 0x80), 2};   // endereco de dado ilegal
+        empurrar(r, true);
+        return true;
+      }
+
+      const uint16_t reg = (uint16_t)((q[2] << 8) | q[3]);
+      const uint16_t val = f06 ? (uint16_t)((q[4] << 8) | q[5])
+                               : (uint16_t)((q[7] << 8) | q[8]);
+      // O driver que MENTE: responde "aceitei" e guarda o valor velho. E
+      // exatamente por ele que o firmware confere relendo, entao o banco
+      // precisa conseguir encena-lo.
+      if (!e.escritaMuda) e.escritos[reg] = val;
+
+      // As duas funcoes ecoam o cabecalho: id, funcao, endereco, e
+      // depois o valor (06) ou a quantidade (16).
+      r = {e.id, q[1], q[2], q[3]};
+      if (f06) { r.push_back(q[4]); r.push_back(q[5]); }
+      else     { r.push_back(0);    r.push_back(1);    }
+      empurrar(r, true);
+      return true;
+    }
+    return true;
+  }
+
   void responder(const uint8_t* q, size_t n) {
+    if (responderEscrita(q, n)) return;
     if (n != 8) return;
     const uint16_t c = crc16(q, 6);
     if (q[6] != (uint8_t)(c & 0xFF) || q[7] != (uint8_t)(c >> 8)) return;
@@ -194,7 +253,9 @@ class HardwareSerial {
       for (uint16_t k = 0; k < qtd; k++) {
         const uint16_t a = (uint16_t)(reg + k);
         uint16_t v;
-        if (a == e.regBase)          v = palavra[0];
+        const auto it = e.escritos.find(a);
+        if (it != e.escritos.end())  v = it->second;
+        else if (a == e.regBase)          v = palavra[0];
         else if (a == e.regBase + 1) v = palavra[1];
         else if (a == e.ruidoReg)    v = e.ruidoValor;
         else                         v = parametro(a);

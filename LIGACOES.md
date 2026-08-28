@@ -62,7 +62,6 @@ esquecer e o robô servir uma interface diferente da do repositório.
 | 17 | saída | Driver J1 · DIR+ | via buffer 5 V |
 | 18 | saída | Driver J2 · PUL+ | via buffer 5 V |
 | 19 | saída | Driver J2 · DIR+ | via buffer 5 V |
-| 23 | saída | SON dos dois drivers | via optoacoplador |
 | 34 | **entrada** | Driver J1 · ALM | pull-up externo 10 k obrigatório |
 | 35 | **entrada** | Driver J2 · ALM | pull-up externo 10 k obrigatório |
 | **2** → 26 | saída | Relé de solda | vem de fábrica no **2** (LED, bancada). Troque para **26** na máquina real · **§5** |
@@ -73,7 +72,8 @@ esquecer e o robô servir uma interface diferente da do repositório.
 | 13 | saída | microSD · MOSI | |
 | 25 | entrada | microSD · MISO | **não use o 12** · ver §4 |
 
-Pinos deliberadamente **livres**: 4, 15, 21, 22, 32, 33.
+Pinos deliberadamente **livres**: 4, 15, 21, 22, **23**, 32, 33.
+O **23** era o SON e ficou livre quando o habilita foi para o RS485.
 Pinos que o firmware **não usa e você também não deve**: 0, 12, 6–11.
 
 Conferido contra `Robo2dof/config.h`. O banco de testes reprova se a
@@ -127,21 +127,40 @@ em D+. Sem eles a entrada do driver queima.
 
 Confira em qual modo o seu driver está antes de energizar.
 
-### 3.3 Habilitação (SON)
+### 3.3 Habilitação (SON) — não é mais um fio
 
-```
-ESP32 GPIO23 ──► [optoacoplador] ──► SON+ dos dois drivers
-                                     SON− ──► GND dos drivers
-```
+**O SON saiu da fiação.** Nesta máquina o parâmetro **P098** do painel
+governa o torque, e com ele em 1 o terminal externo não tinha efeito
+nenhum: o fio do GPIO 23 já era decorativo antes de sair. O habilita
+agora vai por **Modbus, no registrador 98**, pelo mesmo RS485 que lê o
+encoder.
 
-Nunca direto. O GPIO23 comanda os dois drivers ao mesmo tempo:
-`servosHabilitar()` em `motores.cpp` é a única coisa que escreve nele.
+Não ligue nada no SON dos drivers. O GPIO 23 ficou livre.
 
-**Confira a fonte do habilita no painel do driver.** Ela precisa estar em
-*terminal externo* — é o que faz este fio valer. Se estiver em *interna*,
-o drive energiza por conta própria e o GPIO23 não alcança: o botão de
-emergência deixa de desenergizá-lo, e a proteção inteira passa a ser
-decorativa.
+> **O que isso custa, dito sem rodeio.** Fio de SON rompido desabilitava
+> o motor. Fio de RS485 rompido **não desabilita nada** — deixa o eixo
+> como estava. ESP32 travado idem. O caminho do habilita deixou de ser
+> falha segura, e não há configuração que traga isso de volta.
+
+**Por isso o contator da §6 deixou de ser recomendação.** Ele é o único
+corte que funciona com o ESP32 morto, e sem ele esta máquina não tem
+parada de emergência — tem um botão que pede por favor.
+
+O firmware compensa no que dá: toda escrita é conferida **relendo**, e
+desabilitar que não confirma derruba a máquina em `FALHA` e recusa
+comando, em vez de seguir achando que desligou.
+
+O registrador é configurável em **Ajustes → Habilita (SON)** e foi
+provado na bancada com `ferramentas/teste_rs485` (modos `d`, `d2`, `s`).
+Número fixo no código seria adivinhação — o mapa Modbus do T3D não está
+publicado.
+
+| | medido nesta máquina |
+|---|---|
+| registrador | **98** (é o P098 do painel) |
+| habilita | **1** |
+| desabilita | **0** |
+| função | **06** |
 
 ### 3.4 Alarme (ALM)
 
@@ -247,6 +266,26 @@ GND ──► [contato NC do botão] ──► ESP32 GPIO27
 Contato **NC** (normalmente fechado), do lado do **GND**. O terceiro caso
 é a razão de ser desta ligação: botão de emergência com o cabo rompido
 tem de **parar a máquina**, não passar despercebido.
+
+### O contator não é opcional
+
+O caminho acima é **software**: o ESP32 lê o pino e manda desabilitar
+pelo RS485. Se o ESP32 travar, se o barramento cair, se o driver não
+responder, esse caminho não faz nada — e desde que o SON deixou de ser
+fio (**§3.3**), não existe segundo caminho.
+
+```
+botao de emergencia (contato NC)
+   ├──► GPIO 27            (o caminho de software: para o movimento)
+   └──► bobina do CONTATOR (o caminho que funciona com o ESP32 morto)
+                └──► potencia dos drivers
+```
+
+O mesmo contato NC faz as duas coisas. Solte o botão e o contator fecha;
+aperte e a potência dos drivers abre, **sem depender de nada rodando**.
+
+Sem esse ramo, esta máquina não tem parada de emergência: tem um botão
+que pede por favor a um programa que talvez esteja travado.
 
 > **A polaridade não é detalhe.** Este documento já mandou ligar o
 > contato no 3V3 esperando LOW — combinação em que, com o pull-up
@@ -375,6 +414,8 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Eixo anda torto, perde passo | Falta buffer 5 V, ou é 74HC em vez de 74HCT. |
 | Sistema entra em FALHA e recusa tudo | `ALARME_FISICO_INSTALADO true` sem os fios e pull-ups de ALM. |
 | Arco abre sozinho ao energizar | Relé no GPIO 2, ou falta o pull-down de 10 k. |
+| Servos não habilitam, tela diz "não consegui habilitar" | Registrador do habilita errado ou barramento mudo. `Ajustes → Habilita (SON)`, e confira com `ferramentas/teste_rs485` modo `s`. |
+| Tela diz "DESABILITAR NÃO CONFIRMOU" e cai em FALHA | O RS485 não respondeu com o eixo energizado. **Corte pelo contator** e veja a linha antes de rearmar. |
 | Cartão não monta | 5 V em vez de 3V3; falta o capacitor de 10 µF; fio longo demais para 20 MHz. |
 | Jog engasga | Wi-Fi fraco. O firmware para o eixo sem heartbeat por 350 ms — é proposital. |
 | `robo2dof.local` não abre | mDNS não resolvido no aparelho. Use `192.168.4.1`. |

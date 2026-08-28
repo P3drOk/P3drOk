@@ -710,6 +710,18 @@ static void processarComando(const Comando& c) {
 // Supervisao de seguranca: roda antes de qualquer coisa, todo ciclo.
 // ---------------------------------------------------------------------
 static void supervisionar() {
+  // O habilita mora no barramento desde que o fio do GPIO 23 saiu, e
+  // quadro Modbus perdido nao se percebe sozinho. Esta e a unica hora em
+  // que alguem confere o que o driver respondeu.
+  bool habilitouAgora = false;
+  if (servosSupervisionar(habilitouAgora) && modoAtual != MODO_FALHA) {
+    // Desabilitar que nao confirmou: o eixo pode estar energizado, o
+    // firmware nao sabe, e nao ha segundo caminho para cortar o torque.
+    pararTudo(nullptr);
+    modoAtual = MODO_FALHA;
+    logEvento("SON: desabilitar nao confirmou no barramento");
+  }
+
   const bool alarme = motoresLerAlarmes();
 
   bool estop = false;
