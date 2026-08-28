@@ -431,16 +431,27 @@ máquina liga exatamente como antes.
 | zero não ensinado | não há referência em que acreditar |
 | **servos desabilitados** | é o intertravamento: habilitar servos é uma ação sua na tela, e enquanto ninguém habilitar o braço não tem como andar |
 
-### O botão do motor
+### Os botões do motor
 
-No alto da tela, ao lado do **PARAR**, e visível de qualquer aba. É o
-mesmo comando de *Ajustes → Preparar a máquina* — um só, de propósito:
-dois caminhos para ligar o motor acabam discordando.
+No alto da tela, ao lado do **PARAR**, visíveis de qualquer aba. São
+**dois, um por eixo**: cada driver é um escravo Modbus próprio, e com um
+driver só no barramento você precisa poder trabalhar no eixo que existe.
+
+O que cada torque libera:
+
+| | precisa |
+|---|---|
+| jog de um eixo | o torque **daquele** eixo |
+| programa, trajetória, ir ao zero | **os dois** eixos |
+
+Um eixo sem torque não recebe pulso, de propósito: o gerador contaria
+passos com o eixo parado e todo limite de curso passaria a apontar para o
+lugar errado.
 
 | cor | o que significa |
 |---|---|
-| verde, *MOTOR LIGADO* | tem torque |
-| cinza, *MOTOR DESLIGADO* | sem torque |
+| verde | aquele eixo tem torque |
+| cinza | sem torque |
 | laranja, *...* | pedido feito, os drivers ainda não responderam |
 | vermelho, *FALHOU* | o barramento não confirmou — veja `LIGACOES.md` §3.3 |
 | vermelho, *SEM REG* | registrador do habilita não configurado |

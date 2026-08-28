@@ -415,6 +415,8 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 | Sistema entra em FALHA e recusa tudo | `ALARME_FISICO_INSTALADO true` sem os fios e pull-ups de ALM. |
 | Arco abre sozinho ao energizar | Relé no GPIO 2, ou falta o pull-down de 10 k. |
 | Servos não habilitam, tela diz "não consegui habilitar" | Registrador do habilita errado ou barramento mudo. `Ajustes → Habilita (SON)`, e confira com `ferramentas/teste_rs485` modo `s`. |
+| Só um driver ligado e nada habilita | Não é mais assim: há **um botão por eixo** no cabeçalho. Habilite o eixo que existe e trabalhe nele. |
+| "Ir para 0 grau" recusado por falta de calibração | Não é mais assim: o zero é operação de instalação e roda sem calibração. Ir a um **ponto gravado** continua exigindo. |
 | Tela diz "DESABILITAR NÃO CONFIRMOU" e cai em FALHA | O RS485 não respondeu com o eixo energizado. **Corte pelo contator** e veja a linha antes de rearmar. |
 | Cartão não monta | 5 V em vez de 3V3; falta o capacitor de 10 µF; fio longo demais para 20 MHz. |
 | Jog engasga | Wi-Fi fraco. O firmware para o eixo sem heartbeat por 350 ms — é proposital. |

@@ -2762,11 +2762,72 @@ O estado laranja é o que mais importa e o que não existia: com o habilita
 no barramento, "mandei" e "tem torque" deixaram de ser a mesma coisa, e o
 operador precisa ver a diferença.
 
+## R93 · Um driver na bancada, e o habilita recusando tudo  ✅
+
+`servosHabilitar()` exigia que **os dois** drivers confirmassem. Com o
+segundo ainda fora do barramento — que é o estado da bancada — habilitar
+recusava tudo dizendo que o driver 2 não respondeu. Era verdade e não
+ajudava ninguém: com o eixo 1 ligado e funcionando, não dava para mexer
+nele.
+
+A raiz é que o habilita virou **Modbus**, e cada driver é um escravo
+próprio. Um interruptor só descrevia bem um fio ligado nos dois SON; não
+descreve dois escravos independentes.
+
+Passou a ser **por junta**: `J1.habilitado` / `J2.habilitado`,
+`servosHabilitar(ligar, junta)` com `junta` = 1, 2 ou 0, e dois botões no
+cabeçalho — um por eixo.
+
+O portão de movimento se dividiu junto, e a divisão é o que importa:
+
+| | exige |
+|---|---|
+| `movimentoSeguro` | alarme, emergência, conexão, falha — **sem torque** |
+| jog de um eixo | `movimentoSeguro` + o torque **daquele** eixo |
+| `movimentoLiberado` (programa, trajetória, ir ao zero) | `movimentoSeguro` + **as duas** juntas |
+
+Travar a junta 1 porque a 2 está sem torque impedia de trabalhar; deixar
+o eixo sem torque receber pulso faria o gerador contar passos com o eixo
+parado, e **todo limite de curso passaria a apontar para o lugar errado**.
+Por isso o jog é por eixo e o movimento coordenado não é.
+
+Um detalhe de lógica que o banco pegou: eu tinha feito o desabilitar que
+**falha** deixar `habilitado = true`, raciocinando que o eixo pode
+continuar energizado. Está errado — o campo é o **portão de movimento**,
+não um sensor de torque. Depois de um desabilita que não confirmou
+ninguém pode mover a máquina; que o eixo talvez esteja energizado quem
+diz é a `FALHA` e a mensagem, que é onde essa informação serve. Cenário
+**V02d**.
+
+Cenário **V07**: com um driver no barramento, a junta 1 habilita sozinha,
+o jog dela anda, o da outra não, e desabilitar por junta também funciona.
+
+## R94 · Ir a 0 grau exigia a calibração que só existe depois de mover  ✅
+
+`CMD_IR_HOME` passava por `irParaPassos()`, que recusava com *"Calibre as
+juntas antes de usar posicionamento"*. Ciclo fechado: para calibrar é
+preciso mover, e para mover era preciso calibrar.
+
+O jog já rodava livre sem calibração — é o modo de instalação, e
+`posturaValidaDet()` já trata *"sem calibração nada é violação"*. Ir a 0
+grau passou a seguir a mesma regra: é justamente a operação que se faz
+para **sair** do estado não calibrado, depois de referenciar o braço a
+mão.
+
+**Ir a um ponto gravado continua exigindo calibração** — o ponto foi
+gravado num referencial calibrado, e persegui-lo sem ela manda o braço
+para um lugar que ninguém escolheu. Cenário **V08c** guarda essa
+diferença.
+
+E o zero move só os eixos que têm torque: com um driver no barramento
+leva o que responde e deixa o outro quieto, em vez de recusar ou de
+mandar pulso para um eixo parado (**V08d**, **V08e**).
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **382 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **392 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **219 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

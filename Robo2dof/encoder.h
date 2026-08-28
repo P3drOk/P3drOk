@@ -140,7 +140,10 @@ enum EstadoSon : uint8_t {
   SON_FALHOU        // nao confirmou, ou o prazo estourou
 };
 
-void    encoderPedirSon(bool ligar);
+// 'junta' e 1, 2, ou 0 para as duas. Habilitar por junta existe porque
+// cada driver e um escravo Modbus proprio: exigir que os dois confirmem
+// impede de trabalhar numa bancada com um driver ligado.
+void    encoderPedirSon(bool ligar, uint8_t junta);
 
 // Pede e ESPERA a confirmacao, ate 'prazoMs'. Devolve true se confirmou.
 //
@@ -155,6 +158,9 @@ void    encoderPedirSon(bool ligar);
 // que a parada suave e o corte do arco acontecam junto.
 bool    encoderSonEsperar(uint32_t prazoMs);
 uint8_t encoderSonEstado();
+// Qual junta o pedido atendia, e se ela confirmou. 0 = as duas.
+uint8_t encoderSonJunta();
+bool    encoderSonJuntaOk(uint8_t junta);
 void    encoderSonMotivo(char* destino, size_t tam);
 
 void encoderPedirTeste();                        // core 1 / web: so pede

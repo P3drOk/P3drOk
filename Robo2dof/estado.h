@@ -23,6 +23,10 @@ struct Junta {
   uint8_t  pinoAlarme = 0;
 
   bool  calibrada     = false;
+  // Torque desta junta. Por junta, e nao um interruptor so, porque cada
+  // driver e um escravo Modbus proprio: uma bancada com um driver ligado
+  // tem de conseguir trabalhar naquele eixo em vez de nao habilitar nada.
+  bool  habilitado    = false;
   float passosPorGrau = 0.0f;
   // Resolucao POR EIXO: cada junta pode ter engrenagem eletronica e
   // reducao mecanica diferentes da outra.
@@ -91,7 +95,16 @@ extern uint8_t  suavidadePartida;
 extern Modo         modoAtual;
 extern EstadoCalib  estadoCalib;
 extern bool         modoPrecisao;
+// AS DUAS JUNTAS habilitadas. E o que qualquer movimento coordenado
+// exige -- programa, trajetoria, ir ao zero: nao da para percorrer um
+// cordao com um eixo sem torque. Jog e outra coisa: ele e por eixo, e
+// consulta J1.habilitado / J2.habilitado direto.
 extern bool         servosLigados;
+
+// A parte do portao de movimento que NAO depende de torque: alarme,
+// emergencia, conexao, falha. Existe separada porque o jog de um eixo
+// precisa dela sem precisar do torque do outro.
+extern bool         movimentoSeguro;
 extern char         ultimaMensagem[96];
 
 // ---------------------------------------------------------------------

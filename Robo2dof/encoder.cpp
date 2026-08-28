@@ -343,35 +343,49 @@ static bool lerUmaPalavra(uint8_t id, uint16_t reg, uint16_t& valor) {
 // esta comandando. Espalhando as tentativas, cada ciclo custa no maximo
 // duas transacoes de SON_TIMEOUT_MS -- e entre elas a tarefa de rede
 // roda e o operador continua com painel na mao. Ver o cenario V06.
-static uint8_t  sonDriver    = 0;   // qual driver a proxima tentativa ataca
+static uint8_t  sonDriver    = 0;   // qual junta a proxima tentativa ataca
 static uint8_t  sonTentativa = 0;
 static bool     sonLigar     = false;
+static uint8_t  sonJuntaAlvo = 0;   // 1, 2, ou 0 = as duas
+static bool     sonJuntaOk[2] = {false, false};
 
-static void sonComecar(bool ligar) {
+static void sonComecar(bool ligar, uint8_t junta) {
   sonLigar     = ligar;
-  sonDriver    = 0;
+  sonJuntaAlvo = junta;
+  sonDriver    = (junta == 2) ? 1 : 0;
   sonTentativa = 0;
+  sonJuntaOk[0] = sonJuntaOk[1] = false;
   estadoSon    = SON_PENDENTE;
   sonMotivo[0] = '\0';
 }
 
 // Um passo. Devolve true quando ainda ha trabalho para o proximo ciclo.
+// Ultimo indice de junta que este pedido tem de atender. Pedido de uma
+// junta so comeca e termina nela; pedido das duas anda de 0 a 1 -- a
+// menos que os dois enderecos sejam iguais, que e um driver so na
+// bancada e nao dois.
+static uint8_t sonUltimoIndice() {
+  if (sonJuntaAlvo == 1) return 0;
+  if (sonJuntaAlvo == 2) return 1;
+  return (configEncoder.id[1] == configEncoder.id[0]) ? 0 : 1;
+}
+
 static bool sonPasso() {
   const uint16_t valor = sonLigar ? configSon.valLiga : configSon.valDesliga;
-  const uint8_t  idA   = configEncoder.id[0];
-  const uint8_t  idB   = configEncoder.id[1];
-  // Enderecos iguais = um driver so na bancada, e ai se escreve uma vez.
-  const uint8_t  quantos = (idB == idA) ? 1 : 2;
-  const uint8_t  id      = sonDriver ? idB : idA;
+  const uint8_t  id    = configEncoder.id[sonDriver];
+  const uint8_t  fim   = sonUltimoIndice();
 
   if (escreverUm(id, configSon.reg, valor, configSon.funcao16)) {
-    sonDriver++;
+    sonJuntaOk[sonDriver] = true;
+    // Enderecos iguais: um driver so responde pelas duas juntas.
+    if (configEncoder.id[1] == configEncoder.id[0]) sonJuntaOk[1] = true;
     sonTentativa = 0;
-    if (sonDriver >= quantos) {
+    if (sonDriver >= fim) {
       estadoSon    = SON_OK;
       sonMotivo[0] = '\0';
       return false;
     }
+    sonDriver++;
     return true;
   }
 
@@ -379,20 +393,27 @@ static bool sonPasso() {
 
   estadoSon = SON_FALHOU;
   snprintf(sonMotivo, sizeof(sonMotivo),
-           "driver %u nao confirmou %s no registrador %u",
-           (unsigned)id, sonLigar ? "habilitar" : "DESABILITAR",
-           (unsigned)configSon.reg);
+           "a junta %u (driver %u) nao confirmou %s no registrador %u",
+           (unsigned)(sonDriver + 1), (unsigned)id,
+           sonLigar ? "habilitar" : "DESABILITAR", (unsigned)configSon.reg);
   return false;
+}
+
+uint8_t encoderSonJunta() { return sonJuntaAlvo; }
+bool encoderSonJuntaOk(uint8_t junta) {
+  if (junta != 1 && junta != 2) return false;
+  return sonJuntaOk[junta - 1];
 }
 
 // Chamado pelo CORE 1. So deixa recado: quem fala no barramento e a
 // tarefa do core 0, e escrever daqui por baixo de uma leitura em
 // andamento corromperia os dois quadros.
-void encoderPedirSon(bool ligar) {
+void encoderPedirSon(bool ligar, uint8_t junta) {
   sonMotivo[0] = '\0';
-  estadoSon   = SON_PENDENTE;
-  sonPedidoMs = millis();
-  pedidoSon   = ligar ? 1 : 2;
+  estadoSon    = SON_PENDENTE;
+  sonPedidoMs  = millis();
+  sonJuntaAlvo = junta;
+  pedidoSon    = ligar ? 1 : 2;
 }
 
 // Pede e espera. Quem executa continua sendo a tarefa do core 0 -- este
@@ -986,7 +1007,7 @@ static void ciclo() {
   if (pedidoSon) {
     const uint8_t o = pedidoSon;
     pedidoSon = 0;
-    sonComecar(o == 1);
+    sonComecar(o == 1, sonJuntaAlvo);
     sonPasso();
     proximaEm = millis();
     return;
@@ -1110,6 +1131,8 @@ void encoderReiniciarTeste() {
   estadoSon    = SON_OCIOSO;
   sonDriver    = 0;
   sonTentativa = 0;
+  sonJuntaAlvo = 0;
+  sonJuntaOk[0] = sonJuntaOk[1] = false;
   sonMotivo[0] = '\0';
   testeRodando = false;
   cacaEtapa    = 0;

@@ -206,6 +206,7 @@ static void handleStatus() {
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"sonReg\":%u,\"sonL\":%u,\"sonD\":%u,\"sonF16\":%s,\"sonEst\":%u,"
+    "\"srv1\":%s,\"srv2\":%s,"
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
@@ -252,6 +253,7 @@ static void handleStatus() {
     (unsigned)configSon.reg, (unsigned)configSon.valLiga,
     (unsigned)configSon.valDesliga, configSon.funcao16 ? "true" : "false",
     (unsigned)encoderSonEstado(),
+    J1.habilitado ? "true" : "false", J2.habilitado ? "true" : "false",
     msgSegura);
 
   server.send(200, "application/json", json);
@@ -373,7 +375,9 @@ static void handleParar() {
 }
 
 static void handlePrecisao()   { registrarContatoOperador(); enfileirar(CMD_PRECISAO, argL("v", -1)); }
-static void handleServos()     { registrarContatoOperador(); enfileirar(CMD_SERVOS, argL("v", 0)); }
+// v = 0|1 (desliga/liga), j = 1|2|0 (junta, 0 = as duas).
+static void handleServos()     { registrarContatoOperador();
+                                 enfileirar(CMD_SERVOS, argL("v", 0), argL("j", 0)); }
 static void handleSolda()      { registrarContatoOperador(); enfileirar(CMD_SOLDA, argL("v", 0)); }
 static void handleTesteRele()  { registrarContatoOperador(); enfileirar(CMD_TESTE_RELE); }
 static void handlePontoGravar(){ registrarContatoOperador(); enfileirar(CMD_PONTO_GRAVAR); }

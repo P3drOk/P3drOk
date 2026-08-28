@@ -1992,61 +1992,56 @@ async function fecharGaveta(pag) {
 
 
   // ------------------------------------------------------------------
-  // O botao do motor no cabecalho. Ligar e desligar torque e a coisa que
-  // mais se aperta na maquina, e estava enterrada numa gaveta de
-  // Ajustes. Aqui ele tem de estar visivel de QUALQUER aba, e a cor tem
-  // de dizer o estado real -- nao o que foi pedido.
+  // Os botoes do motor no cabecalho. Ligar e desligar torque e a coisa
+  // que mais se aperta na maquina, e estava enterrada numa gaveta de
+  // Ajustes. Sao DOIS porque cada driver e um escravo Modbus proprio:
+  // com um driver so na bancada, exigir os dois nao habilitava nada.
   // ------------------------------------------------------------------
-  await t.request.post(BASE + '/teste/estado', { data: { servos: true, sonReg: 98, sonEst: 2 } });
+  await t.request.post(BASE + '/teste/estado', { data: { srv1: true, srv2: true, servos: true, sonReg: 98, sonEst: 2 } });
   await t.waitForTimeout(900);
-  const ligado = await t.evaluate(() => {
-    const b = document.getElementById('btMotor');
-    return b ? { cls: b.className, txt: b.textContent.trim(),
-                 visivel: b.offsetParent !== null } : null;
+  const dois = await t.evaluate(() => {
+    const a = document.getElementById('btMotor1'), b = document.getElementById('btMotor2');
+    return a && b ? { a: a.className, b: b.className, txt: a.textContent.trim(),
+                      visivel: a.offsetParent !== null } : null;
   });
-  checar(!!ligado && ligado.visivel && / on\b/.test(ligado.cls) && /LIGADO/.test(ligado.txt),
-         'Motor: com torque o botao do cabecalho fica verde e diz LIGADO',
-         ligado ? ligado.cls + ' | ' + ligado.txt : 'sem botao');
+  checar(!!dois && dois.visivel && / on\b/.test(dois.a) && / on\b/.test(dois.b),
+         'Motor: ha um botao por eixo no cabecalho, verdes com torque',
+         dois ? dois.a + ' | ' + dois.b : 'sem botoes');
 
   rotas = [];
-  await t.locator('#btMotor').click();
+  await t.locator('#btMotor1').click();
   await t.waitForTimeout(600);
-  const desligou = rotas.find(x => x.split('?')[0] === '/api/servos');
-  checar(!!desligou && /v=0/.test(desligou),
-         'Motor: com torque, o toque manda DESLIGAR', desligou || rotas.join(' '));
+  const so1 = rotas.find(x => x.split('?')[0] === '/api/servos');
+  checar(!!so1 && /v=0/.test(so1) && /j=1/.test(so1),
+         'Motor: o botao do eixo 1 manda a junta 1, e so ela',
+         so1 || rotas.join(' '));
 
-  await t.request.post(BASE + '/teste/estado', { data: { servos: false } });
+  // O caso da bancada dele: um driver so. O eixo 1 tem torque, o 2 nao.
+  await t.request.post(BASE + '/teste/estado', { data: { srv1: true, srv2: false, servos: false } });
   await t.waitForTimeout(900);
-  rotas = [];
-  await t.locator('#btMotor').click();
-  await t.waitForTimeout(600);
-  const ligou = rotas.find(x => x.split('?')[0] === '/api/servos');
-  checar(!!ligou && /v=1/.test(ligou),
-         'Motor: sem torque, o toque manda LIGAR', ligou || rotas.join(' '));
+  const umSo = await t.evaluate(() => ({
+    a: document.getElementById('btMotor1').className,
+    b: document.getElementById('btMotor2').className,
+  }));
+  checar(/ on\b/.test(umSo.a) && !/ on\b/.test(umSo.b),
+         'Motor: com um driver so, o eixo que tem torque aparece ligado e o outro nao',
+         umSo.a + ' | ' + umSo.b);
 
-  // O estado que mais engana: pedido feito, barramento ainda calado. O
-  // operador precisa ver a diferenca entre "mandei" e "tem torque".
+  rotas = [];
+  await t.locator('#btMotor2').click();
+  await t.waitForTimeout(600);
+  const liga2 = rotas.find(x => x.split('?')[0] === '/api/servos');
+  checar(!!liga2 && /v=1/.test(liga2) && /j=2/.test(liga2),
+         'Motor: e o eixo sem torque oferece LIGAR, nao desligar',
+         liga2 || rotas.join(' '));
+
   await t.request.post(BASE + '/teste/estado', { data: { sonEst: 1 } });
   await t.waitForTimeout(900);
-  const indo = await t.evaluate(() => {
-    const b = document.getElementById('btMotor');
-    return { cls: b.className, txt: b.textContent.trim() };
-  });
-  checar(/indo/.test(indo.cls),
-         'Motor: enquanto o barramento nao confirma, o botao nao diz que ligou',
-         indo.cls + ' | ' + indo.txt);
+  const indo = await t.evaluate(() => document.getElementById('btMotor1').className);
+  checar(/indo/.test(indo),
+         'Motor: enquanto o barramento nao confirma, o botao nao diz que ligou', indo);
 
-  await t.request.post(BASE + '/teste/estado', { data: { sonEst: 3 } });
-  await t.waitForTimeout(900);
-  const falhou = await t.evaluate(() => {
-    const b = document.getElementById('btMotor');
-    return { cls: b.className, txt: b.textContent.trim() };
-  });
-  checar(/ruim/.test(falhou.cls) && /FALHOU/.test(falhou.txt),
-         'Motor: escrita que nao confirmou aparece no proprio botao',
-         falhou.cls + ' | ' + falhou.txt);
-
-  await t.request.post(BASE + '/teste/estado', { data: { sonEst: 2, servos: true } });
+  await t.request.post(BASE + '/teste/estado', { data: { sonEst: 2, srv1: true, srv2: true, servos: true } });
   await t.waitForTimeout(700);
 
   // ------------------------------------------------------------------

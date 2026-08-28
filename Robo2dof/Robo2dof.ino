@@ -48,13 +48,36 @@ static void tarefaRede(void* p) {
 // O interior importa: moverCoordenado() interpola nas juntas, e o
 // envelope cartesiano nao e convexo nesse espaco - da para ir de um ponto
 // permitido a outro raspando a ponta na mesa no meio do trajeto.
-static bool irParaPassos(long p1, long p2) {
-  if (!J1.calibrada || !J2.calibrada) {
+// 'exigeCalibracao' e false so para o zero. Ir a 0 grau e a operacao de
+// INSTALACAO: e o que se faz depois de referenciar o braco a mao, antes
+// de existir calibracao nenhuma. Exigir calibracao ali era um ciclo
+// fechado -- para calibrar e preciso mover, e para mover era preciso
+// calibrar. As protecoes nao somem por isso: posturaValidaDet() ja trata
+// "sem calibracao nada e violacao", que e o mesmo modo de instalacao em
+// que o jog ja rodava livre.
+//
+// Ir a um PONTO GRAVADO continua exigindo: o ponto foi gravado num
+// referencial calibrado, e persegui-lo sem calibracao manda o braco para
+// um lugar que ninguem escolheu.
+static bool irParaPassos(long p1, long p2, bool exigeCalibracao = true) {
+  if (exigeCalibracao && (!J1.calibrada || !J2.calibrada)) {
     definirMensagem("Calibre as juntas antes de usar posicionamento");
     return false;
   }
-  if (!servosLigados) {
-    definirMensagem("Habilite os servos antes de mover");
+  if (!movimentoSeguro) {
+    definirMensagem("Movimento bloqueado: intertravamento de seguranca");
+    return false;
+  }
+  // Junta sem torque nao anda, e o alvo dela passa a ser onde ela esta.
+  //
+  // Sem isto o gerador de pulso contaria os passos do eixo parado e todo
+  // limite de curso passaria a apontar para o lugar errado -- o mesmo
+  // motivo por que o jog e por eixo. Com um driver so no barramento,
+  // "ir para o zero" leva o eixo que tem torque e deixa o outro quieto.
+  if (!J1.habilitado) p1 = posicaoJ1();
+  if (!J2.habilitado) p2 = posicaoJ2();
+  if (!J1.habilitado && !J2.habilitado) {
+    definirMensagem("Habilite ao menos um servo antes de mover");
     return false;
   }
 
@@ -78,8 +101,9 @@ static bool irParaPassos(long p1, long p2) {
   return true;
 }
 
-static void irParaAngulos(float t1, float t2) {
-  if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) {
+static void irParaAngulos(float t1, float t2, bool exigeCalibracao = true) {
+  if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2),
+                   exigeCalibracao)) {
     definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
   }
 }
@@ -206,7 +230,7 @@ static void processarComando(const Comando& c) {
         definirMensagem("Emergencia acionada: solte o botao antes de rearmar");
         break;
       }
-      servosHabilitar(c.a != 0);
+      servosHabilitar(c.a != 0, (uint8_t)c.b);
       if (c.a != 0 && modoAtual == MODO_FALHA && !motoresLerAlarmes()) {
         modoAtual = MODO_MANUAL;
         definirMensagem("Falha reconhecida, sistema liberado");
@@ -474,7 +498,9 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_IR_HOME:
-      if (modoAtual == MODO_MANUAL) irParaAngulos(0.0f, 0.0f);
+      // Sem exigir calibracao: ir a 0 grau e o que se faz para SAIR do
+      // estado nao calibrado, nao algo que dependa dele.
+      if (modoAtual == MODO_MANUAL) irParaAngulos(0.0f, 0.0f, false);
       break;
 
     case CMD_CALIB_INICIAR:
@@ -776,9 +802,14 @@ static void supervisionar() {
 
   // Portao unico de movimento (estado.h). Escrito aqui, consultado por
   // jogAtualizar() e por todo caminho que possa mover um motor.
-  movimentoLiberado = servosLigados && !alarme && !estop &&
-                      !emergenciaAtiva && !semConexao &&
-                      modoAtual != MODO_FALHA;
+  // A parte que nao depende de torque, para o jog de um eixo poder
+  // consultar sem depender do torque do outro.
+  movimentoSeguro = !alarme && !estop && !emergenciaAtiva && !semConexao &&
+                    modoAtual != MODO_FALHA;
+  // O portao coordenado: exige AS DUAS juntas. Programa, trajetoria e ir
+  // ao zero movem os dois eixos -- com um sem torque sai desenho torto,
+  // nao meio desenho.
+  movimentoLiberado = movimentoSeguro && servosLigados;
 
   // Intertravamento do rele: o mesmo portao, mais a calibracao.
   soldaPermitir(movimentoLiberado && modoAtual != MODO_CALIBRANDO);

@@ -15,8 +15,9 @@ static FastAccelStepperEngine engine = FastAccelStepperEngine();
 // desabilitar que deu certo sao os dois SON_OK, entao um desabilita logo
 // depois de um habilita nao teria transicao nenhuma para ver -- e a tela
 // continuaria dizendo "habilitado" com o braco ja solto.
-static bool sonPedidoEraLigar = false;
-static bool sonAguardando     = false;
+static bool    sonPedidoEraLigar = false;
+static bool    sonAguardando     = false;
+static uint8_t sonPedidoJunta    = 0;
 
 
 static int8_t   jogDir[2]     = {0, 0};
@@ -43,6 +44,8 @@ bool motoresIniciar() {
 
   sonPedidoEraLigar = false;
   sonAguardando     = false;
+  sonPedidoJunta    = 0;
+  J1.habilitado = J2.habilitado = false;
 
   // O habilita nao tem pino: vai por Modbus, na tarefa do encoder. No
   // boot ninguem escreveu nada ainda, entao o que o firmware SABE e que
@@ -76,8 +79,17 @@ bool motoresIniciar() {
 }
 
 // ---------------------------------------------------------------------
-void servosHabilitar(bool ligar) {
+// Habilita o torque. 'junta' e 1, 2, ou 0 para as duas.
+//
+// POR JUNTA, e nao um interruptor so. Cada driver e um escravo Modbus
+// proprio: exigir que os dois confirmem impedia de trabalhar numa
+// bancada com um driver ligado -- habilitar recusava tudo dizendo que o
+// segundo nao respondeu, o que era verdade e nao ajudava ninguem.
+// ---------------------------------------------------------------------
+void servosHabilitar(bool ligar, uint8_t junta) {
   if (!ligar) {
+    // Desabilitar so uma junta ainda para o movimento inteiro: um cordao
+    // com um eixo sem torque nao e meio cordao, e um desenho torto.
     pararSuave();
     soldaDesligar();
   }
@@ -86,6 +98,7 @@ void servosHabilitar(bool ligar) {
   // tela mentindo sobre um braco que ninguem energizou -- ou, pior, um
   // desabilita que nunca saiu.
   if (configSon.reg == 0) {
+    J1.habilitado = J2.habilitado = false;
     servosLigados = false;
     definirMensagem("Habilita nao configurado: ache o registrador em "
                     "Ajustes antes de mover a maquina");
@@ -93,15 +106,22 @@ void servosHabilitar(bool ligar) {
   }
 
   sonPedidoEraLigar = ligar;
+  sonPedidoJunta    = junta;
   sonAguardando     = true;
-  encoderPedirSon(ligar);
-  // O pedido e assincrono, e quem confere e supervisionarSon() a cada
+  encoderPedirSon(ligar, junta);
+
+  // O pedido e assincrono, e quem confere e servosSupervisionar() a cada
   // ciclo. Ate a confirmacao chegar, o firmware assume o lado SEGURO: ao
   // habilitar so acredita depois do OK; ao desabilitar ja para de deixar
   // a maquina andar, mesmo antes de o driver responder.
-  servosLigados = false;
-  definirMensagem(ligar ? "Habilitando os servos pelo barramento..."
-                        : "Desabilitando os servos pelo barramento...");
+  if (junta != 2) J1.habilitado = false;
+  if (junta != 1) J2.habilitado = false;
+  servosLigados = J1.habilitado && J2.habilitado;
+
+  const char* alvo = (junta == 1) ? " da junta 1"
+                   : (junta == 2) ? " da junta 2" : "";
+  definirMensagem(ligar ? "Habilitando os servos%s pelo barramento..."
+                        : "Desabilitando os servos%s pelo barramento...", alvo);
 }
 
 // ---------------------------------------------------------------------
@@ -123,16 +143,35 @@ bool servosSupervisionar(bool& habilitouAgora) {
   if (e == SON_PENDENTE || e == SON_OCIOSO) return false;
   sonAguardando = false;
 
-  const bool pedidoEraLigar = sonPedidoEraLigar;
+  const bool    pedidoEraLigar = sonPedidoEraLigar;
+  const uint8_t junta          = sonPedidoJunta;
+
+  // O que cada junta ficou valendo.
+  //
+  // Habilitar so vale com confirmacao: sem ela o braco continua sem
+  // torque, que e o estado seguro.
+  //
+  // Desabilitar zera SEMPRE, inclusive quando a escrita falhou. Este
+  // campo e o PORTAO DE MOVIMENTO, nao um sensor de torque: depois de um
+  // desabilita que nao confirmou ninguem pode mover a maquina, e deixar
+  // o portao aberto porque "talvez ainda tenha torque" seria ler o campo
+  // ao contrario do que ele serve. Que o eixo pode estar energizado quem
+  // diz e a FALHA e a mensagem, que e onde essa informacao ajuda.
+  for (uint8_t k = 1; k <= 2; k++) {
+    if (junta != 0 && junta != k) continue;
+    Junta& j = (k == 1) ? J1 : J2;
+    j.habilitado = pedidoEraLigar && encoderSonJuntaOk(k);
+  }
+  servosLigados = J1.habilitado && J2.habilitado;
 
   if (e == SON_OK) {
     if (pedidoEraLigar) {
-      servosLigados = true;
       habilitouAgora = true;
-      definirMensagem("Servos habilitados");
+      definirMensagem(servosLigados ? "Servos habilitados"
+                                    : "Junta %u habilitada", (unsigned)junta);
     } else {
-      servosLigados = false;
-      definirMensagem("Servos desabilitados (sem torque)");
+      definirMensagem(junta ? "Junta %u sem torque" : "Servos desabilitados (sem torque)",
+                      (unsigned)junta);
     }
     return false;
   }
@@ -140,9 +179,8 @@ bool servosSupervisionar(bool& habilitouAgora) {
   if (e == SON_FALHOU) {
     char motivo[96];
     encoderSonMotivo(motivo, sizeof(motivo));
-    servosLigados = false;
     if (pedidoEraLigar) {
-      // Habilitar que falhou e so um comando que nao pegou: o braco
+      // Habilitar que falhou e so um comando que nao pegou: a junta
       // continua sem torque, que e o estado seguro. Diz e segue.
       definirMensagem("Nao consegui habilitar: %s", motivo);
       return false;
@@ -302,14 +340,14 @@ static long distanciaFreada(const Junta& j) {
 void jogAtualizar() {
   const uint32_t agora = millis();
 
-  // Portao unico de movimento (ver estado.h). Sem servos habilitados o
-  // gerador de pulso continua contando passos com o eixo parado, e todo
-  // limite de curso passa a apontar para o lugar errado.
-  if (!movimentoLiberado) {
+  // Portao de seguranca (ver estado.h): alarme, emergencia, conexao,
+  // falha. O TORQUE e conferido por eixo logo abaixo -- jog e movimento
+  // de um eixo so, e travar a junta 1 porque a 2 esta sem torque impedia
+  // de trabalhar numa bancada com um driver ligado.
+  if (!movimentoSeguro) {
     if (jogDir[0] != 0 || jogDir[1] != 0) {
       jogZerar();
-      definirMensagem("Jog bloqueado: %s",
-                      !servosLigados ? "habilite os servos" : "intertravamento de seguranca");
+      definirMensagem("Jog bloqueado: intertravamento de seguranca");
     }
     return;
   }
@@ -317,6 +355,17 @@ void jogAtualizar() {
   for (uint8_t i = 0; i < 2; i++) {
     Junta& j = (i == 0) ? J1 : J2;
     if (!j.motor) continue;
+    // Sem torque nesta junta o gerador de pulso continuaria contando
+    // passos com o eixo parado, e todo limite de curso passaria a
+    // apontar para o lugar errado.
+    if (!j.habilitado) {
+      if (jogDir[i] != 0) {
+        jogDefinir(i + 1, 0, 0.0f);
+        definirMensagem("Jog da junta %u bloqueado: habilite o servo dela",
+                        (unsigned)(i + 1));
+      }
+      continue;
+    }
 
     // Heartbeat: se a interface parou de confirmar o jog, o eixo para.
     // Protege contra queda de Wi-Fi com o botao pressionado.

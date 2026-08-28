@@ -769,6 +769,7 @@ static void teste_A10_json_status() {
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"sonReg\":%u,\"sonL\":%u,\"sonD\":%u,\"sonF16\":%s,\"sonEst\":%u,"
+    "\"srv1\":%s,\"srv2\":%s,"
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
@@ -788,6 +789,7 @@ static void teste_A10_json_status() {
     -999.99f, -999.99f, "false", "false", 100u,
     "false", -9999.0f, 9999.0f, -9999.0f, 9999.0f,
     65535u, 65535u, 65535u, "false", 255u,
+    "false", "false",
     msg);
 
   checar(n < 1520, "A10a", "o JSON de status precisa caber no buffer de 1520 bytes");
@@ -4522,6 +4524,153 @@ static void teste_V06_habilita_nao_prende_o_barramento() {
          "e a leitura do encoder volta a valer: o habilita nao a mata de idade");
 }
 
+// ---------------------------------------------------------------------
+// V07: a bancada real do operador -- UM driver no barramento.
+//
+// A versao anterior exigia que os dois confirmassem, entao habilitar
+// recusava tudo dizendo que o driver 2 nao respondeu. Era verdade e nao
+// ajudava ninguem: com o segundo driver ainda na caixa, nao dava para
+// mexer no eixo que existe.
+// ---------------------------------------------------------------------
+static void teste_V07_um_driver_no_barramento() {
+  secao("V07  Um driver so: habilitar o eixo que existe");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(80);
+
+  // O driver 2 nao esta ligado. E o estado da bancada dele.
+  g_uart.escravo[1].existe = false;
+
+  enviarComando(CMD_SERVOS, 1, 1);          // so a junta 1
+  rodarComWeb(120);
+  nota("habilitando so a junta 1: J1=%d J2=%d, servosLigados=%d -- \"%s\"",
+       (int)J1.habilitado, (int)J2.habilitado, (int)servosLigados, ultimaMensagem);
+  checar(J1.habilitado && !J2.habilitado, "V07a",
+         "com um driver no barramento, a junta 1 habilita sozinha");
+  checar(!servosLigados, "V07b",
+         "e a maquina NAO se declara pronta: movimento coordenado precisa das duas");
+
+  // O jog da junta habilitada tem de andar. Era isto que estava travado.
+  const long antes1 = posicaoJ1();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(300);
+  nota("jog da junta 1: %ld -> %ld passos", antes1, posicaoJ1());
+  checar(posicaoJ1() != antes1, "V07c",
+         "e o jog dela anda: um eixo sem torque nao trava o eixo que tem");
+
+  // O da outra, nao -- e diz por que.
+  const long antes2 = posicaoJ2();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 2, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 2, 0); rodarComWeb(300);
+  nota("jog da junta 2 sem torque: %ld -> %ld passos -- \"%s\"",
+       antes2, posicaoJ2(), ultimaMensagem);
+  checar(posicaoJ2() == antes2, "V07d",
+         "o eixo sem torque nao anda: o gerador de pulso contaria passos "
+         "com o eixo parado e todo limite de curso passaria a mentir");
+
+  // E desligar so ela funciona igual.
+  enviarComando(CMD_SERVOS, 0, 1);
+  rodarComWeb(120);
+  nota("desabilitando so a junta 1: J1=%d J2=%d", (int)J1.habilitado, (int)J2.habilitado);
+  checar(!J1.habilitado, "V07e",
+         "desabilitar por junta tambem, sem depender do driver que nao existe");
+}
+
+// ---------------------------------------------------------------------
+// V08: ir a 0 grau e operacao de INSTALACAO.
+//
+// Exigir calibracao ali era um ciclo fechado: para calibrar e preciso
+// mover, e para mover era preciso calibrar. O jog ja rodava livre sem
+// calibracao (modo de instalacao); o zero passou a seguir a mesma regra.
+// ---------------------------------------------------------------------
+static void teste_V08_zero_sem_calibracao() {
+  secao("V08  Ir a 0 grau sem calibracao, e com um eixo so");
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(120);
+
+  // Maquina recem-montada: ninguem calibrou nada e o encoder ainda nao
+  // foi configurado (registrador 0 = junta nao ligada). E o estado real
+  // de quem acabou de parafusar o braco e quer leva-lo ao zero.
+  J1.calibrada = J2.calibrada = false;
+  configEncoder.reg[0] = configEncoder.reg[1] = 0;
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, 20.0f));
+  if (J2.motor) J2.motor->setCurrentPosition(grausParaPassos(J2, -15.0f));
+  rodarComWeb(20);
+
+  enviarComando(CMD_IR_HOME);
+  rodarComWeb(60);
+  nota("sem calibracao, ir ao zero: modo=%d -- \"%s\"", (int)modoAtual, ultimaMensagem);
+  checar(modoAtual == MODO_POSICIONANDO, "V08a",
+         "ir a 0 grau nao exige calibracao: e o que se faz para SAIR "
+         "do estado nao calibrado");
+
+  uint32_t t = 0;
+  while (motoresEmMovimento() && t < 20000) { rodarComWeb(40); t += 40; }
+  nota("chegou em %.2f / %.2f graus",
+       (double)passosParaGraus(J1, posicaoJ1()),
+       (double)passosParaGraus(J2, posicaoJ2()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 1.0f &&
+         fabsf(passosParaGraus(J2, posicaoJ2())) < 1.0f, "V08b",
+         "e chega nos dois eixos");
+
+  // Ponto GRAVADO continua exigindo calibracao: ele foi gravado num
+  // referencial calibrado, e persegui-lo sem ela manda o braco para um
+  // lugar que ninguem escolheu.
+  // Espera voltar ao manual: ponto so se grava com o robo parado, e a
+  // ida ao zero acabou de terminar.
+  uint32_t tm = 0;
+  while (modoAtual != MODO_MANUAL && tm < 5000) { rodarComWeb(40); tm += 40; }
+  // Calibracao de mentira com curso que contem o zero: e preciso para
+  // GRAVAR o ponto. Ela sai logo abaixo -- o que se testa e o que
+  // acontece quando ela nao existe mais.
+  J1.calibrada = J2.calibrada = true;
+  {
+    const long p = (long)(90.0f * J1.passosPorGrau);
+    J1.passosMin = -p; J1.passosMax = p;
+    J2.passosMin = -p; J2.passosMax = p;
+    recalcularResolucao();
+  }
+  rodarComWeb(10);
+  enviarComando(CMD_PONTO_GRAVAR);
+  rodarComWeb(40);
+  nota("pontos gravados: %u", (unsigned)progQuantidade());
+  J1.calibrada = J2.calibrada = false;
+  // Le a recusa no ciclo seguinte ao comando: deixar rodar demais aqui
+  // faz a mensagem do movimento ANTERIOR terminar por cima dela.
+  enviarComando(CMD_IR_PARA_PONTO, 0);
+  rodarComWeb(4);
+  nota("ponto gravado, tentado sem calibracao: modo=%d -- \"%s\"",
+       (int)modoAtual, ultimaMensagem);
+  checar(strstr(ultimaMensagem, "alibre") != nullptr &&
+         modoAtual != MODO_POSICIONANDO, "V08c",
+         "mas ir a um ponto GRAVADO continua exigindo calibracao");
+
+  // Com um driver so: leva o eixo que tem torque, deixa o outro quieto.
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1, 1);          // so a junta 1
+  rodarComWeb(120);
+  J1.calibrada = J2.calibrada = false;
+  configEncoder.reg[0] = configEncoder.reg[1] = 0;
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, 20.0f));
+  if (J2.motor) J2.motor->setCurrentPosition(grausParaPassos(J2, -15.0f));
+  rodarComWeb(20);
+  const long parada2 = posicaoJ2();
+
+  enviarComando(CMD_IR_HOME);
+  t = 0;
+  rodarComWeb(60);
+  while (motoresEmMovimento() && t < 20000) { rodarComWeb(40); t += 40; }
+  nota("com so a junta 1 habilitada: J1 %.2f graus, J2 %ld -> %ld passos",
+       (double)passosParaGraus(J1, posicaoJ1()), parada2, posicaoJ2());
+  checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 1.0f, "V08d",
+         "o eixo com torque vai ao zero");
+  checar(posicaoJ2() == parada2, "V08e",
+         "e o eixo sem torque nao recebe pulso: contar passo de eixo parado "
+         "faria todo limite de curso apontar para o lugar errado");
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6129,6 +6278,8 @@ int main() {
   teste_V04_driver_que_so_aceita_funcao_16();
   teste_V05_registrador_nao_muda_com_torque();
   teste_V06_habilita_nao_prende_o_barramento();
+  teste_V07_um_driver_no_barramento();
+  teste_V08_zero_sem_calibracao();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

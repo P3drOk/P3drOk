@@ -76,6 +76,7 @@ Modo        modoAtual     = MODO_MANUAL;
 EstadoCalib estadoCalib   = CAL_INATIVO;
 bool        modoPrecisao  = false;
 bool        servosLigados = false;
+bool        movimentoSeguro = false;
 char        ultimaMensagem[96] = "Sistema iniciado";
 
 QueueHandle_t filaComandos = nullptr;

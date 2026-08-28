@@ -9,7 +9,10 @@ bool motoresIniciar();
 
 // Habilita/desabilita o sinal SON dos dois drivers.
 // Desabilitar tira o torque: use apenas com o braco apoiado.
-void servosHabilitar(bool ligar);
+// 'junta' e 1, 2, ou 0 para as duas. Por junta porque cada driver e um
+// escravo Modbus proprio, e uma bancada com um driver ligado tem de
+// conseguir trabalhar naquele eixo.
+void servosHabilitar(bool ligar, uint8_t junta = 0);
 
 // Confere, a cada ciclo do core 1, o que o barramento respondeu ao
 // ultimo pedido de habilita. Devolve true quando um DESABILITAR nao

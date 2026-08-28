@@ -506,7 +506,7 @@ enum TipoComando : uint8_t {
   CMD_JOG,              // a = junta (1|2), b = direcao (-1|0|1)
   CMD_PARAR,
   CMD_PRECISAO,         // a = 0|1|-1 (-1 alterna)
-  CMD_SERVOS,           // a = 0|1 (desliga/liga drivers)
+  CMD_SERVOS,           // a = 0|1 (desliga/liga), b = junta (1, 2, ou 0 = as duas)
   CMD_GRAVAR_INICIAR,
   CMD_GRAVAR_PARAR,
   CMD_REPRODUZIR,
