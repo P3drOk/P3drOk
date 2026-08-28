@@ -141,6 +141,19 @@ enum EstadoSon : uint8_t {
 };
 
 void    encoderPedirSon(bool ligar);
+
+// Pede e ESPERA a confirmacao, ate 'prazoMs'. Devolve true se confirmou.
+//
+// Existe para os caminhos que nao podem seguir com o eixo possivelmente
+// energizado -- o OTA e o caso: ele reinicia o ESP32 no fim da gravacao,
+// e um pedido apenas enfileirado pode nunca chegar ao fio. Enquanto o
+// habilita era um pino isso nao existia: digitalWrite cortava na hora e
+// o nivel sobrevivia ao reset.
+//
+// Nao use no caminho normal do operador. Esperar aqui prende o core 1.
+// Espera o pedido que JA foi feito -- chame servosHabilitar() antes, para
+// que a parada suave e o corte do arco acontecam junto.
+bool    encoderSonEsperar(uint32_t prazoMs);
 uint8_t encoderSonEstado();
 void    encoderSonMotivo(char* destino, size_t tam);
 

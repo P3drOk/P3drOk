@@ -430,6 +430,26 @@ máquina liga exatamente como antes.
 |---|---|
 | zero não ensinado | não há referência em que acreditar |
 | **servos desabilitados** | é o intertravamento: habilitar servos é uma ação sua na tela, e enquanto ninguém habilitar o braço não tem como andar |
+
+### O botão do motor
+
+No alto da tela, ao lado do **PARAR**, e visível de qualquer aba. É o
+mesmo comando de *Ajustes → Preparar a máquina* — um só, de propósito:
+dois caminhos para ligar o motor acabam discordando.
+
+| cor | o que significa |
+|---|---|
+| verde, *MOTOR LIGADO* | tem torque |
+| cinza, *MOTOR DESLIGADO* | sem torque |
+| laranja, *...* | pedido feito, os drivers ainda não responderam |
+| vermelho, *FALHOU* | o barramento não confirmou — veja `LIGACOES.md` §3.3 |
+| vermelho, *SEM REG* | registrador do habilita não configurado |
+
+O laranja é o que importa entender: desde que o habilita foi para o
+RS485, **"mandei" e "tem torque" deixaram de ser a mesma coisa**. Enquanto
+o botão estiver laranja, ninguém garante que o braço tem torque — e o
+firmware não garante também: ele só diz verde depois de reler o
+registrador no driver e ver o valor lá.
 | sem leitura do encoder | desiste depois de 5 s e avisa — máquina que não liga é pior que máquina desorientada |
 | zero fora do curso calibrado | não vai: furar a proteção seria pior que não ir |
 | solda ligada, ou fora do manual | não vai |

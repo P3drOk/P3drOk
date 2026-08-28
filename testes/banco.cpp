@@ -4475,6 +4475,53 @@ static void teste_V05_registrador_nao_muda_com_torque() {
          "novo e deixaria o antigo ligado, sem ninguem saber");
 }
 
+// ---------------------------------------------------------------------
+// V06: o habilita nao pode SEQUESTRAR o barramento.
+//
+// A tarefa do encoder roda no core 0 com prioridade 2; a tarefa de rede
+// (servidor web) roda no MESMO core com prioridade 1 -- menor. Uma
+// escrita de habilita que faca 12 transacoes seguidas, cada uma podendo
+// gastar ENC_TIMEOUT_MS sem resposta, prende o core por mais de um
+// segundo. Nesse tempo o jog corta (TIMEOUT_JOG_MS = 350) e a leitura do
+// encoder vence de idade (ENC_IDADE_MAX_MS = 1000).
+//
+// E o painel travando por causa de um botao -- exatamente o oposto do que
+// habilitar servos deveria custar.
+// ---------------------------------------------------------------------
+static void teste_V06_habilita_nao_prende_o_barramento() {
+  secao("V06  Habilitar nao pode travar o painel nem envelhecer a leitura");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  rodarComWeb(400);
+
+  // Driver mudo: o pior caso realista -- cabo solto, driver desligado,
+  // endereco errado. E quando o operador MAIS aperta o botao.
+  g_uart.escravo[0].mudo = true;
+  g_uart.escravo[1].mudo = true;
+
+  const uint32_t t0 = g_millis;
+  enviarComando(CMD_SERVOS, 1);
+  // Um unico ciclo do core 0 depois do comando: e onde a escrita acontece.
+  rodarComWeb(1);
+  const uint32_t gastoNoCiclo = g_millis - t0;
+
+  nota("um ciclo com o barramento mudo custou %lu ms de relogio",
+       (unsigned long)gastoNoCiclo);
+  checar(gastoNoCiclo < TIMEOUT_JOG_MS, "V06a",
+         "a tentativa de habilitar cabe dentro do prazo do jog: "
+         "botao nao pode cortar o movimento de quem esta comandando");
+
+  // E depois de tudo se resolver, a leitura tem de estar viva de novo.
+  g_uart.escravo[0].mudo = false;
+  g_uart.escravo[1].mudo = false;
+  rodarComWeb(600);
+  nota("leitura apos o episodio: valida=%d, idade=%lu ms",
+       (int)encoderLer(1).valido, (unsigned long)encoderLer(1).idadeMs);
+  checar(encoderLer(1).valido, "V06b",
+         "e a leitura do encoder volta a valer: o habilita nao a mata de idade");
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6081,6 +6128,7 @@ int main() {
   teste_V03_barramento_mudo_e_sem_registrador();
   teste_V04_driver_que_so_aceita_funcao_16();
   teste_V05_registrador_nao_muda_com_torque();
+  teste_V06_habilita_nao_prende_o_barramento();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

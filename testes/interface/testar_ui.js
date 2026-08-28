@@ -1992,6 +1992,64 @@ async function fecharGaveta(pag) {
 
 
   // ------------------------------------------------------------------
+  // O botao do motor no cabecalho. Ligar e desligar torque e a coisa que
+  // mais se aperta na maquina, e estava enterrada numa gaveta de
+  // Ajustes. Aqui ele tem de estar visivel de QUALQUER aba, e a cor tem
+  // de dizer o estado real -- nao o que foi pedido.
+  // ------------------------------------------------------------------
+  await t.request.post(BASE + '/teste/estado', { data: { servos: true, sonReg: 98, sonEst: 2 } });
+  await t.waitForTimeout(900);
+  const ligado = await t.evaluate(() => {
+    const b = document.getElementById('btMotor');
+    return b ? { cls: b.className, txt: b.textContent.trim(),
+                 visivel: b.offsetParent !== null } : null;
+  });
+  checar(!!ligado && ligado.visivel && / on\b/.test(ligado.cls) && /LIGADO/.test(ligado.txt),
+         'Motor: com torque o botao do cabecalho fica verde e diz LIGADO',
+         ligado ? ligado.cls + ' | ' + ligado.txt : 'sem botao');
+
+  rotas = [];
+  await t.locator('#btMotor').click();
+  await t.waitForTimeout(600);
+  const desligou = rotas.find(x => x.split('?')[0] === '/api/servos');
+  checar(!!desligou && /v=0/.test(desligou),
+         'Motor: com torque, o toque manda DESLIGAR', desligou || rotas.join(' '));
+
+  await t.request.post(BASE + '/teste/estado', { data: { servos: false } });
+  await t.waitForTimeout(900);
+  rotas = [];
+  await t.locator('#btMotor').click();
+  await t.waitForTimeout(600);
+  const ligou = rotas.find(x => x.split('?')[0] === '/api/servos');
+  checar(!!ligou && /v=1/.test(ligou),
+         'Motor: sem torque, o toque manda LIGAR', ligou || rotas.join(' '));
+
+  // O estado que mais engana: pedido feito, barramento ainda calado. O
+  // operador precisa ver a diferenca entre "mandei" e "tem torque".
+  await t.request.post(BASE + '/teste/estado', { data: { sonEst: 1 } });
+  await t.waitForTimeout(900);
+  const indo = await t.evaluate(() => {
+    const b = document.getElementById('btMotor');
+    return { cls: b.className, txt: b.textContent.trim() };
+  });
+  checar(/indo/.test(indo.cls),
+         'Motor: enquanto o barramento nao confirma, o botao nao diz que ligou',
+         indo.cls + ' | ' + indo.txt);
+
+  await t.request.post(BASE + '/teste/estado', { data: { sonEst: 3 } });
+  await t.waitForTimeout(900);
+  const falhou = await t.evaluate(() => {
+    const b = document.getElementById('btMotor');
+    return { cls: b.className, txt: b.textContent.trim() };
+  });
+  checar(/ruim/.test(falhou.cls) && /FALHOU/.test(falhou.txt),
+         'Motor: escrita que nao confirmou aparece no proprio botao',
+         falhou.cls + ' | ' + falhou.txt);
+
+  await t.request.post(BASE + '/teste/estado', { data: { sonEst: 2, servos: true } });
+  await t.waitForTimeout(700);
+
+  // ------------------------------------------------------------------
   // O habilita (SON) pelo barramento. O fio do GPIO 23 saiu, e o que
   // ficou no lugar tem de estar alcancavel pela tela -- registrador
   // errado aqui e maquina que nao energiza, ou pior, energiza escrevendo

@@ -3,6 +3,7 @@
 #include "solda.h"
 #include "programa.h"
 #include "trajetoria.h"
+#include "encoder.h"
 #include <Update.h>
 #include <string.h>
 
@@ -59,8 +60,23 @@ bool otaComecar(const char** motivo) {
   // O ESP32 reinicia no fim da gravacao. Driver habilitado com o gerador
   // de pulso morto e um eixo que ninguem esta comandando -- e o reinicio
   // dura o bastante para isso importar.
-  servosHabilitar(false);
-  soldaDesligar();
+  //
+  // Aqui o desabilita e ESPERADO, nao so pedido. O habilita mora no
+  // barramento desde que deixou de ser pino: um pedido enfileirado pode
+  // nunca chegar ao fio antes do reboot, e o eixo atravessaria a
+  // gravacao inteira energizado. Enquanto era pino isso nao existia --
+  // digitalWrite cortava na hora e o nivel sobrevivia ao reset.
+  //
+  // Nao confirmou, nao grava. Recusar uma atualizacao e reversivel;
+  // reiniciar com o braco energizado nao e.
+  servosHabilitar(false);      // parada suave, arco fora, e o pedido no fio
+  if (!encoderSonEsperar(OTA_PRAZO_SON_MS)) {
+    r.estado = OTA_ERRO;
+    dizer("nao consegui desabilitar os servos pelo barramento -- "
+          "atualizacao recusada com o eixo possivelmente energizado");
+    if (motivo) *motivo = r.motivo;
+    return false;
+  }
 
   if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
     r.estado = OTA_ERRO;

@@ -2690,12 +2690,84 @@ precisa ser visto, gasta a EEPROM do driver e deixa o eixo energizando e
 desenergizando sem ninguém no controle. Isso é decisão de quem está na
 frente da máquina, com os olhos nela.
 
+## R91 · O botão de habilitar sequestrava o barramento  ✅
+
+Reportado como "o sistema parou de fluir": problemas de conexão e de
+acionamento depois de o habilita ir para o RS485. Era regressão minha, e
+o banco mediu o tamanho dela.
+
+`executarSon()` fazia tudo dentro de um único `ciclo()`: dois drivers,
+três tentativas cada, escrita mais releitura — até **doze transações
+seguidas**. Com o barramento mudo (cabo solto, driver desligado, endereço
+errado — justamente quando o operador mais aperta o botão), cada uma
+gastava `ENC_TIMEOUT_MS` inteiro.
+
+**Medido no cenário V06: 822 ms presos num ciclo só.**
+
+A tarefa do encoder roda no core 0 com prioridade 2; a tarefa de rede, que
+serve o painel, roda no **mesmo core** com prioridade 1 — menor. Nesse
+tempo:
+
+| prazo | o que estourava |
+|---|---|
+| `TIMEOUT_JOG_MS` = 350 ms | o jog cortava no meio do movimento |
+| `ENC_IDADE_MAX_MS` = 1000 ms | a leitura do encoder vencia de idade |
+
+Um botão de habilitar servos derrubando o movimento de quem está
+comandando é o oposto do que ele deveria custar.
+
+**Correção: uma tentativa por ciclo.** As tentativas passaram a ser
+espalhadas (`sonPasso()`), então cada ciclo custa no máximo duas
+transações e entre elas a tarefa de rede roda. A escrita também ganhou
+prazo próprio — `SON_TIMEOUT_MS` = 60 ms, seis vezes o round-trip real a
+19200 baud, em vez de herdar os 100 ms da leitura, que rodam sozinhos no
+ciclo e não custam nada.
+
+**822 ms → 64 ms por tentativa.** V06 guarda os dois lados: cabe no prazo
+do jog, e a leitura do encoder volta a valer depois do episódio.
+
+### E um buraco que a assincronia abriu no OTA
+
+`ota.cpp` desabilitava os servos e começava a gravar em seguida. Isso
+funcionava quando o habilita era pino: `digitalWrite` cortava na hora e o
+nível sobrevivia ao reset. Com Modbus, o pedido ficava só **enfileirado**
+— podia nunca chegar ao fio antes do reboot, e o eixo atravessaria a
+gravação inteira energizado.
+
+O OTA passou a **esperar** a confirmação (`encoderSonEsperar()`), e a
+recusar a atualização se ela não vier. Recusar uma atualização é
+reversível; reiniciar com o braço energizado não é.
+
+## R92 · O botão do motor estava enterrado numa gaveta  ✅
+
+Ligar e desligar torque é a coisa que mais se aperta nesta máquina, e
+morava em **Ajustes → Preparar a máquina** — duas gavetas de distância de
+qualquer aba de trabalho.
+
+Passou a ter botão próprio no cabeçalho, ao lado do PARAR e visível de
+qualquer aba. É **o mesmo comando** do botão de Ajustes, de propósito:
+dois caminhos para ligar o motor acabam discordando, e aí ninguém sabe
+qual é o estado de verdade.
+
+A cor diz o estado **real**, não o que foi pedido:
+
+| | |
+|---|---|
+| verde, "MOTOR LIGADO" | tem torque |
+| cinza, "MOTOR DESLIGADO" | sem torque |
+| laranja, "..." | pedido feito, barramento ainda calado |
+| vermelho, "FALHOU" / "SEM REG" | não confirmou, ou registrador não configurado |
+
+O estado laranja é o que mais importa e o que não existia: com o habilita
+no barramento, "mandei" e "tem torque" deixaram de ser a mesma coisa, e o
+operador precisa ver a diferença.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **380 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **214 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **382 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **219 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

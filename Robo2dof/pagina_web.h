@@ -154,6 +154,22 @@ button,input{font:inherit;color:inherit}
  box-shadow:0 3px 0 rgba(0,0,0,.35);margin-left:8px}
 .estop:active{box-shadow:0 1px 0 rgba(0,0,0,.35);transform:translateY(2px)}
 
+/* O motor tem botao proprio no cabecalho, ao lado do PARAR e visivel de
+   toda aba: ligar e desligar torque e a coisa que mais se aperta na
+   maquina, e estava enterrada numa gaveta de Ajustes. A cor diz o
+   estado -- verde tem torque, cinza nao, ambar esperando o barramento
+   responder. Nao e o PARAR e nao pode ser confundido com ele. */
+.motor{flex:0 0 auto;border:none;font-family:var(--mono);font-size:12px;font-weight:700;
+ letter-spacing:.12em;padding:12px 16px;border-radius:4px;cursor:pointer;color:#fff;
+ background:var(--linha2);box-shadow:0 3px 0 rgba(0,0,0,.25);margin-left:auto}
+.motor.on{background:var(--pronto)}
+.motor.indo{background:var(--quente)}
+.motor.ruim{background:var(--brasa)}
+.motor:active{box-shadow:0 1px 0 rgba(0,0,0,.25);transform:translateY(2px)}
+@media(max-width:760px){
+  .motor{padding:10px 10px;font-size:11px;letter-spacing:.04em;margin-left:4px}
+}
+
 /* ---------- mesa de tracado ---------- */
 .quadro{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;
  display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative}
@@ -758,6 +774,8 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
       <div class="lp" id="lRede"><i class="olho"></i><span>rede</span></div>
       <div class="lp" id="lSd"><i class="olho"></i><span>cartao</span></div>
     </div>
+    <button class="motor" id="btMotor" title="Liga e desliga o torque dos motores">
+      <span id="btMotorT">MOTOR</span></button>
     <button class="estop" id="btParar">PARAR</button>
   </header>
 
@@ -2046,6 +2064,11 @@ function abrir(n){
 let carregou=false;
 $("btParar").onclick =function(){post("/api/parar");};
 $("btServos").onclick=function(){post("/api/servos?v="+(D.servos?0:1));};
+
+/* O mesmo comando do botao de Ajustes, agora tambem no cabecalho. E UM
+   comando so, de proposito: dois caminhos para ligar o motor acabam
+   discordando, e ai ninguem sabe qual e o estado de verdade. */
+$("btMotor").onclick=function(){post("/api/servos?v="+(D.servos?0:1));};
 $("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
 $("btTeste").onclick =function(){post("/api/teste/rele");};
 $("btCalib").onclick =function(){post("/api/calib/iniciar");};
@@ -4641,6 +4664,29 @@ $("btSonSalvar").onclick=function(){
 /* Estado do ultimo pedido de habilita. SON_OCIOSO=0 PENDENTE=1 OK=2 FALHOU=3.
    O caso que importa e o 3 depois de um desabilitar: o eixo pode estar
    energizado e nao ha segundo caminho para cortar. */
+/* O botao do motor no cabecalho. A cor e o texto dizem o estado REAL,
+   nao o que foi pedido: enquanto o barramento nao confirma, ele fica em
+   "indo" -- porque o operador precisa saber a diferenca entre "mandei" e
+   "tem torque". */
+function motorPintar(d){
+  const b=$("btMotor"),t=$("btMotorT");if(!b||!t)return;
+  if(d.sonReg===0){
+    b.className="motor ruim";t.textContent=tr("SEM REG");
+    b.title=tr("Habilita sem registrador: configure em Ajustes");return;
+  }
+  if(d.sonEst===1){
+    b.className="motor indo";t.textContent=tr("...");
+    b.title=tr("falando com os drivers");return;
+  }
+  if(d.sonEst===3){
+    b.className="motor ruim";t.textContent=tr("FALHOU");
+    b.title=tr("o barramento nao confirmou o ultimo comando de habilita");return;
+  }
+  b.className="motor"+(d.servos?" on":"");
+  t.textContent=d.servos?tr("MOTOR LIGADO"):tr("MOTOR DESLIGADO");
+  b.title=d.servos?tr("Toque para tirar o torque"):tr("Toque para dar torque");
+}
+
 function sonPintar(d){
   if(!sonCarregou&&d.sonReg!==undefined){
     sonCarregou=true;
@@ -4757,6 +4803,7 @@ function aplicar(d){
   Object.assign(D,d);
   if(!jaEnquadrou){jaEnquadrou=true;autoEnquadrar();}
   sonPintar(d);
+  motorPintar(d);
   const pronto=d.cal1&&d.cal2&&d.servos;
   const rodando=(d.modo==="EXECUTANDO");
   const movendo=d.movendo;
@@ -5093,6 +5140,11 @@ const EN={
  "ponta mm/s":"tip mm/s",
  /* botoes principais */
  "Habilitar servos":"Enable servos","Desabilitar servos":"Disable servos",
+ "MOTOR LIGADO":"MOTOR ON","MOTOR DESLIGADO":"MOTOR OFF",
+ "SEM REG":"NO REG","FALHOU":"FAILED",
+ "Toque para dar torque":"Tap to apply torque",
+ "Toque para tirar o torque":"Tap to remove torque",
+ "falando com os drivers":"talking to the drives",
  "PARAR":"STOP","Parar":"Stop","Executar ensaio":"Run dry run",
  "Parar ensaio":"Stop dry run","Executar com arco":"Run with arc",
  "Confirmar: abrir o arco":"Confirm: strike the arc",

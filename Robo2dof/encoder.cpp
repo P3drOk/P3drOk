@@ -109,7 +109,8 @@ static uint16_t crc16(const uint8_t* b, size_t n) {
 // ---------------------------------------------------------------------
 static size_t trocar(const uint8_t* saida, size_t nSaida,
                      uint8_t* entrada, size_t maxEntrada,
-                     size_t esperados = 0) {
+                     size_t esperados = 0,
+                     uint32_t prazoMs = ENC_TIMEOUT_MS) {
   while (rs.available()) rs.read();
 
   modoTransmissao();
@@ -127,7 +128,7 @@ static size_t trocar(const uint8_t* saida, size_t nSaida,
   const uint32_t inicio = millis();
 
   // Subtracao com sinal: aguenta a volta do contador de milissegundos.
-  while ((int32_t)(millis() - inicio) < (int32_t)ENC_TIMEOUT_MS &&
+  while ((int32_t)(millis() - inicio) < (int32_t)prazoMs &&
          n < maxEntrada) {
     if (rs.available()) {
       entrada[n++] = (uint8_t)rs.read();
@@ -282,7 +283,7 @@ static bool escreverUm(uint8_t id, uint16_t reg, uint16_t valor, bool usar16) {
 
   // As duas funcoes respondem com 8 bytes: eco do cabecalho e CRC.
   uint8_t r[16];
-  const size_t n = trocar(q, nq, r, sizeof(r), 8);
+  const size_t n = trocar(q, nq, r, sizeof(r), 8, SON_TIMEOUT_MS);
 
   portENTER_CRITICAL(&travaEnc);
   memcpy(ultimoEnvio, q, nq < sizeof(ultimoEnvio) ? nq : sizeof(ultimoEnvio));
@@ -316,7 +317,7 @@ static bool lerUmaPalavra(uint8_t id, uint16_t reg, uint16_t& valor) {
   q[6] = (uint8_t)(c & 0xFF);  q[7] = (uint8_t)(c >> 8);
 
   uint8_t r[16];
-  const size_t n = trocar(q, 8, r, sizeof(r), 7);
+  const size_t n = trocar(q, 8, r, sizeof(r), 7, SON_TIMEOUT_MS);
   if (n < 7) return false;
   const uint16_t cc = crc16(r, n - 2);
   if (r[n - 2] != (uint8_t)(cc & 0xFF) || r[n - 1] != (uint8_t)(cc >> 8)) return false;
@@ -328,34 +329,60 @@ static bool lerUmaPalavra(uint8_t id, uint16_t reg, uint16_t& valor) {
 // Escreve o habilita nos DOIS drivers. Os dois tem de confirmar: meio
 // braco energizado e pior que nenhum, porque parece que obedeceu.
 //
-// Enderecos iguais = um driver so na bancada, e ai se escreve uma vez.
-static void executarSon(bool ligar) {
-  const uint16_t valor = ligar ? configSon.valLiga : configSon.valDesliga;
+// UMA TENTATIVA POR CICLO, e a razao vale escrever.
+//
+// A versao anterior fazia tudo de uma vez: dois drivers, tres tentativas
+// cada, escrita mais releitura -- ate doze transacoes dentro de um unico
+// ciclo(). Com o barramento mudo, cada uma gastava o prazo inteiro, e o
+// banco mediu 822 ms presos num ciclo so. A tarefa do encoder roda no
+// core 0 com prioridade 2 e a tarefa de rede no MESMO core com
+// prioridade 1: nesse tempo o painel engasgava, o jog cortava
+// (TIMEOUT_JOG_MS = 350) e a leitura vencia de idade.
+//
+// Um botao de habilitar servos nao pode derrubar o movimento de quem
+// esta comandando. Espalhando as tentativas, cada ciclo custa no maximo
+// duas transacoes de SON_TIMEOUT_MS -- e entre elas a tarefa de rede
+// roda e o operador continua com painel na mao. Ver o cenario V06.
+static uint8_t  sonDriver    = 0;   // qual driver a proxima tentativa ataca
+static uint8_t  sonTentativa = 0;
+static bool     sonLigar     = false;
+
+static void sonComecar(bool ligar) {
+  sonLigar     = ligar;
+  sonDriver    = 0;
+  sonTentativa = 0;
+  estadoSon    = SON_PENDENTE;
+  sonMotivo[0] = '\0';
+}
+
+// Um passo. Devolve true quando ainda ha trabalho para o proximo ciclo.
+static bool sonPasso() {
+  const uint16_t valor = sonLigar ? configSon.valLiga : configSon.valDesliga;
   const uint8_t  idA   = configEncoder.id[0];
   const uint8_t  idB   = configEncoder.id[1];
+  // Enderecos iguais = um driver so na bancada, e ai se escreve uma vez.
+  const uint8_t  quantos = (idB == idA) ? 1 : 2;
+  const uint8_t  id      = sonDriver ? idB : idA;
 
-  bool tudoOk = true;
-  uint8_t falhou = 0;
-  for (uint8_t k = 0; k < 2; k++) {
-    const uint8_t id = k ? idB : idA;
-    if (k == 1 && idB == idA) break;      // um driver so
-
-    bool ok = false;
-    for (uint8_t t = 0; t < SON_TENTATIVAS && !ok; t++)
-      ok = escreverUm(id, configSon.reg, valor, configSon.funcao16);
-    if (!ok) { tudoOk = false; falhou = id; }
+  if (escreverUm(id, configSon.reg, valor, configSon.funcao16)) {
+    sonDriver++;
+    sonTentativa = 0;
+    if (sonDriver >= quantos) {
+      estadoSon    = SON_OK;
+      sonMotivo[0] = '\0';
+      return false;
+    }
+    return true;
   }
 
-  if (tudoOk) {
-    estadoSon = SON_OK;
-    sonMotivo[0] = '\0';
-  } else {
-    estadoSon = SON_FALHOU;
-    snprintf(sonMotivo, sizeof(sonMotivo),
-             "driver %u nao confirmou %s no registrador %u",
-             (unsigned)falhou, ligar ? "habilitar" : "DESABILITAR",
-             (unsigned)configSon.reg);
-  }
+  if (++sonTentativa < SON_TENTATIVAS) return true;   // insiste no proximo ciclo
+
+  estadoSon = SON_FALHOU;
+  snprintf(sonMotivo, sizeof(sonMotivo),
+           "driver %u nao confirmou %s no registrador %u",
+           (unsigned)id, sonLigar ? "habilitar" : "DESABILITAR",
+           (unsigned)configSon.reg);
+  return false;
 }
 
 // Chamado pelo CORE 1. So deixa recado: quem fala no barramento e a
@@ -366,6 +393,20 @@ void encoderPedirSon(bool ligar) {
   estadoSon   = SON_PENDENTE;
   sonPedidoMs = millis();
   pedidoSon   = ligar ? 1 : 2;
+}
+
+// Pede e espera. Quem executa continua sendo a tarefa do core 0 -- este
+// laco so cede o processador ate ela terminar. Escrever daqui por baixo
+// de uma leitura em andamento corromperia os dois quadros.
+bool encoderSonEsperar(uint32_t prazoMs) {
+  const uint32_t inicio = millis();
+  while ((int32_t)(millis() - inicio) < (int32_t)prazoMs) {
+    const uint8_t e = encoderSonEstado();
+    if (e == SON_OK)     return true;
+    if (e == SON_FALHOU) return false;
+    delay(2);
+  }
+  return encoderSonEstado() == SON_OK;
 }
 
 uint8_t encoderSonEstado() {
@@ -940,10 +981,18 @@ static void ciclo() {
   // O habilita vem primeiro. Ele e o unico caminho que sobrou para tirar
   // torque do braco: nao pode ficar atras de um autoteste de 3 segundos
   // na fila.
+  // O habilita vem primeiro, e sai daqui depois de UM passo -- nunca com
+  // a escrita inteira nas costas. Ver sonPasso().
   if (pedidoSon) {
     const uint8_t o = pedidoSon;
     pedidoSon = 0;
-    executarSon(o == 1);
+    sonComecar(o == 1);
+    sonPasso();
+    proximaEm = millis();
+    return;
+  }
+  if (estadoSon == SON_PENDENTE) {
+    sonPasso();
     proximaEm = millis();
     return;
   }
@@ -1059,6 +1108,8 @@ void encoderReiniciarTeste() {
   pedidoCaca   = 0;
   pedidoSon    = 0;
   estadoSon    = SON_OCIOSO;
+  sonDriver    = 0;
+  sonTentativa = 0;
   sonMotivo[0] = '\0';
   testeRodando = false;
   cacaEtapa    = 0;

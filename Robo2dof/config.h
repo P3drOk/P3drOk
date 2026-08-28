@@ -211,15 +211,42 @@ static const float    ENC_CONTAGENS_PADRAO = 131072.0f;   // encoder de 17 bits
 static const uint16_t SON_REG_PADRAO      = 98;
 static const uint16_t SON_VAL_LIGA_PADRAO = 1;
 static const uint16_t SON_VAL_DESL_PADRAO = 0;
+// Prazo de resposta da escrita do habilita, separado do prazo da leitura.
+//
+// A leitura usa 100 ms porque e o numero que ja funcionou na bancada e
+// nao custa nada: ela roda sozinha no ciclo. A escrita e outra historia
+// -- ela acontece quando o operador aperta um botao, possivelmente com o
+// jog em curso, e cada milissegundo aqui e um milissegundo em que a
+// tarefa de rede (core 0, prioridade MENOR que a do encoder) nao roda.
+//
+// A 19200 baud um quadro de 8 bytes leva ~4 ms e a resposta outro tanto.
+// 60 ms e seis vezes o necessario e ainda cabe com folga dentro do
+// TIMEOUT_JOG_MS: o botao nao pode cortar o movimento de quem esta
+// comandando. Ver o cenario V06 do banco, que mede isso.
+static const uint32_t SON_TIMEOUT_MS      = 60;
+
 // Quantas vezes insistir numa escrita que nao confirmou na releitura.
 // Desabilitar que se perde no fio e a falha que importa, entao a
 // insistencia existe para ela. Curta de proposito: ninguem pode ficar
 // preso esperando o barramento com o eixo energizado.
 static const uint8_t  SON_TENTATIVAS      = 3;
-// Prazo para a tarefa do core 0 confirmar o que o core 1 pediu. Passou
-// disso sem confirmar, e falha. Um ciclo da tarefa custa 5 ms e a
-// escrita com releitura cabe em ~60 ms; 500 ms e folga, nao chute.
-static const uint32_t SON_PRAZO_MS        = 500;
+// Prazo para a tarefa do core 0 confirmar o que o core 1 pediu.
+//
+// Isto NAO e o detector de falha do dia a dia: quem descobre que a
+// escrita nao pegou e a propria maquina de estados, que esgota as
+// tentativas e diz. Este prazo existe so para o caso em que a tarefa do
+// core 0 morreu e nunca vai responder -- "pendente para sempre" seria a
+// tela dizendo "calma" com o eixo energizado.
+//
+// Por isso e generoso: as tentativas sao espalhadas UMA POR CICLO para
+// nao prender o barramento, e o pior caso realista (dois drivers mudos,
+// tres tentativas cada) leva ~400 ms. 2 s deixa esse caminho terminar
+// sozinho e ainda assim pega tarefa morta em tempo util.
+static const uint32_t SON_PRAZO_MS        = 2000;
+// Quanto o OTA espera pela confirmacao do desabilita antes de desistir da
+// atualizacao. Recusar uma atualizacao e reversivel; reiniciar com o
+// braco energizado nao e.
+static const uint32_t OTA_PRAZO_SON_MS    = 1500;
 
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;
