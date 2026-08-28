@@ -17,6 +17,16 @@ python3 testes/conferir_rotas.py
 # Este guarda le os codigos de volta com um decodificador de verdade.
 python3 testes/conferir_qr.py
 
+# Os sketches avulsos de ferramentas/ nao entram no banco -- nao ha o que
+# simular num programa que conversa com um driver de verdade. Mas sketch
+# que nao compila e pior que sketch que nao existe: o operador so
+# descobre na bancada, com o robo aberto. Aqui o compilador confere a
+# sintaxe dos dois.
+for f in testes/ferramentas/sintaxe_*.cpp; do
+  g++ -std=c++17 -fsyntax-only -Wall -Wextra -Wno-unused-parameter \
+      -I testes/ferramentas/arduino_falso "$f"
+done
+
 # A pagina servida e a comprimida: se ela ficar velha, o robo entrega uma
 # interface diferente da que esta no repositorio.
 python3 testes/gerar_pagina_gz.py --conferir

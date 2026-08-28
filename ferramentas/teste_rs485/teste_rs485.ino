@@ -984,6 +984,283 @@ static void quadroCru(const String& texto) {
 }
 
 // =====================================================================
+// =====================================================================
+//  ESCREVER -- funcao 06 (um registrador) e 16 (bloco de um)
+//
+//  ATE AQUI ESTE SKETCH SO LIA. Escrever e outra categoria de risco: ler
+//  no registrador errado da um numero errado na tela, escrever no
+//  registrador errado num servo drive pode trocar a engrenagem
+//  eletronica, o modo de controle, o sentido do eixo ou o limite de
+//  torque -- e o eixo pode sair andando.
+//
+//  ESTE SKETCH E AVULSO DE PROPOSITO. Ele nao faz parte do firmware da
+//  maquina: o firmware le e so le. Enquanto nao se souber COM CERTEZA
+//  qual registrador e o que, escrever e experimento de bancada, com o
+//  motor desacoplado da mecanica, e nao funcao de painel.
+//
+//  A resposta da funcao 06 e o ECO do proprio pedido; a da 16 e endereco
+//  + quantidade. Conferir o eco separa "o driver aceitou" de "alguem
+//  respondeu qualquer coisa". E depois se RELE, porque driver que
+//  responde "aceitei" e guarda outra coisa existe.
+// =====================================================================
+static uint8_t escreverUm(uint16_t endereco, uint16_t valor, bool usar16,
+                          uint8_t& codigo) {
+  uint8_t q[11];
+  size_t  nq;
+  q[0] = idAtual;
+  q[2] = (uint8_t)(endereco >> 8);
+  q[3] = (uint8_t)(endereco & 0xFF);
+  if (!usar16) {
+    q[1] = 6;
+    q[4] = (uint8_t)(valor >> 8);
+    q[5] = (uint8_t)(valor & 0xFF);
+    nq = 6;
+  } else {
+    q[1] = 16;
+    q[4] = 0; q[5] = 1;     // quantidade = 1 registrador
+    q[6] = 2;               // 2 bytes de dado
+    q[7] = (uint8_t)(valor >> 8);
+    q[8] = (uint8_t)(valor & 0xFF);
+    nq = 9;
+  }
+  const uint16_t c = crc16(q, nq);
+  q[nq]     = (uint8_t)(c & 0xFF);
+  q[nq + 1] = (uint8_t)(c >> 8);
+
+  Serial.print("  enviado: "); hexLinha(q, nq + 2);
+
+  uint8_t r[16];
+  const size_t n = trocar(q, nq + 2, r, sizeof(r), 300);
+  Serial.print("  voltou : ");
+  if (n) hexLinha(r, n); else Serial.println("(silencio)");
+
+  if (!n) return 0;
+  if (!crcConfere(r, n)) { Serial.println("  CRC nao bate."); return 0; }
+  if (r[1] & 0x80) { codigo = (n > 2) ? r[2] : 0; return 2; }
+  if (n < 8 || r[1] != q[1] || r[2] != q[2] || r[3] != q[3]) {
+    Serial.println("  resposta fora do formato esperado.");
+    return 0;
+  }
+  return 1;
+}
+
+// Escreve e CONFERE relendo. Devolve true so quando o valor entrou.
+static bool escreverEConferir(uint16_t endereco, uint16_t valor, bool usar16) {
+  uint8_t cod = 0;
+  const uint8_t r = escreverUm(endereco, valor, usar16, cod);
+  if (r == 2) {
+    Serial.print("  EXCECAO ao escrever: "); Serial.println(textoExcecao(cod));
+    Serial.println("  Pode ser registrador que nao existe, escrita bloqueada,");
+    Serial.println("  ou funcao errada -- ha driver que so aceita a 16 (use W).");
+    return false;
+  }
+  if (r != 1) { Serial.println("  o driver NAO aceitou."); return false; }
+
+  delay(30);
+  uint16_t lido = 0; uint8_t cod2 = 0;
+  const uint8_t rl = lerUm(endereco, lido, cod2);
+  if (rl != 1) {
+    Serial.println("  escreveu, mas a releitura falhou: confira no painel.");
+    return false;
+  }
+  Serial.print("  releitura: reg "); Serial.print(endereco);
+  Serial.print(" vale "); Serial.println(lido);
+  if (lido == valor) { Serial.println("  CONFERE: o valor entrou."); return true; }
+  Serial.print("  NAO CONFERE: pedi "); Serial.print(valor);
+  Serial.print(" e voltou "); Serial.println(lido);
+  Serial.println("  Pode ser registrador de so-leitura, ou valor fora da faixa.");
+  return false;
+}
+
+static void escrever(const String& resto, bool usar16) {
+  int esp = resto.indexOf(' ');
+  if (esp <= 0) {
+    Serial.println("uso: w <registrador> <valor>   (W usa a funcao 16)");
+    return;
+  }
+  const long endereco = atol(resto.substring(0, esp).c_str());
+  const long valor    = atol(resto.substring(esp + 1).c_str());
+  if (endereco < 0 || endereco > 65535 || valor < 0 || valor > 65535) {
+    Serial.println("registrador e valor vao de 0 a 65535.");
+    return;
+  }
+  Serial.println();
+  Serial.println("== ESCREVER ==");
+  Serial.print("driver "); Serial.print((int)idAtual);
+  Serial.print(", registrador "); Serial.print(endereco);
+  Serial.print(", valor "); Serial.print(valor);
+  Serial.print(", funcao "); Serial.println(usar16 ? 16 : 6);
+  Serial.println("MOTOR DESACOPLADO DA MECANICA? Digite S para confirmar.");
+  while (!Serial.available()) { }
+  const String conf = Serial.readStringUntil('\n');
+  if (conf.length() == 0 || (conf[0] != 'S' && conf[0] != 's')) {
+    Serial.println("cancelado.");
+    return;
+  }
+  escreverEConferir((uint16_t)endereco, (uint16_t)valor, usar16);
+}
+
+// =====================================================================
+//  MODO d -- achar um parametro SEM ESCREVER
+//
+//  Tira uma foto da faixa, voce muda o parametro NO PAINEL do driver, e
+//  a segunda foto mostra o que mudou. E o mesmo raciocinio do modo 7
+//  (cacar o encoder movendo o eixo), so que o que se mexe e um parametro
+//  em vez do braco. Zero escrita: se o endereco estiver errado, o pior
+//  que acontece e nao achar nada.
+// =====================================================================
+static uint16_t fotoValor[512];
+static bool     fotoTem[512];
+static uint16_t fotoIni = 0, fotoFim = 0;
+static bool     fotoTirada = false;
+
+static uint16_t tirarFoto(uint16_t ini, uint16_t fim,
+                          uint16_t* destino, bool* tem) {
+  uint16_t achados = 0;
+  for (uint16_t a = ini; a <= fim; a++) {
+    const uint16_t i = (uint16_t)(a - ini);
+    uint16_t v = 0; uint8_t cod = 0;
+    tem[i] = (lerUm(a, v, cod) == 1);
+    if (tem[i]) { destino[i] = v; achados++; }
+    if (a == 0xFFFF) break;
+  }
+  return achados;
+}
+
+static void diferenca(uint16_t ini, uint16_t fim, bool comparar) {
+  if (fim < ini) { const uint16_t t = ini; ini = fim; fim = t; }
+  if ((uint32_t)(fim - ini) >= 512) fim = (uint16_t)(ini + 511);
+
+  Serial.println();
+  if (!comparar) {
+    Serial.println("== FOTO DA FAIXA (nada e escrito) ==");
+    fotoIni = ini; fotoFim = fim;
+    const uint16_t n = tirarFoto(ini, fim, fotoValor, fotoTem);
+    fotoTirada = (n > 0);
+    if (!fotoTirada) {
+      Serial.println("nenhum registrador respondeu. Rode o modo 3 antes.");
+      return;
+    }
+    Serial.print("foto de "); Serial.print(n);
+    Serial.print(" registradores entre "); Serial.print(ini);
+    Serial.print(" e "); Serial.println(fim);
+    Serial.println();
+    Serial.println("AGORA va ao PAINEL do driver e mude o parametro que voce");
+    Serial.println("quer achar (P098, por exemplo). Volte e digite:  d2");
+    Serial.println("Deixe o eixo PARADO: a posicao muda sozinha e apareceria");
+    Serial.println("na lista junto com o parametro.");
+    return;
+  }
+
+  if (!fotoTirada) { Serial.println("tire a foto primeiro (d)."); return; }
+  Serial.println("== O QUE MUDOU DESDE A FOTO ==");
+  uint16_t agora[512];
+  bool     tem[512];
+  tirarFoto(fotoIni, fotoFim, agora, tem);
+
+  uint16_t mudaram = 0;
+  for (uint16_t a = fotoIni; a <= fotoFim; a++) {
+    const uint16_t i = (uint16_t)(a - fotoIni);
+    if (!fotoTem[i] || !tem[i] || agora[i] == fotoValor[i]) continue;
+    mudaram++;
+    Serial.print("  reg "); Serial.print(a);
+    Serial.print(" : "); Serial.print(fotoValor[i]);
+    Serial.print(" -> "); Serial.print(agora[i]);
+    Serial.print("   (0x"); Serial.print(fotoValor[i], HEX);
+    Serial.print(" -> 0x"); Serial.print(agora[i], HEX);
+    Serial.println(")");
+    if (a == 0xFFFF) break;
+  }
+  Serial.println();
+  if (mudaram == 0) {
+    Serial.println("Nada mudou. O parametro nao esta nesta faixa, ou a");
+    Serial.println("mudanca ainda nao foi confirmada no painel do driver.");
+  } else if (mudaram == 1) {
+    Serial.println("UM registrador so mudou: e esse o endereco do parametro.");
+  } else {
+    Serial.print(mudaram);
+    Serial.println(" mudaram. Se o eixo se mexeu, o par da posicao entrou");
+    Serial.println("na conta -- repita com o eixo parado.");
+  }
+}
+
+// =====================================================================
+//  MODO s -- testar o SON (habilita) por RS485, com o motor desacoplado
+//
+//  O QUE ISTO NAO E: nao e um jeito de habilitar o motor em operacao. No
+//  Robo2dof o habilita e um FIO -- GPIO 23, por optoacoplador, no SON dos
+//  dois drivers. Fio de SON rompido desabilita o motor; fio de RS485
+//  rompido nao desabilita nada, deixa o eixo como estava. Um e falha
+//  segura, o outro nao, e por isso o firmware nao escreve o habilita.
+//
+//  O QUE ISTO E: a bancada onde se descobre SE o driver aceita mexer no
+//  habilita por Modbus, em qual registrador e com quais valores -- antes
+//  de decidir qualquer coisa sobre o firmware.
+//
+//  MOTOR DESACOPLADO DA MECANICA. Se o registrador estiver certo, o eixo
+//  vai ENERGIZAR. Se estiver errado, pode fazer outra coisa qualquer.
+// =====================================================================
+static void testarSon(uint16_t reg, uint16_t vLiga, uint16_t vDesliga,
+                      bool usar16) {
+  Serial.println();
+  Serial.println("== TESTE DE SON (habilita) ==");
+  Serial.print("driver "); Serial.print((int)idAtual);
+  Serial.print(", registrador "); Serial.print(reg);
+  Serial.print(", habilita="); Serial.print(vLiga);
+  Serial.print(", desabilita="); Serial.println(vDesliga);
+  Serial.println();
+  Serial.println("O EIXO PODE ENERGIZAR E GIRAR.");
+  Serial.println("Motor desacoplado da mecanica e area livre?");
+  Serial.println("Digite S para confirmar, qualquer outra coisa cancela.");
+  while (!Serial.available()) { }
+  const String conf = Serial.readStringUntil('\n');
+  if (conf.length() == 0 || (conf[0] != 'S' && conf[0] != 's')) {
+    Serial.println("cancelado.");
+    return;
+  }
+
+  uint16_t antes = 0; uint8_t cod = 0;
+  if (lerUm(reg, antes, cod) == 1) {
+    Serial.print("valor atual do registrador: "); Serial.println(antes);
+  } else {
+    Serial.println("nao consegui ler o registrador antes de escrever.");
+    Serial.println("Continuo mesmo assim -- mas sem valor antigo para voltar.");
+  }
+
+  Serial.println();
+  Serial.println("-- HABILITANDO --");
+  const bool ligou = escreverEConferir(reg, vLiga, usar16);
+  Serial.println("Encoste no eixo: ele deve estar TRAVADO (com torque).");
+  Serial.println("Aperte qualquer tecla para desabilitar.");
+  while (Serial.available()) Serial.read();
+  while (!Serial.available()) { }
+  while (Serial.available()) Serial.read();
+
+  Serial.println();
+  Serial.println("-- DESABILITANDO --");
+  const bool desligou = escreverEConferir(reg, vDesliga, usar16);
+  Serial.println("Encoste no eixo: ele deve girar SOLTO.");
+
+  Serial.println();
+  Serial.println("== RESULTADO ==");
+  if (ligou && desligou) {
+    Serial.print("O registrador "); Serial.print(reg);
+    Serial.println(" aceita escrita e a releitura confere nos dois sentidos.");
+    Serial.println("Se o eixo travou e soltou junto, e o SON. Anote:");
+    Serial.print("  reg="); Serial.print(reg);
+    Serial.print("  habilita="); Serial.print(vLiga);
+    Serial.print("  desabilita="); Serial.print(vDesliga);
+    Serial.print("  funcao="); Serial.println(usar16 ? 16 : 6);
+    Serial.println("Se o eixo NAO mudou, o registrador nao e o SON -- e");
+    Serial.println("voce acabou de escrever noutro parametro. Confira o");
+    Serial.println("painel do driver antes de seguir.");
+  } else {
+    Serial.println("A escrita nao confirmou. Nada garante que algo mudou");
+    Serial.println("no driver -- e nada garante que nao mudou. Confira o");
+    Serial.println("painel antes de repetir.");
+  }
+}
+
 static void menu() {
   Serial.println();
   Serial.println("=====================================================");
@@ -1006,6 +1283,15 @@ static void menu() {
   Serial.println(" 7 4096 4351    cacar na faixa que voce quiser");
   Serial.println(" 8 90           medir contagens por volta no par 90/91");
   Serial.println(" 9 90           gravar a posicao em CSV (para planilha)");
+  Serial.println();
+  Serial.println(" -- acham e mexem em PARAMETRO (nao em posicao) --");
+  Serial.println(" d              foto da faixa 0..255 (nada e escrito)");
+  Serial.println(" d 4096 4351    foto da faixa que voce quiser");
+  Serial.println(" d2             comparar: mostra o que mudou desde a foto");
+  Serial.println(" w 98 1         ESCREVER valor 1 no registrador 98 (funcao 06)");
+  Serial.println(" W 98 1         o mesmo pela funcao 16");
+  Serial.println(" s 98           testar SON: habilita, voce confere, desabilita");
+  Serial.println(" s 98 1 0       o mesmo dizendo os valores de habilita/desabilita");
   Serial.println(" b 19200        fixar a velocidade");
   Serial.println(" p 1            paridade: 0=8N1 1=8E1 2=8O1");
   Serial.println(" i 2            fixar o endereco do escravo");
@@ -1045,6 +1331,39 @@ void loop() {
   const long numero = resto.length() ? atol(resto.c_str()) : 0;
 
   switch (c) {
+    case 'd': {
+      if (resto.length() && resto[0] == '2') { diferenca(0, 0, true); break; }
+      uint16_t ini = 0, fim = 255;
+      if (resto.length()) {
+        const int esp = resto.indexOf(' ');
+        if (esp > 0) {
+          ini = (uint16_t)atol(resto.substring(0, esp).c_str());
+          fim = (uint16_t)atol(resto.substring(esp + 1).c_str());
+        } else {
+          ini = (uint16_t)numero;
+          fim = (uint16_t)(ini + 255);
+        }
+      }
+      diferenca(ini, fim, false);
+      break;
+    }
+    case 'w': escrever(resto, false); break;
+    case 'W': escrever(resto, true);  break;
+    case 's': {
+      if (!resto.length()) { Serial.println("uso: s <registrador> [liga] [desliga]"); break; }
+      uint16_t reg = 0, vL = 1, vD = 0;
+      int p1 = resto.indexOf(' ');
+      reg = (uint16_t)atol((p1 > 0 ? resto.substring(0, p1) : resto).c_str());
+      if (p1 > 0) {
+        const String r2 = resto.substring(p1 + 1);
+        const int p2 = r2.indexOf(' ');
+        vL = (uint16_t)atol((p2 > 0 ? r2.substring(0, p2) : r2).c_str());
+        if (p2 > 0) vD = (uint16_t)atol(r2.substring(p2 + 1).c_str());
+      }
+      if (vL == vD) { Serial.println("habilita e desabilita nao podem ser iguais."); break; }
+      testarSon(reg, vL, vD, false);
+      break;
+    }
     case '1': autoteste(); break;
     case '2': escutar(); break;
     case '3': procurar(numero > 0 && numero < 248 ? (uint8_t)numero : 16); break;

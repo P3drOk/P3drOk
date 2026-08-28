@@ -46,4 +46,13 @@ class Preferences {
     g_nvs.s[k] = v ? v : "";
     return g_nvs.s[k].size();
   }
+
+  // core: bool clear() -- apaga o espaco inteiro. E o que separa "voltar
+  // aos padroes" de "apagar tudo": sem isto uma chave gravada por uma
+  // versao antiga do firmware sobreviveria ao reset e ninguem saberia.
+  bool clear() { g_nvs = NvsMock(); return true; }
+  bool remove(const char* k) {
+    return g_nvs.u.erase(k) + g_nvs.l.erase(k) + g_nvs.f.erase(k) +
+           g_nvs.b.erase(k) + g_nvs.s.erase(k) > 0;
+  }
 };

@@ -2111,6 +2111,97 @@ static void teste_F03_sentido_do_eixo() {
 }
 
 
+// ---------------------------------------------------------------------
+// "Restaurar padroes" e "apagar tudo" nao sao o mesmo botao, e a
+// diferenca entre eles e a instalacao inteira: horas de calibracao, a
+// mesa ensinada, o zero absoluto. Um operador que apertasse o errado
+// perderia isso sem aviso -- por isso os dois estao aqui, lado a lado, e
+// o banco exige que um NAO faca o que o outro faz.
+// ---------------------------------------------------------------------
+static void teste_F04_restaurar_padroes_e_apagar_tudo() {
+  secao("F04  Restaurar padroes contra apagar tudo");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  rodarComWeb(60);
+
+  // Uma instalacao de verdade: calibracao, mesa ensinada, zero absoluto
+  // e velocidade fora do padrao.
+  mesaEnsinarCanto(200.0f, 300.0f);
+  mesaEnsinarCanto(500.0f, 600.0f);
+  areaMesa.definida = true;
+  configZero.ensinado[0] = true;
+  velNormal = 12.5f;
+  salvarConfiguracoes();
+  nota("instalado: mesa=%d, zero ensinado=%d, calibrada=%d, velNormal=%.1f",
+       (int)areaMesa.definida, (int)configZero.ensinado[0],
+       (int)J1.calibrada, (double)velNormal);
+
+  // ---- restaurar padroes: mexe em PARAMETRO e mais nada --------------
+  webPost("/api/config/reset");
+  rodarComWeb(120);
+  nota("apos restaurar padroes: velNormal=%.1f, mesa=%d, zero=%d, calibrada=%d",
+       (double)velNormal, (int)areaMesa.definida,
+       (int)configZero.ensinado[0], (int)J1.calibrada);
+  checar(velNormal == VEL_NORMAL_PADRAO, "F04a",
+         "restaurar padroes devolve os parametros de fabrica");
+  checar(areaMesa.definida && configZero.ensinado[0] && J1.calibrada, "F04b",
+         "e NAO leva junto a mesa, o zero e a calibracao -- que sao a instalacao");
+
+  // ---- apagar tudo: as travas ----------------------------------------
+  const uint32_t reinicios = g_espReinicios;
+  int cod = webPost("/api/apagar/tudo");
+  nota("sem a palavra: HTTP %d -- \"%s\"", cod, webCorpo());
+  checar(cod == 400 && g_espReinicios == reinicios, "F04c",
+         "apagar tudo sem digitar a palavra nao apaga nada");
+
+  cod = webPost("/api/apagar/tudo?conf=apagar%20tudo");
+  nota("palavra errada: HTTP %d -- \"%s\"", cod, webCorpo());
+  checar(cod == 400 && g_espReinicios == reinicios, "F04d",
+         "e palavra parecida tambem nao serve: e a palavra exata ou nada");
+
+  enviarComando(CMD_GRAVAR_INICIAR);
+  rodarComWeb(60);
+  cod = webPost("/api/apagar/tudo?conf=APAGAR");
+  nota("em modo %d: HTTP %d -- \"%s\"", (int)modoAtual, cod, webCorpo());
+  checar(modoAtual != MODO_MANUAL && cod == 400 && g_espReinicios == reinicios,
+         "F04e", "fora do modo manual nao se apaga a maquina");
+  enviarComando(CMD_GRAVAR_PARAR);
+  rodarComWeb(60);
+
+  // ---- apagar tudo de verdade ----------------------------------------
+  // O eixo fica energizado antes: reiniciar a placa com torque deixa o
+  // driver sozinho por um segundo, e quem faz isso e o comando, nao o
+  // operador.
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(60);
+  cod = webPost("/api/apagar/tudo?conf=APAGAR");
+  rodarComWeb(120);
+  nota("HTTP %d, reinicios=%lu (antes %lu), servos=%d, chaves no NVS=%u",
+       cod, (unsigned long)g_espReinicios, (unsigned long)reinicios,
+       (int)servosLigados,
+       (unsigned)(g_nvs.u.size() + g_nvs.l.size() + g_nvs.f.size() +
+                  g_nvs.b.size() + g_nvs.s.size()));
+  checar(cod == 200 && g_espReinicios == reinicios + 1, "F04f",
+         "com a palavra certa e o robo parado, a maquina apaga e reinicia");
+  checar(!servosLigados, "F04g",
+         "e desliga o torque antes de reiniciar: nao deixa o driver sozinho");
+  checar(g_nvs.u.empty() && g_nvs.l.empty() && g_nvs.f.empty() &&
+         g_nvs.b.empty() && g_nvs.s.empty(), "F04h",
+         "o NVS fica VAZIO -- inclusive chave deixada por firmware anterior");
+
+  // O que importa e o que a maquina vira DEPOIS do reinicio: sem
+  // calibracao, sem mesa, sem zero. Aqui o banco encena o boot.
+  setup();
+  rodarComWeb(60);
+  nota("apos o reinicio: calibrada=%d, mesa=%d, zero=%d, velNormal=%.1f",
+       (int)J1.calibrada, (int)areaMesa.definida,
+       (int)configZero.ensinado[0], (double)velNormal);
+  checar(!J1.calibrada && !areaMesa.definida && !configZero.ensinado[0] &&
+         velNormal == VEL_NORMAL_PADRAO, "F04i",
+         "a maquina volta recem-montada: sem calibracao, sem mesa e sem zero");
+}
+
+
 // =====================================================================
 //  G - AS DUAS JUNTAS ANDAM NA MESMA VELOCIDADE?
 // =====================================================================
@@ -3245,221 +3336,6 @@ static void teste_L11_autoteste_dentro_do_sistema() {
 // acha de um jeito so: ler tudo, mover o eixo, e ver o que andou junto.
 // Isso estava so no programa de bancada; agora esta na maquina.
 // ---------------------------------------------------------------------
-// ---------------------------------------------------------------------
-// O operador quer calar o BIP do driver pela tela, sem ir ate o painel
-// digitar P098. Da para fazer: Modbus tem funcao de escrita. O que nao
-// da e ADIVINHAR o endereco -- e escrever no registrador errado num servo
-// drive nao da numero errado na tela, muda o comportamento do eixo.
-//
-// Por isso o caminho e: achar o endereco comparando duas leituras (zero
-// escrita), gravar qual e, e so entao virar um botao.
-// ---------------------------------------------------------------------
-// O SON e o habilita do motor, e no Robo2dof ele e um FIO: PIN_SERVO_ON,
-// GPIO 23, por optoacoplador. E nele que a emergencia, o alarme de driver
-// e a perda de conexao se apoiam -- e ele cai sozinho se o ESP32
-// reiniciar. Fio de SON rompido desabilita; fio de RS485 rompido nao
-// desabilita nada.
-//
-// O espelho no RS485 existe para o drive cuja fonte de habilita esta em
-// interna, em que o pino sozinho nao energiza. Ele ACOMPANHA o pino, e
-// estes cenarios existem para provar que ele nunca vira o caminho
-// principal.
-// ---------------------------------------------------------------------
-static void teste_L14_espelho_do_son() {
-  secao("L14  O SON pelo fio, com espelho no RS485");
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoder(90, true, 61346);
-  enviarComando(CMD_SERVOS, 0);
-  rodarComWeb(60);
-
-  // ---- achar o registrador SEM escrever --------------------------------
-  const uint32_t escritasAntes = g_uart.escravo[0].escritas;
-  webPost("/api/encoder/diferenca");
-  rodarComWeb(900);
-  webGet("/api/encoder/teste");
-  nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "Foto tirada") != nullptr, "L14a",
-         "a foto da faixa inteira e tirada, e a tela diz o que fazer no painel");
-
-  // O operador vai ao painel do driver e mexe no parametro. No mock isso
-  // e o registrador 98 passando a valer outra coisa.
-  g_uart.escravo[0].escritos[98] = 1;
-  webPost("/api/encoder/diferenca?comparar=1");
-  rodarComWeb(900);
-  webGet("/api/encoder/teste");
-  nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "reg  98") != nullptr, "L14b",
-         "a comparacao aponta o registrador que o operador mexeu no painel");
-  nota("escritas no driver durante a procura: %lu",
-       (unsigned long)(g_uart.escravo[0].escritas - escritasAntes));
-  checar(g_uart.escravo[0].escritas == escritasAntes, "L14c",
-         "achar o endereco NAO escreve nada no driver");
-
-  // ---- as travas da escrita avulsa -------------------------------------
-  int cod = webPost("/api/encoder/escrever?reg=98&valor=0");
-  nota("sem confirmar: HTTP %d -- \"%s\"", cod, webCorpo());
-  checar(cod == 400 && g_uart.escravo[0].parametro(98) == 1, "L14d",
-         "escrita sem a segunda confirmacao nao chega ao driver");
-
-  enviarComando(CMD_SERVOS, 1);
-  rodarComWeb(60);
-  cod = webPost("/api/encoder/escrever?reg=98&valor=0&confirmar=1");
-  nota("com servo ligado: HTTP %d -- \"%s\"", cod, webCorpo());
-  checar(cod == 400 && strstr(webCorpo(), "servos") != nullptr, "L14e",
-         "com o eixo energizado a escrita avulsa e recusada");
-  enviarComando(CMD_SERVOS, 0);
-  rodarComWeb(60);
-
-  cod = webPost("/api/encoder/escrever?reg=98&valor=0&confirmar=1");
-  rodarComWeb(600);
-  webGet("/api/encoder/escrita");
-  nota("HTTP %d -- %s", cod, webCorpo());
-  checar(cod == 200 && strstr(webCorpo(), "\"ok\":true") != nullptr &&
-         g_uart.escravo[0].parametro(98) == 0, "L14f",
-         "com as travas atendidas o valor entra, e a releitura confirma");
-
-  // Driver que responde "aceitei" e nao grava. No SON isso seria a tela
-  // dizer "sem torque" com o eixo energizado.
-  g_uart.escravo[0].ignoraEscrita = true;
-  webPost("/api/encoder/escrever?reg=98&valor=7&confirmar=1");
-  rodarComWeb(600);
-  webGet("/api/encoder/escrita");
-  nota("%s", webCorpo());
-  checar(strstr(webCorpo(), "\"ok\":false") != nullptr, "L14g",
-         "driver que aceita e ignora e denunciado, em vez de virar \"pronto\"");
-  g_uart.escravo[0].ignoraEscrita = false;
-
-  // Driver que so aceita a funcao 16.
-  g_uart.escravo[0].soFuncao16 = true;
-  webPost("/api/encoder/escrever?reg=98&valor=1&confirmar=1");
-  rodarComWeb(600);
-  webGet("/api/encoder/escrita");
-  nota("funcao 6 num driver que so aceita a 16: %s", webCorpo());
-  checar(strstr(webCorpo(), "\"ok\":false") != nullptr, "L14h",
-         "recusa do driver aparece como recusa, nao como sucesso");
-  webPost("/api/encoder/escrever?reg=98&valor=1&confirmar=1&f16=1");
-  rodarComWeb(600);
-  webGet("/api/encoder/escrita");
-  nota("mesma escrita pela funcao 16: %s", webCorpo());
-  checar(strstr(webCorpo(), "\"ok\":true") != nullptr &&
-         g_uart.escravo[0].parametro(98) == 1, "L14i",
-         "e a funcao 16 resolve o driver que nao aceita a 6");
-  g_uart.escravo[0].soFuncao16 = false;
-
-  // ---- SEM espelho configurado: so o fio ------------------------------
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoder(90, true, 61346);
-  rodarComWeb(60);
-  const uint32_t semEspelho = g_uart.escravo[0].escritas;
-  enviarComando(CMD_SERVOS, 1);
-  rodarComWeb(400);
-  nota("servos ligados, espelho desligado: %lu escritas no driver",
-       (unsigned long)(g_uart.escravo[0].escritas - semEspelho));
-  checar(servosLigados && g_uart.escravo[0].escritas == semEspelho, "L14j",
-         "de fabrica o fio manda sozinho: habilitar nao escreve nada no RS485");
-  enviarComando(CMD_SERVOS, 0);
-  rodarComWeb(200);
-
-  // ---- COM espelho: o botao de servos mexe nos dois -------------------
-  cod = webPost("/api/son/config?reg=98&on=1&off=0");
-  rodarComWeb(200);
-  nota("gravado: reg %u, habilita com %u, desabilita com %u",
-       (unsigned)configSon.reg, (unsigned)configSon.ligado,
-       (unsigned)configSon.desligado);
-  checar(cod == 200 && configSon.reg == 98, "L14k",
-         "o registrador do espelho fica gravado");
-
-  const int codIgual = webPost("/api/son/config?reg=98&on=1&off=1");
-  nota("habilita e desabilita com o mesmo valor: HTTP %d -- \"%s\"",
-       codIgual, webCorpo());
-  checar(codIgual == 400 && configSon.desligado == 0, "L14l",
-         "valor igual para habilitar e desabilitar e recusado: nunca desabilitaria");
-
-  // Nao existe rota de SON avulsa: energizar so pelo caminho dos servos.
-  checar(webPost("/api/param/som?on=1") == 404, "L14m",
-         "nao ha botao de SON por fora da supervisao");
-
-  g_uart.escravo[0].escritos[98] = 0;
-  enviarComando(CMD_SERVOS, 1);
-  rodarComWeb(500);
-  nota("depois de habilitar: pino=%d, reg 98 = %u",
-       (int)g_pinSaida[PIN_SERVO_ON], (unsigned)g_uart.escravo[0].parametro(98));
-  checar(g_pinSaida[PIN_SERVO_ON] == 1 &&
-         g_uart.escravo[0].parametro(98) == 1, "L14n",
-         "com espelho, o botao de servos levanta o pino E escreve o registrador");
-
-  enviarComando(CMD_SERVOS, 0);
-  rodarComWeb(500);
-  nota("depois de desabilitar: pino=%d, reg 98 = %u",
-       (int)g_pinSaida[PIN_SERVO_ON], (unsigned)g_uart.escravo[0].parametro(98));
-  checar(g_pinSaida[PIN_SERVO_ON] == 0 &&
-         g_uart.escravo[0].parametro(98) == 0, "L14o",
-         "e desabilitar derruba os dois");
-
-  // ---- a emergencia nao espera pelo Modbus ----------------------------
-  // O pino tem de cair NO MESMO CICLO. O quadro do espelho vai depois --
-  // se a emergencia dependesse dele, nao seria uma emergencia.
-  enviarComando(CMD_SERVOS, 1);
-  rodarComWeb(500);
-  g_uart.escravo[0].mudo = true;          // barramento morto
-  g_pinEntrada[PIN_ESTOP] = ESTOP_NIVEL_ATIVO;
-  rodar(2);
-  nota("2 ms apos a emergencia, com o RS485 mudo: pino=%d, servos=%d",
-       (int)g_pinSaida[PIN_SERVO_ON], (int)servosLigados);
-  checar(g_pinSaida[PIN_SERVO_ON] == 0 && !servosLigados, "L14p",
-         "a emergencia derruba o PINO na hora, mesmo com o RS485 morto");
-
-  rodarComWeb(900);
-  webGet("/api/encoder");
-  nota("%s", strstr(webCorpo(), "\"sonAtivo\"") ? "espelho relatado" : webCorpo());
-  checar(strstr(webCorpo(), "\"sonOk\":false") != nullptr &&
-         strstr(webCorpo(), "\"sonFalhas\":0") == nullptr, "L14q",
-         "e o espelho que nao passou aparece como falha, em vez de sumir");
-
-  g_uart.escravo[0].mudo = false;
-  g_pinEntrada[PIN_ESTOP] = !ESTOP_NIVEL_ATIVO;
-  rodarComWeb(600);
-
-  // ---- quando o registrador aparece, o espelho SINCRONIZA -------------
-  // Nao e um desabilitar cego. Configurar o espelho com o eixo ja
-  // energizado e ver o torque cair sem ninguem ter pedido seria o pior
-  // jeito de estrear a funcao.
-  configSon.reg = 0;                      // maquina sem espelho vivo
-  reiniciarSistema();
-  prepararRoboCalibrado();                // este ajudante LIGA os servos
-  prepararEncoder(90, true, 61346);
-  g_uart.escravo[0].escritos[98] = 0;
-  configSon.reg = 98; configSon.ligado = 1; configSon.desligado = 0;
-  rodarComWeb(700);
-  nota("espelho gravado com o eixo energizado: pino=%d, reg 98 = %u",
-       (int)g_pinSaida[PIN_SERVO_ON], (unsigned)g_uart.escravo[0].parametro(98));
-  checar(servosLigados && g_uart.escravo[0].parametro(98) == 1, "L14r",
-         "gravar o espelho com o eixo energizado sincroniza com o pino, nao derruba o torque");
-
-  // E o caso do arranque: o NVS devolve o registrador com os servos
-  // desligados, e o espelho manda o desabilita. Fecha o buraco do
-  // religamento -- o pino nasce em LOW, mas um drive de fonte interna
-  // pode ter ficado energizado por dentro, e o pino nao alcanca isso.
-  configSon.reg = 0;
-  reiniciarSistema();
-  prepararEncoder(90, true, 61346);
-  g_uart.escravo[0].escritos[98] = 1;     // ficou habilitado por dentro
-  configSon.reg = 98; configSon.ligado = 1; configSon.desligado = 0;
-  rodarComWeb(700);
-  nota("apos o arranque com servos desligados: servos=%d, reg 98 = %u",
-       (int)servosLigados, (unsigned)g_uart.escravo[0].parametro(98));
-  checar(!servosLigados && g_uart.escravo[0].parametro(98) == 0, "L14s",
-         "no arranque o espelho desabilita: o drive nao fica energizado por dentro");
-
-  // E a leitura de posicao continua funcionando depois de tudo.
-  rodarComWeb(600);
-  nota("leitura normal: valida=%d", (int)encoderLer(1).valido);
-  checar(encoderLer(1).valido, "L14t",
-         "a leitura de posicao segue normal com o espelho ligado");
-}
-
 static void teste_L12_cacar_o_registrador() {
   secao("L12  Achar o registrador da posicao sem manual nenhum");
   reiniciarSistema();
@@ -4937,10 +4813,9 @@ static const char* ROTAS_POST[] = {
   "/api/aferir/aplicar", "/api/aferir/encoder", "/api/aferir/marcar",
   "/api/aprender", "/api/calib/apagar", "/api/calib/cancelar",
   "/api/calib/confirmar", "/api/calib/iniciar", "/api/config",
-  "/api/config/reset", "/api/correcao", "/api/encoder/cacar",
+  "/api/config/reset", "/api/apagar/tudo", "/api/correcao", "/api/encoder/cacar",
   "/api/encoder/config", "/api/encoder/padroes", "/api/encoder/testar",
-  "/api/encoder/zerar", "/api/encoder/diferenca", "/api/encoder/escrever",
-  "/api/son/config", "/api/geometria", "/api/gravar/iniciar",
+  "/api/encoder/zerar", "/api/geometria", "/api/gravar/iniciar",
   "/api/gravar/parar", "/api/home", "/api/jog", "/api/jogxy",
   "/api/manutencao/ok", "/api/mover", "/api/mover_xy", "/api/painel",
   "/api/parar", "/api/ponto/gravar", "/api/ponto/ir", "/api/ponto/remover",
@@ -4954,8 +4829,7 @@ static const char* ROTAS_POST[] = {
   "/api/zero/ensinar", "/api/zero/esquecer"
 };
 static const char* ROTAS_GET[] = {
-  "/api/encoder", "/api/encoder/teste", "/api/encoder/escrita",
-  "/api/pontos", "/api/rede",
+  "/api/encoder", "/api/encoder/teste", "/api/pontos", "/api/rede",
   "/api/registro", "/api/saude", "/api/sd", "/api/sd/lista",
   "/api/sd/previa", "/api/status", "/api/trajetoria"
 };
@@ -4969,7 +4843,7 @@ static const char* CHAVES[] = {
   "escala","t1","t2","x","y","fx","fy","dir","junta","reg","reg1","reg2",
   "id1","id2","cv1","cv2","baud","par","func","per","b32","lo","ativo",
   "tol","max","alr","tent","vig","sin","ir","pts","n","de","ate","modo",
-  "valor","confirmar","f16","off"
+  "conf"
 };
 
 static const char* VALORES[] = {
@@ -5969,6 +5843,7 @@ int main() {
   teste_F02_apagar_calibracao();
   teste_F03_sentido_do_eixo();
 
+  teste_F04_restaurar_padroes_e_apagar_tudo();
   teste_G01_velocidade_igual_entre_juntas();
 
   teste_H01_velocidade_de_cordao();
@@ -5995,7 +5870,6 @@ int main() {
   teste_L11_autoteste_dentro_do_sistema();
   teste_L12_cacar_o_registrador();
   teste_L13_velocidade_sentido_e_passos();
-  teste_L14_espelho_do_son();
 
   teste_M01_assentar_no_fim_do_movimento();
   teste_M02_nao_retoca_quando_nao_deve();

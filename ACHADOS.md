@@ -656,37 +656,288 @@ Três decisões de segurança:
 Desconexão do aplicativo manda o zero na borda; o heartbeat de 350 ms do
 firmware é a segunda rede.
 
-## R78 · O SON não é o bip, e o habilita continua no fio  ✅
+## R78 · Uma leitura absurda do encoder virava a posicao da maquina  ✅
 
-O pedido inicial foi lido como "o som do sistema" e implementado como um
-botão genérico de parâmetro. Era **SON** -- Servo ON, o habilita do
-motor. A diferença nao e de nome: o botao genérico exigia apenas braco
-parado, entao apontá-lo para o registrador do SON teria virado um jeito
-de energizar o eixo por fora de servosHabilitar(), sem emergência, alarme
-nem perda de conexão olhando. Isso foi fechado antes de qualquer outra
-coisa: o caminho generico passou a exigir modo manual, e depois deixou de
-existir como botao.
+O pior desta rodada. O encoder e a unica testemunha de onde o braco esta,
+e o firmware escrevia a leitura na contagem de passos **sem conferir
+nada**. Uma leitura errada -- registrador errado, contagens por volta
+erradas, ruido que passou no CRC -- virava a posicao oficial, e a partir
+dali toda protecao de curso se apoiava num numero inventado.
 
-O habilita continua sendo o FIO -- PIN_SERVO_ON, GPIO 23, por
-optoacoplador. Fio de SON rompido desabilita o motor; fio de RS485
-rompido nao desabilita nada, deixa o eixo como estava. Um e falha segura,
-o outro nao, e nenhuma conveniencia paga essa troca.
+O caso que assusta e o boot: a maquina se localiza por UMA leitura e, com
+"ir ao zero" ligado, sai andando de onde acha que esta. Achando que esta
+a 300 graus num braco de +/-90, ela manda 300 graus de pulso contra o
+batente. E `zeroAtualizar()` chama `moverCoordenado()` direto, sem passar
+pela porta que valida caminho.
 
-O que entrou foi um ESPELHO, para o drive cuja fonte de habilita esta em
-interna e nao obedece ao pino sozinho: o mesmo servosHabilitar() que mexe
-no GPIO pede a escrita do registrador. O pino primeiro, sempre; o quadro
-Modbus depois, e ninguem espera por ele -- o cenario L14p mata o
-barramento, aciona a emergencia e exige o pino em baixo dois
-milissegundos depois.
+A defesa nao e estatistica, e fisica: **o braco nao pode estar fora do
+curso que o proprio operador mediu**. `leituraPlausivel()` recusa o que
+cai fora dele (com 10 graus de folga para o batente e o empurrao a mao), e
+`leituraConfiavel()` junta os tres criterios -- valida, recente e
+possivel -- num lugar so, usado pela localizacao, pelo seguidor de eixo
+solto, pelo vigia de travamento e pela leitura que aparece na tela.
+Cenario `T01`.
 
-Duas decisoes que sairam de escrever os testes:
+Sintoma colateral que isto tambem resolve: a regua chegava a mostrar
+"177667 graus medido" com ar de leitura boa.
 
-  - Nao ha botao de SON avulso. Quem energiza continua sendo o botao de
-    servos, que passa por toda a supervisao (L14m exige 404 na rota).
-  - Quando o registrador aparece, o espelho SINCRONIZA com o pino em vez
-    de mandar um desabilitar cego. A primeira versao mandava desabilitar
-    sempre, e o banco mostrou o caso feio: configurar o espelho com o
-    eixo ja energizado derrubaria o torque sem ninguem ter pedido.
+## R79 · Travar no meio de um programa era lido como "cheguei"  ✅
+
+O vigia de travamento parava o EIXO -- continuar dando pulso contra o
+batente aquece o servo. Mas as maquinas de estado que rodam por cima
+(programa, reproducao, posicionamento) esperam o movimento acabar para
+seguir, e "parou" e exatamente o sinal delas de **cheguei**.
+
+Resultado: um travamento no caminho ate o primeiro ponto fazia o programa
+concluir a aproximacao ali mesmo e **abrir o arco onde o braco travou**,
+dezenas de graus antes do inicio do cordao -- e depois arrastar a ponta
+ate la com o arco aberto.
+
+Agora um travamento durante movimento automatico interrompe o movimento
+automatico. Travou = a maquina nao esta onde acha que esta; nao ha
+percurso que se possa continuar dali. Cenario `T05`.
+
+## R80 · Pausar na aproximacao retomava do lugar errado  ✅
+
+Da mesma familia. Pausar durante a ida ao primeiro ponto guardava a fase,
+mas retomar nao reemitia o movimento -- o ciclo seguinte via o braco
+parado e concluia "cheguei". Cenario `T04`.
+
+## R81 · Mensagem com aspas quebrava o JSON e derrubava a tela  ✅
+
+Oito mensagens do firmware trazem aspas. A mais comum sai **toda vez que
+alguem grava no cartao**:
+
+    {"msg":"programa "peca 1" salvo"}
+
+Isso nao e JSON. O `r.json()` do navegador lanca excecao, o contador de
+quedas sobe e a interface anuncia **"sem comunicacao"** -- com a maquina
+funcionando perfeitamente, mandando o operador procurar defeito no Wi-Fi.
+
+O detalhe que explica por que sobreviveu tanto tempo: o numero de aspas
+fica **par**. Nenhuma conferencia frouxa pega -- a primeira versao do
+proprio cenario que caca isto passou com o defeito na tela. So um
+analisador de gramatica de verdade reprova.
+
+Escapar virou trabalho de quem escreve o JSON (`jsonTexto()`), nao de
+quem escreve a mensagem: nenhum modulo deveria precisar saber que o texto
+dele um dia viaja entre aspas. Cenarios `T02` e `T03`, este ultimo
+varrendo TODA rota JSON em sete estados diferentes da maquina.
+
+## R82 · O mock de String transformava numero em byte cru  ✅
+
+Achado pelo `T03`. `String` do banco herda de `std::string`, que nao tem
+`operator+=(int)` -- entao `out += (int)n` caia no `operator+=(char)` por
+conversao implicita e acrescentava **um byte cru** no lugar do numero.
+
+O String do core acrescenta o numero em decimal. Enquanto isso faltou, o
+banco conferiu um JSON diferente do que a maquina produz: `{"n":<0x01>}`
+aqui, `{"n":1}` la. Duas rotas (`/api/registro` e `/api/pontos`) estavam
+sendo validadas contra a saida errada.
+
+E o caso mais puro da regra do projeto: **a assinatura do mock e a
+assinatura do core, nao a conveniente.** Um mock que aceita mais que a
+biblioteca de verdade nao falha -- ele mente.
+
+## R83 · Todo clique da pagina disparava a troca de aba  ✅
+
+`document.querySelectorAll("[data-aba]")` tambem casava com o proprio
+`<body>`, que carrega `data-aba` para o CSS. O resultado era um ouvinte de
+clique no body inteiro: **todo** clique da pagina chamava `irAba()`,
+regravava o `localStorage` e, na aba Mesa, remedia o canvas.
+
+Passou anos despercebido porque trocar para a aba em que ja se esta nao
+muda nada visivel. Apareceu na hora em que `irAba()` ganhou uma acao de
+verdade (fechar a gaveta de configuracao): a gaveta fechava sozinha no
+instante seguinte ao clique que a abriu.
+
+## R84 · A gaveta cobria o botao de emergencia  ✅
+
+Pego pelo proprio teste que eu tinha escrito errado: ele conferia
+`isVisible()`, e visivel nao e clicavel -- um veu por cima deixa o botao
+perfeitamente visivel e completamente morto. O teste passou a perguntar
+**quem esta no ponto onde o dedo vai encostar** (`elementFromPoint`), e ai
+reprovou.
+
+Cabecalho e barra de abas ficam acima da gaveta. Parada de emergencia que
+exige fechar uma janela antes nao e parada de emergencia.
+
+## R85 · Achados menores da mesma rodada  ✅
+
+- **Teste de rele contava como hora de arco.** O teste de saida existe
+  para ver o rele clicar na bancada, sem tocha nem arame; somar aqueles
+  segundos faria o contador mandar trocar bico antes da hora.
+- **`math.h` faltando** em tres arquivos que usam `cosf`, `fabsf` e
+  `lroundf`. Funcionava por chegar de carona em outro cabecalho -- o tipo
+  de dependencia que quebra na primeira reorganizacao.
+- **`btCalApagar` desabilitava sem dizer por que**, o unico botao do
+  painel que ainda escapava da regra.
+- **O espelho do eixo do banco so existia para a junta 1**, e a etapa 1
+  do assistente apontava para uma aba que deixou de existir.
+
+## Ferramentas novas
+
+- `testes/sanitizar.sh` -- o banco inteiro sob AddressSanitizer e
+  UndefinedBehaviorSanitizer. Num ESP32 ler um vetor uma posicao alem nao
+  da erro: devolve o byte que estiver la e a maquina segue com um numero
+  errado que aparece meia hora depois, em outro lugar. Aqui o mesmo acesso
+  para o programa e aponta a linha.
+- `testes/conferir_qr.py` -- ja existia; segue rodando antes de cada
+  compilacao.
+- Cenario `S01` -- 2948 requisicoes com valor hostil em toda rota
+  (`nan`, `inf`, `-2147483648`, `../../etc/passwd`, texto vazio) exigindo
+  que elos, curso, resolucao e velocidades continuem numeros finitos e
+  positivos depois.
+- Cenario `T03` -- analisador de JSON estrito aplicado a toda rota, em
+  sete estados da maquina.
+
+## R86 · A reducao nao sai do angulo do encoder -- e isso e fisica  ✅
+
+O pedido era "agora que tenho o angulo, posso achar a reducao mais
+facil". A premissa nao fecha, e a conta mostra por que:
+
+    graus da junta = voltas do motor * 360 / reducao
+
+O angulo que o encoder mostra **ja e calculado usando a reducao**. Tirar
+a reducao dele seria tirar o numero de uma conta que usa o proprio
+numero. Com um sensor so, e antes do redutor, a relacao do redutor e
+invisivel -- nenhum programa contorna isso.
+
+O que o encoder da de graca, e com muita precisao, e a contagem de
+**voltas do motor**. Falta UMA referencia do lado da junta. Com ela:
+
+    reducao = voltas do motor * 360 / angulo real
+
+E ai vem o ganho de verdade, que e grande: a medida antiga contava
+PULSOS COMANDADOS. Ela erra junto com a engrenagem eletronica (se
+passosPorVolta estiver errado, a reducao sai errada na mesma proporcao) e
+erra junto com perda de passo. Contar voltas reais do motor nao tem
+nenhum dos dois problemas.
+
+`U01e` prova a diferenca: mede a reducao certa com o eixo **escorregando
+metade do caminho**. A medida por pulsos daria o dobro.
+
+As referencias, da melhor para a pior: esquadro de 90 graus (preciso e
+todo mundo tem um), curso entre batentes (maior angulo, menor erro
+relativo), volta completa (nao precisa de instrumento nenhum).
+
+## R87 · A area util virou coisa ensinada, nao digitada  ✅
+
+Eram dois numeros: um Y minimo e um raio morto. Descrevem mal uma mesa de
+verdade, que e um retangulo, num lugar especifico, e que o operador
+conhece pelos cantos e nao por coordenadas.
+
+Agora se leva a ponta a cada canto e grava. Dali para fora o braco nao
+anda -- nem por programa, nem pelas setas.
+
+O detalhe que fazia falta pensar: a area entra na mesma conta de
+GRAVIDADE dos limites de curso. Sem isso, uma ponta que parasse fora da
+area ficaria presa la para sempre -- `posturaValida` bloquearia todo
+movimento e o criterio de recuperacao ("nao piorar") nunca teria o que
+melhorar. `U03f` prova que sempre ha um lado que melhora.
+
+A conferencia e da PONTA, nao do cotovelo: o cotovelo passa por cima da
+mesa o tempo todo e nao solda nada.
+
+O raio morto da base continua em separado -- ele nao e da mesa, e da
+mecanica, e vale mesmo com a mesa inteira ensinada.
+
+## R88 · O desenho mostrava a intencao, nao o braco  ✅
+
+O boneco 2D e o 3D usavam o angulo COMANDADO. Isso desenha o que o
+firmware acha, nao o que o braco fez: com o eixo escorregado, a tela
+continua mostrando tudo no lugar enquanto a peca sai torta.
+
+Agora o boneco e a posicao MEDIDA, e quando as duas discordam de mais de
+meio grau o comandado aparece atras como fantasma tracejado. Da para VER
+o desvio. Sem leitura confiavel volta a valer o comandado, e a legenda
+diz qual das duas esta na tela -- boneco que muda de significado sem
+avisar e pior que nenhum.
+
+## R89 · O 3D tinha ordem de desenho fixa  ✅
+
+Era base, elo 1, cotovelo, elo 2 -- sempre nessa ordem. Com o cotovelo
+dobrado PARA TRAS, o elo 2 esta atras do elo 1 na cena e mesmo assim era
+pintado por cima dele. O braco saia recortado errado em metade das
+posturas, e era isso que fazia o desenho "ter problema de design".
+
+Agora cada peca declara a profundidade do seu ponto medio e o conjunto e
+pintado do fundo para a frente. As caixas dos elos ganharam tampa nas
+pontas (sem elas o elo parecia um tubo aberto visto de enfiada), as duas
+laterais tambem sao ordenadas, a base virou pedestal de dois degraus e a
+ferramenta virou um cone, que le como tocha.
+
+O achatamento vertical passou de 0,62 para 0,80 -- exagero DECLARADO: um
+braco de 850 mm de alcance tem 110 mm de altura, e na proporcao real nao
+da para ler qual elo passa por cima de qual. O exagero e so no Z.
+
+## R78 · Vinte cartoes, dezoito enfeites diferentes  ✅
+
+A gaveta de configuracao tinha um dingbat por cartao -- ✉ ⚙ ♆ ♥ ☰ ☉ ▣ ⏉
+↑ ℹ ✜ -- vindos de blocos Unicode distintos, e dois deles (o cadeado e o
+disquete) sao emoji COLORIDO em quase todo sistema. Traco, peso e cor
+mudavam de linha para linha, e no celular mudavam de novo. Nao era falta
+de capricho num icone: era a maior fonte de poluicao visual da tela.
+
+Junto com isso, o proprio icone da engrenagem era um gear do Feather
+editado a mao, com arcos malformados no caminho SVG -- desenhava torto em
+todo navegador, e foi o que o operador notou primeiro.
+
+Agora ha um sprite so: mesma grade de 24, mesmo traco, na cor do texto.
+Tres testes de interface seguram isso -- nenhum marcador solto de Unicode,
+todo <use> apontando para um simbolo que existe, e a engrenagem vindo do
+sprite. Sem eles o proximo cartao volta a trazer o seu enfeite.
+
+## R79 · Manual demais entre um campo e o proximo  ✅
+
+A queixa era de proporcao. Na tela de trabalho as notas sao poucas e
+curtas, e ensinam enquanto se opera. Na gaveta sao dezenas de paragrafos
+de manual: entre um campo e o proximo cabia uma pagina de texto, e quem
+so queria mudar a velocidade rolava cinco telas ate achar o campo.
+
+A gaveta ganhou o SEU proprio interruptor de explicacoes, com memoria
+propria e nascendo desligado. Medido pelo banco de interface, a pagina
+Maquina caiu de 3374 px para 2029 px -- 40% mais curta -- e o manual
+continua a um toque de distancia.
+
+## R80 · O botao que apaga a instalacao parecia o que troca o idioma  ✅
+
+"Restaurar padroes" morava no fim dos parametros de mesa e base, com a
+mesma aparencia de qualquer outro botao. Agora ele e o botao de apagar
+tudo dividem um cartao de zona de perigo, lado a lado e com a tabela do
+que cada um leva -- porque a diferenca entre os dois e a instalacao
+inteira, e o operador precisa VER isso antes de escolher.
+
+Apagar tudo limpa o espaco de NVS inteiro (nao chave por chave: assim
+some tambem o residuo de uma versao anterior do firmware), desliga o
+torque e reinicia. Nao toca no cartao SD. Exige a palavra APAGAR digitada,
+conferida na tela E na porta.
+
+O banco de interface tambem ficou mais rigoroso de tabela: a excecao da
+regra "todo botao dispara uma acao" era uma lista de ids liberados, e
+lista de excecao envelhece calada -- o botao para de explicar e continua
+passando. Agora a excecao e MERECIDA: vale para quem escreveu o motivo na
+tela depois do clique.
+
+## R81 · Escrever no driver saiu do firmware e voltou para a bancada  ✅
+
+A escrita de parametro por RS485 (R78 da rodada anterior) foi retirada do
+firmware. O encoder voltou a ser SO LEITURA, como o cabecalho de
+encoder.h sempre disse.
+
+O motivo e de lugar, nao de codigo: enquanto nao se souber COM CERTEZA
+qual registrador e o que naquele driver, escrever e experimento de
+bancada -- com o motor desacoplado da mecanica -- e nao funcao de painel.
+Os modos de escrita, comparacao de parametro e teste de SON foram para
+ferramentas/teste_rs485, o sketch avulso que ja existia para achar o
+registrador da posicao.
+
+E os sketches avulsos ganharam guarda: eles nao entram no banco (nao ha o
+que simular num programa que conversa com um driver de verdade), mas
+sketch que nao compila e pior que sketch que nao existe -- o operador so
+descobre na bancada, com o robo aberto. testes/ferramentas/ troca os
+enfeites do Arduino por equivalentes de PC e o compilador confere a
+sintaxe dos dois a cada rodada.
 
 ## Cobertura
 
@@ -2292,11 +2543,12 @@ entre 0,3 e 0,6 s.
 
 | banco | rodada 20 | rodada 22 | agora |
 |-------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | **378 / 0** |
-| interface | 121 / 0 | 125 / 0 | **186 / 0** |
+| firmware | 229 / 0 | 241 / 0 | **367 / 0** |
+| interface | 121 / 0 | 125 / 0 | **189 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).
 
 Guardas automaticas antes de cada compilacao: fiacao, rotas, pagina
-comprimida e **os codigos QR lidos por um decodificador de verdade**.
+comprimida, **os codigos QR lidos por um decodificador de verdade** e a
+sintaxe dos sketches avulsos de ferramentas/.

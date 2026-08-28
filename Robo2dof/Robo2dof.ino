@@ -98,14 +98,14 @@ static const char* NOME_CMD[] = {
   "AFERIR_REDUCAO","MESA_CANTO","MESA_LIMPAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG",
-  "APLICAR_SON"
+  "APAGAR_TUDO"
 };
 
 // Esta lista e indexada por c.tipo sem nenhuma conferencia de faixa: um
 // comando novo no enum sem o nome correspondente aqui faz o log ler
 // ponteiro fora do vetor -- e o crash aparece longe da causa, na
 // primeira vez que aquele comando for usado. Ja aconteceu.
-static_assert(sizeof(NOME_CMD) / sizeof(NOME_CMD[0]) == CMD_APLICAR_SON + 1,
+static_assert(sizeof(NOME_CMD) / sizeof(NOME_CMD[0]) == CMD_APAGAR_TUDO + 1,
               "NOME_CMD ficou fora de sincronia com TipoComando");
 
 // ---------------------------------------------------------------------
@@ -265,6 +265,19 @@ static void processarComando(const Comando& c) {
       aplicarAceleracao();
       aplicarSentido();
       definirMensagem("Ajustes salvos");
+      break;
+
+    case CMD_APAGAR_TUDO:
+      // Nao volta desta chamada: ela reinicia a placa. Por isso o robo
+      // tem de estar parado e sem torque -- reiniciar com o eixo
+      // energizado deixa o driver sozinho por um segundo.
+      if (modoAtual != MODO_MANUAL) {
+        definirMensagem("Apagar tudo so com o robo parado no modo manual");
+        break;
+      }
+      if (servosLigados) servosHabilitar(false);
+      soldaDesligar();
+      apagarTudo();
       break;
 
     case CMD_RESTAURAR_PADROES:
@@ -544,13 +557,6 @@ static void processarComando(const Comando& c) {
       // esta configurando, nao operando.
       if (modoAtual == MODO_MANUAL) aplicarEncoderPendente();
       else definirMensagem("Configure o encoder com o robo parado no modo manual");
-      break;
-
-    case CMD_APLICAR_SON:
-      // So grava o ENDERECO do espelho. Escrever no driver e outro
-      // caminho e nao passa por aqui.
-      if (modoAtual == MODO_MANUAL) aplicarSonPendente();
-      else definirMensagem("Configure o espelho com o robo parado no modo manual");
       break;
 
     case CMD_ENCODER_ZERAR:

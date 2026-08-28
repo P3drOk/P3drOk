@@ -527,6 +527,52 @@ async function fecharGaveta(pag) {
   checar(dups.length === 0, 'nenhum id repetido no documento',
          dups.length ? dups.join(', ') : 'todos unicos');
 
+  // ICONES: um conjunto so.
+  // A gaveta tinha 18 dingbats de blocos Unicode diferentes, dois deles
+  // emoji COLORIDO -- traco, peso e cor mudavam de linha para linha, e no
+  // celular mudavam de novo. Agora todo marcador sai do mesmo sprite. Sem
+  // este teste o proximo cartao volta a trazer o seu enfeite.
+  const ico = await t.evaluate(() => {
+    const marcas = [...document.querySelectorAll('.mk')];
+    const glifos = [], usos = [], quebrados = [];
+    marcas.forEach(m => {
+      const u = m.querySelector('use');
+      if (u) {
+        const alvo = u.getAttribute('href') || '';
+        usos.push(alvo);
+        if (!document.querySelector(alvo)) quebrados.push(alvo);
+        return;
+      }
+      const t = m.textContent.trim();
+      // Numero de etapa e rotulo, nao icone: 1, 2, 3... podem ficar.
+      if (t && !/^[0-9]+$/.test(t)) glifos.push(t);
+    });
+    return { glifos, usos: usos.length, quebrados,
+             classes: [...document.querySelectorAll('.mk svg')]
+                        .every(e => e.classList.contains('ic')) };
+  });
+  checar(ico.glifos.length === 0,
+         'icones: nenhum marcador solto de Unicode sobrou na interface',
+         ico.glifos.length ? 'ainda ha: ' + ico.glifos.join(' ') : ico.usos + ' vindos do sprite');
+  checar(ico.quebrados.length === 0,
+         'icones: todo <use> aponta para um simbolo que existe',
+         ico.quebrados.length ? 'sem alvo: ' + ico.quebrados.join(', ') : 'todos resolvem');
+  checar(ico.classes,
+         'icones: todos usam a mesma classe, entao mudam de tamanho juntos');
+
+  // O icone da engrenagem era um gear do Feather editado a mao, com os
+  // arcos malformados -- desenhava errado em todo navegador.
+  const eng = await t.evaluate(() => {
+    const svg = document.querySelector('#btCfg svg');
+    const u = svg && svg.querySelector('use');
+    const alvo = u ? document.querySelector(u.getAttribute('href')) : null;
+    if (!alvo) return { ok: false, motivo: 'a engrenagem nao vem do sprite' };
+    const r = document.getElementById('btCfg').getBoundingClientRect();
+    return { ok: r.width > 8 && r.height > 8, larg: r.width, alt: r.height };
+  });
+  checar(eng.ok, 'icones: a engrenagem do cabecalho vem do sprite e tem tamanho',
+         JSON.stringify(eng));
+
   // Todo botao com id tem handler.
   const semH = await t.evaluate(() =>
     [...document.querySelectorAll('button[id]')].filter(e => !e.onclick).map(e => e.id));
@@ -609,15 +655,24 @@ async function fecharGaveta(pag) {
         await t.waitForTimeout(230);
         clicados++;
         const uteis = rotas.filter(x => !RUIDO.includes(x));
-        // btSdSalvar sem nome no campo e recusa local proposital;
+        // Recusa local proposital -- campo vazio, palavra de confirmacao
+        // que falta -- nao e botao morto, DESDE QUE ela apareca na tela.
+        // Antes isto era uma lista de ids liberados, e lista de excecao
+        // envelhece calada: o botao parava de explicar e continuava
+        // passando. Agora a excecao e MERECIDA -- vale quem escreveu o
+        // motivo no proprio "q" depois do clique.
+        const explicou = await t.evaluate((id) => {
+          const q = document.getElementById('q' + id.replace(/^bt/, ''));
+          return q ? q.textContent.trim().length > 0 : false;
+        }, a.id);
         // btDxfAbrir abre o seletor de arquivo, que nao e uma rota;
         // btSoldar e btOta pedem uma segunda acao de proposito (dois
         // toques para o arco, escolher o .bin para o firmware) -- os dois
         // tem cenario proprio mais abaixo, entao aqui nao sao mudos.
-        const local = (a.id === 'btSdSalvar') ||
+        const local = explicou ||
                       (a.id === 'btSoldar') || (a.id === 'btOta') ||
                       (a.id === 'btDxfAbrir' && abriuArquivo > 0);
-        if (!uteis.length && !local) mortos.push(a.id + ' (nao chamou nada)');
+        if (!uteis.length && !local) mortos.push(a.id + ' (nao chamou nada nem explicou)');
       }
     }
   }
@@ -989,101 +1044,117 @@ async function fecharGaveta(pag) {
   checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
          enc.w + ' px');
 
-  // ---- espelho do SON no RS485 ----
-  // Quem manda e o fio. A tela nao pode sugerir o contrario, e tem de
-  // dizer quando o espelho esta desligado em vez de ficar calada.
+  // ---- a gaveta abre enxuta ----
+  // A queixa era de proporcao: entre um campo e o proximo cabia uma
+  // pagina de manual, e quem so queria mudar a velocidade rolava cinco
+  // telas. As explicacoes continuam la, atras do "?" da propria gaveta.
   await t.evaluate(() => {
-    const alvo = document.getElementById('btPmFoto').closest('.et');
-    document.querySelectorAll('#pnEnc .et')
+    try { localStorage.removeItem('notasCfg'); } catch (e) {}
+  });
+  await t.reload({ waitUntil: 'domcontentloaded' });
+  await t.waitForTimeout(700);
+  await t.locator('#btCfg').click();
+  await t.waitForTimeout(400);
+  // A gaveta lembra a ultima pagina aberta; aqui a medida e da Maquina.
+  await t.locator('#cfgAbas button[data-cfg="maquina"]').click();
+  await t.waitForTimeout(250);
+  const estadoGaveta = await t.evaluate(() => ({
+    veu: document.getElementById('veuCfg').className,
+    maq: document.getElementById('cfgMaquina').className,
+    bt:  !!document.getElementById('btCfg').onclick,
+  }));
+  checar(/\bon\b/.test(estadoGaveta.veu) && /\bon\b/.test(estadoGaveta.maq),
+         'Gaveta: a engrenagem abre a configuracao na pagina Maquina',
+         JSON.stringify(estadoGaveta));
+  await t.evaluate(() => {
+    document.querySelectorAll('#cfgMaquina .et').forEach(x => x.classList.add('aberta'));
+  });
+  await t.waitForTimeout(200);
+  const notas = await t.evaluate(() => {
+    const ns = [...document.querySelectorAll('#cfgMaquina .nt')];
+    const vis = ns.filter(n => n.getBoundingClientRect().height > 0);
+    return { total: ns.length, visiveis: vis.length,
+             alturaPane: document.getElementById('cfgMaquina').scrollHeight };
+  });
+  checar(notas.total > 5 && notas.visiveis === 0,
+         'Gaveta: as explicacoes longas nascem escondidas, e a gaveta abre enxuta',
+         notas.total + ' notas, ' + notas.visiveis + ' visiveis, pane ' +
+         notas.alturaPane + 'px');
+
+  await t.locator('#cfgAjuda').click();
+  await t.waitForTimeout(250);
+  const comNotas = await t.evaluate(() => ({
+    visiveis: [...document.querySelectorAll('#cfgMaquina .nt')]
+                .filter(n => n.getBoundingClientRect().height > 0).length,
+    alturaPane: document.getElementById('cfgMaquina').scrollHeight,
+  }));
+  checar(comNotas.visiveis > 5 && comNotas.alturaPane > notas.alturaPane,
+         'Gaveta: e o "?" da propria gaveta traz o manual de volta',
+         comNotas.visiveis + ' notas, pane ' + comNotas.alturaPane + 'px');
+
+  // O "?" do cabecalho e o da gaveta sao interruptores separados: a tela
+  // de trabalho continua ensinando enquanto a gaveta fica limpa.
+  const separados = await t.evaluate(() => {
+    document.getElementById('cfgAjuda').click();     // esconde de novo na gaveta
+    return { cfg: document.body.classList.contains('semNotasCfg'),
+             tela: document.body.classList.contains('semNotas') };
+  });
+  checar(separados.cfg && !separados.tela,
+         'Gaveta: esconder na gaveta nao apaga as notas da tela de trabalho',
+         JSON.stringify(separados));
+
+  await t.locator('#cfgAbas button[data-cfg="sistema"]').click();
+  await t.waitForTimeout(250);
+
+  // ---- apagar tudo: a palavra digitada, e a diferenca entre os dois ----
+  // Restaurar padroes e apagar tudo moram no mesmo cartao de proposito:
+  // o operador precisa VER que sao coisas diferentes antes de escolher.
+  await t.evaluate(() => {
+    const alvo = document.getElementById('btApagarTudo').closest('.et');
+    document.querySelectorAll('#cfgSistema .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
-  await t.waitForTimeout(900);
-  const son0 = await t.evaluate(() =>
-    document.getElementById('pmSon').textContent);
-  checar(/espelho desligado/.test(son0) && /fio/.test(son0),
-         'SON: sem registrador gravado a tela diz que so o fio manda', son0);
-  checar(!(await t.locator('#pmSon').textContent()).match(/habilita/),
-         'SON: e nao ha botao de SON avulso na tela');
+  await t.waitForTimeout(250);
 
-  // Achar o endereco: as duas fotos sao SO LEITURA, e e isso que a rota
-  // chamada tem de provar -- nada de /escrever aqui.
-  rotas.length = 0;
-  await t.locator('#btPmFoto').click();
-  await t.waitForTimeout(300);
-  await t.locator('#btPmComparar').click();
-  await t.waitForTimeout(300);
-  const proc = rotas.filter(u => u.indexOf('/api/encoder/') === 0);
-  checar(proc.indexOf('/api/encoder/diferenca') === 0 &&
-         proc.some(u => u.indexOf('/api/encoder/diferenca?comparar=1') === 0) &&
-         !proc.some(u => u.indexOf('/api/encoder/escrever') === 0),
-         'SON: achar o endereco chama so a rota de comparar, que nao escreve',
-         proc.join(' '));
-  const relTxt = await t.evaluate(() =>
-    document.getElementById('encRel').textContent);
-  checar(/reg  98/.test(relTxt),
-         'SON: o registrador que mudou entre as fotos aparece na tela',
-         relTxt.replace(/\n/g, ' | '));
+  rotas = [];
+  await t.locator('#btApagarTudo').click();
+  await t.waitForTimeout(400);
+  const apgVazio = await t.evaluate(() =>
+    document.getElementById('qApagarTudo').textContent);
+  checar(!rotas.some(u => u.indexOf('/api/apagar') === 0) && /APAGAR/.test(apgVazio),
+         'Apagar tudo: sem a palavra digitada nada sai, e a tela diz o que falta',
+         apgVazio);
 
-  // Gravar o espelho pergunta antes: registrador errado aqui vira torque
-  // que nao sobe, ou que nao desce.
-  rotas.length = 0;
-  await t.evaluate(() => {
-    document.getElementById('pmReg').value = 98;
-    document.getElementById('pmOn').value = 1;
-    document.getElementById('pmOff').value = 0;
-  });
-  await t.locator('#btPmSalvar').click();
-  await t.waitForTimeout(1200);
-  checar(rotas.some(u => u.indexOf('/api/son/config?reg=98') === 0),
-         'SON: gravar o espelho manda registrador, habilita e desabilita',
+  await t.evaluate(() => { document.getElementById('apgConf').value = 'apagar'; });
+  rotas = [];
+  await t.locator('#btApagarTudo').click();
+  await t.waitForTimeout(600);
+  checar(rotas.some(u => u.indexOf('/api/apagar/tudo?conf=APAGAR') === 0),
+         'Apagar tudo: com a palavra e a confirmacao, a rota vai com conf=APAGAR',
          rotas.join(' '));
+  const apgLimpo = await t.evaluate(() =>
+    document.getElementById('apgConf').value);
+  checar(apgLimpo === '',
+         'Apagar tudo: o campo e limpo depois, para nao ficar armado na tela');
 
-  // Espelho que falhou nao pode sumir da tela: "servos ligados" com o
-  // espelho falhando e a tela mentindo sobre torque.
-  await t.request.post(BASE + '/teste/encoder',
-    { data: { sonAtivo: true, sonOk: false, sonLig: false, sonFalhas: 2,
-              sonMot: 'desabilita NAO confirmado (motivo 2)' } });
-  await t.waitForTimeout(900);
-  const sonRuim = await t.evaluate(() =>
-    document.getElementById('pmSon').textContent);
-  checar(/FALHOU/.test(sonRuim) && /desabilita/.test(sonRuim) &&
-         /2 falha/.test(sonRuim),
-         'SON: espelho que nao confirmou aparece como FALHOU, com o motivo',
-         sonRuim);
-
-  await t.request.post(BASE + '/teste/encoder',
-    { data: { sonOk: true, sonLig: true, sonFalhas: 0,
-              sonMot: 'habilita conferido no driver' } });
-  await t.waitForTimeout(900);
-  const sonBom = await t.evaluate(() =>
-    document.getElementById('pmSon').textContent);
-  checar(/OK/.test(sonBom) && !/FALHOU/.test(sonBom) && /habilita/.test(sonBom),
-         'SON: e quando confirma no driver a tela mostra OK', sonBom);
-
-  // Escrever um registrador qualquer PERGUNTA antes. Recusar a pergunta
-  // nao pode deixar nada sair no fio. O banco aceita todo dialogo por
-  // padrao; aqui a recusa e o proprio caso de teste, entao o ouvinte e
-  // trocado e devolvido em seguida.
-  rotas.length = 0;
-  t.removeAllListeners('dialog');
-  t.on('dialog', d => d.dismiss());
-  await t.evaluate(() => {
-    document.getElementById('pmWReg').value = 98;
-    document.getElementById('pmWVal').value = 1;
+  // Os dois botoes estao no mesmo cartao, e o de apagar e o unico
+  // marcado como perigoso.
+  const zona = await t.evaluate(() => {
+    const et = document.getElementById('btApagarTudo').closest('.et');
+    return { perigo: et.classList.contains('zPerigo'),
+             temReset: !!et.querySelector('#btReset'),
+             classeApagar: document.getElementById('btApagarTudo').className,
+             classeReset: document.getElementById('btReset').className };
   });
-  await t.locator('#btPmEscrever').click();
-  await t.waitForTimeout(500);
-  checar(!rotas.some(u => u.indexOf('/api/encoder/escrever') === 0),
-         'SON: recusada a confirmacao, nada e escrito no driver',
-         rotas.join(' ') || '(nenhum pedido)');
+  checar(zona.perigo && zona.temReset &&
+         /perigoso/.test(zona.classeApagar) && !/perigoso/.test(zona.classeReset),
+         'Apagar tudo: os dois moram no mesmo cartao, e so um esta pintado de perigo',
+         JSON.stringify(zona));
 
-  t.removeAllListeners('dialog');
-  t.on('dialog', d => d.accept());
-  await t.locator('#btPmEscrever').click();
-  await t.waitForTimeout(500);
-  checar(rotas.some(u => u.indexOf('/api/encoder/escrever?reg=98&valor=1&confirmar=1') === 0),
-         'SON: confirmada, a escrita vai com registrador e valor digitados',
-         rotas.join(' '));
+  await t.locator('#cfgFechar').click();
+  await t.waitForTimeout(250);
+  await t.locator('#abas button[data-aba="enc"]').click();
+  await t.waitForTimeout(400);
 
   // ---- analise detalhada ----
   await t.evaluate(() => {

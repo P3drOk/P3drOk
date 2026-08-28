@@ -492,9 +492,10 @@ enum TipoComando : uint8_t {
   CMD_ARQ_LIBERAR_TRAJ,    // core 1: devolve o buffer (postado pela tarefa SD)
   CMD_ARQ_SALVAR_CONFIG,   // core 1: prepara a area e pede a gravacao
 
-  // Registrador do espelho do SON no RS485. O core 0 preenche
-  // sonPendente e o core 1 grava. Ver estado.h.
-  CMD_APLICAR_SON
+  // APAGAR TUDO e reiniciar. Nao e "restaurar padroes": este limpa o NVS
+  // inteiro -- calibracao, mesa, zero ensinado, encoder, contadores -- e
+  // reinicia. Ver apagarTudo() em estado.h.
+  CMD_APAGAR_TUDO
 };
 
 struct Comando {

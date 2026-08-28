@@ -1,4 +1,5 @@
 #include "estado.h"
+#include "armazenamento.h"   // logEvento no apagar tudo
 #include "encoder.h"
 #include <Preferences.h>
 #include <stdarg.h>
@@ -279,11 +280,6 @@ void carregarConfiguracoes() {
 
   // Chaves NOVAS: as antigas guardavam Hz, e reler 3000 como 3000 graus/s
   // seria absurdo. Quem atualiza recebe os padroes em graus/s.
-  configSon.reg          = (uint16_t)prefs.getUInt("sonReg", 0);
-  configSon.ligado       = (uint16_t)prefs.getUInt("sonOn",  1);
-  configSon.desligado    = (uint16_t)prefs.getUInt("sonOff", 0);
-  configSon.usarFuncao16 = prefs.getBool("sonF16", false);
-
   areaMesa.definida = prefs.getBool ("mesaOn", false);
   areaMesa.cantos   = (uint8_t)prefs.getUInt("mesaN", 0);
   areaMesa.xMin     = prefs.getFloat("mesaX0", 0.0f);
@@ -395,7 +391,6 @@ void carregarConfiguracoes() {
 
   recalcularResolucao();
   prepararConfigPendente();   // a area de preparo nasce coerente com o vivo
-  sonPendente = configSon;
 
   Serial.println("[NVS] Configuracoes carregadas.");
 }
@@ -408,12 +403,6 @@ void carregarConfiguracoes() {
 // ensinou -- protecao inventada por padrao recusaria movimento valido na
 // primeira vez que a maquina liga.
 AreaMesa areaMesa = {false, 0, 0.0f, 0.0f, 0.0f, 0.0f};
-
-// De fabrica nao ha espelho: so o fio do SON manda, que e o arranjo mais
-// seguro. O espelho so passa a existir depois que alguem descobrir o
-// registrador e grava-lo de proposito.
-ConfigSon configSon  = {0, 1, 0, false};
-ConfigSon sonPendente = {0, 1, 0, false};
 
 void mesaEnsinarCanto(float x, float y) {
   if (areaMesa.cantos == 0) {
@@ -536,10 +525,6 @@ void salvarConfiguracoes() {
   // encoder absoluto: ensinada uma vez, vale para sempre.
   prefs.putBool ("zrEn1",  configZero.ensinado[0]);
   prefs.putBool ("zrEn2",  configZero.ensinado[1]);
-  prefs.putUInt ("sonReg", configSon.reg);
-  prefs.putUInt ("sonOn",  configSon.ligado);
-  prefs.putUInt ("sonOff", configSon.desligado);
-  prefs.putBool ("sonF16", configSon.usarFuncao16);
   prefs.putBool ("mesaOn", areaMesa.definida);
   prefs.putUInt ("mesaN",  areaMesa.cantos);
   prefs.putFloat("mesaX0", areaMesa.xMin);
@@ -576,18 +561,6 @@ void salvarConfiguracoes() {
 // Gravada separada do resto: mexer no encoder nao pode reescrever
 // calibracao, e salvar calibracao nao pode reescrever o registrador que
 // o operador levou uma tarde para achar.
-// Grava o registrador do espelho do SON. Vem do core 0 pela fila, como
-// toda configuracao: quem escreve no vivo e no NVS e o core 1.
-void aplicarSonPendente() {
-  configSon = sonPendente;
-  salvarConfiguracoes();
-  if (configSon.reg)
-    definirMensagem("Espelho do SON: registrador %u (o fio continua mandando)",
-                    (unsigned)configSon.reg);
-  else
-    definirMensagem("Espelho do SON desligado: so o fio manda");
-}
-
 void aplicarEncoderPendente() {
   configEncoder = encoderPendente;
   if (configEncoder.periodoMs < ENC_PERIODO_MIN_MS)
@@ -597,6 +570,20 @@ void aplicarEncoderPendente() {
   definirMensagem(configEncoder.ativo
                   ? "Encoder: leitura ligada"
                   : "Encoder: leitura desligada");
+}
+
+// Ver o bloco em estado.h para o que isto apaga e o que nao apaga.
+void apagarTudo() {
+  logEvento("APAGAR TUDO: NVS limpo, reiniciando");
+  Serial.println("[NVS] Apagando TUDO e reiniciando.");
+  prefs.begin("robo2dof", false);
+  prefs.clear();
+  prefs.end();
+  // Sem o atraso a mensagem nao chega ao navegador nem ao monitor serial,
+  // e o operador ve a maquina reiniciar sem nenhuma confirmacao do que
+  // aconteceu.
+  delay(300);
+  ESP.restart();
 }
 
 void restaurarPadroes() {

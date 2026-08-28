@@ -190,6 +190,12 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
 .mk{width:26px;height:26px;border-radius:3px;background:var(--face);color:var(--letra2);
  display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:700;
  flex:0 0 auto;border:1px solid var(--linha)}
+.sprite{display:none}
+/* Todo icone da interface sai deste molde: mesma grade, mesmo traco, cor
+   do texto ao redor. E o que faz vinte cartoes parecerem um sistema em
+   vez de vinte enfeites. */
+.ic{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;
+ stroke-linecap:round;stroke-linejoin:round}
 .et.feita .mk{background:var(--pronto);color:#052a17;border-color:var(--pronto)}
 .et.agora .mk{background:var(--arco);color:#0c1530;border-color:var(--arco)}
 .tx{flex:1;min-width:0}
@@ -291,6 +297,16 @@ h4:first-child{margin-top:0}
    cabecalho esconde todas de uma vez, e a escolha fica gravada. Esconder
    nao e apagar -- um clique traz tudo de volta. */
 body.semNotas .nt{display:none}
+/* A gaveta tem o SEU proprio interruptor de explicacoes, e ele nasce
+   desligado.
+   O motivo e de proporcao, nao de gosto: na tela de trabalho as notas
+   sao poucas e curtas, e ensinam enquanto se opera. Na gaveta sao
+   dezenas de paragrafos de manual -- entre um campo e o proximo cabe uma
+   pagina de texto, e quem so quer mudar a velocidade rola cinco telas
+   ate achar o campo. Escondidas por padrao, a gaveta vira uma lista de
+   ajustes; um toque no "?" traz o manual de volta, e a escolha fica
+   gravada. */
+body.semNotasCfg .cfgRol .nt{display:none}
 /* Pagina escondida: nao e segredo nem senha, e um tranco para nao se
    mexer sem querer. O que esta atras dela desloca a AREA UTIL INTEIRA. */
 .trancado .trancavel{display:none}
@@ -313,6 +329,12 @@ body.semNotas .nt{display:none}
  line-height:1.5;padding-left:2px}
 .b:disabled{opacity:.42;cursor:not-allowed}
 .nt b{color:var(--letra);font-weight:600}
+/* Zona de perigo: a borda avisa antes de o dedo chegar. Sem isto o
+   cartao de apagar tudo parece igual ao de trocar o idioma. */
+.et.zPerigo{border-color:var(--brasa)}
+.et.zPerigo .mk{color:var(--brasa);border-color:var(--brasa)}
+.b.perigoso{background:var(--brasa);border-color:var(--brasa);color:#fff}
+.b.perigoso:hover{filter:brightness(1.12)}
 .perigo{font-size:11.5px;background:var(--face);border-left:3px solid var(--quente);border-top:1px solid var(--linha);border-right:1px solid var(--linha);border-bottom:1px solid var(--linha);color:var(--letra);
  padding:10px 11px;border-radius:3px;margin-bottom:10px;line-height:1.55}
 /* Estado do modo aprendizado. Precisa ser visivel de longe: quando ele
@@ -417,6 +439,7 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 .cfgTopo{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;
  border-bottom:1px solid var(--linha)}
 .cfgTopo h2{flex:1;margin:0}
+.cfgTopo .ajd{flex:0 0 auto}
 .cfgTopo .b{margin:0;width:auto;flex:0 0 auto}
 .cfgAbas{display:flex;gap:4px;padding:10px 16px 0;border-bottom:1px solid var(--linha)}
 .cfgAbas button{flex:1;background:none;border:none;border-bottom:2px solid transparent;
@@ -429,8 +452,7 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 /* A engrenagem gira devagar ao passar o dedo: e a unica animacao da tela
    e existe para dizer que ali se MEXE em coisa, em vez de operar. */
 .ajd.eng{padding:0;display:inline-flex;align-items:center;justify-content:center}
-.ajd.eng svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;
- stroke-linecap:round;stroke-linejoin:round;transition:transform .4s ease}
+.ajd.eng svg{transition:transform .4s ease}
 .ajd.eng:hover svg{transform:rotate(45deg)}
 .ajd.eng.on{background:var(--arco);border-color:var(--arco);color:#fff}
 /* No modo operador some o que e instalacao; sobra o painel Sistema, que
@@ -620,6 +642,41 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
 </style>
 </head>
 <body data-aba="mover">
+<!-- =====================================================================
+     UM SO CONJUNTO DE ICONES
+     Antes cada cartao trazia um dingbat diferente -- ✉ ⚙ ♆ ♥ ☰ ☉ ▣ ⏉ --
+     de blocos Unicode distintos, e dois deles (cadeado e disquete) sao
+     emoji COLORIDO em quase todo sistema. Traco, peso e cor mudavam de
+     linha para linha, e no celular mudavam de novo: era a maior fonte de
+     poluicao visual da gaveta.
+     Aqui e um desenho so, mesma grade de 24, mesmo traco, na cor do
+     texto. Cada uso custa ~40 bytes.
+     ===================================================================== -->
+<svg class="sprite" aria-hidden="true"><defs>
+<symbol id="i-medidor" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1116 0"/><path d="M12 17l4-5"/></symbol>
+<symbol id="i-grafico" viewBox="0 0 24 24"><path d="M4 5v14h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/></symbol>
+<symbol id="i-onda" viewBox="0 0 24 24"><path d="M2 12h4l3-7 4 14 3-7h6"/></symbol>
+<symbol id="i-cruz" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/><path d="M12 4l-2.5 2.5M12 4l2.5 2.5M12 20l-2.5-2.5M12 20l2.5-2.5M4 12l2.5-2.5M4 12l2.5 2.5M20 12l-2.5-2.5M20 12l-2.5 2.5"/></symbol>
+<symbol id="i-arquivo" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></symbol>
+<symbol id="i-caminho" viewBox="0 0 24 24"><path d="M4 18c6 0 4-12 10-12 3 0 5 2 5 5"/><circle cx="4" cy="18" r="1.7"/><circle cx="19" cy="11" r="1.7"/></symbol>
+<symbol id="i-cartao" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v5M12 3v5M15 3v5"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+<symbol id="i-rede" viewBox="0 0 24 24"><path d="M5 12a10 10 0 0114 0"/><path d="M8.5 15.5a5 5 0 017 0"/><path d="M12 19h.01"/></symbol>
+<symbol id="i-regua" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+<symbol id="i-alvo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-disco" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+<symbol id="i-mira" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+<symbol id="i-casa" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-6h4v6"/></symbol>
+<symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3"/><path d="M7 7h10v5a5 5 0 01-10 0z"/><path d="M12 17v4"/></symbol>
+<symbol id="i-escudo" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+<symbol id="i-lista" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 14h2M14 18h2M18 18h2"/></symbol>
+<symbol id="i-cima" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/><path d="M4 21h16"/></symbol>
+<symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></symbol>
+<symbol id="i-lixo" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol>
+<symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+</defs></svg>
+
 
 <div class="app">
   <header class="placa">
@@ -627,7 +684,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
     <div class="mod">ESTACAO DE SOLDA<br>2 EIXOS · SERVO AC</div>
     <button class="ajd" id="btAjuda" title="Mostrar ou esconder as explicacoes">?</button>
     <button class="ajd eng" id="btCfg" title="Configuracao">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.4a3.4 3.4 0 100-6.8 3.4 3.4 0 000 6.8z"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-2.9 1.2V21a2 2 0 11-4 0v-.11A1.7 1.7 0 007 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 002.6 15H2.5a2 2 0 110-4h.11A1.7 1.7 0 004.6 7a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 2.6h.11A2 2 0 0113 2.5v.11A1.7 1.7 0 0017 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0021.4 9v.11a2 2 0 110 4h-.11a1.7 1.7 0 00-1.89 1.89z"/></svg>
+      <svg class="ic" aria-hidden="true"><use href="#i-engrenagem"/></svg>
     </button>
     <div class="lamps">
       <div class="lp" id="lModo"><i class="olho"></i><span id="lModoT">--</span></div>
@@ -650,7 +707,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
     <aside class="dockEnc" id="dockEnc">
       <section class="pane" id="pnEnc">
         <div class="et aberta">
-          <div class="cab"><div class="mk">&#9711;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-medidor"/></svg></div>
             <div class="tx"><div class="tt">Encoder dos drivers</div>
             <span class="sb" id="sbEnc">desligado</span></div></div>
           <div class="dentro">
@@ -687,7 +744,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9636;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-grafico"/></svg></div>
             <div class="tx"><div class="tt">Analise detalhada</div>
             <span class="sb" id="sbAnal">tudo que foi captado</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -763,7 +820,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9993;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-onda"/></svg></div>
             <div class="tx"><div class="tt">Diagnostico da linha</div>
             <span class="sb">quando nao esta lendo</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -801,72 +858,6 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             leitura nao vale, o driver respondeu outra coisa: veja a
             <b>funcao</b> e o <b>registrador</b>.</div>
             <div class="res" id="encQuadro">--</div>
-          </div>
-        </div>
-
-        <div class="et">
-          <div class="cab"><div class="mk">&#9211;</div>
-            <div class="tx"><div class="tt">Espelho do SON no RS485</div>
-            <span class="sb">o habilita indo tambem pelo Modbus</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            <div class="nt av"><b>Quem manda continua sendo o fio.</b> O
-            habilita e o <b>GPIO 23</b>, por optoacoplador, no SON dos dois
-            drivers. E nele que a seguranca se apoia: a emergencia derruba o
-            pino enquanto estiver apertada, o alarme de driver e a perda de
-            conexao derrubam junto, e um ESP32 que reinicia deixa o pino em
-            LOW sozinho. <b>Fio de SON rompido desabilita o motor; fio de
-            RS485 rompido nao desabilita nada</b> &mdash; deixa o eixo como
-            estava. Por isso o espelho nunca e o caminho principal: a
-            emergencia derruba o pino na hora e o quadro Modbus vai depois,
-            sem ninguem esperar por ele.</div>
-            <div class="nt">O espelho existe para o drive cuja <b>fonte do
-            habilita</b> esta em interna, em que o pino sozinho nao energiza.
-            Com ele configurado, o mesmo botao de servos que ja existe passa
-            a mexer nos dois: pino e registrador. Nao ha botao de SON avulso
-            de proposito &mdash; ele seria um jeito de energizar o eixo sem a
-            supervisao olhando.</div>
-
-            <h4>1 &middot; Achar o registrador sem escrever</h4>
-            <button class="b mini" id="btPmFoto">Tirar a foto</button>
-            <button class="b mini" id="btPmComparar">Comparar agora</button>
-            <div class="pq2" id="qPmFoto"></div>
-            <div class="nt">Aperte <b>Tirar a foto</b>, va ate o painel do
-            driver e mude o parametro la (P098, por exemplo), volte e aperte
-            <b>Comparar agora</b>. O registrador que mudou e o endereco
-            daquele parametro. Isto e <b>so leitura</b>: nada e escrito. Faca
-            com o braco <b>parado</b> &mdash; se ele se mexer, o par da
-            posicao muda junto e aparece na lista. O resultado sai no
-            relatorio da linha, logo acima.</div>
-
-            <h4>2 &middot; Experimentar antes de gravar</h4>
-            <div class="cp"><label>Registrador</label><input type="number" id="pmWReg" min="0" max="65535"></div>
-            <div class="cp"><label>Valor</label><input type="number" id="pmWVal" min="0" max="65535"></div>
-            <button class="b mini" id="btPmEscrever">Escrever no driver</button>
-            <div class="pq2" id="qPmEscrever"></div>
-            <div class="res" id="pmEstado">--</div>
-            <div class="nt av">So com o robo no <b>modo manual</b>,
-            <b>parado</b>, com os <b>servos desligados</b> e a <b>solda
-            desligada</b> &mdash; e com confirmacao. Depois de escrever o
-            firmware <b>rele</b> o registrador e compara: driver que responde
-            "aceitei" e guarda outra coisa existe, e no SON isso significaria
-            a tela dizer "sem torque" com o eixo energizado.</div>
-
-            <h4>3 &middot; Gravar o espelho</h4>
-            <div class="cp"><label>Registrador do SON</label><input type="number" id="pmReg" min="0" max="65535"></div>
-            <div class="cp"><label>Valor que HABILITA</label><input type="number" id="pmOn" min="0" max="65535"></div>
-            <div class="cp"><label>Valor que DESABILITA</label><input type="number" id="pmOff" min="0" max="65535"></div>
-            <div class="cp"><label>Escrever pela funcao 16</label><div class="ch" id="pmF16"></div></div>
-            <button class="b mini" id="btPmSalvar">Gravar o espelho</button>
-            <div class="pq2" id="qPmSalvar"></div>
-            <div class="res" id="pmSon">--</div>
-            <div class="nt">Registrador <b>0</b> desliga o espelho: so o fio
-            manda, que e como a maquina sai de fabrica. A funcao 16 existe
-            porque ha driver que recusa a 06 mesmo para um registrador so.
-            <br>O espelho alcanca os drivers que estao <b>no barramento</b>
-            &mdash; junta com registrador de posicao 0 nao recebe.
-            <br>Ao ligar a maquina o sistema manda <b>um desabilita</b> pelo
-            espelho: se o ESP32 reiniciou, o pino nasce em LOW, mas um drive
-            de fonte interna pode ter ficado energizado por dentro.</div>
           </div>
         </div>
       </section>
@@ -933,7 +924,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
       <!-- ============================ MOVER ============================ -->
       <section class="pane" id="pnMover">
         <div class="et aberta">
-          <div class="cab"><div class="mk">&#10021;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cruz"/></svg></div>
             <div class="tx"><div class="tt">Comando manual</div>
             <span class="sb" id="sbMover">joystick das duas juntas</span></div></div>
           <div class="dentro">
@@ -1079,7 +1070,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et" id="eDxf">
-          <div class="cab"><div class="mk">&#9707;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-arquivo"/></svg></div>
             <div class="tx"><div class="tt">Importar desenho DXF</div>
             <span class="sb" id="sbDxf">nenhum arquivo</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1108,7 +1099,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et" id="eTraj">
-          <div class="cab"><div class="mk">&#9209;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-caminho"/></svg></div>
             <div class="tx"><div class="tt">Trajetoria a mao livre</div>
             <span class="sb" id="sbTraj">nenhuma gravada</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1142,7 +1133,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
       <!-- ========================== ARQUIVOS ========================== -->
       <section class="pane" id="pnArq">
         <div class="et aberta">
-          <div class="cab"><div class="mk">&#128190;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cartao"/></svg></div>
             <div class="tx"><div class="tt">Cartao de memoria</div>
             <span class="sb" id="sbSd">procurando</span></div></div>
           <div class="dentro">
@@ -1171,7 +1162,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#8505;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-info"/></svg></div>
             <div class="tx"><div class="tt">Como o cartao e usado</div>
             <span class="sb">organizacao das pastas</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1222,6 +1213,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
 <div class="veu cfgVeu" id="veuCfg"><div class="cx cfgCx">
   <div class="cfgTopo">
     <h2>Configuracao</h2>
+    <button class="ajd" id="cfgAjuda" title="Mostrar ou esconder as explicacoes">?</button>
     <button class="b mini" id="cfgFechar">Fechar</button>
   </div>
   <nav class="cfgAbas" id="cfgAbas">
@@ -1261,7 +1253,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et" id="eRede">
-          <div class="cab"><div class="mk">&#9776;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-rede"/></svg></div>
             <div class="tx"><div class="tt">Endereco do painel</div>
             <span class="sb" id="sbRede">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1282,7 +1274,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et" id="e5" data-e="5">
-          <div class="cab"><div class="mk">&#9881;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-regua"/></svg></div>
             <div class="tx"><div class="tt">Ajustes da maquina</div>
             <span class="sb">resolucao, velocidades, area util</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1346,14 +1338,13 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             <div class="tr"><div class="ch" id="pEnv"><i></i></div>
               <span>mesa e base (Y minimo / raio morto)</span></div>
             <div class="nt">A protecao de mesa e base depende do comprimento dos elos estar correto. Ligue depois de conferir as medidas na etapa 1, senao ela recusa posicoes que sao validas.</div>
-            <button class="b mini" id="btReset">Restaurar padroes</button>
           </div>
         </div>
       
     </div>
     <div class="pane" id="cfgCalib">
       <div class="et aberta">
-        <div class="cab"><div class="mk">&#9737;</div>
+        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
           <div class="tx"><div class="tt">Como a maquina esta agora</div>
           <span class="sb" id="sbCalib">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
@@ -1486,7 +1477,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
       </div>
 
       <div class="et">
-        <div class="cab"><div class="mk">&#9993;</div>
+        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-disco"/></svg></div>
           <div class="tx"><div class="tt">Onde isto fica guardado</div>
           <span class="sb">NVS e cartao</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
@@ -1504,7 +1495,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
     <div class="pane" id="cfgEncoder">
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9678;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-mira"/></svg></div>
             <div class="tx"><div class="tt">Correcao de posicao</div>
             <span class="sb" id="sbCorr">assentamento pelo encoder</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1548,7 +1539,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et" id="etZero">
-          <div class="cab"><div class="mk">&#9910;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-casa"/></svg></div>
             <div class="tx"><div class="tt">Zero absoluto da maquina</div>
             <span class="sb" id="sbZero">avancado</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1600,7 +1591,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9881;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-plug"/></svg></div>
             <div class="tx"><div class="tt">Ligacao Modbus</div>
             <span class="sb">endereco, registrador, formato</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1651,7 +1642,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
     <div class="pane" id="cfgSistema">
       
         <div class="et aberta">
-          <div class="cab"><div class="mk">&#9829;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-escudo"/></svg></div>
             <div class="tx"><div class="tt">Saude da maquina</div>
             <span class="sb" id="sbSaude">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1668,7 +1659,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9998;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-lista"/></svg></div>
             <div class="tx"><div class="tt">Registro de eventos</div>
             <span class="sb">o que a maquina fez nas ultimas horas</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1680,7 +1671,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9635;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-qr"/></svg></div>
             <div class="tx"><div class="tt">Conectar no painel</div>
             <span class="sb">aponte a camera do celular</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1698,7 +1689,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#8593;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cima"/></svg></div>
             <div class="tx"><div class="tt">Atualizar o firmware</div>
             <span class="sb" id="sbOta">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1715,7 +1706,7 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#128274;</div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cadeado"/></svg></div>
             <div class="tx"><div class="tt">Modo operador</div>
             <span class="sb" id="sbOp">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
@@ -1745,7 +1736,42 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             util todo dia, e so isso.</div>
           </div>
         </div>
-      
+
+        <div class="et zPerigo">
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-lixo"/></svg></div>
+            <div class="tx"><div class="tt">Apagar tudo</div>
+            <span class="sb">a maquina volta a ser recem-montada</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">Ha dois botoes aqui, e eles nao fazem a mesma
+            coisa. O de cima e o que quase sempre se quer.</div>
+
+            <h4>Restaurar os padroes</h4>
+            <button class="b mini" id="btReset">Restaurar padroes</button>
+            <div class="pq2" id="qReset"></div>
+            <div class="nt">Devolve <b>parametros</b> de fabrica: velocidades,
+            aceleracao, resolucao, medidas dos elos, protecoes. <b>Nao</b> mexe
+            na calibracao, na mesa ensinada nem no zero absoluto &mdash; quem so
+            queria as velocidades de volta nao perde a instalacao.</div>
+
+            <h4>Apagar tudo</h4>
+            <div class="perigo"><b>Isto apaga a instalacao inteira</b> e
+            reinicia a maquina: calibracao das juntas, area da mesa ensinada,
+            zero absoluto, ligacao do encoder, contadores de producao e
+            manutencao &mdash; tudo que esta gravado na memoria interna. Depois
+            disso o braco precisa ser calibrado de novo antes de trabalhar.
+            <br><b>O cartao SD nao e tocado.</b> As pecas salvas sao trabalho
+            seu, nao configuracao da maquina; apagar programa continua sendo na
+            aba Arquivos, um a um.</div>
+            <div class="cp"><label>Digite APAGAR</label>
+              <input type="text" id="apgConf" placeholder="APAGAR" autocomplete="off"></div>
+            <button class="b mini perigoso" id="btApagarTudo">Apagar tudo e reiniciar</button>
+            <div class="pq2" id="qApagarTudo"></div>
+            <div class="nt">A palavra e pedida porque toque errado na tela
+            acontece &mdash; digitar APAGAR sem querer, nao. So funciona com o
+            robo parado no modo manual.</div>
+          </div>
+        </div>
+
     </div>
   </div>
 </div></div>
@@ -2120,8 +2146,30 @@ $("btReset").onclick =function(){
   /* carregou=false faz o proximo status repreencher os campos: sem isso o
      formulario continuava mostrando os valores antigos e o "Salvar"
      seguinte reaplicava tudo por cima do padrao de fabrica. */
-  if(confirm("Restaurar todos os ajustes de fabrica?"))
+  if(confirm("Restaurar os PARAMETROS de fabrica?\n\n"+
+             "Velocidades, aceleracao, resolucao, medidas e protecoes.\n"+
+             "Calibracao, mesa ensinada e zero absoluto NAO sao tocados."))
     post("/api/config/reset").then(function(){carregou=false;});};
+
+/* Apagar tudo. A palavra digitada e conferida aqui E na porta: a tela
+   pode ter um defeito, e a porta nao pode confiar nela. */
+$("btApagarTudo").onclick=function(){
+  const q=$("qApagarTudo");
+  if($("apgConf").value.trim().toUpperCase()!=="APAGAR"){
+    q.textContent="digite APAGAR no campo acima para confirmar.";
+    return;
+  }
+  if(!confirm("APAGAR TUDO e reiniciar a maquina?\n\n"+
+              "Isto apaga a CALIBRACAO das juntas, a area da mesa ensinada, "+
+              "o zero absoluto, a ligacao do encoder e os contadores.\n\n"+
+              "O braco precisara ser calibrado de novo antes de trabalhar.\n"+
+              "O cartao SD nao e tocado."))return;
+  q.textContent="apagando e reiniciando...";
+  post("/api/apagar/tudo?conf=APAGAR").then(function(){
+    $("apgConf").value="";
+    q.textContent=erro?erro:"apagado. A maquina esta reiniciando -- recarregue esta pagina em alguns segundos.";
+  });
+};
 
 /* =====================================================================
    ABA MAQUINA: saude, registro, QR de conexao, firmware e modo operador
@@ -4246,17 +4294,7 @@ function encAplicar(d){
     $("encFunc").value=d.func;$("encPer").value=d.per;
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
-    $("pmReg").value=d.sonReg;$("pmOn").value=d.sonOn;$("pmOff").value=d.sonOff;
-    $("pmF16").className="ch"+(d.sonF16?" on":"");
   }
-  /* O espelho tem de aparecer mesmo quando funciona: "servos ligados" na
-     tela com o espelho falhando seria a tela mentindo sobre torque. */
-  $("pmSon").textContent = !d.sonAtivo
-    ? "espelho desligado \u00b7 so o fio do GPIO 23 manda"
-    : d.sonPend ? "registrador "+d.sonReg+" \u00b7 mandando..."
-    : (d.sonOk?"OK":"FALHOU")+" \u00b7 registrador "+d.sonReg+" \u00b7 "+
-      (d.sonLig?"habilita":"desabilita")+" \u00b7 "+d.sonMot+
-      (d.sonFalhas?" \u00b7 "+d.sonFalhas+" falha(s)":"");
   encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);zeroAplicar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
@@ -4314,62 +4352,6 @@ $("btEncComparar").onclick=function(){
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){
     encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
-};
-
-/* ---------- parametro do driver (o som) ----------
-   A procura sai no MESMO relatorio da linha: e sempre "o que o fio
-   respondeu por ultimo", e ter duas caixas de resultado so faria o
-   operador olhar para a errada. */
-$("btPmFoto").onclick=function(){
-  $("encRel").textContent="lendo a faixa toda...";
-  post("/api/encoder/diferenca").then(encBuscarRel);
-};
-$("btPmComparar").onclick=function(){
-  $("encRel").textContent="comparando...";
-  post("/api/encoder/diferenca?comparar=1").then(encBuscarRel);
-};
-$("pmF16").onclick=function(){$("pmF16").classList.toggle("on");};
-$("btPmSalvar").onclick=function(){
-  const r=Number($("pmReg").value||0);
-  if(r&&!confirm("Gravar o espelho do SON no registrador "+r+"?\n\n"+
-                 "O fio (GPIO 23) continua mandando. O espelho so acompanha "+
-                 "o botao de servos.\n\nRegistrador errado aqui vira torque "+
-                 "que nao sobe, ou que nao desce."))return;
-  post("/api/son/config?reg="+r+
-       "&on="+($("pmOn").value||1)+"&off="+($("pmOff").value||0)+
-       "&f16="+($("pmF16").classList.contains("on")?1:0))
-   .then(function(){encCarregou=false;});
-};
-/* Depois de escrever o firmware rele o registrador e compara. Quem
-   mostra isso e esta funcao -- sem ela a tela diria "mandei", que nao e
-   a mesma coisa que "entrou". */
-const pmBuscarEscrita=function(){
-  let tentativas=0;
-  const buscar=function(){
-    fetch("/api/encoder/escrita").then(function(r){return r.json();})
-      .then(function(d){
-        if(!d.pedida){$("pmEstado").textContent="--";return;}
-        if(!d.fim){
-          $("pmEstado").textContent="escrevendo no registrador "+d.reg+"...";
-          if(++tentativas<25)setTimeout(buscar,400);
-          return;
-        }
-        $("pmEstado").textContent=(d.ok?"CONFERE":"NAO CONFERE")+
-          " \u00b7 registrador "+d.reg+" \u00b7 "+d.motivo;
-      }).catch(function(){});
-  };
-  setTimeout(buscar,500);
-};
-$("btPmEscrever").onclick=function(){
-  const r=$("pmWReg").value,v=$("pmWVal").value;
-  if(r===""||v===""){$("pmEstado").textContent="informe o registrador e o valor";return;}
-  if(!confirm("Escrever "+v+" no registrador "+r+" do driver?\n\n"+
-              "O mapa Modbus do T3D nao esta publicado. Registrador errado "+
-              "pode mudar engrenagem eletronica, modo de controle, sentido do "+
-              "eixo ou limite de torque.\n\nServos desligados e area livre?"))return;
-  $("pmEstado").textContent="escrevendo...";
-  post("/api/encoder/escrever?reg="+r+"&valor="+v+"&confirmar=1"+
-       "&f16="+($("pmF16").classList.contains("on")?1:0)).then(pmBuscarEscrita);
 };
 
 /* ---------- status ---------- */
@@ -5299,6 +5281,23 @@ try{ if(localStorage.getItem("vista3d")==="1")$("z3D").onclick(); }catch(e){}
   b.onclick=function(){por(!document.body.classList.contains("semNotas"));};
   let guardado="1";
   try{guardado=localStorage.getItem("notas")||"1";}catch(e){}
+  por(guardado==="0");
+})();
+
+/* O mesmo para a gaveta, com memoria propria e o padrao invertido: la o
+   texto de manual e mais longo que os campos. Ver a nota do CSS. */
+(function(){
+  const b=$("cfgAjuda");
+  if(!b)return;
+  const por=function(esconder){
+    document.body.classList.toggle("semNotasCfg",esconder);
+    b.classList.toggle("on",!esconder);
+    b.title=esconder?"Mostrar as explicacoes":"Esconder as explicacoes";
+    try{localStorage.setItem("notasCfg",esconder?"0":"1");}catch(e){}
+  };
+  b.onclick=function(){por(!document.body.classList.contains("semNotasCfg"));};
+  let guardado="0";
+  try{guardado=localStorage.getItem("notasCfg")||"0";}catch(e){}
   por(guardado==="0");
 })();
 

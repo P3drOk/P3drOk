@@ -243,37 +243,6 @@ struct ConfigEncoder {
 };
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
 
-// ---------------------------------------------------------------------
-// ESPELHO DO SON (habilita) NO RS485.
-//
-// O habilita de verdade e o PINO: PIN_SERVO_ON (GPIO 23), por
-// optoacoplador, escrito por servosHabilitar(). E nele que a corrente de
-// seguranca inteira se apoia -- emergencia por nivel, alarme de driver,
-// perda de conexao, e um ESP32 que reinicia deixando o pino em LOW
-// sozinho. Fio de SON rompido DESABILITA o motor; fio de RS485 rompido
-// nao desabilita nada, deixa o eixo como estava.
-//
-// Este espelho existe para o drive cuja fonte de habilita esta em
-// INTERNA, em que o pino sozinho nao energiza. Ele acompanha o pino: o
-// mesmo servosHabilitar() que mexe no GPIO pede a escrita. Nunca e o
-// caminho principal, e a emergencia nao espera por ele.
-//
-// O registrador NAO vem cravado no codigo: o mapa Modbus do T3D nao esta
-// publicado, e numero fixo aqui seria adivinhacao -- a mesma razao pela
-// qual o registrador da posicao e configuravel.
-// ---------------------------------------------------------------------
-struct ConfigSon {
-  uint16_t reg;         // 0 = sem espelho: so o fio manda
-  uint16_t ligado;      // valor que HABILITA
-  uint16_t desligado;
-  bool     usarFuncao16;  // ha driver que so aceita a funcao 16
-};
-extern ConfigSon configSon;      // vivo, so o core 1 escreve
-// Area de preparo, como a de ConfigPendente: o handler HTTP roda no core
-// 0 e nao escreve no vivo. Ver o bloco de ConfigPendente abaixo.
-extern ConfigSon sonPendente;
-void aplicarSonPendente();
-
 // Assentamento pelo encoder. Ver correcao.h para as regras.
 struct ConfigCorrecao {
   bool  ativa;             // assentar no fim de cada movimento
@@ -403,3 +372,24 @@ uint32_t proximaSessao();
 void carregarConfiguracoes();
 void salvarConfiguracoes();
 void restaurarPadroes();
+
+// ---------------------------------------------------------------------
+// APAGAR TUDO: a maquina volta a ser uma maquina recem-montada.
+//
+// Diferente de restaurarPadroes(), que so devolve PARAMETROS. Este limpa
+// o espaco de NVS inteiro e reinicia, e por isso apaga tambem o que
+// nenhuma tela lista uma por uma: calibracao, area da mesa, zero
+// absoluto ensinado, configuracao do encoder, contadores de producao e
+// qualquer chave deixada por uma versao ANTERIOR do firmware -- que e a
+// razao de limpar o espaco em vez de reescrever chave por chave.
+//
+// NAO apaga o cartao SD. As pecas salvas sao trabalho do operador, nao
+// configuracao da maquina, e um botao de "reset" que levasse junto meses
+// de programa gravado seria uma armadilha. Apagar peca continua sendo
+// na aba Arquivos, uma a uma.
+//
+// Reinicia porque metade das variaveis vivas so nascem no setup(): zerar
+// o NVS sem reiniciar deixaria a RAM com a configuracao velha e o NVS
+// vazio, que e um terceiro estado que ninguem pediu.
+// ---------------------------------------------------------------------
+void apagarTudo();

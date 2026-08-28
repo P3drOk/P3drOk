@@ -638,77 +638,11 @@ Ferramentas de diagnóstico embutidas:
 | **Testar a linha agora** | eco no MAX485 + sondagem do driver, *dentro* do sistema rodando |
 | **Procurar o registrador** | acha o par da posição movendo o braço duas vezes no mesmo sentido |
 | **Voltar aos padrões medidos** | desfaz configuração antiga herdada do NVS |
-| **Tirar a foto / Comparar agora** | acha o endereço de um parâmetro do driver **sem escrever nada** |
 
 O diagnóstico sai **também no monitor serial**, uma linha a cada 5 s
 enquanto falha.
 
-### 5.6 SON: o habilita pelo fio, com espelho no RS485
-
-**SON = Servo ON, o habilita do motor.** Nesta máquina ele é um **fio**:
-`PIN_SERVO_ON` (GPIO 23), por optoacoplador, no SON dos dois drivers.
-`servosHabilitar()` é quem o levanta e o derruba.
-
-É nele que a corrente de segurança inteira se apoia:
-
-| | |
-|---|---|
-| emergência | derruba o pino **por nível**, a cada ciclo enquanto o botão estiver acionado |
-| alarme de driver | `pararTudo()` → servos desligados |
-| conexão perdida | idem |
-| ESP32 reinicia | o pino nasce em `LOW` — **o drive desabilita sozinho** |
-
-**Fio de SON rompido desabilita o motor. Fio de RS485 rompido não
-desabilita nada** — deixa o eixo como estava. Um é falha segura, o outro
-não. Por isso o Modbus nunca é o caminho principal do habilita.
-
-#### O espelho
-
-Há drive cuja **fonte do habilita** está em *interna*: nele o pino
-sozinho não energiza. Para esse caso existe o espelho — o mesmo
-`servosHabilitar()` que mexe no GPIO **também** escreve um registrador
-por Modbus. O pino primeiro, sempre; o quadro Modbus depois, e ninguém
-espera por ele.
-
-**Não há botão de SON avulso, de propósito.** Quem liga e desliga o
-torque continua sendo o botão de servos, que passa por toda a supervisão.
-Um botão de SON por fora disso seria um jeito de energizar o eixo sem
-nada olhando.
-
-De fábrica o espelho vem **desligado**: só o fio manda.
-
-#### Configurar (coluna Encoder, painel *Espelho do SON*)
-
-1. **Achar o registrador sem escrever.** *Tirar a foto* lê os
-   registradores 0 a 255; você muda o parâmetro no painel do driver
-   (P098, por exemplo), volta e aperta *Comparar agora*. O que mudou é o
-   endereço. Só leitura. Braço **parado**, senão o par da posição muda
-   junto.
-2. **Experimentar antes de gravar**, pela escrita avulsa: modo manual,
-   braço parado, **servos desligados**, solda desligada, registrador e
-   valor digitados e confirmação. Toda escrita é **conferida relendo** —
-   driver que responde *aceitei* e guarda outra coisa existe, e no SON
-   isso significaria a tela dizer "sem torque" com o eixo energizado.
-3. **Gravar o espelho.** Registrador **0** desliga o espelho.
-
-O espelho alcança os drivers que estão **no barramento** — junta com
-registrador de posição 0 não recebe. Quando o registrador aparece (no
-arranque, vindo do NVS, ou porque você acabou de gravá-lo) o espelho
-**sincroniza com o pino** em vez de supor: com os servos desligados ele
-manda o desabilita, fechando o buraco do religamento; com o eixo já
-energizado ele manda o habilita, sem derrubar torque de surpresa.
-
-O estado do espelho fica na tela: `OK` / `FALHOU`, o registrador, se foi
-habilita ou desabilita, o motivo e a contagem de falhas. Espelho que falha
-não some — "servos ligados" com o espelho falhando seria a tela mentindo
-sobre torque.
-
-⚠️ **Se o parâmetro do painel mudar a *fonte* do habilita para interna, o
-botão de emergência deixa de desenergizar o driver.** O espelho existe
-para conviver com um drive já configurado assim, não para você mudá-lo
-para isso.
-
-### 5.7 Correção de posição pelo encoder
+### 5.6 Correção de posição pelo encoder
 
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o
 sistema dá um retoque curto.
@@ -777,18 +711,18 @@ dar o mesmo resultado que "mandei ir".
 > defeito e o assentamento nunca traria o braço de volta — seria trocar
 > uma correção por um disfarce. Cenário **M05** do banco.
 
-### 5.8 Solda
+### 5.7 Solda
 
 Relé com proteções: não liga sem servos, não fica ligado com o braço
 parado por engano, e a parada de emergência corta o arco antes de
 qualquer outra coisa.
 
-### 5.9 Cartão SD
+### 5.8 Cartão SD
 
 Programas, trajetórias e cópias de configuração. Tarefa própria no núcleo
 0. Ver [`CARTAO_SD.md`](CARTAO_SD.md).
 
-### 5.10 Rede
+### 5.9 Rede
 
 A máquina **cria** a rede `Robo2dof`. Não entra na rede de ninguém, não
 procura roteador, não fala com a internet.
@@ -802,6 +736,42 @@ Ao entrar na rede, **o painel abre sozinho**: as sondas de captive portal
 do Windows, Android e iPhone levam redirecionamento para 192.168.4.1.
 
 ---
+
+### 5.10 Apagar tudo, e o que ele não apaga
+
+Na gaveta, página **Sistema**, cartão *Apagar tudo*. São **dois botões no
+mesmo cartão**, de propósito — a diferença entre eles é a instalação
+inteira, e o operador precisa vê-los lado a lado antes de escolher.
+
+| | apaga | não apaga |
+|---|---|---|
+| **Restaurar padrões** | velocidades, aceleração, resolução, medidas dos elos, proteções | calibração, mesa ensinada, zero absoluto, encoder |
+| **Apagar tudo** | a memória interna **inteira** — inclusive calibração, mesa, zero, encoder e contadores | o cartão SD |
+
+**Apagar tudo limpa o espaço de NVS inteiro e reinicia a placa.** Limpar o
+espaço, em vez de reescrever chave por chave, é o que faz sumir também
+uma chave deixada por uma **versão anterior** do firmware — que é
+exatamente o tipo de resíduo que ninguém lista e ninguém encontra.
+
+Reinicia porque metade das variáveis vivas só nasce no `setup()`: zerar o
+NVS sem reiniciar deixaria a RAM com a configuração velha e o NVS vazio,
+um terceiro estado que ninguém pediu. Antes de reiniciar, o comando
+**desliga o torque** — reiniciar com o eixo energizado deixa o driver
+sozinho por um segundo.
+
+**O cartão SD não é tocado.** As peças salvas são trabalho seu, não
+configuração da máquina; um botão de reset que levasse junto meses de
+programa gravado seria uma armadilha. Apagar peça continua sendo na aba
+Arquivos, uma a uma.
+
+Para confirmar é preciso **digitar a palavra APAGAR** — não basta um
+toque. Toque errado na tela acontece; digitar APAGAR por engano, não. A
+rota exige o texto de novo (`conf=APAGAR`): a tela pode ter um defeito, a
+porta não pode confiar nela. Só funciona com o robô parado no modo
+manual.
+
+Depois de apagar, **o braço precisa ser calibrado de novo** antes de
+trabalhar.
 
 ### 5.11 Máquina: saúde, registro, conexão, firmware e modo operador
 
@@ -894,6 +864,8 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/traj/*` | trajetória a mão livre |
 | `POST /api/calib/*` | assistente de calibração |
 | `POST /api/config` | parâmetros da máquina |
+| `POST /api/config/reset` | restaura os **parâmetros** de fábrica |
+| `POST /api/apagar/tudo` | apaga a memória interna inteira e reinicia — exige `conf=APAGAR` |
 | `POST /api/sentido` | inverter o sentido de um eixo |
 | `POST /api/referenciar` | zerar a máquina na posição atual |
 | `POST /api/aferir/*` | aferir a redução mecânica pelo movimento real |
@@ -902,10 +874,6 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/encoder/padroes` | volta aos padrões medidos |
 | `POST /api/encoder/testar`, `GET /api/encoder/teste` | autoteste da linha |
 | `POST /api/encoder/cacar` | caçada do registrador |
-| `POST /api/encoder/diferenca` | acha um parâmetro comparando duas leituras — **não escreve** |
-| `POST /api/encoder/escrever` | escreve um registrador; exige manual, parado, servos e solda desligados, `confirmar=1` |
-| `GET  /api/encoder/escrita` | como foi a última escrita, **conferida por releitura** |
-| `POST /api/son/config` | grava o registrador do espelho do SON e os valores de habilita/desabilita |
 | `POST /api/encoder/zerar` | zera a contagem aqui |
 | `POST /api/correcao` | assentamento pelo encoder |
 | `POST /api/aferir/encoder` | afere a engrenagem eletrônica pelo encoder |

@@ -83,6 +83,7 @@ no próprio `checar(...)`.
 | F01 | sem calibração o jog fica livre (era o que impedia calibrar) |
 | F02 | apagar a calibração gravada volta ao modo de instalação |
 | F03 | braço indo para um lado e o desenho para o outro |
+| F04 | **restaurar padrões** contra **apagar tudo**: um devolve parâmetros, o outro limpa o NVS inteiro e reinicia — e o banco exige que um NÃO faça o que o outro faz |
 | G01 | engrenagens diferentes, mesma velocidade angular |
 | H01 | a velocidade de cordão salva quando muda na tela |
 | H02 | suavidade da partida chega nos geradores de pulso |
@@ -113,7 +114,6 @@ no próprio `checar(...)`.
 | J04 | sondas de captive portal do Windows/Android/iPhone abrem o painel em vez de dar 404 |
 | L13 | velocidade, RPM, sentido, inversões e passos andados, com o eixo girando de verdade |
 | L12 | achar o registrador movendo o braço **duas vezes no mesmo sentido**; registrador que oscila não é apontado |
-| L14 | SON pelo fio com espelho no RS485: achar o registrador **sem escrever**, as travas da escrita avulsa, driver que aceita e ignora, driver que só aceita a função 16, o botão de servos mexendo nos dois, e a **emergência derrubando o pino com o RS485 morto** |
 | M01 | chegou ao alvo: o encoder confere e o sistema retoca |
 | M02 | as seis situações em que o assentamento **não** pode mexer no motor |
 | M03 | desligar o assentamento, e a parada de emergência no meio dele |
@@ -198,6 +198,18 @@ de o robô servir uma versão diferente da do repositório.
 
 O servidor falso também entrega os bytes comprimidos com
 `Content-Encoding: gzip` — o mesmo caminho do ESP32, não o HTML cru.
+
+## Sketches avulsos de `ferramentas/`
+
+Eles não entram no banco: não há o que simular num programa que conversa
+com um driver de verdade pela serial. Mas sketch que não compila é pior
+que sketch que não existe — o operador só descobre na bancada, com o robô
+aberto e a IDE reclamando.
+
+`testes/ferramentas/sintaxe_*.cpp` troca os enfeites do Arduino (`Serial`,
+`String`, `HardwareSerial`, `millis`) por equivalentes de PC e pede ao
+compilador para conferir a sintaxe. Roda a cada `compilar.sh`, junto com
+as outras guardas. Não executa nada.
 
 ## Conferência da fiação
 

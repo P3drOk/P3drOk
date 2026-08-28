@@ -143,12 +143,6 @@ o drive energiza por conta própria e o GPIO23 não alcança: o botão de
 emergência deixa de desenergizá-lo, e a proteção inteira passa a ser
 decorativa.
 
-Para o drive que já está assim, o firmware tem um **espelho no RS485**
-(MANUAL.md §5.6): o mesmo `servosHabilitar()` escreve também um
-registrador por Modbus. É reforço, nunca substituto — o pino cai primeiro
-e ninguém espera pelo quadro Modbus. Fio de SON rompido desabilita o
-motor; fio de RS485 rompido não desabilita nada.
-
 ### 3.4 Alarme (ALM)
 
 ```
