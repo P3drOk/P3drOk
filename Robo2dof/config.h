@@ -423,6 +423,14 @@ enum EstadoCalib : uint8_t {
   CAL_CONCLUIDO
 };
 
+// Copia da configuracao no cartao: nome fixo e intervalo minimo entre
+// gravacoes. Ver o bloco em estado.h.
+// Nome RESERVADO: nunca colide com um backup que o operador tenha
+// gravado a mao. A copia automatica e um espelho do estado atual, nao um
+// ponto de restauracao -- calibracao refeita errado e espelhada errada.
+#define CFG_CARTAO_NOME          "maquina-atual"
+#define CFG_CARTAO_INTERVALO_MS  15000UL
+
 enum TipoComando : uint8_t {
   CMD_JOG,              // a = junta (1|2), b = direcao (-1|0|1)
   CMD_PARAR,

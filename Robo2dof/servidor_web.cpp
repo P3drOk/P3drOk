@@ -202,7 +202,7 @@ static void handleStatus() {
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
-    "\"op\":%s,\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
+    "\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"msg\":\"%s\"}",
@@ -234,7 +234,6 @@ static void handleStatus() {
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
     ra.instalado ? "true" : "false", ra.ativo ? "true" : "false",
     ra.bracoSolto ? "true" : "false", (unsigned)ra.gravados,
-    configPainel.operador ? "true" : "false",
     progPausado() ? "true" : "false",
     progTemDesfazer() ? "true" : "false",
     (unsigned long)producao.ciclosTotais, (unsigned long)producao.ciclosSessao,
@@ -834,47 +833,6 @@ static void jsonEncoderJunta(String& out, uint8_t j) {
   out += b;
 }
 
-// ---------------------------------------------------------------------
-// MODO OPERADOR x TECNICO
-//
-// Entrar no modo operador nao pede nada -- trancar a maquina para o
-// turno tem de ser rapido. SAIR pede a senha. E uma trava contra toque
-// errado, nao seguranca de rede: quem estiver no Wi-Fi da maquina
-// alcanca a API direto. Ver a nota em estado.h.
-// ---------------------------------------------------------------------
-static void handlePainel() {
-  registrarContatoOperador();
-  const long op = argL("op", -1);
-
-  // Trocar a senha exige saber a atual.
-  if (server.hasArg("nova")) {
-    if (strcmp(server.arg("atual").c_str(), configPainel.senha) != 0) {
-      erro("senha atual incorreta"); return;
-    }
-    const String nova = server.arg("nova");
-    if (nova.length() < 4 || nova.length() > 8) {
-      erro("a senha deve ter de 4 a 8 caracteres"); return;
-    }
-    snprintf(configPainel.senha, sizeof(configPainel.senha), "%s", nova.c_str());
-    salvarConfiguracoes();
-    definirMensagem("Senha do modo tecnico alterada");
-    ok();
-    return;
-  }
-
-  if (op < 0) { erro("informe op=0 ou op=1"); return; }
-  if (op == 0 && configPainel.operador) {
-    if (strcmp(server.arg("senha").c_str(), configPainel.senha) != 0) {
-      erro("senha incorreta"); return;
-    }
-  }
-  configPainel.operador = (op != 0);
-  salvarConfiguracoes();
-  definirMensagem(configPainel.operador
-                  ? "Modo operador: ajustes de instalacao escondidos"
-                  : "Modo tecnico liberado");
-  ok();
-}
 
 // ---------------------------------------------------------------------
 // REGISTRO DE EVENTOS na tela. Sai do anel na RAM, entao funciona sem
@@ -1443,6 +1401,26 @@ static void handleSdPrevia() {
   server.send(200, "application/json", out);
 }
 
+// Restaurar a configuracao da copia automatica do cartao.
+//
+// O caminho de volta do espelho. Sem ele a copia seria so-escrita, e
+// copia que ninguem consegue ler nao e copia -- e um arquivo.
+//
+// Nome fixo e nao vem do pedido: o operador restaura O espelho, nao um
+// nome que ele digitou. Um nome livre aqui abriria a porta para carregar
+// um arquivo de configuracao de outra maquina por engano.
+static void handleCfgRestaurar() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  if (armEstado() != ARM_PRONTO) { erro("nenhum cartao pronto"); return; }
+  if (armOcupado())              { erro("o cartao esta ocupado, aguarde"); return; }
+  if (!armSolicitar(TAR_CARREGAR_CONFIG, CFG_CARTAO_NOME)) {
+    erro("nao consegui pedir a leitura ao cartao"); return;
+  }
+  logEvento("configuracao restaurada da copia do cartao");
+  ok();
+}
+
 static void handleSdCarregar() {
   registrarContatoOperador();
   const String tipo = server.arg("tipo");
@@ -1546,6 +1524,7 @@ void servidorIniciar() {
   server.on("/api/sd/previa",     HTTP_GET,  handleSdPrevia);
   server.on("/api/sd/apagar",     HTTP_POST, handleSdApagar);
   server.on("/api/sd/montar",     HTTP_POST, handleSdMontar);
+  server.on("/api/cfg/restaurar", HTTP_POST, handleCfgRestaurar);
 
   server.on("/manifest.webmanifest", HTTP_GET, handleManifesto);
   server.on("/icone.svg",            HTTP_GET, handleIcone);
@@ -1563,7 +1542,6 @@ void servidorIniciar() {
 
   server.on("/api/saude",          HTTP_GET,  handleSaude);
   server.on("/api/registro",       HTTP_GET,  handleRegistro);
-  server.on("/api/painel",         HTTP_POST, handlePainel);
   server.on("/api/ota",            HTTP_POST, handleOtaFim, handleOtaEnvio);
   server.on("/api/encoder",        HTTP_GET,  handleEncoder);
   server.on("/api/encoder/config", HTTP_POST, handleEncoderConfig);

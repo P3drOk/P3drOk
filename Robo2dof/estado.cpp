@@ -287,15 +287,6 @@ void carregarConfiguracoes() {
   areaMesa.yMin     = prefs.getFloat("mesaY0", 0.0f);
   areaMesa.yMax     = prefs.getFloat("mesaY1", 0.0f);
 
-  configPainel.operador = prefs.getBool("pnOp", false);
-  {
-    // getString com destino e tamanho: a chave ausente devolve 0 e a
-    // senha padrao fica valendo.
-    char sp[9] = "";
-    const size_t n = prefs.getString("pnSenha", sp, sizeof(sp));
-    if (n > 0 && sp[0]) snprintf(configPainel.senha, sizeof(configPainel.senha), "%s", sp);
-  }
-
   producao.ciclosTotais    = prefs.getUInt("ciclos", 0);
   producao.abortados       = prefs.getUInt("cicAb",  0);
   producao.horasArcoS      = prefs.getUInt("arcoS",  0);
@@ -428,11 +419,6 @@ void mesaLimpar() {
 
 Producao producao = {0, 0, 0, 0, 0};
 
-// De fabrica: comeca destrancado, com a senha padrao. Maquina nova que
-// nasce trancada com uma senha que ninguem sabe e uma maquina que volta
-// para a assistencia no primeiro dia.
-ConfigPainel configPainel = {false, "1234"};
-
 // A gravacao no NVS e por ciclo, nao por segundo: a memoria do ESP32
 // aguenta na casa de 100 mil escritas por celula, e um contador salvo a
 // cada volta do laco a queimaria em uma tarde.
@@ -481,7 +467,12 @@ uint32_t proximaSessao() {
   return s;
 }
 
+volatile bool configSujaParaCartao = false;
+
 void salvarConfiguracoes() {
+  // Ver o bloco em estado.h: aqui so marca; quem grava no cartao e o
+  // core 1, juntando as marcas.
+  configSujaParaCartao = true;
   prefs.begin("robo2dof", false);
 
   prefs.putFloat("velNg",       velNormal);
@@ -531,8 +522,6 @@ void salvarConfiguracoes() {
   prefs.putFloat("mesaX1", areaMesa.xMax);
   prefs.putFloat("mesaY0", areaMesa.yMin);
   prefs.putFloat("mesaY1", areaMesa.yMax);
-  prefs.putBool ("pnOp",   configPainel.operador);
-  prefs.putString("pnSenha", configPainel.senha);
   prefs.putInt  ("encRf1", encoderReferencia(1));
   prefs.putInt  ("encRf2", encoderReferencia(2));
   prefs.putBool ("crVig",  configCorrecao.vigiar);
@@ -572,9 +561,36 @@ void aplicarEncoderPendente() {
                   : "Encoder: leitura desligada");
 }
 
+// Grava a copia no cartao quando ha marca, o cartao esta livre e ja
+// passou tempo suficiente desde a ultima. Chamada do core 1, uma vez por
+// ciclo -- e ela sai na hora quando nao ha o que fazer.
+//
+// O NOME E FIXO. Copia de configuracao nao e biblioteca: uma so, sempre
+// a mesma, sempre a mais recente. Nome escolhido pelo operador viraria
+// uma pasta de "config", "config2", "config_bom" e ninguem saberia qual
+// esta valendo.
+void configCopiarParaCartaoSePreciso() {
+  static uint32_t ultimaMs = 0;
+  if (!configSujaParaCartao) return;
+  if (armEstado() != ARM_PRONTO || armOcupado()) return;
+  const uint32_t agora = millis();
+  if (ultimaMs && (agora - ultimaMs) < CFG_CARTAO_INTERVALO_MS) return;
+  prepararConfigPendente();          // forma canonica da configuracao viva
+  if (!armSolicitar(TAR_SALVAR_CONFIG, CFG_CARTAO_NOME)) return;
+  ultimaMs = agora;
+  configSujaParaCartao = false;
+}
+
 // Ver o bloco em estado.h para o que isto apaga e o que nao apaga.
 void apagarTudo() {
   logEvento("APAGAR TUDO: NVS limpo, reiniciando");
+  // A copia no cartao e memoria da MAQUINA, entao vai junto -- senao a
+  // maquina "apagada" voltaria a se configurar sozinha na proxima
+  // gravacao. Programas e trajetorias no cartao NAO sao tocados: sao
+  // trabalho do operador.
+  configSujaParaCartao = false;
+  if (armEstado() == ARM_PRONTO && !armOcupado())
+    armSolicitar(TAR_APAGAR, CFG_CARTAO_NOME);
   Serial.println("[NVS] Apagando TUDO e reiniciando.");
   prefs.begin("robo2dof", false);
   prefs.clear();

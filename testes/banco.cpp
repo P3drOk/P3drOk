@@ -761,7 +761,7 @@ static void teste_A10_json_status() {
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
     "\"aprBotao\":%s,\"apr\":%s,\"aprSolto\":%s,\"aprN\":%u,"
-    "\"op\":%s,\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
+    "\"pausa\":%s,\"desf\":%s,\"ciclos\":%lu,\"cicSes\":%lu,"
     "\"m1\":%.2f,\"m2\":%.2f,\"m1ok\":%s,\"m2ok\":%s,\"trecho\":%u,"
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"msg\":\"%s\"}",
@@ -779,7 +779,7 @@ static void teste_A10_json_status() {
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
     9999.9f, 9999.9f, 90.0f, -9999.9f, 9999.9f,
     "false","false","false", 255u,
-    "false","false","false", 4294967295UL, 4294967295UL,
+    "false","false", 4294967295UL, 4294967295UL,
     -999.99f, -999.99f, "false", "false", 100u,
     "false", -9999.0f, 9999.0f, -9999.0f, 9999.0f,
     msg);

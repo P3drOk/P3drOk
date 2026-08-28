@@ -53,7 +53,7 @@ estado = {
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 458.33, "ppg2": 111.11,
     "l1": 450.0, "l2": 400.0, "dobra": 20.0, "envY": -150.0, "envR": 40.0,
     "aprBotao": False, "apr": False, "aprSolto": False, "aprN": 0,
-    "op": False, "pausa": False, "desf": False, "ciclos": 137, "cicSes": 9,
+    "pausa": False, "desf": False, "ciclos": 137, "cicSes": 9,
     "mesaOn": True, "mesaX0": 180.0, "mesaX1": 640.0,
     "mesaY0": -260.0, "mesaY1": 260.0,
     "m1": 9.02, "m2": -14.38, "m1ok": True, "m2ok": True, "trecho": 0,

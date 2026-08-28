@@ -915,6 +915,10 @@ void setup() {
 void loop() {
   supervisionar();
 
+  // Copia da configuracao no cartao. So marca -> grava; ver estado.h.
+  // Fica aqui, no core 1, porque e ele o dono da configuracao viva.
+  configCopiarParaCartaoSePreciso();
+
   // A parada NAO passa pela fila. A fila e compartilhada com o heartbeat
   // de jog (100 ms por eixo) e xQueueSend descarta quando enche - uma
   // parada de emergencia nao pode depender de haver espaco em buffer.

@@ -316,27 +316,6 @@ void mesaEnsinarCanto(float x, float y);
 void mesaLimpar();
 
 // ---------------------------------------------------------------------
-// MODO OPERADOR x TECNICO
-//
-// Na producao, quem esta na maquina o dia inteiro precisa de quatro
-// botoes: executar, pausar, repetir, parar. Calibracao, resolucao,
-// registrador Modbus e sentido dos eixos sao ajustes de instalacao -- e
-// um toque errado neles no meio do turno para a linha.
-//
-// O modo operador ESCONDE esses paineis. Sair dele pede uma senha curta.
-//
-// O QUE ISTO E, E O QUE NAO E. E uma trava contra toque errado, nao e
-// seguranca de rede: a maquina serve seu proprio Wi-Fi e quem estiver
-// nele alcanca a API direto, sem passar pela tela. Tratar isto como
-// senha de verdade seria mentir para quem compra.
-// ---------------------------------------------------------------------
-struct ConfigPainel {
-  bool operador;      // comeca no modo operador a cada boot
-  char senha[9];      // curta, so para nao ser um toque acidental
-};
-extern ConfigPainel configPainel;
-
-// ---------------------------------------------------------------------
 // PRODUCAO: quantas pecas esta maquina ja fez
 //
 // Um numero que o dono da maquina usa e um numero que o firmware nao
@@ -393,3 +372,20 @@ void restaurarPadroes();
 // vazio, que e um terceiro estado que ninguem pediu.
 // ---------------------------------------------------------------------
 void apagarTudo();
+
+// ---------------------------------------------------------------------
+// COPIA DA CONFIGURACAO NO CARTAO
+//
+// O NVS interno continua sendo o que a maquina LE ao ligar -- ele nao
+// depende de haver cartao no slot. O cartao guarda uma copia, gravada
+// sozinha, para o caso em que o NVS se perde: placa trocada, "apagar
+// tudo" apertado sem querer, firmware regravado. Sem essa copia,
+// recuperar a instalacao e refazer a calibracao inteira.
+//
+// Nao se grava a cada salvarConfiguracoes(): o contador de pecas salva a
+// cada ciclo, e escrever no cartao por peca gastaria o cartao sem
+// motivo. Aqui so se MARCA; o core 1 junta as marcas e grava de vez em
+// quando, com o cartao livre.
+// ---------------------------------------------------------------------
+extern volatile bool configSujaParaCartao;
+void configCopiarParaCartaoSePreciso();

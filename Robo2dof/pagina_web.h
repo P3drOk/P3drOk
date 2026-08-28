@@ -38,9 +38,22 @@ html[data-tema="escuro"]{
   --grade:125,157,255; --papel:#0d1116; --sombra:rgba(0,0,0,.55);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* PUXAR PARA ATUALIZAR, NAO.
+   Num painel de maquina, recarregar a pagina no meio de um trabalho e um
+   acidente: o celular perde a aba aberta, os campos meio preenchidos e o
+   heartbeat que segura o movimento. E acontecia sozinho -- rolar uma
+   secao ate o topo e continuar puxando faz o Chrome do Android
+   interpretar como "atualize".
+   overscroll-behavior:none no body nao bastava: quem rola aqui sao os
+   paineis de dentro (.rol, .cfgRol, .cx), e o excesso deles SOBE em
+   cadeia ate o documento. A trava tem de estar em cada rolagem, e
+   tambem no html -- que e o elemento que define a janela. */
 html,body{margin:0;height:100%;width:100%;overflow-x:hidden;
  background:var(--fundo);color:var(--letra);
- font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overscroll-behavior:none}
+ font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+ overscroll-behavior:none;-webkit-overflow-scrolling:touch}
+/* Todo container que rola para a cadeia nele mesmo. */
+.rol,.cfgRol,.cx,.dockEnc,.tabAmostras,.res,.grelha,.lista{overscroll-behavior:contain}
 button,input{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--arco);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -77,7 +90,7 @@ button,input{font:inherit;color:inherit}
 }
 @media(max-width:1300px){
   /* Volta a ser aba: aparece so quando escolhida, como as outras. */
-  .dockEnc{display:block;min-width:0;overflow-y:auto}
+  .dockEnc{display:block;min-width:0;overflow-y:auto;overscroll-behavior:contain}
   body[data-aba="enc"] .coluna{display:none}
   body:not([data-aba="enc"]) .dockEnc{display:none}
 }
@@ -107,17 +120,35 @@ button,input{font:inherit;color:inherit}
 .mod{font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;color:var(--letra3);
  border-left:1px solid var(--linha);padding-left:12px;line-height:1.4}
 @media(max-width:720px){.mod{display:none}}
-.lamps{display:flex;gap:15px;margin-left:auto;min-width:0;overflow:hidden}
-.lp{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:52px}
-.olho{width:11px;height:11px;border-radius:50%;background:var(--face);
- box-shadow:inset 0 1px 2px var(--sombra);border:1px solid var(--linha)}
+/* TIRA DE ESTADO.
+   Eram cinco pares soltos de bolinha-sobre-rotulo, separados por 15 px de
+   nada: no celular a fila encostava no PARAR e a primeira lampada saia da
+   tela. Agora e UMA peca -- moldura, divisorias entre os campos, ponto e
+   rotulo lado a lado -- que se le da esquerda para a direita como o
+   painel de uma maquina, e que encolhe inteira em vez de perder um
+   campo. */
+.lamps{display:flex;margin-left:auto;min-width:0;
+ background:var(--face);border:1px solid var(--linha);border-radius:5px;
+ overflow:hidden}
+.lp{display:flex;flex-direction:row;align-items:center;gap:6px;min-width:0;
+ padding:6px 10px;border-left:1px solid var(--linha)}
+.lp:first-child{border-left:none}
+.olho{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--linha2);
+ box-shadow:inset 0 1px 2px var(--sombra)}
 .lp.on .olho{background:var(--pronto);box-shadow:0 0 9px var(--pronto)}
 .lp.at .olho{background:var(--arco);box-shadow:0 0 9px var(--arco)}
 .lp.hot .olho{background:var(--quente);box-shadow:0 0 14px var(--quente);animation:pi .7s infinite}
 .lp.er .olho{background:var(--brasa);box-shadow:0 0 12px var(--brasa);animation:pi .45s infinite}
 @keyframes pi{50%{opacity:.25;box-shadow:none}}
-.lp span{font-family:var(--mono);font-size:7.5px;letter-spacing:.1em;color:var(--letra2);
- text-transform:uppercase}
+.lp span{font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;color:var(--letra2);
+ text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Aceso, o rotulo acende junto: ponto colorido com legenda apagada ao
+   lado obriga a olhar duas vezes para ler o mesmo estado. */
+.lp.on span,.lp.at span,.lp.hot span,.lp.er span{color:var(--letra)}
+/* O campo do modo e o unico que muda de palavra: reservar largura evita
+   a tira inteira pular de tamanho a cada troca de estado. */
+#lModo{min-width:96px}
+#lModo span{font-weight:700}
 .estop{flex:0 0 auto;background:var(--brasa);border:none;color:#fff;font-family:var(--mono);font-size:12px;
  font-weight:700;letter-spacing:.15em;padding:12px 20px;border-radius:4px;cursor:pointer;
  box-shadow:0 3px 0 rgba(0,0,0,.35);margin-left:8px}
@@ -170,7 +201,8 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
 /* ---------- coluna ---------- */
 .coluna{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;
  display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.rol{overflow-y:auto;overflow-x:hidden;padding:10px;flex:1;scrollbar-width:thin;min-width:0}
+.rol{overflow-y:auto;overflow-x:hidden;padding:10px;flex:1;scrollbar-width:thin;min-width:0;
+ overscroll-behavior:contain}
 /* Grudada no topo da coluna: a resposta de cada acao ("Ponto 3 gravado",
    "Movimento recusado: ...") tem que estar visivel sem rolar de volta. */
 .tira{position:sticky;top:0;z-index:6;
@@ -296,7 +328,6 @@ h4:first-child{margin-top:0}
    todo dia: elas ocupam mais coluna que os controles. O botao "?" no
    cabecalho esconde todas de uma vez, e a escolha fica gravada. Esconder
    nao e apagar -- um clique traz tudo de volta. */
-body.semNotas .nt{display:none}
 /* A gaveta tem o SEU proprio interruptor de explicacoes, e ele nasce
    desligado.
    O motivo e de proporcao, nao de gosto: na tela de trabalho as notas
@@ -335,6 +366,22 @@ body.semNotasCfg .cfgRol .nt{display:none}
 .et.zPerigo .mk{color:var(--brasa);border-color:var(--brasa)}
 .b.perigoso{background:var(--brasa);border-color:var(--brasa);color:#fff}
 .b.perigoso:hover{filter:brightness(1.12)}
+/* GRAVANDO: um estado que so aparecia no rotulo minusculo do cabecalho
+   do cartao. O operador apertava "Iniciar gravacao", nada visivel mudava
+   na tela em que ele estava, e ele concluia que o botao nao funcionava.
+   Agora o proprio cartao diz em que pe esta, e quantas amostras ja
+   entraram -- que e a prova de que mover o braco esta sendo registrado. */
+.gravBox{display:flex;align-items:center;gap:10px;margin-bottom:10px;
+ background:var(--face);border:1px solid var(--linha);border-radius:4px;padding:10px 11px}
+.gravBox .pt{flex:0 0 auto;width:10px;height:10px;border-radius:50%;
+ background:var(--linha2)}
+.gravBox .tx{min-width:0;font-size:11.5px;line-height:1.45}
+.gravBox b{font-size:12px}
+.gravBox span{color:var(--letra2)}
+.gravBox.on{border-color:var(--brasa)}
+.gravBox.on .pt{background:var(--brasa);animation:pi .8s infinite}
+.gravBox.tem{border-color:var(--pronto)}
+.gravBox.tem .pt{background:var(--pronto)}
 .perigo{font-size:11.5px;background:var(--face);border-left:3px solid var(--quente);border-top:1px solid var(--linha);border-right:1px solid var(--linha);border-bottom:1px solid var(--linha);color:var(--letra);
  padding:10px 11px;border-radius:3px;margin-bottom:10px;line-height:1.55}
 /* Estado do modo aprendizado. Precisa ser visivel de longe: quando ele
@@ -352,9 +399,6 @@ body.semNotasCfg .cfgRol .nt{display:none}
 /* Botao do arco depois do primeiro toque: pisca ate confirmar ou expirar. */
 .b.armado{background:var(--quente);color:#fff;animation:pulsa 1s ease-in-out infinite}
 @keyframes pulsa{50%{opacity:.55}}
-/* Modo operador: some com o que e ajuste de instalacao. Some de verdade,
-   nao fica cinza -- botao desabilitado ainda convida a apertar. */
-body.operador .soTecnico{display:none}
 .med{display:block;font-family:var(--mono);font-size:9.5px;font-weight:400;
  color:var(--fraca);text-decoration:none;line-height:1.5;letter-spacing:0}
 .med.dif{color:var(--quente)}
@@ -397,7 +441,7 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
  justify-content:center;padding:16px;z-index:70;backdrop-filter:blur(3px)}
 .veu.on{display:flex}
 .cx{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;padding:20px;
- width:100%;max-width:400px;max-height:92vh;overflow-y:auto}
+ width:100%;max-width:400px;max-height:92vh;overflow-y:auto;overscroll-behavior:contain}
 .cx h2{margin:0 0 4px;font-size:15px}
 .pp{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;color:var(--arco);
  margin-bottom:12px}
@@ -447,7 +491,7 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
  border-radius:3px 3px 0 0}
 .cfgAbas button:hover{color:var(--letra)}
 .cfgAbas button.on{color:var(--arco);border-bottom-color:var(--arco)}
-.cfgRol{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px 18px;
+.cfgRol{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px 18px;overscroll-behavior:contain;
  scrollbar-width:thin;min-width:0}
 /* A engrenagem gira devagar ao passar o dedo: e a unica animacao da tela
    e existe para dizer que ali se MEXE em coisa, em vez de operar. */
@@ -457,9 +501,6 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 .ajd.eng.on{background:var(--arco);border-color:var(--arco);color:#fff}
 /* No modo operador some o que e instalacao; sobra o painel Sistema, que
    e por onde ele sai do modo. */
-body.operador .cfgAbas button[data-cfg="maquina"],
-body.operador .cfgAbas button[data-cfg="calib"],
-body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
 
 /* Botao de parada sempre alcancavel, em qualquer aba. */
 .estop{flex:0 0 auto}
@@ -616,9 +657,11 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
    padding:calc(7px + env(safe-area-inset-top)) 10px 8px}
   .mod{display:none}
   .nome{font-size:12px;grid-column:1;grid-row:1}
-  .lamps{grid-column:1;grid-row:2;margin-left:0;gap:2px;overflow:visible;
+  .lamps{grid-column:1;grid-row:2;margin-left:0;
    display:grid;grid-auto-flow:column;grid-auto-columns:1fr}
-  .lp{min-width:0;gap:4px}
+  .lp{min-width:0;gap:5px;padding:6px 6px;justify-content:center}
+  #lModo{min-width:0}
+  .lp span{font-size:8px;letter-spacing:.04em}
   .estop{grid-column:2;grid-row:1/span 2;align-self:stretch;
    padding:0 17px;font-size:12px}
 
@@ -682,7 +725,6 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
   <header class="placa">
     <div class="nome">ROBO<b>2DOF</b></div>
     <div class="mod">ESTACAO DE SOLDA<br>2 EIXOS · SERVO AC</div>
-    <button class="ajd" id="btAjuda" title="Mostrar ou esconder as explicacoes">?</button>
     <button class="ajd eng" id="btCfg" title="Configuracao">
       <svg class="ic" aria-hidden="true"><use href="#i-engrenagem"/></svg>
     </button>
@@ -1111,6 +1153,10 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             O traco vira programa de pontos na hora &mdash; da para ensaiar,
             repetir, corrigir ponto a ponto e salvar no cartao como qualquer
             outro.</div>
+            <div class="gravBox" id="gravBox">
+              <div class="pt"></div>
+              <div class="tx"><b id="gravTit">--</b><br><span id="gravMsg">--</span></div>
+            </div>
             <button class="b" id="btGravIni">Iniciar gravacao</button>
             <div class="pq2" id="qGravIni"></div>
             <button class="b" id="btGravFim">Encerrar gravacao</button>
@@ -1143,41 +1189,35 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
             </div>
             <button class="b mini" id="btSdMontar">Procurar cartao de novo</button>
 
-            <h4>Biblioteca</h4>
-            <div class="seg" id="segTipo">
-              <button data-t="prog" class="on">Programas</button>
-              <button data-t="traj">Trajetorias</button>
-              <button data-t="cfg">Ajustes</button>
-            </div>
-            <div class="res" id="sdOque">--</div>
+            <h4>Programas salvos</h4>
+            <div class="res" id="sdOqueProg">--</div>
             <div class="linhaNome">
-              <input id="sdNome" maxlength="24" placeholder="nome do arquivo" autocomplete="off">
-              <button class="b mini" id="btSdSalvar" style="width:auto;margin:0">Salvar</button>
+              <input id="sdNomeProg" maxlength="24" placeholder="nome do programa" autocomplete="off">
+              <button class="b mini" id="btSdSalvarProg" style="width:auto;margin:0">Salvar</button>
             </div>
-            <div class="pq2" id="qSdSalvar"></div>
-            <div class="nt" id="sdDica">Salva o programa de pontos que esta na
-            maquina agora. Letras, numeros, espaco, hifen e sublinhado.</div>
-            <div id="sdLista"></div>
+            <div class="pq2" id="qSdSalvarProg"></div>
+            <div id="sdListaProg"></div>
+            <div class="nt">Sao os desenhos e programas de ponto que voce fez
+            na maquina. <b>Apagar tudo nao mexe neles</b> &mdash; so na memoria
+            interna da maquina.</div>
           </div>
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-info"/></svg></div>
-            <div class="tx"><div class="tt">Como o cartao e usado</div>
-            <span class="sb">organizacao das pastas</span></div><div class="chv">&#9654;</div></div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-caminho"/></svg></div>
+            <div class="tx"><div class="tt">Trajetorias salvas</div>
+            <span class="sb" id="sbSdTraj">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">
-            <b>/prog</b> &mdash; programas de solda, em texto e em graus. Da para
-            escrever um no computador com um editor comum.<br><br>
-            <b>/traj</b> &mdash; trajetorias gravadas a mao livre, em binario.<br><br>
-            <b>/cfg</b> &mdash; copias dos ajustes da maquina. O NVS interno
-            continua sendo o que a maquina usa ao ligar; o cartao serve de
-            backup e para levar a mesma configuracao para outra maquina.<br><br>
-            <b>/log</b> &mdash; um arquivo por partida, com alarme, emergencia,
-            perda de conexao e inicio de cada execucao.
+            <div class="res" id="sdOqueTraj">--</div>
+            <div class="linhaNome">
+              <input id="sdNomeTraj" maxlength="24" placeholder="nome da trajetoria" autocomplete="off">
+              <button class="b mini" id="btSdSalvarTraj" style="width:auto;margin:0">Salvar</button>
             </div>
-            <div class="nt">Sem cartao no slot, tudo continua funcionando: o que
-            se perde e a biblioteca e o registro.</div>
+            <div class="pq2" id="qSdSalvarTraj"></div>
+            <div id="sdListaTraj"></div>
+            <div class="nt">O caminho inteiro gravado a mao livre, com o estado
+            do arco em cada instante. Grava-se em <b>Programa &rsaquo; Trajetoria
+            a mao livre</b>.</div>
           </div>
         </div>
       </section>
@@ -1706,34 +1746,40 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cadeado"/></svg></div>
-            <div class="tx"><div class="tt">Modo operador</div>
-            <span class="sb" id="sbOp">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-info"/></svg></div>
+            <div class="tx"><div class="tt">Idioma / Language</div>
+            <span class="sb" id="sbIdioma">portugues</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">O modo operador <b>esconde</b> os ajustes de
-            instalacao &mdash; calibracao, resolucao, encoder, sentido dos
-            eixos. No turno, um toque errado num desses para a linha.</div>
-            <button class="b" id="btOp">Entrar no modo operador</button>
-            <div class="pq2" id="qOp"></div>
-            <div class="cp"><label>Senha do tecnico</label>
-              <input type="password" id="opAtual" placeholder="atual"></div>
-            <div class="cp"><label>Nova senha</label>
-              <input type="password" id="opNova" placeholder="4 a 8 caracteres"></div>
-            <button class="b mini" id="btOpSenha">Trocar a senha</button>
-            <div class="pq2" id="qOpSenha"></div>
-            <h4>Idioma / Language</h4>
             <button class="b mini" id="btIdioma">English</button>
-            <div class="nt">Traduz o que o operador toca: abas, botoes,
-            rotulos, a tela de saude e a tira de estado. <b>As notas longas
-            de explicacao continuam em portugues</b> &mdash; elas sao o manual
-            embutido desta maquina, escritas para quem a monta, e traduzir mal
-            um texto que explica por que o arco fecha na pausa e pior do que
-            deixa-lo como esta.</div>
+            <div class="pq2" id="qIdioma"></div>
+            <div class="nt">Portugues e ingles, e so. O padrao e portugues.
+            Traduz o que o operador toca: abas, botoes, rotulos, a tela de
+            saude e a tira de estado. <b>As notas longas de explicacao
+            continuam em portugues</b> &mdash; elas sao o manual embutido desta
+            maquina, escritas para quem a monta, e traduzir mal um texto que
+            explica por que o arco fecha na pausa e pior do que deixa-lo como
+            esta.</div>
+          </div>
+        </div>
 
-            <div class="perigo"><b>Isto nao e seguranca de rede.</b> A maquina
-            serve o proprio Wi-Fi, e quem estiver nele alcanca a API direto,
-            sem passar por esta tela. E uma trava contra toque errado &mdash;
-            util todo dia, e so isso.</div>
+        <div class="et">
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-disco"/></svg></div>
+            <div class="tx"><div class="tt">Copia da configuracao no cartao</div>
+            <span class="sb" id="sbCfgCartao">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">Tudo que a maquina tem de configuracao &mdash;
+            calibracao, curso das juntas, reducao, area da mesa, zero, encoder,
+            velocidades &mdash; <b>se copia sozinho para o cartao</b>, num
+            arquivo reservado. A maquina continua lendo a memoria interna ao
+            ligar; o cartao existe para o dia em que ela se perde: placa
+            trocada, firmware regravado, "apagar tudo" apertado sem querer.
+            <br>Nao e ponto de restauracao: e um espelho do estado atual.
+            Calibracao refeita errado e espelhada errada.</div>
+            <button class="b mini" id="btCfgRestaurar">Restaurar do cartao</button>
+            <div class="pq2" id="qCfgRestaurar"></div>
+            <div class="nt">Programas e trajetorias sao outra coisa: ficam na
+            aba Arquivos e <b>nao</b> sao tocados nem por isto nem por "apagar
+            tudo".</div>
           </div>
         </div>
 
@@ -2477,17 +2523,15 @@ $("btManut").onclick=function(){
   post("/api/manutencao/ok").then(saudeAtualizar);
 };
 
-$("btOp").onclick=function(){
-  if(!D.op){ post("/api/painel?op=1"); return; }
-  const s=prompt("Senha do tecnico:");
-  if(s===null)return;
-  post("/api/painel?op=0&senha="+encodeURIComponent(s));
-};
 $("btIdioma").onclick=function(){definirIdioma(idioma==="en"?"pt":"en");};
-$("btOpSenha").onclick=function(){
-  post("/api/painel?atual="+encodeURIComponent($("opAtual").value)+
-       "&nova="+encodeURIComponent($("opNova").value)).then(function(){
-    $("opAtual").value=""; $("opNova").value="";});
+$("btCfgRestaurar").onclick=function(){
+  if(!confirm("Substituir a configuracao da maquina pela copia do cartao?\n\n"+
+              "Calibracao, curso, reducao, mesa e zero voltam ao que estava "+
+              "gravado no cartao."))return;
+  post("/api/cfg/restaurar").then(function(){
+    acao("CfgRestaurar", erro || "");
+    if(!erro)$("qCfgRestaurar").textContent="lido do cartao.";
+  });
 };
 
 /* Envio do firmware. XMLHttpRequest e nao fetch por causa da barra de
@@ -4494,17 +4538,8 @@ function aplicar(d){
        d.cicSes+" nesta sessao");
   acao("Desf", d.desf ? "" : "nada para desfazer");
 
-  /* Modo operador: esconde o que e ajuste de instalacao. */
-  document.body.classList.toggle("operador", !!d.op);
-  /* Entrando no modo operador com a gaveta aberta numa aba de
-     instalacao, cai-se para Sistema -- que e por onde ele sai do modo.
-     Sem isto a gaveta ficaria aberta numa aba que a regra acabou de
-     esconder, sem nenhuma acesa. */
-  if(d.op&&cfgAtual!=="sistema"&&$("veuCfg").classList.contains("on"))irCfg("sistema");
-  $("btOp").textContent=tr(d.op?"Sair do modo operador":"Entrar no modo operador");
-  $("btOp").className="b "+(d.op?"pri":"");
-  $("sbOp").textContent=tr(d.op?"ligado: ajustes escondidos":"desligado: tudo visivel");
   $("btIdioma").textContent=(idioma==="en")?"Portugues":"English";
+  $("sbIdioma").textContent=(idioma==="en")?"english":"portugues";
 
   pintarSoldar();
   $("btEnsaio").textContent=tr((rodando&&d.ensaio)?"Parar ensaio":"Executar ensaio");
@@ -4623,6 +4658,24 @@ function aplicar(d){
 
   $("sbTraj").textContent=d.trajN<2?"nenhuma gravada":
     (d.trajN+" pontos · "+(d.trajMs/1000).toFixed(1)+" s");
+  /* O cartao diz em que pe a gravacao esta. Sem isto o operador aperta
+     "Iniciar gravacao", nada muda na tela em que ele esta, e ele conclui
+     que o botao nao faz nada -- foi exatamente a queixa. */
+  const gv=$("gravBox");
+  if(d.modo==="GRAVANDO"){
+    gv.className="gravBox on";
+    $("gravTit").textContent=tr("GRAVANDO")+" · "+d.trajN+" "+tr("amostras");
+    $("gravMsg").textContent=tr("Mova o braco: pelo joystick da aba Mover, pelos botoes de passo, ou com a mao se o modo aprendizado estiver ligado.");
+  }else if(d.trajN>=2){
+    gv.className="gravBox tem";
+    $("gravTit").textContent=tr("Trajetoria na memoria");
+    $("gravMsg").textContent=d.trajN+" "+tr("amostras")+" · "+
+      (d.trajMs/1000).toFixed(1)+" s · "+tr("reproduza abaixo ou salve na aba Arquivos");
+  }else{
+    gv.className="gravBox";
+    $("gravTit").textContent=tr("Parado");
+    $("gravMsg").textContent=tr("Nada gravado ainda. Aperte Iniciar gravacao e mova o braco.");
+  }
   acao("GravIni", d.modo==="GRAVANDO" ? "ja esta gravando" : porQueNaoMove(d,false));
   acao("GravFim", d.modo==="GRAVANDO" ? "" : "nao ha gravacao em andamento");
   acao("Repro", (d.trajN<2) ? "nenhuma trajetoria gravada" : porQueNaoMove(d,true));
@@ -4742,7 +4795,7 @@ const EN={
  "Soldar":"Weld","Modo aprendizado":"Teach mode",
  "Saude da maquina":"Machine health","Registro de eventos":"Event log",
  "Conectar no painel":"Connect to the panel",
- "Atualizar o firmware":"Update firmware","Modo operador":"Operator mode",
+ "Atualizar o firmware":"Update firmware",
  "Ir para um angulo":"Go to an angle","Atalhos":"Shortcuts",
  "Velocidade do cordao":"Bead speed","Senha do tecnico":"Technician password",
  "Nova senha":"New password",
@@ -4890,9 +4943,6 @@ medirCabecalho();
 
 function abrirCfg(){
   medirCabecalho();
-  /* No modo operador as duas abas de instalacao estao escondidas por
-     CSS; abrir numa delas deixaria a gaveta em branco. */
-  if(D.op && cfgAtual !== "sistema") cfgAtual = "sistema";
   irCfg(cfgAtual);
   $("veuCfg").classList.add("on");
   $("btCfg").classList.add("on");
@@ -5020,69 +5070,69 @@ joyDesenhar();
 /* =====================================================================
    CARTAO SD
    ===================================================================== */
-let sdTipo="prog",sdSeq=-1,sdEstado="",sdArqs=[];
-const DICA={
- prog:"Salva o programa de pontos que esta na maquina agora. Letras, numeros, espaco, hifen e sublinhado.",
- traj:"Salva a trajetoria gravada a mao livre que esta na memoria.",
- cfg:"Salva uma copia dos ajustes. A maquina continua usando a memoria interna ao ligar; isto e backup."
+/* Duas bibliotecas independentes, uma por tipo: programas e trajetorias.
+   Antes era UMA lista com um seletor de tres posicoes (programas,
+   trajetorias, ajustes) -- e o operador nunca sabia qual estava vendo.
+   Os ajustes sairam da biblioteca: agora eles se copiam sozinhos para o
+   cartao, num arquivo reservado, e voltam por um botao na gaveta.
+   O mesmo codigo serve as duas: o que muda e o tipo e os ids. */
+let sdSeq=-1,sdEstado="";
+const BIB={
+  prog:{arqs:[],nome:"sdNomeProg",oque:"sdOqueProg",lista:"sdListaProg",
+        bt:"SdSalvarProg",ver:true},
+  traj:{arqs:[],nome:"sdNomeTraj",oque:"sdOqueTraj",lista:"sdListaTraj",
+        bt:"SdSalvarTraj",ver:false}
 };
-document.querySelectorAll("#segTipo button").forEach(function(b){
-  b.onclick=function(){
-    sdTipo=b.dataset.t;
-    document.querySelectorAll("#segTipo button").forEach(function(x){
-      x.classList.toggle("on",x===b);});
-    $("sdDica").textContent=DICA[sdTipo];
-    sdEstadoSalvar();
-    sdSeq=-1;sdAtualizar(true);
-  };
-});
 $("btSdMontar").onclick=function(){post("/api/sd/montar").then(function(){sdSeq=-1;});};
-$("btSdSalvar").onclick=function(){
-  const n=$("sdNome").value.trim();
-  if(!n){erro="informe um nome para o arquivo";return;}
-  post("/api/sd/salvar?tipo="+sdTipo+"&nome="+encodeURIComponent(n))
-   .then(function(){sdSeq=-1;});
-};
-$("sdNome").oninput=function(){sdEstadoSalvar();};
+
+Object.keys(BIB).forEach(function(tipo){
+  const b=BIB[tipo];
+  $("bt"+b.bt).onclick=function(){
+    const n=$(b.nome).value.trim();
+    if(!n){acao(b.bt,"informe um nome para o arquivo");return;}
+    post("/api/sd/salvar?tipo="+tipo+"&nome="+encodeURIComponent(n))
+     .then(function(){sdSeq=-1;});
+  };
+  $(b.nome).oninput=function(){sdEstadoSalvar();};
+});
 
 /* O que "Salvar" vai gravar, e por que ele nao pode agora.
    Antes o botao respondia 200 sempre: o firmware enfileirava o pedido e
    a recusa ("nada para salvar", "cartao ausente") aparecia so na tira de
    mensagem, que rola. O operador apertava e concluia que nao funcionava. */
 function sdEstadoSalvar(){
-  const nome=$("sdNome").value.trim();
-  const quanto = sdTipo==="prog" ? (D.progN||0)
-               : sdTipo==="traj" ? (D.trajN||0) : 1;
-  const oque = sdTipo==="prog"
+  Object.keys(BIB).forEach(function(tipo){
+    const b=BIB[tipo];
+    const nome=$(b.nome).value.trim();
+    const quanto=(tipo==="prog")?(D.progN||0):(D.trajN||0);
+    $(b.oque).textContent = (tipo==="prog")
       ? (quanto>=2 ? "vai gravar o programa que esta na maquina: "+quanto+" pontos"
                    : "nao ha programa na maquina. Desenhe na mesa, importe um DXF ou grave pontos na aba Mover")
-    : sdTipo==="traj"
-      ? (quanto>=2 ? "vai gravar a trajetoria na memoria: "+quanto+" amostras"
-                   : "nao ha trajetoria gravada. Use \"Trajetoria a mao livre\" na aba Programa")
-      : "vai gravar uma copia dos ajustes atuais da maquina";
-  $("sdOque").textContent=oque;
-
-  acao("SdSalvar",
-      sdEstado==="DESLIGADO" ? "o cartao nao foi iniciado"
-    : sdEstado==="SEM_CARTAO" ? "nenhum cartao no slot"
-    : sdEstado==="OCUPADO" ? "o cartao esta ocupado, aguarde"
-    : (D.modo&&D.modo!=="MANUAL") ? "salve com o robo parado no modo manual"
-    : (sdTipo==="prog"&&quanto<2) ? "nao ha programa na maquina para salvar"
-    : (sdTipo==="traj"&&quanto<2) ? "nao ha trajetoria gravada para salvar"
-    : !nome ? "de um nome ao arquivo"
-    : /[^A-Za-z0-9 _-]/.test(nome) ? "use so letras, numeros, espaco, hifen e sublinhado"
-    : "");
+      : (quanto>=2 ? "vai gravar a trajetoria na memoria: "+quanto+" amostras"
+                   : "nao ha trajetoria gravada. Use \"Trajetoria a mao livre\" na aba Programa");
+    acao(b.bt,
+        sdEstado==="DESLIGADO" ? "o cartao nao foi iniciado"
+      : sdEstado==="SEM_CARTAO" ? "nenhum cartao no slot"
+      : sdEstado==="OCUPADO" ? "o cartao esta ocupado, aguarde"
+      : (D.modo&&D.modo!=="MANUAL") ? "salve com o robo parado no modo manual"
+      : (quanto<2) ? (tipo==="prog" ? "nao ha programa na maquina para salvar"
+                                    : "nao ha trajetoria gravada para salvar")
+      : !nome ? "de um nome ao arquivo"
+      : /[^A-Za-z0-9 _-]/.test(nome) ? "use so letras, numeros, espaco, hifen e sublinhado"
+      : "");
+  });
+  $("sbSdTraj").textContent=(BIB.traj.arqs.length||0)+" no cartao";
 }
 
-function sdPintar(){
-  const cx=$("sdLista");
-  if(!sdArqs.length){
-    cx.innerHTML='<div class="nulo">Nenhum arquivo nesta pasta.</div>';return;}
+function sdPintar(tipo){
+  const b=BIB[tipo], cx=$(b.lista);
+  if(!b.arqs.length){
+    cx.innerHTML='<div class="nulo">Nenhum arquivo salvo ainda.</div>';return;}
   let h='<div class="lista arqs">';
-  sdArqs.forEach(function(a){
+  b.arqs.forEach(function(a){
     h+='<div class="arq"><div class="nm">'+a.n+'</div>'+
        '<div class="kb">'+(a.b<1024?a.b+" B":(a.b/1024).toFixed(1)+" kB")+'</div>'+
-       (sdTipo==="prog"?'<button class="mb" data-ver="'+a.n+'">ver</button>':'')+
+       (b.ver?'<button class="mb" data-ver="'+a.n+'">ver</button>':'')+
        '<button class="mb" data-car="'+a.n+'">carregar</button>'+
        '<button class="mb x" data-apg="'+a.n+'">apagar</button></div>';
   });
@@ -5091,11 +5141,11 @@ function sdPintar(){
   cx.querySelectorAll("[data-ver]").forEach(function(e){e.onclick=function(){
     verPeca(e.dataset.ver);};});
   cx.querySelectorAll("[data-car]").forEach(function(e){e.onclick=function(){
-    post("/api/sd/carregar?tipo="+sdTipo+"&nome="+encodeURIComponent(e.dataset.car))
+    post("/api/sd/carregar?tipo="+tipo+"&nome="+encodeURIComponent(e.dataset.car))
      .then(function(){sdSeq=-1;});};});
   cx.querySelectorAll("[data-apg]").forEach(function(e){e.onclick=function(){
     if(!confirm('Apagar "'+e.dataset.apg+'" do cartao?'))return;
-    post("/api/sd/apagar?tipo="+sdTipo+"&nome="+encodeURIComponent(e.dataset.apg))
+    post("/api/sd/apagar?tipo="+tipo+"&nome="+encodeURIComponent(e.dataset.apg))
      .then(function(){sdSeq=-1;});};});
 }
 
@@ -5202,26 +5252,36 @@ function sdAtualizar(forcar){
     $("sbSd").textContent=
       d.estado==="PRONTO"?(d.livreMB+" MB livres"):d.estado.toLowerCase().replace("_"," ");
     lamp($("lSd"),d.estado==="PRONTO"?"on":(d.estado==="ERRO"?"er":""));
+    $("sbCfgCartao").textContent = d.estado==="PRONTO"
+      ? "espelhada no cartao" : "sem cartao: so a memoria interna";
+    acao("CfgRestaurar", d.estado!=="PRONTO" ? "nenhum cartao pronto"
+       : (D.modo&&D.modo!=="MANUAL") ? "restaure com o robo parado no modo manual" : "");
     if(forcar||d.seq!==sdSeq){sdSeq=d.seq;sdLer();}
   }).catch(function(){});
 }
 function sdLer(){
-  return fetch("/api/sd/lista?tipo="+sdTipo).then(function(r){return r.json();})
-   .then(function(j){
-     sdArqs=j.arq||[];
-     sdPintar();
-     /* A tarefa do cartao pode ainda estar montando outra pasta: nesse
-        caso o firmware avisa "pronto:false" e a gente volta no proximo
-        ciclo, sem ficar martelando o SPI. */
-     /* Sem cartao nao adianta insistir: o firmware recusa o pedido de
-        listagem e a gente ficaria martelando o SPI a cada 400 ms. */
-     if(!j.pronto&&sdEstado==="PRONTO")setTimeout(function(){sdSeq=-1;},400);
-   }).catch(function(){});
+  /* As duas pastas de uma vez: o operador ve as duas listas na tela e
+     nao ha seletor para dizer qual esta valendo. */
+  return Promise.all(Object.keys(BIB).map(function(tipo){
+    return fetch("/api/sd/lista?tipo="+tipo).then(function(r){return r.json();})
+     .then(function(j){
+       BIB[tipo].arqs=j.arq||[];
+       sdPintar(tipo);
+       /* A tarefa do cartao pode ainda estar montando outra pasta: nesse
+          caso o firmware avisa "pronto:false" e a gente volta no proximo
+          ciclo, sem ficar martelando o SPI. Sem cartao nao adianta
+          insistir -- o firmware recusa e ficariamos batendo a cada 400 ms. */
+       if(!j.pronto&&sdEstado==="PRONTO")setTimeout(function(){sdSeq=-1;},400);
+     }).catch(function(){});
+  })).then(sdEstadoSalvar);
 }
 
 /* =====================================================================
    TRAJETORIA A MAO LIVRE
    ===================================================================== */
+/* Nao troca de aba sozinho: quem aperta aqui esta olhando para o cartao,
+   e a tela pular embaixo do dedo assusta mais do que ajuda. Quem diz o
+   que fazer em seguida e a tarja de estado logo acima do botao. */
 $("btGravIni").onclick   =function(){post("/api/gravar/iniciar");};
 $("btGravFim").onclick   =function(){post("/api/gravar/parar");};
 $("btRepro").onclick     =function(){post("/api/reproduzir");};
@@ -5263,29 +5323,43 @@ sdAtualizar(true);
    restaurar cedo demais quebraria a pagina inteira. */
 try{ if(localStorage.getItem("vista3d")==="1")$("z3D").onclick(); }catch(e){}
 
-/* Explicacoes: escondidas ou nao, a escolha fica gravada. Fica no fim
-   porque o botao precisa existir antes. */
+/* PUXAR PARA ATUALIZAR: a trava de reserva.
+   O CSS (overscroll-behavior) resolve no Chrome do Android e no Safari
+   16 para cima. Em WebView antigo e no iPhone velho ele e ignorado, e
+   ali o gesto so para na mao.
+   A regra e estreita de proposito, para nao atrapalhar rolagem de
+   verdade: so barra quando o dedo DESCE e o container debaixo dele ja
+   esta no topo. Qualquer rolagem que ainda tenha para onde ir passa
+   direto. */
 (function(){
-  const b=$("btAjuda");
-  if(!b)return;
-  const por=function(esconder){
-    document.body.classList.toggle("semNotas",esconder);
-    b.classList.toggle("on",!esconder);
-    b.title=esconder?"Mostrar as explicacoes":"Esconder as explicacoes";
-    try{localStorage.setItem("notas",esconder?"0":"1");}catch(e){}
-    /* A mesa e os graficos medem o espaco que sobrou: sem remedir, eles
-       ficam do tamanho de antes do texto sumir. */
-    if(typeof medir==="function")medir();
-    if(typeof encMedir==="function")encMedir();
-  };
-  b.onclick=function(){por(!document.body.classList.contains("semNotas"));};
-  let guardado="1";
-  try{guardado=localStorage.getItem("notas")||"1";}catch(e){}
-  por(guardado==="0");
+  let y0=0,x0=0;
+  document.addEventListener("touchstart",function(e){
+    if(e.touches.length===1){y0=e.touches[0].clientY;x0=e.touches[0].clientX;}
+  },{passive:true});
+  document.addEventListener("touchmove",function(e){
+    if(e.touches.length!==1)return;
+    const dy=e.touches[0].clientY-y0;
+    const dx=e.touches[0].clientX-x0;
+    if(dy<=0||Math.abs(dx)>Math.abs(dy))return;   /* subindo ou de lado */
+    let el=e.target;
+    while(el&&el!==document.body){
+      if(el.scrollHeight>el.clientHeight+1){
+        const ov=getComputedStyle(el).overflowY;
+        if(ov==="auto"||ov==="scroll"){
+          if(el.scrollTop>0)return;               /* ainda tem para onde rolar */
+          break;
+        }
+      }
+      el=el.parentElement;
+    }
+    if(e.cancelable)e.preventDefault();
+  },{passive:false});
 })();
 
-/* O mesmo para a gaveta, com memoria propria e o padrao invertido: la o
-   texto de manual e mais longo que os campos. Ver a nota do CSS. */
+/* As explicacoes da GAVETA tem interruptor proprio, e ele nasce
+   desligado. Na tela de trabalho as notas sao poucas e curtas e ficam
+   sempre visiveis -- por isso o "?" do cabecalho saiu: um interruptor
+   para o que nunca se esconde e so mais um botao. */
 (function(){
   const b=$("cfgAjuda");
   if(!b)return;

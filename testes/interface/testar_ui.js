@@ -243,31 +243,51 @@ async function fecharGaveta(pag) {
   checar(dim[0] > 100 && dim[1] > 100, 'o canvas e redimensionado ao abrir a aba Mesa',
          dim[0] + 'x' + dim[1] + ' px');
 
-  // Arquivos: lista do cartao
+  // Arquivos: DUAS bibliotecas, uma por tipo, ambas na tela ao mesmo
+  // tempo. Antes era uma lista so com um seletor de tres posicoes
+  // (programas, trajetorias, ajustes) e o operador nunca sabia qual
+  // estava vendo. Os ajustes sairam da biblioteca -- eles se copiam
+  // sozinhos, num arquivo reservado.
   await p.locator('#abas button[data-aba="arq"]').click();
-  await p.waitForTimeout(500);
-  const nArq = await p.locator('#sdLista .arq').count();
-  const titulo = await p.locator('#sdTit').textContent();
-  checar(nArq === 2, 'a aba Arquivos lista os programas do cartao', nArq + ' arquivo(s); "' + titulo + '"');
+  await p.waitForTimeout(700);
+  await p.evaluate(() => {
+    document.querySelectorAll('#pnArq .et').forEach(x => x.classList.add('aberta'));
+  });
+  await p.waitForTimeout(400);
+  const bib = await p.evaluate(() => ({
+    prog: document.querySelectorAll('#sdListaProg .arq').length,
+    traj: document.querySelectorAll('#sdListaTraj .arq').length,
+    seletor: !!document.getElementById('segTipo'),
+    comoUsado: [...document.querySelectorAll('#pnArq .tt')]
+                 .some(e => /Como o cartao e usado/.test(e.textContent)),
+    titulo: document.getElementById('sdTit').textContent,
+  }));
+  checar(bib.prog === 2 && bib.traj === 1,
+         'Arquivos: programas e trajetorias aparecem juntos, cada um no seu cartao',
+         bib.prog + ' programa(s), ' + bib.traj + ' trajetoria(s); "' + bib.titulo + '"');
+  checar(!bib.seletor,
+         'Arquivos: o seletor de tres posicoes saiu -- nao ha mais "qual lista e esta?"');
+  checar(!bib.comoUsado,
+         'Arquivos: o texto "Como o cartao e usado" saiu; era so a arvore de pastas');
 
   // "Nao consegui salvar o desenho no cartao": o botao respondia 200 e a
   // recusa ia so para a tira de mensagem. Agora ele diz o que falta.
-  await p.locator('#sdNome').fill('peca teste');
+  await p.locator('#sdNomeProg').fill('peca teste');
   await p.waitForTimeout(300);
   const salvarOk = await p.evaluate(() => ({
-    dis: document.getElementById('btSdSalvar').disabled,
-    oque: document.getElementById('sdOque').textContent.trim(),
+    dis: document.getElementById('btSdSalvarProg').disabled,
+    oque: document.getElementById('sdOqueProg').textContent.trim(),
   }));
   checar(!salvarOk.dis && /3 pontos/.test(salvarOk.oque),
          'Arquivos: com programa na maquina, Salvar libera e diz o que vai gravar',
          salvarOk.oque);
 
   await p.request.post(BASE + '/teste/estado', { data: { progN: 0 } });
-  await p.waitForTimeout(600);
+  await p.waitForTimeout(700);
   const semProg = await p.evaluate(() => ({
-    dis: document.getElementById('btSdSalvar').disabled,
-    motivo: document.getElementById('qSdSalvar').textContent.trim(),
-    oque: document.getElementById('sdOque').textContent.trim(),
+    dis: document.getElementById('btSdSalvarProg').disabled,
+    motivo: document.getElementById('qSdSalvarProg').textContent.trim(),
+    oque: document.getElementById('sdOqueProg').textContent.trim(),
   }));
   checar(semProg.dis && semProg.motivo.length > 0,
          'Arquivos: sem programa na maquina, Salvar trava dizendo o porque',
@@ -275,28 +295,81 @@ async function fecharGaveta(pag) {
   checar(/Desenhe na mesa|importe um DXF/.test(semProg.oque),
          'Arquivos: e diz de onde vem um programa', semProg.oque);
 
-  await p.locator('#sdNome').fill('nome/invalido');
+  // O cartao de trajetorias tem o seu proprio botao e a sua propria
+  // recusa: travar os dois com a mesma mensagem seria mentir sobre um.
+  const trajRecusa = await p.evaluate(() => ({
+    dis: document.getElementById('btSdSalvarTraj').disabled,
+    oque: document.getElementById('sdOqueTraj').textContent.trim(),
+  }));
+  checar(/trajetoria/.test(trajRecusa.oque),
+         'Arquivos: o cartao de trajetorias fala de trajetoria, nao de programa',
+         trajRecusa.oque);
+
+  await p.locator('#sdNomeProg').fill('nome/invalido');
   await p.waitForTimeout(300);
   await p.request.post(BASE + '/teste/estado', { data: { progN: 3 } });
-  await p.waitForTimeout(600);
+  await p.waitForTimeout(700);
   const nomeRuim = await p.evaluate(() =>
-    document.getElementById('qSdSalvar').textContent.trim());
+    document.getElementById('qSdSalvarProg').textContent.trim());
   checar(/letras/.test(nomeRuim),
          'Arquivos: nome com caractere proibido e barrado antes de ir ao robo',
          nomeRuim);
-  await p.locator('#sdNome').fill('');
+  await p.locator('#sdNomeProg').fill('');
   await p.waitForTimeout(200);
 
   chamadas.length = 0;
-  await p.locator('#sdLista [data-car]').first().click();
+  await p.locator('#sdListaProg [data-car]').first().click();
   await p.waitForTimeout(200);
   const carregou = chamadas.find(c => c.startsWith('/api/sd/carregar'));
   checar(!!carregou, 'o botao carregar chama a rota certa com o nome escapado', carregou);
 
-  await p.locator('#segTipo button[data-t="traj"]').click();
+  // TRAJETORIA A MAO LIVRE: o botao dizia nada.
+  // O estado da gravacao so aparecia no rotulo minusculo do cabecalho do
+  // cartao. O operador apertava "Iniciar gravacao", nada visivel mudava
+  // na tela em que ele estava, e concluia que o botao nao funcionava.
+  await p.locator('#abas button[data-aba="prog"]').click();
   await p.waitForTimeout(400);
-  const nTraj = await p.locator('#sdLista .arq').count();
-  checar(nTraj === 1, 'trocar para Trajetorias recarrega a lista', nTraj + ' arquivo(s)');
+  await p.evaluate(() => {
+    const alvo = document.getElementById('gravBox').closest('.et');
+    document.querySelectorAll('#pnProg .et').forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await p.request.post(BASE + '/teste/estado', { data: { modo: 'MANUAL', trajN: 0 } });
+  await p.waitForTimeout(700);
+  const gravParado = await p.evaluate(() => ({
+    classe: document.getElementById('gravBox').className,
+    tit: document.getElementById('gravTit').textContent.trim(),
+  }));
+  checar(!/on/.test(gravParado.classe) && /Parado/.test(gravParado.tit),
+         'Trajetoria: parada, a tarja diz que nao ha nada gravado',
+         JSON.stringify(gravParado));
+
+  await p.request.post(BASE + '/teste/estado', { data: { modo: 'GRAVANDO', trajN: 17 } });
+  await p.waitForTimeout(700);
+  const gravando = await p.evaluate(() => ({
+    classe: document.getElementById('gravBox').className,
+    tit: document.getElementById('gravTit').textContent.trim(),
+    msg: document.getElementById('gravMsg').textContent.trim(),
+  }));
+  checar(/\bon\b/.test(gravando.classe) && /GRAVANDO/.test(gravando.tit) &&
+         /17/.test(gravando.tit),
+         'Trajetoria: gravando, a tarja acende e conta as amostras que entram',
+         JSON.stringify(gravando));
+  checar(/[Mm]ova o braco/.test(gravando.msg) && /joystick|Mover/.test(gravando.msg),
+         'Trajetoria: e diz o que fazer em seguida, que era o que faltava',
+         gravando.msg);
+
+  await p.request.post(BASE + '/teste/estado', { data: { modo: 'MANUAL', trajN: 42, trajMs: 8300 } });
+  await p.waitForTimeout(700);
+  const gravFeita = await p.evaluate(() => ({
+    classe: document.getElementById('gravBox').className,
+    tit: document.getElementById('gravTit').textContent.trim(),
+    msg: document.getElementById('gravMsg').textContent.trim(),
+  }));
+  checar(/tem/.test(gravFeita.classe) && /42/.test(gravFeita.msg),
+         'Trajetoria: encerrada, a tarja mostra o que ficou na memoria',
+         JSON.stringify(gravFeita));
+  await p.request.post(BASE + '/teste/estado', { data: { trajN: 24, trajMs: 4200 } });
+  await p.waitForTimeout(500);
 
   // PARAR alcancavel de qualquer aba
   const parar = await p.locator('#btParar').boundingBox();
@@ -432,17 +505,19 @@ async function fecharGaveta(pag) {
   // trabalho, e o veu dela intercepta os cliques.
   await fecharGaveta(q);
 
-  // As explicacoes ensinam quem comeca e atrapalham quem opera todo dia.
-  // O "?" esconde todas, e a escolha fica gravada. Esconder nao pode
-  // apagar: um clique traz tudo de volta.
-  const notasAntes = await q.locator('#pnMover .nt').first().isVisible();
-  await q.locator('#btAjuda').click();
-  await q.waitForTimeout(250);
-  const notasDepois = await q.locator('#pnMover .nt').first().isVisible();
-  checar(notasAntes && !notasDepois,
-         'Painel: o "?" esconde as explicacoes de uma vez');
-  // Os controles NAO podem sumir junto: esconder texto e uma coisa,
-  // esconder botao e outra.
+  // O "?" saiu do cabecalho: na tela de trabalho as notas sao poucas e
+  // curtas e ficam sempre visiveis. Quem tinha manual demais era a
+  // gaveta, e la o interruptor e proprio.
+  const semAjudaNoTopo = await q.evaluate(() => ({
+    botao: !!document.getElementById('btAjuda'),
+    notas: [...document.querySelectorAll('#pnMover .nt')]
+             .filter(n => n.getBoundingClientRect().height > 0).length,
+  }));
+  checar(!semAjudaNoTopo.botao && semAjudaNoTopo.notas > 0,
+         'Painel: sem "?" no cabecalho, e as notas da tela de trabalho a mostra',
+         JSON.stringify(semAjudaNoTopo));
+
+  // Os controles continuam todos la.
   const controles = await q.evaluate(() => ({
     joy: !!document.getElementById('joy').offsetParent,
     prec: !!document.getElementById('btPrec').offsetParent,
@@ -451,13 +526,30 @@ async function fecharGaveta(pag) {
   checar(controles.joy && controles.prec && controles.jb === 4,
          'Painel: e os controles continuam todos la',
          controles.jb + ' botoes de passo, joystick e precisao visiveis');
-  await q.screenshot({ path: SAIDA + '/computador-6-sem-notas.png' });
-  await q.locator('#btAjuda').click();
-  await q.waitForTimeout(250);
-  const voltaram = await q.locator('#pnMover .nt').first().isVisible();
-  checar(voltaram, 'Painel: e um clique traz as explicacoes de volta');
 
-  // Vista 3D: e a MESMA maquina, vista de outro angulo. A vista de cima
+  // A tira de estado e UMA peca. Antes eram cinco pares soltos, e no
+  // celular a fila encostava no PARAR e a primeira lampada saia da tela.
+  const tira = await q.evaluate(() => {
+    const l = document.querySelector('.lamps');
+    const r = l.getBoundingClientRect();
+    const campos = [...l.querySelectorAll('.lp')].map(e => {
+      const b = e.getBoundingClientRect();
+      return { id: e.id, dentro: b.left >= r.left - 1 && b.right <= r.right + 1,
+               pontoELado: e.querySelector('.olho').getBoundingClientRect().left <
+                           e.querySelector('span').getBoundingClientRect().left };
+    });
+    const parar = document.getElementById('btParar').getBoundingClientRect();
+    return { n: campos.length, todosDentro: campos.every(c => c.dentro),
+             emLinha: campos.every(c => c.pontoELado),
+             naoEncosta: r.right <= parar.left + 1 };
+  });
+  checar(tira.n === 5 && tira.todosDentro && tira.emLinha && tira.naoEncosta,
+         'Painel: as cinco lampadas formam uma tira so, e nenhuma sai dela',
+         JSON.stringify(tira));
+
+  await q.screenshot({ path: SAIDA + '/computador-6-tira-de-estado.png' });
+
+  // Vista 3D: e a MESMA maquina, vista de outro angulo.  // Vista 3D: e a MESMA maquina, vista de outro angulo. A vista de cima
   // continua sendo a de trabalho (e nela que se desenha e se escolhe
   // ponto), entao o botao alterna e nada mais muda de lugar.
   await q.locator('#z3D').click();
@@ -1638,26 +1730,32 @@ async function fecharGaveta(pag) {
          'Maquina: os dois codigos QR sao realmente desenhados',
          'modulos escuros: rede ' + qr.qrRede + ', painel ' + qr.qrPainel);
 
-  // Modo operador esconde as abas de instalacao.
-  await t.request.post(BASE + '/teste/estado', { data: { op: true } });
-  await t.waitForTimeout(700);
-  const opLigado = await t.evaluate(() => ({
-    ajuste: !!document.querySelector('#cfgAbas button[data-cfg="maquina"]').offsetParent,
-    enc:    !!document.querySelector('#cfgAbas button[data-cfg="encoder"]').offsetParent,
-    prog:   !!document.querySelector('#abas button[data-aba="prog"]').offsetParent,
-    aba:    document.body.dataset.aba,
+  // O modo operador foi REMOVIDO. Ele escondia as abas de instalacao
+  // atras de uma senha que nao era seguranca de rede (quem esta no Wi-Fi
+  // da maquina alcanca a API direto), e mantinha um estado a mais que
+  // toda tela precisava consultar. Nesta maquina ninguem usava.
+  const semOperador = await t.evaluate(() => ({
+    botao:  !!document.getElementById('btOp'),
+    senha:  !!document.getElementById('opAtual'),
+    classe: document.body.classList.contains('operador'),
+    abas:   [...document.querySelectorAll('#cfgAbas button')]
+              .filter(b => !!b.offsetParent).length,
   }));
-  checar(!opLigado.ajuste && !opLigado.enc,
-         'Operador: as abas de instalacao somem de dentro da gaveta',
-         'ajuste visivel: ' + opLigado.ajuste + ', encoder: ' + opLigado.enc);
-  checar(opLigado.prog,
-         'Operador: o que faz peca continua na tela', 'programa visivel: ' + opLigado.prog);
+  checar(!semOperador.botao && !semOperador.senha && !semOperador.classe,
+         'Sem modo operador: nem botao, nem senha, nem estado sobrando',
+         JSON.stringify(semOperador));
+  checar(semOperador.abas === 4,
+         'Sem modo operador: as quatro paginas da gaveta ficam sempre a mao',
+         semOperador.abas + ' paginas visiveis');
 
-  await t.request.post(BASE + '/teste/estado', { data: { op: false } });
-  await t.waitForTimeout(600);
-  const opDesligado = await t.evaluate(() =>
-    !!document.querySelector('#cfgAbas button[data-cfg="maquina"]').offsetParent);
-  checar(opDesligado, 'Operador: saindo do modo, os ajustes voltam');
+  // Idioma: portugues e ingles, e so, com portugues de padrao.
+  const idioma = await t.evaluate(() => ({
+    botao: document.getElementById('btIdioma').textContent.trim(),
+    sub:   document.getElementById('sbIdioma').textContent.trim(),
+  }));
+  checar(idioma.botao === 'English' && idioma.sub === 'portugues',
+         'Idioma: o padrao e portugues, e o unico outro e ingles',
+         JSON.stringify(idioma));
 
 
   // ------------------------------------------------------------------
@@ -1666,12 +1764,12 @@ async function fecharGaveta(pag) {
   await t.locator('#abas button[data-aba="arq"]').click();
   await t.waitForTimeout(500);
   await t.evaluate(() => {
-    const alvo = document.getElementById('sdLista').closest('.et');
+    const alvo = document.getElementById('sdListaProg').closest('.et');
     document.querySelectorAll('#pnArq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(400);
   rotas = [];
-  await t.locator('#sdLista [data-ver]').first().click();
+  await t.locator('#sdListaProg [data-ver]').first().click();
   await t.waitForTimeout(900);
   const pediuPrevia = rotas.some(x => x.split('?')[0] === '/api/sd/prever');
   checar(pediuPrevia, 'Biblioteca: "ver" pede a previa e NAO carrega a peca',
@@ -1702,7 +1800,7 @@ async function fecharGaveta(pag) {
   await t.request.post(BASE + '/teste/previa', { data: { l1: 450.0, l2: 400.0 } });
   await t.locator('#pvFechar').click();
   await t.waitForTimeout(200);
-  await t.locator('#sdLista [data-ver]').first().click();
+  await t.locator('#sdListaProg [data-ver]').first().click();
   await t.waitForTimeout(900);
   const semAviso = await t.evaluate(() =>
     document.getElementById('pvAviso').style.display);
