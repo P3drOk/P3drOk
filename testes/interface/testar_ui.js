@@ -989,18 +989,21 @@ async function fecharGaveta(pag) {
   checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
          enc.w + ' px');
 
-  // ---- parametro do driver: o som pelo RS485 ----
-  // Botao que nao faz nada e o defeito mais caro que esta interface ja
-  // teve. Sem registrador gravado o botao do som TEM de estar desligado,
-  // e nao apenas escrever num endereco que ninguem conferiu.
+  // ---- espelho do SON no RS485 ----
+  // Quem manda e o fio. A tela nao pode sugerir o contrario, e tem de
+  // dizer quando o espelho esta desligado em vez de ficar calada.
   await t.evaluate(() => {
     const alvo = document.getElementById('btPmFoto').closest('.et');
     document.querySelectorAll('#pnEnc .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
-  await t.waitForTimeout(300);
-  checar(await t.locator('#btPmSomOn').isDisabled(),
-         'Som: sem registrador gravado o botao do som nao pode ser apertado');
+  await t.waitForTimeout(900);
+  const son0 = await t.evaluate(() =>
+    document.getElementById('pmSon').textContent);
+  checar(/espelho desligado/.test(son0) && /fio/.test(son0),
+         'SON: sem registrador gravado a tela diz que so o fio manda', son0);
+  checar(!(await t.locator('#pmSon').textContent()).match(/habilita/),
+         'SON: e nao ha botao de SON avulso na tela');
 
   // Achar o endereco: as duas fotos sao SO LEITURA, e e isso que a rota
   // chamada tem de provar -- nada de /escrever aqui.
@@ -1013,51 +1016,49 @@ async function fecharGaveta(pag) {
   checar(proc.indexOf('/api/encoder/diferenca') === 0 &&
          proc.some(u => u.indexOf('/api/encoder/diferenca?comparar=1') === 0) &&
          !proc.some(u => u.indexOf('/api/encoder/escrever') === 0),
-         'Som: achar o endereco chama so a rota de comparar, que nao escreve',
+         'SON: achar o endereco chama so a rota de comparar, que nao escreve',
          proc.join(' '));
   const relTxt = await t.evaluate(() =>
     document.getElementById('encRel').textContent);
   checar(/reg  98/.test(relTxt),
-         'Som: o registrador que mudou entre as fotos aparece na tela',
+         'SON: o registrador que mudou entre as fotos aparece na tela',
          relTxt.replace(/\n/g, ' | '));
 
-  // Gravado o registrador, o botao acorda.
+  // Gravar o espelho pergunta antes: registrador errado aqui vira torque
+  // que nao sobe, ou que nao desce.
+  rotas.length = 0;
   await t.evaluate(() => {
     document.getElementById('pmReg').value = 98;
     document.getElementById('pmOn').value = 1;
     document.getElementById('pmOff').value = 0;
   });
   await t.locator('#btPmSalvar').click();
-  await t.waitForTimeout(900);
-  checar(!(await t.locator('#btPmSomOn').isDisabled()),
-         'Som: gravado o registrador, o botao do som passa a valer');
-
-  // A escrita so pode dizer "entrou" depois da releitura. Encenamos o
-  // driver que aceita e guarda outra coisa: a tela nao pode dizer pronto.
-  await t.request.post(BASE + '/teste/escrita',
-    { data: { pedida: true, fim: true, ok: false, reg: 98, valor: 0,
-              lido: 1, motivo: 'pedi 0 e voltou 1' } });
-  rotas.length = 0;
-  await t.locator('#btPmSomOff').click();
   await t.waitForTimeout(1200);
-  const somTxt = await t.evaluate(() =>
-    document.getElementById('pmEstado').textContent);
-  checar(rotas.some(u => u.indexOf('/api/param/som?on=0') === 0),
-         'Som: o botao manda desligar pelo registrador gravado, sem digitar nada',
+  checar(rotas.some(u => u.indexOf('/api/son/config?reg=98') === 0),
+         'SON: gravar o espelho manda registrador, habilita e desabilita',
          rotas.join(' '));
-  checar(/NAO CONFERE/.test(somTxt),
-         'Som: driver que aceita e guarda outra coisa aparece como NAO CONFERE',
-         somTxt);
 
-  await t.request.post(BASE + '/teste/escrita',
-    { data: { pedida: true, fim: true, ok: true, reg: 98, valor: 1,
-              lido: 1, motivo: 'conferido: 1' } });
-  await t.locator('#btPmSomOn').click();
-  await t.waitForTimeout(1200);
-  const somOk = await t.evaluate(() =>
-    document.getElementById('pmEstado').textContent);
-  checar(/CONFERE/.test(somOk) && !/NAO CONFERE/.test(somOk),
-         'Som: e quando o valor entra de verdade a tela diz CONFERE', somOk);
+  // Espelho que falhou nao pode sumir da tela: "servos ligados" com o
+  // espelho falhando e a tela mentindo sobre torque.
+  await t.request.post(BASE + '/teste/encoder',
+    { data: { sonAtivo: true, sonOk: false, sonLig: false, sonFalhas: 2,
+              sonMot: 'desabilita NAO confirmado (motivo 2)' } });
+  await t.waitForTimeout(900);
+  const sonRuim = await t.evaluate(() =>
+    document.getElementById('pmSon').textContent);
+  checar(/FALHOU/.test(sonRuim) && /desabilita/.test(sonRuim) &&
+         /2 falha/.test(sonRuim),
+         'SON: espelho que nao confirmou aparece como FALHOU, com o motivo',
+         sonRuim);
+
+  await t.request.post(BASE + '/teste/encoder',
+    { data: { sonOk: true, sonLig: true, sonFalhas: 0,
+              sonMot: 'habilita conferido no driver' } });
+  await t.waitForTimeout(900);
+  const sonBom = await t.evaluate(() =>
+    document.getElementById('pmSon').textContent);
+  checar(/OK/.test(sonBom) && !/FALHOU/.test(sonBom) && /habilita/.test(sonBom),
+         'SON: e quando confirma no driver a tela mostra OK', sonBom);
 
   // Escrever um registrador qualquer PERGUNTA antes. Recusar a pergunta
   // nao pode deixar nada sair no fio. O banco aceita todo dialogo por
@@ -1073,7 +1074,7 @@ async function fecharGaveta(pag) {
   await t.locator('#btPmEscrever').click();
   await t.waitForTimeout(500);
   checar(!rotas.some(u => u.indexOf('/api/encoder/escrever') === 0),
-         'Som: recusada a confirmacao, nada e escrito no driver',
+         'SON: recusada a confirmacao, nada e escrito no driver',
          rotas.join(' ') || '(nenhum pedido)');
 
   t.removeAllListeners('dialog');
@@ -1081,7 +1082,7 @@ async function fecharGaveta(pag) {
   await t.locator('#btPmEscrever').click();
   await t.waitForTimeout(500);
   checar(rotas.some(u => u.indexOf('/api/encoder/escrever?reg=98&valor=1&confirmar=1') === 0),
-         'Som: confirmada, a escrita vai com registrador e valor digitados',
+         'SON: confirmada, a escrita vai com registrador e valor digitados',
          rotas.join(' '));
 
   // ---- analise detalhada ----

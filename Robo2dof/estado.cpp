@@ -279,10 +279,10 @@ void carregarConfiguracoes() {
 
   // Chaves NOVAS: as antigas guardavam Hz, e reler 3000 como 3000 graus/s
   // seria absurdo. Quem atualiza recebe os padroes em graus/s.
-  configParam.regSom       = (uint16_t)prefs.getUInt("pmSom",  0);
-  configParam.somLigado    = (uint16_t)prefs.getUInt("pmOn",   1);
-  configParam.somDesligado = (uint16_t)prefs.getUInt("pmOff",  0);
-  configParam.usarFuncao16 = prefs.getBool("pmF16", false);
+  configSon.reg          = (uint16_t)prefs.getUInt("sonReg", 0);
+  configSon.ligado       = (uint16_t)prefs.getUInt("sonOn",  1);
+  configSon.desligado    = (uint16_t)prefs.getUInt("sonOff", 0);
+  configSon.usarFuncao16 = prefs.getBool("sonF16", false);
 
   areaMesa.definida = prefs.getBool ("mesaOn", false);
   areaMesa.cantos   = (uint8_t)prefs.getUInt("mesaN", 0);
@@ -395,7 +395,7 @@ void carregarConfiguracoes() {
 
   recalcularResolucao();
   prepararConfigPendente();   // a area de preparo nasce coerente com o vivo
-  paramPendente = configParam;
+  sonPendente = configSon;
 
   Serial.println("[NVS] Configuracoes carregadas.");
 }
@@ -409,10 +409,11 @@ void carregarConfiguracoes() {
 // primeira vez que a maquina liga.
 AreaMesa areaMesa = {false, 0, 0.0f, 0.0f, 0.0f, 0.0f};
 
-// De fabrica nao ha parametro configurado: o botao do som so aparece
-// depois que alguem descobrir e gravar o registrador.
-ConfigParam configParam  = {0, 1, 0, false};
-ConfigParam paramPendente = {0, 1, 0, false};
+// De fabrica nao ha espelho: so o fio do SON manda, que e o arranjo mais
+// seguro. O espelho so passa a existir depois que alguem descobrir o
+// registrador e grava-lo de proposito.
+ConfigSon configSon  = {0, 1, 0, false};
+ConfigSon sonPendente = {0, 1, 0, false};
 
 void mesaEnsinarCanto(float x, float y) {
   if (areaMesa.cantos == 0) {
@@ -535,10 +536,10 @@ void salvarConfiguracoes() {
   // encoder absoluto: ensinada uma vez, vale para sempre.
   prefs.putBool ("zrEn1",  configZero.ensinado[0]);
   prefs.putBool ("zrEn2",  configZero.ensinado[1]);
-  prefs.putUInt ("pmSom", configParam.regSom);
-  prefs.putUInt ("pmOn",  configParam.somLigado);
-  prefs.putUInt ("pmOff", configParam.somDesligado);
-  prefs.putBool ("pmF16", configParam.usarFuncao16);
+  prefs.putUInt ("sonReg", configSon.reg);
+  prefs.putUInt ("sonOn",  configSon.ligado);
+  prefs.putUInt ("sonOff", configSon.desligado);
+  prefs.putBool ("sonF16", configSon.usarFuncao16);
   prefs.putBool ("mesaOn", areaMesa.definida);
   prefs.putUInt ("mesaN",  areaMesa.cantos);
   prefs.putFloat("mesaX0", areaMesa.xMin);
@@ -575,16 +576,16 @@ void salvarConfiguracoes() {
 // Gravada separada do resto: mexer no encoder nao pode reescrever
 // calibracao, e salvar calibracao nao pode reescrever o registrador que
 // o operador levou uma tarde para achar.
-// Grava o registrador do parametro do driver. Vem do core 0 pela fila,
-// como toda configuracao: quem escreve no vivo e no NVS e o core 1.
-void aplicarParamPendente() {
-  configParam = paramPendente;
+// Grava o registrador do espelho do SON. Vem do core 0 pela fila, como
+// toda configuracao: quem escreve no vivo e no NVS e o core 1.
+void aplicarSonPendente() {
+  configSon = sonPendente;
   salvarConfiguracoes();
-  if (configParam.regSom)
-    definirMensagem("Parametro do driver: registrador %u gravado",
-                    (unsigned)configParam.regSom);
+  if (configSon.reg)
+    definirMensagem("Espelho do SON: registrador %u (o fio continua mandando)",
+                    (unsigned)configSon.reg);
   else
-    definirMensagem("Parametro do driver: nenhum registrador configurado");
+    definirMensagem("Espelho do SON desligado: so o fio manda");
 }
 
 void aplicarEncoderPendente() {

@@ -1056,11 +1056,22 @@ static void handleEncoder() {
   // Parametro do driver. Vai fora do cabecalho porque aquele snprintf ja
   // esta perto do limite do buffer, e cabecalho truncado vira JSON
   // invalido -- a interface inteira apagaria por causa de quatro campos.
-  char pm[96];
-  snprintf(pm, sizeof(pm), ",\"pmReg\":%u,\"pmOn\":%u,\"pmOff\":%u,\"pmF16\":%s",
-           (unsigned)configParam.regSom, (unsigned)configParam.somLigado,
-           (unsigned)configParam.somDesligado,
-           configParam.usarFuncao16 ? "true" : "false");
+  const EspelhoSon es = encoderSonResumo();
+  char motivoSon[sizeof(es.motivo) * 2];
+  jsonTexto(motivoSon, sizeof(motivoSon), es.motivo);
+  char pm[260];
+  snprintf(pm, sizeof(pm),
+           ",\"sonReg\":%u,\"sonOn\":%u,\"sonOff\":%u,\"sonF16\":%s,"
+           "\"sonAtivo\":%s,\"sonPend\":%s,\"sonOk\":%s,\"sonLig\":%s,"
+           "\"sonLido\":%u,\"sonFalhas\":%lu,\"sonMot\":\"%s\"",
+           (unsigned)configSon.reg, (unsigned)configSon.ligado,
+           (unsigned)configSon.desligado,
+           configSon.usarFuncao16 ? "true" : "false",
+           es.ativo    ? "true" : "false",
+           es.pendente ? "true" : "false",
+           es.ok       ? "true" : "false",
+           es.ligando  ? "true" : "false",
+           (unsigned)es.lido, (unsigned long)es.falhas, motivoSon);
   out += pm;
   out += "}";
   server.send(200, "application/json", out);
@@ -1328,9 +1339,9 @@ static void handleEncoderEscrever() {
   if (argL("confirmar", 0) != 1) { erro("confirme a escrita: ela muda o driver"); return; }
 
   logEvento("driver: escrever reg %ld = %ld (funcao %d)",
-            reg, valor, argL("f16", configParam.usarFuncao16 ? 1 : 0) ? 16 : 6);
+            reg, valor, argL("f16", configSon.usarFuncao16 ? 1 : 0) ? 16 : 6);
   encoderPedirEscrita((uint16_t)reg, (uint16_t)valor,
-                      argL("f16", configParam.usarFuncao16 ? 1 : 0) != 0);
+                      argL("f16", configSon.usarFuncao16 ? 1 : 0) != 0);
   server.send(200, "text/plain", "escrevendo no driver...");
 }
 
@@ -1353,51 +1364,36 @@ static void handleEncoderEscrita() {
   server.send(200, "application/json", json);
 }
 
-// Gravar QUAL registrador e o do som, e que valor liga e desliga. Depois
-// disto o operador nao digita mais endereco: vira um botao.
-static void handleParamConfig() {
+// Gravar QUAL registrador e o do SON, e que valor habilita e desabilita.
+//
+// Nao existe botao avulso para isto, de proposito. O espelho ACOMPANHA o
+// fio: quem liga e desliga o torque continua sendo o botao de servos, que
+// passa por servosHabilitar() e por toda a supervisao -- emergencia,
+// alarme de driver, perda de conexao. Um botao de SON por fora disso
+// seria um jeito de energizar o eixo sem nada olhando.
+//
+// Para experimentar o registrador antes de grava-lo, use a escrita
+// avulsa: ela exige servos desligados, braco parado e confirmacao.
+static void handleSonConfig() {
   registrarContatoOperador();
   if (!exigirManual()) return;
 
-  ConfigParam c = configParam;
-  c.regSom       = (uint16_t)argL("reg", c.regSom);
-  c.somLigado    = (uint16_t)argL("on",  c.somLigado);
-  c.somDesligado = (uint16_t)argL("off", c.somDesligado);
+  ConfigSon c = configSon;
+  c.reg          = (uint16_t)argL("reg", c.reg);
+  c.ligado       = (uint16_t)argL("on",  c.ligado);
+  c.desligado    = (uint16_t)argL("off", c.desligado);
   c.usarFuncao16 = argL("f16", c.usarFuncao16 ? 1 : 0) != 0;
 
   if (argL("reg", 0) < 0 || argL("reg", 0) > 65535) {
     erro("registrador fora de faixa (0 a 65535)"); return;
   }
-  // Ligar e desligar com o mesmo valor deixaria um botao que nao faz
-  // nada, e o operador culparia o RS485.
-  if (c.regSom && c.somLigado == c.somDesligado) {
-    erro("o valor de ligado e o de desligado nao podem ser iguais"); return;
+  // Habilitar e desabilitar com o mesmo valor deixaria um espelho que
+  // nunca desabilita -- e o operador culparia o RS485.
+  if (c.reg && c.ligado == c.desligado) {
+    erro("o valor de habilita e o de desabilita nao podem ser iguais"); return;
   }
-  paramPendente = c;
-  enfileirar(CMD_APLICAR_PARAM);
-}
-
-// O botao. So existe depois que o registrador foi gravado.
-//
-// Aqui NAO se exige servo desligado: o endereco ja foi conferido uma vez
-// por quem o gravou, e um parametro de bip nao mexe em movimento. Exigir
-// desligar os servos para calar o driver faria o operador simplesmente
-// nao usar o botao.
-static void handleParamSom() {
-  registrarContatoOperador();
-  if (!configParam.regSom) {
-    erro("nenhum registrador de som configurado: ache o endereco primeiro");
-    return;
-  }
-  Snapshot s;
-  lerSnapshot(s);
-  if (s.emMovimento) { erro("pare o braco antes"); return; }
-  const bool ligar = argL("on", 1) != 0;
-  const uint16_t v = ligar ? configParam.somLigado : configParam.somDesligado;
-  logEvento("driver: som %s (reg %u = %u)", ligar ? "ligado" : "desligado",
-            (unsigned)configParam.regSom, (unsigned)v);
-  encoderPedirEscrita(configParam.regSom, v, configParam.usarFuncao16);
-  server.send(200, "text/plain", ligar ? "ligando o som..." : "desligando o som...");
+  sonPendente = c;
+  enfileirar(CMD_APLICAR_SON);
 }
 
 // ---------------------------------------------------------------------
@@ -1709,8 +1705,7 @@ void servidorIniciar() {
   server.on("/api/encoder/diferenca", HTTP_POST, handleEncoderDiferenca);
   server.on("/api/encoder/escrever",  HTTP_POST, handleEncoderEscrever);
   server.on("/api/encoder/escrita",   HTTP_GET,  handleEncoderEscrita);
-  server.on("/api/param/config",      HTTP_POST, handleParamConfig);
-  server.on("/api/param/som",         HTTP_POST, handleParamSom);
+  server.on("/api/son/config",        HTTP_POST, handleSonConfig);
 
   server.onNotFound(handleNaoEncontrado);
   server.begin();

@@ -381,6 +381,24 @@ static volatile uint16_t escReg = 0, escValor = 0;
 static volatile bool     escUsar16 = false;
 static EscritaParam      esc = {false, false, false, 0, 0, 0, ""};
 
+// Espelho do SON. pedidoSon e escrito pelo CORE 1 (servosHabilitar) e
+// lido pela tarefa do encoder, no core 0 -- um volatile so, do mesmo
+// jeito que pedidoParada. Ultimo pedido ganha: se um habilitar for
+// seguido de uma emergencia, o que sobra e o desabilitar.
+static volatile uint8_t pedidoSon = 0;   // 0 nada, 1 ligar, 2 desligar
+static EspelhoSon       espSon = {false, false, false, false, 0, 0, 0, ""};
+// Quando o registrador do espelho aparece -- no arranque, vindo do NVS,
+// ou porque o operador acabou de grava-lo -- o espelho SINCRONIZA com o
+// pino em vez de supor. Fecha o buraco do religamento: se o ESP32
+// reiniciou, o pino nasce em LOW e o drive obedece, mas um drive de
+// fonte interna pode ter ficado habilitado por dentro, e o pino nao
+// alcanca isso.
+//
+// Sincronizar com servosLigados, e nao mandar um desabilitar cego, e o
+// que impede o caso feio: configurar o espelho com o eixo ja energizado
+// e ver o torque cair sem ninguem ter pedido.
+static uint16_t ultimoRegSon = 0;
+
 // Comparacao de parametro: duas fotos da faixa e o que mudou entre elas.
 static uint16_t difAntes[CACA_MAX];
 static bool     difTem[CACA_MAX];
@@ -528,6 +546,67 @@ static void difComparar() {
               "PARADO para sobrar so o parametro.", (unsigned)n);
   }
   testeRodando = false;
+}
+
+// =====================================================================
+//  Espelho do SON: acompanhar o pino tambem pelo RS485
+//
+//  Escreve nos DOIS drivers -- o pino do SON e um so para os dois, e um
+//  espelho que alcancasse um eixo so deixaria o outro em desacordo com a
+//  tela. Junta com registrador 0 nao esta no barramento e e pulada,
+//  seguindo a mesma regra da leitura.
+// =====================================================================
+static void executarSon(bool ligar) {
+  const uint16_t reg = configSon.reg;
+  if (!reg) { espSon.ativo = false; espSon.pendente = false; return; }
+
+  const uint16_t valor = ligar ? configSon.ligado : configSon.desligado;
+  espSon.ativo   = true;
+  espSon.ligando = ligar;
+  espSon.valor   = valor;
+  espSon.lido    = 0;
+
+  bool    algumFoi = false, todosOk = true;
+  uint8_t ultimoMotivo = MOTIVO_OK;
+
+  for (uint8_t i = 0; i < 2; i++) {
+    if (configEncoder.reg[i] == 0) continue;   // junta nao esta no barramento
+    algumFoi = true;
+    uint8_t motivo = MOTIVO_OK;
+    if (!escreverReg(i, reg, valor, configSon.usarFuncao16, motivo)) {
+      todosOk = false; ultimoMotivo = motivo; continue;
+    }
+    // Conferir relendo. Driver que responde "aceitei" e guarda outra
+    // coisa existe, e no SON isso significa a tela dizer "sem torque"
+    // com o eixo energizado -- que e a mentira mais cara que esta
+    // maquina pode contar.
+    delay(5);
+    uint16_t volta[1];
+    uint8_t  m2 = MOTIVO_OK;
+    if (!lerRegs(i, reg, 1, volta, m2)) { todosOk = false; ultimoMotivo = m2; continue; }
+    if (i == 0 || espSon.lido == 0) espSon.lido = volta[0];
+    if (volta[0] != valor) { todosOk = false; ultimoMotivo = MOTIVO_OK; }
+  }
+
+  espSon.pendente = false;
+  espSon.ok = algumFoi && todosOk;
+  if (!algumFoi) {
+    snprintf(espSon.motivo, sizeof(espSon.motivo),
+             "nenhum driver no barramento: so o fio mandou");
+    espSon.falhas++;
+  } else if (espSon.ok) {
+    snprintf(espSon.motivo, sizeof(espSon.motivo),
+             "%s conferido no driver", ligar ? "habilita" : "desabilita");
+  } else {
+    espSon.falhas++;
+    snprintf(espSon.motivo, sizeof(espSon.motivo),
+             "%s NAO confirmado (motivo %u)", ligar ? "habilita" : "desabilita",
+             (unsigned)ultimoMotivo);
+    // Espelho que falha em DESABILITAR e a falha que importa: o fio ja
+    // desabilitou, mas num drive de fonte interna isso pode nao bastar.
+    Serial.printf("[SON] espelho falhou ao %s pelo RS485: %s\n",
+                  ligar ? "habilitar" : "DESABILITAR", espSon.motivo);
+  }
 }
 
 // =====================================================================
@@ -778,6 +857,19 @@ void encoderPedirEscrita(uint16_t reg, uint16_t valor, bool usarFuncao16) {
 
 EscritaParam encoderEscritaResumo() { return esc; }
 
+// Chamada do CORE 1, de dentro de servosHabilitar(). So marca.
+void encoderPedirSon(bool ligar) {
+  if (!configSon.reg) return;          // sem espelho configurado: so o fio
+  espSon.pendente = true;
+  pedidoSon = ligar ? 1 : 2;
+}
+
+EspelhoSon encoderSonResumo() {
+  EspelhoSon e = espSon;
+  e.ativo = (configSon.reg != 0);
+  return e;
+}
+
 void encoderPedirCacada(bool comparar) { pedidoCaca = comparar ? 2 : 1; }
 bool encoderTesteRodando() { return testeRodando; }
 
@@ -1019,6 +1111,23 @@ static void ciclo() {
   }
   if (!linhaAberta) { abrirLinha(); modoEscuta(); }
 
+  // O SON VEM ANTES DE TUDO. Um desabilitar nao pode esperar uma cacada
+  // de 256 registradores terminar -- o fio ja caiu, e o espelho existe
+  // justamente para o drive em que o fio sozinho nao basta.
+  if (configSon.reg != ultimoRegSon) {
+    ultimoRegSon = configSon.reg;
+    // servosLigados e escrito pelo core 1; aqui e so uma leitura de bool
+    // para saber com o que sincronizar. Ver a nota na declaracao.
+    if (configSon.reg) pedidoSon = servosLigados ? 1 : 2;
+  }
+  if (pedidoSon) {
+    const uint8_t o = pedidoSon;
+    pedidoSon = 0;
+    executarSon(o == 1);
+    proximaEm = millis();
+    return;
+  }
+
   // O teste roda AQUI, na tarefa do encoder: ele mexe no modo da UART e
   // nos pinos do transceptor, e fazer isso de outro nucleo por baixo de
   // uma leitura em andamento corromperia o quadro.
@@ -1147,8 +1256,18 @@ void encoderReiniciarTeste() {
   // setup(), e uma cacada marcada num cenario valeria no seguinte.
   pedidoTeste  = false;
   pedidoCaca   = 0;
+  pedidoDif    = 0;
+  pedidoEscrita = false;
+  difMarcado   = false;
   testeRodando = false;
   cacaEtapa    = 0;
+  // Idem para o espelho do SON: sem isto o desabilitar de abertura de um
+  // cenario valeria no seguinte, e o cenario seguinte veria uma escrita
+  // que ele nao pediu.
+  pedidoSon    = 0;
+  ultimoRegSon = 0;
+  espSon       = EspelhoSon{false, false, false, false, 0, 0, 0, ""};
+  esc          = EscritaParam{false, false, false, 0, 0, 0, ""};
   strcpy(relatorio, "nenhum teste rodado ainda");
 }
 #endif

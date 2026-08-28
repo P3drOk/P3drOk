@@ -121,9 +121,11 @@ import math as _mm
 _enc = {"n": 0, "reg2": 0, "motivo2": 1,
         "trvOn": False, "trvJ": 0, "trvN": 0,
         "zEn1": True,
-        # Sem registrador de som gravado: e como a maquina sai de fabrica,
-        # e e o estado em que o botao do som NAO pode funcionar.
-        "pmReg": 0, "pmOn": 1, "pmOff": 0, "pmF16": False,
+        # Sem espelho do SON gravado: e como a maquina sai de fabrica, e
+        # e o estado em que so o fio do GPIO 23 manda.
+        "sonReg": 0, "sonOn": 1, "sonOff": 0, "sonF16": False,
+        "sonAtivo": False, "sonPend": False, "sonOk": False,
+        "sonLig": False, "sonLido": 0, "sonFalhas": 0, "sonMot": "",
         "rel": "Registradores que MUDARAM entre as duas fotos:\n\n"
                "  reg  98 :     0 -> 1      (0x0000 -> 0x0001)\n\n"
                "UM registrador so mudou: e esse o endereco do parametro."}
@@ -147,8 +149,12 @@ def _encoder():
             "zEn1": _enc["zEn1"], "zEn2": False,
             "zEst": 3, "zG1": 12.40, "zG2": 0.0,
             "zMot": "posicao recuperada do encoder",
-            "pmReg": _enc["pmReg"], "pmOn": _enc["pmOn"],
-            "pmOff": _enc["pmOff"], "pmF16": _enc["pmF16"],
+            "sonReg": _enc["sonReg"], "sonOn": _enc["sonOn"],
+            "sonOff": _enc["sonOff"], "sonF16": _enc["sonF16"],
+            "sonAtivo": _enc["sonAtivo"], "sonPend": _enc["sonPend"],
+            "sonOk": _enc["sonOk"], "sonLig": _enc["sonLig"],
+            "sonLido": _enc["sonLido"], "sonFalhas": _enc["sonFalhas"],
+            "sonMot": _enc["sonMot"],
             "id1": 1, "id2": 2, "reg1": 90, "reg2": _enc["reg2"],
             "cv1": 10000, "cv2": 10000,
             "t1": estado["t1"], "t2": estado["t2"],
@@ -277,11 +283,12 @@ class H(BaseHTTPRequestHandler):
         # As rotas de escrita respondem como o firmware: 200 e texto. O
         # que a tela mostra depois vem de /api/encoder/escrita, e o banco
         # encena esse resultado por /teste/escrita.
-        if caminho == "/api/param/config":
-            _enc["pmReg"] = int(q.get("reg", ["0"])[0])
-            _enc["pmOn"] = int(q.get("on", ["1"])[0])
-            _enc["pmOff"] = int(q.get("off", ["0"])[0])
-            _enc["pmF16"] = q.get("f16", ["0"])[0] == "1"
+        if caminho == "/api/son/config":
+            _enc["sonReg"] = int(q.get("reg", ["0"])[0])
+            _enc["sonOn"] = int(q.get("on", ["1"])[0])
+            _enc["sonOff"] = int(q.get("off", ["0"])[0])
+            _enc["sonF16"] = q.get("f16", ["0"])[0] == "1"
+            _enc["sonAtivo"] = _enc["sonReg"] > 0
             return self._envia("ok", "text/plain")
         return self._envia("ok", "text/plain")
 

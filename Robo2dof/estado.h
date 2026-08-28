@@ -244,27 +244,35 @@ struct ConfigEncoder {
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
 
 // ---------------------------------------------------------------------
-// PARAMETRO DO DRIVER que o operador liga e desliga pela tela.
+// ESPELHO DO SON (habilita) NO RS485.
 //
-// O caso concreto e o BIP do driver (P098 no painel do T3D), mas o
-// mecanismo e generico: guarda-se o registrador uma vez, depois e um
-// botao. Zero = nenhum parametro configurado, e o botao nem aparece.
+// O habilita de verdade e o PINO: PIN_SERVO_ON (GPIO 23), por
+// optoacoplador, escrito por servosHabilitar(). E nele que a corrente de
+// seguranca inteira se apoia -- emergencia por nivel, alarme de driver,
+// perda de conexao, e um ESP32 que reinicia deixando o pino em LOW
+// sozinho. Fio de SON rompido DESABILITA o motor; fio de RS485 rompido
+// nao desabilita nada, deixa o eixo como estava.
+//
+// Este espelho existe para o drive cuja fonte de habilita esta em
+// INTERNA, em que o pino sozinho nao energiza. Ele acompanha o pino: o
+// mesmo servosHabilitar() que mexe no GPIO pede a escrita. Nunca e o
+// caminho principal, e a emergencia nao espera por ele.
 //
 // O registrador NAO vem cravado no codigo: o mapa Modbus do T3D nao esta
 // publicado, e numero fixo aqui seria adivinhacao -- a mesma razao pela
 // qual o registrador da posicao e configuravel.
 // ---------------------------------------------------------------------
-struct ConfigParam {
-  uint16_t regSom;      // 0 = nao configurado
-  uint16_t somLigado;   // valor que LIGA o som
-  uint16_t somDesligado;
+struct ConfigSon {
+  uint16_t reg;         // 0 = sem espelho: so o fio manda
+  uint16_t ligado;      // valor que HABILITA
+  uint16_t desligado;
   bool     usarFuncao16;  // ha driver que so aceita a funcao 16
 };
-extern ConfigParam configParam;      // vivo, so o core 1 escreve
+extern ConfigSon configSon;      // vivo, so o core 1 escreve
 // Area de preparo, como a de ConfigPendente: o handler HTTP roda no core
 // 0 e nao escreve no vivo. Ver o bloco de ConfigPendente abaixo.
-extern ConfigParam paramPendente;
-void aplicarParamPendente();
+extern ConfigSon sonPendente;
+void aplicarSonPendente();
 
 // Assentamento pelo encoder. Ver correcao.h para as regras.
 struct ConfigCorrecao {

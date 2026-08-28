@@ -1,4 +1,5 @@
 #include "motores.h"
+#include "encoder.h"   // espelho do SON no RS485
 #include "cinematica.h"
 #include "solda.h"
 #include <math.h>
@@ -62,8 +63,17 @@ void servosHabilitar(bool ligar) {
     pararSuave();
     soldaDesligar();
   }
+  // O PINO PRIMEIRO, sempre. E ele que a emergencia derruba, e e ele que
+  // cai sozinho se o ESP32 reiniciar. O espelho no RS485 vem depois e
+  // ninguem espera por ele: um quadro Modbus custa de 5 a 20 ms, e uma
+  // desabilitacao que dependesse de um fio de dados nao seria uma
+  // desabilitacao. Ver o bloco do espelho em encoder.h.
   digitalWrite(PIN_SERVO_ON, ligar ? HIGH : LOW);
   servosLigados = ligar;
+  // So marca um volatile; quem dirige a linha e a tarefa do encoder, no
+  // core 0. Sem registrador configurado nao faz nada -- de fabrica o fio
+  // manda sozinho.
+  encoderPedirSon(ligar);
   definirMensagem(ligar ? "Servos habilitados" : "Servos desabilitados (sem torque)");
 }
 

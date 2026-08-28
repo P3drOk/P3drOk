@@ -137,6 +137,18 @@ ESP32 GPIO23 ──► [optoacoplador] ──► SON+ dos dois drivers
 Nunca direto. O GPIO23 comanda os dois drivers ao mesmo tempo:
 `servosHabilitar()` em `motores.cpp` é a única coisa que escreve nele.
 
+**Confira a fonte do habilita no painel do driver.** Ela precisa estar em
+*terminal externo* — é o que faz este fio valer. Se estiver em *interna*,
+o drive energiza por conta própria e o GPIO23 não alcança: o botão de
+emergência deixa de desenergizá-lo, e a proteção inteira passa a ser
+decorativa.
+
+Para o drive que já está assim, o firmware tem um **espelho no RS485**
+(MANUAL.md §5.6): o mesmo `servosHabilitar()` escreve também um
+registrador por Modbus. É reforço, nunca substituto — o pino cai primeiro
+e ninguém espera pelo quadro Modbus. Fio de SON rompido desabilita o
+motor; fio de RS485 rompido não desabilita nada.
+
 ### 3.4 Alarme (ALM)
 
 ```

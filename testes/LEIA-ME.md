@@ -113,7 +113,7 @@ no próprio `checar(...)`.
 | J04 | sondas de captive portal do Windows/Android/iPhone abrem o painel em vez de dar 404 |
 | L13 | velocidade, RPM, sentido, inversões e passos andados, com o eixo girando de verdade |
 | L12 | achar o registrador movendo o braço **duas vezes no mesmo sentido**; registrador que oscila não é apontado |
-| L14 | som do driver pelo RS485: achar o parâmetro **sem escrever**, as travas da escrita, driver que aceita e ignora, driver que só aceita a função 16, e o botão |
+| L14 | SON pelo fio com espelho no RS485: achar o registrador **sem escrever**, as travas da escrita avulsa, driver que aceita e ignora, driver que só aceita a função 16, o botão de servos mexendo nos dois, e a **emergência derrubando o pino com o RS485 morto** |
 | M01 | chegou ao alvo: o encoder confere e o sistema retoca |
 | M02 | as seis situações em que o assentamento **não** pode mexer no motor |
 | M03 | desligar o assentamento, e a parada de emergência no meio dele |

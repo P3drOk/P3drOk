@@ -643,50 +643,70 @@ Ferramentas de diagnóstico embutidas:
 O diagnóstico sai **também no monitor serial**, uma linha a cada 5 s
 enquanto falha.
 
-### 5.6 Som do driver (e outros parâmetros) pelo RS485
+### 5.6 SON: o habilita pelo fio, com espelho no RS485
 
-**Dá para ligar e desligar o bip do driver pela tela**, sem ir até o
-painel dele digitar P098. O Modbus tem escrita — função **06** (um
-registrador) e **16** (um bloco) — e é o mesmo fio que já lê a posição.
+**SON = Servo ON, o habilita do motor.** Nesta máquina ele é um **fio**:
+`PIN_SERVO_ON` (GPIO 23), por optoacoplador, no SON dos dois drivers.
+`servosHabilitar()` é quem o levanta e o derruba.
 
-O que **não** dá é adivinhar o endereço. O mapa Modbus do T3D não está
-publicado: o registrador da posição (90) foi achado procurando, não lendo
-manual. *P098 no painel* pode ser o registrador **98**, e essa é a
-primeira hipótese a testar — mas é hipótese.
+É nele que a corrente de segurança inteira se apoia:
 
-Por que a diferença importa: ler no registrador errado dá um número
-errado na tela. **Escrever** no registrador errado pode trocar a
-engrenagem eletrônica, o modo de controle, o sentido do eixo ou o limite
-de torque — e o eixo pode sair andando.
+| | |
+|---|---|
+| emergência | derruba o pino **por nível**, a cada ciclo enquanto o botão estiver acionado |
+| alarme de driver | `pararTudo()` → servos desligados |
+| conexão perdida | idem |
+| ESP32 reinicia | o pino nasce em `LOW` — **o drive desabilita sozinho** |
 
-Por isso o caminho tem três passos, na coluna **Encoder**, painel *Som do
-driver*:
+**Fio de SON rompido desabilita o motor. Fio de RS485 rompido não
+desabilita nada** — deixa o eixo como estava. Um é falha segura, o outro
+não. Por isso o Modbus nunca é o caminho principal do habilita.
 
-1. **Achar o endereço sem escrever.** *Tirar a foto* lê os registradores
-   0 a 255. Você vai ao painel do driver, muda o parâmetro lá (P098 para
-   1), volta e aperta *Comparar agora*. O que mudou entre as duas fotos é
-   o endereço daquele parâmetro. Isto é **só leitura**: nada é escrito.
-   Faça com o braço **parado** — se ele se mexer, o par da posição muda
-   junto e aparece na lista.
-2. **Gravar qual é o registrador**, com o valor que liga e o que desliga.
-   Fica no NVS junto com o resto da configuração.
-3. **O botão.** Depois disso é *Ligar o som* / *Desligar o som*, sem
-   digitar endereço nenhum.
+#### O espelho
 
-Depois de escrever, o firmware **relê o registrador e compara**. Driver
-que responde *aceitei* e guarda outra coisa existe (registrador só de
-leitura, escrita bloqueada por nível, parâmetro que só vale com o servo
-desabilitado) — sem a releitura a tela diria *pronto* e o bip continuaria
-tocando.
+Há drive cuja **fonte do habilita** está em *interna*: nele o pino
+sozinho não energiza. Para esse caso existe o espelho — o mesmo
+`servosHabilitar()` que mexe no GPIO **também** escreve um registrador
+por Modbus. O pino primeiro, sempre; o quadro Modbus depois, e ninguém
+espera por ele.
 
-**Travas da escrita avulsa** (*Escrever um registrador qualquer*): modo
-manual, braço parado, **servos desligados**, solda desligada, registrador
-e valor **digitados** (nada aqui deduz endereço) e confirmação explícita.
-Se o driver recusar a função 06 com exceção, ligue **funcão 16** — há
-driver que só aceita ela mesmo para um registrador só.
+**Não há botão de SON avulso, de propósito.** Quem liga e desliga o
+torque continua sendo o botão de servos, que passa por toda a supervisão.
+Um botão de SON por fora disso seria um jeito de energizar o eixo sem
+nada olhando.
 
-O laço de leitura continua **só leitura**: a escrita é um caminho avulso,
-disparado por ação do operador, e não roda dentro do ciclo normal.
+De fábrica o espelho vem **desligado**: só o fio manda.
+
+#### Configurar (coluna Encoder, painel *Espelho do SON*)
+
+1. **Achar o registrador sem escrever.** *Tirar a foto* lê os
+   registradores 0 a 255; você muda o parâmetro no painel do driver
+   (P098, por exemplo), volta e aperta *Comparar agora*. O que mudou é o
+   endereço. Só leitura. Braço **parado**, senão o par da posição muda
+   junto.
+2. **Experimentar antes de gravar**, pela escrita avulsa: modo manual,
+   braço parado, **servos desligados**, solda desligada, registrador e
+   valor digitados e confirmação. Toda escrita é **conferida relendo** —
+   driver que responde *aceitei* e guarda outra coisa existe, e no SON
+   isso significaria a tela dizer "sem torque" com o eixo energizado.
+3. **Gravar o espelho.** Registrador **0** desliga o espelho.
+
+O espelho alcança os drivers que estão **no barramento** — junta com
+registrador de posição 0 não recebe. Quando o registrador aparece (no
+arranque, vindo do NVS, ou porque você acabou de gravá-lo) o espelho
+**sincroniza com o pino** em vez de supor: com os servos desligados ele
+manda o desabilita, fechando o buraco do religamento; com o eixo já
+energizado ele manda o habilita, sem derrubar torque de surpresa.
+
+O estado do espelho fica na tela: `OK` / `FALHOU`, o registrador, se foi
+habilita ou desabilita, o motivo e a contagem de falhas. Espelho que falha
+não some — "servos ligados" com o espelho falhando seria a tela mentindo
+sobre torque.
+
+⚠️ **Se o parâmetro do painel mudar a *fonte* do habilita para interna, o
+botão de emergência deixa de desenergizar o driver.** O espelho existe
+para conviver com um drive já configurado assim, não para você mudá-lo
+para isso.
 
 ### 5.7 Correção de posição pelo encoder
 
@@ -885,8 +905,7 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/encoder/diferenca` | acha um parâmetro comparando duas leituras — **não escreve** |
 | `POST /api/encoder/escrever` | escreve um registrador; exige manual, parado, servos e solda desligados, `confirmar=1` |
 | `GET  /api/encoder/escrita` | como foi a última escrita, **conferida por releitura** |
-| `POST /api/param/config` | grava qual registrador é o do som, e os valores de liga/desliga |
-| `POST /api/param/som` | o botão: `on=1` liga, `on=0` desliga |
+| `POST /api/son/config` | grava o registrador do espelho do SON e os valores de habilita/desabilita |
 | `POST /api/encoder/zerar` | zera a contagem aqui |
 | `POST /api/correcao` | assentamento pelo encoder |
 | `POST /api/aferir/encoder` | afere a engrenagem eletrônica pelo encoder |

@@ -492,9 +492,9 @@ enum TipoComando : uint8_t {
   CMD_ARQ_LIBERAR_TRAJ,    // core 1: devolve o buffer (postado pela tarefa SD)
   CMD_ARQ_SALVAR_CONFIG,   // core 1: prepara a area e pede a gravacao
 
-  // Registrador do parametro do driver (o bip, por exemplo). O core 0
-  // preenche paramPendente e o core 1 grava. Ver estado.h.
-  CMD_APLICAR_PARAM
+  // Registrador do espelho do SON no RS485. O core 0 preenche
+  // sonPendente e o core 1 grava. Ver estado.h.
+  CMD_APLICAR_SON
 };
 
 struct Comando {

@@ -187,6 +187,43 @@ struct EscritaParam {
 void         encoderPedirEscrita(uint16_t reg, uint16_t valor, bool usarFuncao16);
 EscritaParam encoderEscritaResumo();
 
+// =====================================================================
+//  ESPELHO DO SON -- o habilita indo tambem pelo RS485
+//
+//  QUEM MANDA CONTINUA SENDO O FIO. PIN_SERVO_ON (GPIO 23) e escrito por
+//  servosHabilitar(), no core 1, e e ele que a emergencia derruba por
+//  nivel a cada ciclo. Este espelho e REFORCO: existe para o drive cuja
+//  fonte de habilita esta em interna, em que o pino sozinho nao
+//  energiza.
+//
+//  POR QUE O ESPELHO NUNCA PODE VIRAR O CAMINHO PRINCIPAL. Um quadro
+//  Modbus custa de 5 a 20 ms e depende de um fio que pode romper -- e
+//  RS485 rompido nao desabilita nada, deixa o eixo como estava. O pino
+//  faz o contrario: rompeu, desabilitou. Por isso a emergencia derruba o
+//  pino na hora e o espelho vai depois, sem ninguem esperar por ele.
+//
+//  encoderPedirSon() so marca um pedido -- e chamada do CORE 1, de
+//  dentro de servosHabilitar(), e escreve unicamente um volatile, do
+//  mesmo jeito que pedidoParada. Quem dirige a linha e a tarefa do
+//  encoder, no core 0.
+//
+//  O pedido de DESLIGAR tem prioridade sobre qualquer outra coisa na
+//  tarefa: ele nao espera cacada nem escrita do operador terminarem.
+// =====================================================================
+void encoderPedirSon(bool ligar);
+
+struct EspelhoSon {
+  bool     ativo;      // ha registrador configurado
+  bool     pendente;   // ha pedido esperando a tarefa do encoder
+  bool     ok;         // a ultima escrita conferiu na releitura
+  bool     ligando;    // o ultimo pedido foi habilitar
+  uint16_t valor;      // o que se pediu
+  uint16_t lido;       // o que voltou
+  uint32_t falhas;
+  char     motivo[64];
+};
+EspelhoSon encoderSonResumo();
+
 #ifdef ROBO2DOF_TESTE
 // O banco bombeia a tarefa a mao, como faz com a do cartao.
 void encoderCicloTeste();

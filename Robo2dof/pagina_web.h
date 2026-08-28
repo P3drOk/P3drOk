@@ -805,66 +805,68 @@ body.operador .cfgAbas button[data-cfg="encoder"]{display:none}
         </div>
 
         <div class="et">
-          <div class="cab"><div class="mk">&#9835;</div>
-            <div class="tx"><div class="tt">Som do driver, e outros parametros</div>
-            <span class="sb">mudar pelo RS485 em vez de ir ao painel</span></div><div class="chv">&#9654;</div></div>
+          <div class="cab"><div class="mk">&#9211;</div>
+            <div class="tx"><div class="tt">Espelho do SON no RS485</div>
+            <span class="sb">o habilita indo tambem pelo Modbus</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">Da para ligar e desligar o bip do driver daqui: o
-            Modbus tem escrita (funcao 06 e 16), e e o mesmo fio que ja le a
-            posicao. O que <b>nao</b> da e adivinhar o endereco. O mapa Modbus
-            do T3D nao esta publicado &mdash; o registrador da posicao foi achado
-            procurando, e nao lendo manual. <b>P098 no painel</b> pode ser o
-            registrador 98, e essa e a primeira hipotese a testar, mas e
-            hipotese.
-            <br><b>Por que isso importa:</b> ler no registrador errado da um
-            numero errado na tela. Escrever no registrador errado pode trocar a
-            engrenagem eletronica, o modo de controle, o sentido do eixo ou o
-            limite de torque &mdash; e o eixo pode sair andando. Por isso o
-            caminho comeca por achar o endereco <b>sem escrever nada</b>.</div>
+            <div class="nt av"><b>Quem manda continua sendo o fio.</b> O
+            habilita e o <b>GPIO 23</b>, por optoacoplador, no SON dos dois
+            drivers. E nele que a seguranca se apoia: a emergencia derruba o
+            pino enquanto estiver apertada, o alarme de driver e a perda de
+            conexao derrubam junto, e um ESP32 que reinicia deixa o pino em
+            LOW sozinho. <b>Fio de SON rompido desabilita o motor; fio de
+            RS485 rompido nao desabilita nada</b> &mdash; deixa o eixo como
+            estava. Por isso o espelho nunca e o caminho principal: a
+            emergencia derruba o pino na hora e o quadro Modbus vai depois,
+            sem ninguem esperar por ele.</div>
+            <div class="nt">O espelho existe para o drive cuja <b>fonte do
+            habilita</b> esta em interna, em que o pino sozinho nao energiza.
+            Com ele configurado, o mesmo botao de servos que ja existe passa
+            a mexer nos dois: pino e registrador. Nao ha botao de SON avulso
+            de proposito &mdash; ele seria um jeito de energizar o eixo sem a
+            supervisao olhando.</div>
 
-            <h4>1 &middot; Achar o endereco sem escrever</h4>
+            <h4>1 &middot; Achar o registrador sem escrever</h4>
             <button class="b mini" id="btPmFoto">Tirar a foto</button>
             <button class="b mini" id="btPmComparar">Comparar agora</button>
             <div class="pq2" id="qPmFoto"></div>
             <div class="nt">Aperte <b>Tirar a foto</b>, va ate o painel do
-            driver e mude o parametro la (P098 para 1, por exemplo), volte e
-            aperte <b>Comparar agora</b>. O registrador que mudou e o endereco
-            daquele parametro. Isto e <b>so leitura</b>: nada e escrito no
-            driver. Faca com o braco <b>parado</b> &mdash; se ele se mexer, o par
-            da posicao muda junto e aparece na lista.
-            <br>O resultado sai no relatorio da linha, logo acima.</div>
+            driver e mude o parametro la (P098, por exemplo), volte e aperte
+            <b>Comparar agora</b>. O registrador que mudou e o endereco
+            daquele parametro. Isto e <b>so leitura</b>: nada e escrito. Faca
+            com o braco <b>parado</b> &mdash; se ele se mexer, o par da
+            posicao muda junto e aparece na lista. O resultado sai no
+            relatorio da linha, logo acima.</div>
 
-            <h4>2 &middot; Gravar qual e o registrador do som</h4>
-            <div class="cp"><label>Registrador</label><input type="number" id="pmReg" min="0" max="65535"></div>
-            <div class="cp"><label>Valor que LIGA</label><input type="number" id="pmOn" min="0" max="65535"></div>
-            <div class="cp"><label>Valor que DESLIGA</label><input type="number" id="pmOff" min="0" max="65535"></div>
-            <div class="cp"><label>Escrever pela funcao 16</label><div class="ch" id="pmF16"></div></div>
-            <button class="b mini" id="btPmSalvar">Gravar o endereco</button>
-            <div class="pq2" id="qPmSalvar"></div>
-            <div class="nt">Registrador <b>0</b> quer dizer "nenhum
-            configurado", e o botao do som some. A funcao 16 existe porque ha
-            driver que recusa a 06 mesmo para um registrador so: se a escrita
-            der excecao, tente por ela.</div>
-
-            <h4>3 &middot; O botao</h4>
-            <button class="b mini" id="btPmSomOn">Ligar o som</button>
-            <button class="b mini" id="btPmSomOff">Desligar o som</button>
-            <div class="pq2" id="qPmSom"></div>
-            <div class="res" id="pmEstado">--</div>
-            <div class="nt">Depois de escrever, o firmware <b>rele</b> o
-            registrador e compara. Driver que responde "aceitei" e guarda outra
-            coisa existe &mdash; sem a releitura a tela diria "pronto" e o bip
-            continuaria tocando.</div>
-
-            <h4>Escrever um registrador qualquer</h4>
+            <h4>2 &middot; Experimentar antes de gravar</h4>
             <div class="cp"><label>Registrador</label><input type="number" id="pmWReg" min="0" max="65535"></div>
             <div class="cp"><label>Valor</label><input type="number" id="pmWVal" min="0" max="65535"></div>
             <button class="b mini" id="btPmEscrever">Escrever no driver</button>
             <div class="pq2" id="qPmEscrever"></div>
-            <div class="nt av">So com o robo no <b>modo manual</b>, <b>parado</b>,
-            com os <b>servos desligados</b> e a <b>solda desligada</b> &mdash; e
-            com confirmacao. Nao e burocracia: e a diferenca entre um parametro
-            errado e um eixo energizado obedecendo a um parametro errado.</div>
+            <div class="res" id="pmEstado">--</div>
+            <div class="nt av">So com o robo no <b>modo manual</b>,
+            <b>parado</b>, com os <b>servos desligados</b> e a <b>solda
+            desligada</b> &mdash; e com confirmacao. Depois de escrever o
+            firmware <b>rele</b> o registrador e compara: driver que responde
+            "aceitei" e guarda outra coisa existe, e no SON isso significaria
+            a tela dizer "sem torque" com o eixo energizado.</div>
+
+            <h4>3 &middot; Gravar o espelho</h4>
+            <div class="cp"><label>Registrador do SON</label><input type="number" id="pmReg" min="0" max="65535"></div>
+            <div class="cp"><label>Valor que HABILITA</label><input type="number" id="pmOn" min="0" max="65535"></div>
+            <div class="cp"><label>Valor que DESABILITA</label><input type="number" id="pmOff" min="0" max="65535"></div>
+            <div class="cp"><label>Escrever pela funcao 16</label><div class="ch" id="pmF16"></div></div>
+            <button class="b mini" id="btPmSalvar">Gravar o espelho</button>
+            <div class="pq2" id="qPmSalvar"></div>
+            <div class="res" id="pmSon">--</div>
+            <div class="nt">Registrador <b>0</b> desliga o espelho: so o fio
+            manda, que e como a maquina sai de fabrica. A funcao 16 existe
+            porque ha driver que recusa a 06 mesmo para um registrador so.
+            <br>O espelho alcanca os drivers que estao <b>no barramento</b>
+            &mdash; junta com registrador de posicao 0 nao recebe.
+            <br>Ao ligar a maquina o sistema manda <b>um desabilita</b> pelo
+            espelho: se o ESP32 reiniciou, o pino nasce em LOW, mas um drive
+            de fonte interna pode ter ficado energizado por dentro.</div>
           </div>
         </div>
       </section>
@@ -4244,14 +4246,17 @@ function encAplicar(d){
     $("encFunc").value=d.func;$("encPer").value=d.per;
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
-    $("pmReg").value=d.pmReg;$("pmOn").value=d.pmOn;$("pmOff").value=d.pmOff;
-    $("pmF16").className="ch"+(d.pmF16?" on":"");
+    $("pmReg").value=d.sonReg;$("pmOn").value=d.sonOn;$("pmOff").value=d.sonOff;
+    $("pmF16").className="ch"+(d.sonF16?" on":"");
   }
-  /* Sem registrador gravado o botao do som nao faz nada -- e botao que
-     nao faz nada e o defeito mais caro que esta interface ja teve. */
-  const temSom=d.pmReg>0;
-  $("btPmSomOn").disabled=!temSom;
-  $("btPmSomOff").disabled=!temSom;
+  /* O espelho tem de aparecer mesmo quando funciona: "servos ligados" na
+     tela com o espelho falhando seria a tela mentindo sobre torque. */
+  $("pmSon").textContent = !d.sonAtivo
+    ? "espelho desligado \u00b7 so o fio do GPIO 23 manda"
+    : d.sonPend ? "registrador "+d.sonReg+" \u00b7 mandando..."
+    : (d.sonOk?"OK":"FALHOU")+" \u00b7 registrador "+d.sonReg+" \u00b7 "+
+      (d.sonLig?"habilita":"desabilita")+" \u00b7 "+d.sonMot+
+      (d.sonFalhas?" \u00b7 "+d.sonFalhas+" falha(s)":"");
   encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);zeroAplicar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
@@ -4325,7 +4330,12 @@ $("btPmComparar").onclick=function(){
 };
 $("pmF16").onclick=function(){$("pmF16").classList.toggle("on");};
 $("btPmSalvar").onclick=function(){
-  post("/api/param/config?reg="+($("pmReg").value||0)+
+  const r=Number($("pmReg").value||0);
+  if(r&&!confirm("Gravar o espelho do SON no registrador "+r+"?\n\n"+
+                 "O fio (GPIO 23) continua mandando. O espelho so acompanha "+
+                 "o botao de servos.\n\nRegistrador errado aqui vira torque "+
+                 "que nao sobe, ou que nao desce."))return;
+  post("/api/son/config?reg="+r+
        "&on="+($("pmOn").value||1)+"&off="+($("pmOff").value||0)+
        "&f16="+($("pmF16").classList.contains("on")?1:0))
    .then(function(){encCarregou=false;});
@@ -4350,12 +4360,6 @@ const pmBuscarEscrita=function(){
   };
   setTimeout(buscar,500);
 };
-const pmSom=function(ligar){
-  $("pmEstado").textContent=ligar?"ligando o som...":"desligando o som...";
-  post("/api/param/som?on="+(ligar?1:0)).then(pmBuscarEscrita);
-};
-$("btPmSomOn").onclick =function(){pmSom(true);};
-$("btPmSomOff").onclick=function(){pmSom(false);};
 $("btPmEscrever").onclick=function(){
   const r=$("pmWReg").value,v=$("pmWVal").value;
   if(r===""||v===""){$("pmEstado").textContent="informe o registrador e o valor";return;}
