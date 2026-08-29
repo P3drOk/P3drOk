@@ -4757,10 +4757,20 @@ function encAplicar(d){
     : (L1.ok||L2.ok) ? "lendo" : "sem resposta";
   /* Junta sem registrador nao aparece com contador de falha: ela nem
      chega a ser perguntada. */
+  /* Angulo fora de qualquer escala e a assinatura de encoder mal
+     configurado: contagens por volta erradas, formato de 32 bits errado,
+     ou o registrador do vizinho. O firmware ja recusa a leitura -- se
+     nao recusasse, o braco desenhado giraria sem parar atras dela. Mas
+     recusar em silencio deixa o operador sem saber o que consertar. */
+  const ABSURDO=720;
   const linhaJunta=(n,reg,L)=>
     "junta "+n+": "+(!reg ? "nao ligada"
       : (L.n||0)+" leituras, "+(L.falhas||0)+" falhas"+
-        (L.ok?("   bruto "+L.bruto):""));
+        (L.ok?("   bruto "+L.bruto):"")+
+        ((L.graus!==undefined&&Math.abs(L.graus)>ABSURDO)
+          ? ("\n   " +Math.round(L.graus)+"\u00b0 -- fora de escala. "+
+             "Confira contagens por volta, o formato de 32 bits e o registrador")
+          : ""));
   $("encEstado").textContent=
     linhaJunta(1,d.reg1,L1)+"\n"+linhaJunta(2,d.reg2,L2)+
     "\n"+d.baud+" bps  ·  funcao "+d.func+"  ·  "+d.per+" ms";

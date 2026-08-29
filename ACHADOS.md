@@ -2989,11 +2989,48 @@ Dizer só "não consegui habilitar" mandava o operador adivinhar. As duas
 mensagens passaram a apontar o lugar: o endereço do driver, e onde
 mudá-lo (**Ajustes → Encoder → Endereço do driver**).
 
+## R103 · Com os dois encoders, o braço desenhado girava sem parar  ✅
+
+Relato: "com os 2 encoders conectados o braço está se movendo muito
+rápido no sistema, dando voltas e voltas".
+
+`leituraPlausivel()` conferia o ângulo contra o **curso calibrado** — e
+abria mão de conferir quando a junta não estava calibrada:
+
+```c
+if (!j.calibrada) return true;      // qualquer numero passava
+```
+
+Máquina em comissionamento **nunca** está calibrada. Então, com os dois
+encoders no barramento e um deles mal configurado — contagens por volta
+erradas, formato de 32 bits errado, registrador do vizinho — o ângulo
+saía em dezenas de milhares de graus, era marcado **confiável**, ia para
+o `/api/status` como `m2ok:true`, e a tela passava a desenhar o braço
+pelo *medido*. O braço desenhado girava atrás de um número que não
+existia.
+
+O log da própria bancada já tinha mostrado a assinatura disso antes:
+*"Junta 1 fora de posição: −177667.02 graus pelo encoder"*.
+
+**Correção:** um teto absoluto que vale **sempre**, calibrado ou não.
+Não existe junta desta máquina em 170 mil graus. `LIMITE_ABSURDO_GRAUS`
+= 720° — duas voltas completas, folga generosa para qualquer montagem
+real, e ainda pega o lixo por ordens de grandeza. É o que essa guarda
+precisa fazer: separar **leitura** de **número**, não medir precisão.
+
+A conferência contra o curso continua exatamente como estava depois de
+calibrar. Cenário **V12**: a junta boa segue confiável, a absurda não, e
+o status diz `m2ok:false` para a tela voltar a desenhar pelo comandado.
+
+E recusar em silêncio deixaria você sem saber o que consertar — o painel
+do encoder passou a dizer, na linha da junta, *"N° — fora de escala.
+Confira contagens por volta, o formato de 32 bits e o registrador"*.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **403 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **407 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **233 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

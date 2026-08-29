@@ -4832,6 +4832,59 @@ static void teste_V11_posicionar_respeita_precisao() {
   rodarComWeb(40);
 }
 
+// ---------------------------------------------------------------------
+// V12: leitura absurda do encoder nao pode ser tratada como confiavel.
+//
+// leituraPlausivel() abria mao de conferir quando a junta nao estava
+// calibrada -- e maquina em comissionamento nunca esta. Com os dois
+// encoders no barramento e um deles mal configurado (contagens por volta
+// erradas, 32 bits errado, registrador do vizinho), o angulo saia em
+// dezenas de milhares de graus, era marcado CONFIAVEL, ia para a tela e
+// o braco desenhado girava sem parar.
+//
+// Nao existe junta desta maquina em 170 mil graus. Isso e conferivel sem
+// calibracao nenhuma.
+// ---------------------------------------------------------------------
+static void teste_V12_leitura_absurda_nao_e_confiavel() {
+  secao("V12  Angulo absurdo do encoder nao vira leitura boa");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  // Maquina em comissionamento: ninguem calibrou ainda.
+  J1.calibrada = J2.calibrada = false;
+  rodarComWeb(200);
+
+  // A junta 2 passa a devolver uma contagem enorme -- e o que acontece
+  // quando as contagens por volta ou o formato de 32 bits estao errados.
+  g_uart.escravo[1].posicao = 500000000;
+  rodarComWeb(400);
+
+  const LeituraEncoder L2 = encoderLer(2);
+  nota("junta 2 lendo %.0f graus, sem calibracao: confiavel=%d",
+       (double)L2.graus, (int)leituraConfiavel(2));
+  checar(fabsf(L2.graus) > 1000.0f, "V12a",
+         "o cenario de fato produz um angulo absurdo");
+  checar(!leituraConfiavel(2), "V12b",
+         "angulo absurdo NAO e leitura confiavel, mesmo sem calibracao: "
+         "sem isso ele ia para a tela e o braco desenhado girava sem parar");
+
+  // E a junta boa continua valendo -- a guarda nao pode derrubar as duas.
+  checar(leituraConfiavel(1), "V12c",
+         "e a junta que le direito continua confiavel");
+
+  // O status tambem tem de contar a verdade: m2ok e o que manda a tela
+  // desenhar pelo medido em vez do comandado.
+  webGet("/api/status");
+  const std::string js = webCorpo();
+  const size_t onde = js.find("\"m2ok\"");
+  nota("status: %s", onde == std::string::npos ? "sem m2ok"
+                                               : js.substr(onde, 13).c_str());
+  checar(js.find("\"m2ok\":false") != std::string::npos, "V12d",
+         "e o status diz false, para a tela desenhar pelo comandado");
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6444,6 +6497,7 @@ int main() {
   teste_V09_desabilitar_junta_ausente();
   teste_V10_habilitar_so_a_junta_2();
   teste_V11_posicionar_respeita_precisao();
+  teste_V12_leitura_absurda_nao_e_confiavel();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

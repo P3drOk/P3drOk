@@ -238,10 +238,29 @@ static void dizerZero(const char* m) {
 // ---------------------------------------------------------------------
 static const float FOLGA_PLAUSIVEL_GRAUS = 10.0f;
 
+// Teto que vale SEM calibracao nenhuma.
+//
+// A conferencia contra o curso so existe depois de calibrar, e maquina em
+// comissionamento nunca esta calibrada -- entao ali qualquer numero
+// passava. Com os dois encoders no barramento e um deles mal configurado
+// (contagens por volta erradas, formato de 32 bits errado, registrador do
+// vizinho), o angulo saia em dezenas de milhares de graus, era marcado
+// CONFIAVEL, ia para a tela e o braco desenhado girava sem parar.
+//
+// Nao existe junta desta maquina em 170 mil graus, calibrada ou nao. Duas
+// voltas completas e folga generosa para qualquer montagem real e ainda
+// pega o lixo por ordens de grandeza -- que e o que esta guarda precisa
+// fazer: separar leitura de numero, nao medir precisao.
+static const float LIMITE_ABSURDO_GRAUS = 720.0f;
+
 static bool leituraPlausivel(uint8_t k, float graus) {
   const Junta& j = (k == 1) ? J1 : J2;
-  if (!j.calibrada) return true;
   if (graus != graus) return false;                 // NaN nao e angulo
+  // Vale sempre, inclusive sem calibracao. E a unica conferencia que
+  // existe durante a montagem, que e justamente quando o encoder esta
+  // mal configurado.
+  if (graus < -LIMITE_ABSURDO_GRAUS || graus > LIMITE_ABSURDO_GRAUS) return false;
+  if (!j.calibrada) return true;
   return graus >= j.grausMin - FOLGA_PLAUSIVEL_GRAUS &&
          graus <= j.grausMax + FOLGA_PLAUSIVEL_GRAUS;
 }
