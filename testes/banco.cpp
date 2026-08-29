@@ -4671,6 +4671,70 @@ static void teste_V08_zero_sem_calibracao() {
          "faria todo limite de curso apontar para o lugar errado");
 }
 
+// ---------------------------------------------------------------------
+// V09: com um driver so, desabilitar as duas juntas nao pode virar FALHA.
+//
+// A junta ausente nunca chegou a ser energizada por ninguem. Tratar o
+// "nao confirmou" dela como o caso grave -- eixo possivelmente com
+// torque e sem caminho para cortar -- derrubava a maquina em FALHA, e em
+// FALHA todo comando e recusado, inclusive ir ao zero. Era o robo
+// travando por causa de um motor que nao esta la.
+// ---------------------------------------------------------------------
+static void teste_V09_desabilitar_junta_ausente() {
+  secao("V09  Desabilitar uma junta que nunca teve torque nao e falha");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(120);
+
+  g_uart.escravo[1].existe = false;      // o driver 2 nao esta na bancada
+
+  enviarComando(CMD_SERVOS, 1, 1);       // energiza so a junta 1
+  rodarComWeb(120);
+  checar(J1.habilitado && !J2.habilitado, "V09a",
+         "a junta 1 energiza sozinha");
+
+  // O botao "desabilitar servos" das duas: a junta 2 nao vai responder.
+  enviarComando(CMD_SERVOS, 0, 0);
+  rodarComWeb(200);
+  nota("desabilitando as duas com o driver 2 fora: modo=%d, J1=%d J2=%d -- \"%s\"",
+       (int)modoAtual, (int)J1.habilitado, (int)J2.habilitado, ultimaMensagem);
+  checar(modoAtual != MODO_FALHA, "V09b",
+         "nao e FALHA: a junta ausente nunca teve torque, e nao ha o que cortar");
+  checar(!J1.habilitado && !J2.habilitado, "V09c",
+         "e as duas ficam sem torque do mesmo jeito");
+
+  // E o robo continua obedecendo -- que era o que estava travado.
+  enviarComando(CMD_SERVOS, 1, 1);
+  rodarComWeb(120);
+  J1.calibrada = J2.calibrada = false;
+  configEncoder.reg[0] = configEncoder.reg[1] = 0;
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, 20.0f));
+  rodarComWeb(20);
+  enviarComando(CMD_IR_HOME);
+  rodarComWeb(60);
+  nota("ir ao zero depois disso: modo=%d -- \"%s\"", (int)modoAtual, ultimaMensagem);
+  checar(modoAtual == MODO_POSICIONANDO, "V09d",
+         "e ir ao zero continua funcionando com um motor so");
+
+  // O caso GRAVE continua grave: junta que TINHA torque e cujo
+  // desabilita nao confirmou. Ai sim nao se sabe se o eixo esta
+  // energizado, e nao existe segundo caminho para cortar.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  enviarComando(CMD_SERVOS, 1, 1);
+  rodarComWeb(120);
+  const bool tinhaTorque = J1.habilitado;
+  g_uart.escravo[0].escritaMuda = true;
+  enviarComando(CMD_SERVOS, 0, 1);
+  rodarComWeb(200);
+  nota("desabilitar perdido numa junta que TINHA torque: modo=%d -- \"%s\"",
+       (int)modoAtual, ultimaMensagem);
+  checar(tinhaTorque && modoAtual == MODO_FALHA, "V09e",
+         "junta que estava energizada e cujo desabilita nao confirmou "
+         "continua derrubando a maquina em FALHA");
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6280,6 +6344,7 @@ int main() {
   teste_V06_habilita_nao_prende_o_barramento();
   teste_V07_um_driver_no_barramento();
   teste_V08_zero_sem_calibracao();
+  teste_V09_desabilitar_junta_ausente();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

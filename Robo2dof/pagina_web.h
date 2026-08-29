@@ -159,6 +159,7 @@ button,input{font:inherit;color:inherit}
    maquina, e estava enterrada numa gaveta de Ajustes. A cor diz o
    estado -- verde tem torque, cinza nao, ambar esperando o barramento
    responder. Nao e o PARAR e nao pode ser confundido com ele. */
+.ch.indo{opacity:.55;animation:pi .7s infinite}
 .motores{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
 .motor{flex:0 0 auto;border:none;font-family:var(--mono);font-size:12px;font-weight:700;
  letter-spacing:.08em;padding:12px 14px;border-radius:4px;cursor:pointer;color:#fff;
@@ -1313,8 +1314,16 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="tx"><div class="tt">Preparar a maquina</div>
             <span class="sb" id="sb1">servos e calibracao</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <button class="b pri" id="btServos">Habilitar servos</button>
-            <div class="nt">Sem servo habilitado o braco fica sem torque, o arco fica travado e o jog e recusado.</div>
+            <div class="tr"><div class="ch" id="chSrv1"><i></i></div>
+              <span>torque no eixo 1</span></div>
+            <div class="tr"><div class="ch" id="chSrv2"><i></i></div>
+              <span>torque no eixo 2</span></div>
+            <div class="nt">Uma chave por eixo, porque cada driver responde
+            sozinho no barramento. Com um driver ligado voce trabalha no eixo
+            que existe: o <b>jog</b> dele anda e <b>ir para 0 grau</b> leva so
+            ele. Programa, trajetoria e cordao continuam precisando dos dois
+            &mdash; com um eixo sem torque nao sai meio desenho, sai desenho
+            torto.</div>
             <div class="pq2" id="qSon"></div>
             <div class="nt" id="ntSonFio">O habilita vai pelo <b>RS485</b>, nao por fio.
             Se o barramento cair, o driver fica como estava &mdash; quem corta de
@@ -1324,16 +1333,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="cp"><label>Elo 2 · cotovelo a ponta</label><input type="number" id="inL2" min="1"><span class="un">mm</span></div>
             <div class="nt">Estas medidas mudam o desenho e a area util na mesma proporcao. Meca do centro de um eixo ao centro do outro.</div>
             <button class="b mini" id="btSalvarElos">Aplicar medidas</button>
-            <h4>Curso das juntas</h4>
-            <div class="nt">A calibracao mede ate onde cada junta pode ir. Sem ela o robo nao executa programa.</div>
-            <button class="b" id="btCalib">Abrir assistente de calibracao</button>
-            <div class="tr"><span id="calEstado">--</span></div>
-            <button class="b mini x" id="btCalApagar">Apagar calibracao gravada</button>
-            <div class="pq2" id="qCalApagar"></div>
-            <div class="nt">Apagar volta o robo ao <b>modo de instalacao</b>: o jog
-            fica livre, sem limite de curso, e programa e trajetoria ficam
-            recusados ate calibrar de novo. A resolucao dos eixos nao e
-            apagada &mdash; ela descreve a mecanica, nao a medicao.</div>
             <h4>Bancada</h4>
             <button class="b mini" id="btTeste">Pulsar rele por 2 segundos</button>
           </div>
@@ -2007,6 +2006,12 @@ function ping(u){return fetch(u,{method:"POST"}).catch(function(){});}
 
 /* ---------- jog com heartbeat ---------- */
 const tm={};
+/* Ha algum eixo sendo comandado agora -- pelas setas ou pelo joystick.
+   Quem pergunta e o tick(), para nao roubar a vez do heartbeat. */
+function jogando(){
+  for(const k in tm) if(tm[k]) return true;
+  return joyAtivo === true;
+}
 function jogOn(j,d,el){
   if(tm[j])return;
   if(el)el.classList.add("press");
@@ -2067,7 +2072,15 @@ function abrir(n){
 /* ---------- acoes ---------- */
 let carregou=false;
 $("btParar").onclick =function(){post("/api/parar");};
-$("btServos").onclick=function(){post("/api/servos?v="+(D.servos?0:1)+"&j=0");};
+/* Uma chave por eixo. Nao alterna sozinha ao clique: quem manda no
+   estado dela e o que o driver respondeu, e mudar na hora do toque
+   mostraria "ligado" com o barramento ainda calado. */
+[1,2].forEach(function(k){
+  $("chSrv"+k).onclick=function(){
+    const ligado=(k===1)?D.srv1:D.srv2;
+    post("/api/servos?v="+(ligado?0:1)+"&j="+k);
+  };
+});
 
 /* Um botao por eixo, porque cada driver e um escravo Modbus proprio: com
    um driver so na bancada, exigir os dois nao habilitava nada. E o mesmo
@@ -2081,13 +2094,6 @@ $("btServos").onclick=function(){post("/api/servos?v="+(D.servos?0:1)+"&j=0");};
 });
 $("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
 $("btTeste").onclick =function(){post("/api/teste/rele");};
-$("btCalib").onclick =function(){post("/api/calib/iniciar");};
-$("btCalApagar").onclick=function(){
-  if(confirm("Apagar a calibracao gravada?\n\nO robo volta ao modo de instalacao: "+
-             "jog livre e sem limite de curso, programa e trajetoria recusados "+
-             "ate calibrar de novo."))
-    post("/api/calib/apagar");
-};
 /* Sentido do eixo: uma rota so, chamada dos dois lugares onde o assunto
    aparece -- Ajustes e a etapa de referencia da calibracao. Duas telas,
    um conceito, um caminho. */
@@ -2436,11 +2442,17 @@ $("btMesaLimpar").onclick=function(){
   if(!confirm("Apagar a area da mesa ensinada?\n\nO braco volta a se proteger so pelo Y minimo e pelo raio da base."))return;
   post("/api/mesa/limpar").then(calibAtualizar);};
 
-/* Os dois atalhos para o assistente e para apagar a calibracao: a acao e
-   a mesma dos botoes da pagina Maquina, e por isso reaproveitam o
-   handler em vez de duplicar a regra. */
-$("btCalIni2").onclick=function(){ if($("btCalib"))$("btCalib").click(); };
-$("btCalApagar2").onclick=function(){ if($("btCalApagar"))$("btCalApagar").click(); };
+/* A calibracao guiada e o UNICO caminho. Havia um segundo bloco em
+   Ajustes que abria o mesmo assistente, e ter dois lugares para a mesma
+   coisa so faz o operador perguntar qual e a diferenca -- nao havia
+   nenhuma. Aqui e onde ela mora, na ordem em que os passos acontecem. */
+$("btCalIni2").onclick=function(){ post("/api/calib/iniciar","qCalIni2"); };
+$("btCalApagar2").onclick=function(){
+  if(confirm(tr("Apagar a calibracao gravada?")+"\n\n"+
+             tr("O robo volta ao modo de instalacao: jog livre e sem limite de "+
+                "curso, programa e trajetoria recusados ate calibrar de novo.")))
+    post("/api/calib/apagar","qCalApagar2");
+};
 
 /* ---------- zerar aqui e aferir a reducao ---------- */
 /* Os pulsos contados desde a marca aparecem em tempo real: sem isso o
@@ -3016,13 +3028,57 @@ function legendaPostura(z){
                     : "posicao medida (uma junta sem leitura)";
 }
 
+/* ---------- o braco desenhado glisa entre as amostras ----------
+   O /api/status chega a cada 220 ms e o desenho roda a cada quadro:
+   sem isto o braco repetia a mesma pose varias vezes e SALTAVA para a
+   proxima -- uns 4,5 quadros por segundo de movimento de verdade, que
+   e exatamente o "parece que esta travando".
+   O robo nao anda aos saltos; era o desenho que mostrava assim.
+
+   Aproximacao amortecida, nao extrapolacao: extrapolar pela velocidade
+   passa do ponto toda vez que o eixo para, e um braco que ultrapassa e
+   volta mente sobre onde a ponta esteve. Isto atrasa um pouco e nunca
+   inventa posicao que nao houve. */
+const SUAVE_TAU_MS = 90;
+let suave = null, suaveMs = 0;
+
+function suavizar(a1, a2){
+  const agora = (typeof performance !== "undefined") ? performance.now() : Date.now();
+  if(!suave){ suave = {t1:a1, t2:a2}; suaveMs = agora; return suave; }
+  const dt = Math.min(agora - suaveMs, 500);   /* aba oculta nao teleporta */
+  suaveMs = agora;
+  if(Math.abs(a1 - suave.t1) > SUAVE_PULO_GRAUS ||
+     Math.abs(a2 - suave.t2) > SUAVE_PULO_GRAUS){
+    suave.t1 = a1; suave.t2 = a2; return suave;
+  }
+  const k = 1 - Math.exp(-dt / SUAVE_TAU_MS);
+  suave.t1 += (a1 - suave.t1) * k;
+  suave.t2 += (a2 - suave.t2) * k;
+  /* Encosta de vez quando ja chegou: senao fica uma sobra permanente de
+     centesimos de grau, e o numero na tela nunca bate com o do robo. */
+  if(Math.abs(a1 - suave.t1) < 0.01) suave.t1 = a1;
+  if(Math.abs(a2 - suave.t2) < 0.01) suave.t2 = a2;
+  return suave;
+}
+
+/* Salto que nao e movimento -- zerar a maquina, recuperar posicao pelo
+   encoder -- nao deve ser glisado: ali o braco nao percorreu o caminho, e
+   desenhar o percurso seria mostrar um movimento que nao aconteceu.
+   Reconhecido pelo TAMANHO: nenhum eixo anda 30 graus entre duas
+   amostras de 220 ms na velocidade que esta maquina usa, entao um pulo
+   desse tamanho e mudanca de referencial, nao movimento. */
+function suavePular(){ suave = null; }
+const SUAVE_PULO_GRAUS = 30;
+
 function postura(){
   const c1 = D.t1 || 0, c2 = D.t2 || 0;
   const tem1 = !!D.m1ok, tem2 = !!D.m2ok;
   /* Junta sem leitura usa o comandado dela: uma bancada com um driver so
      no barramento tem de desenhar o braco inteiro assim mesmo. */
-  const r1 = tem1 ? (D.m1 || 0) : c1;
-  const r2 = tem2 ? (D.m2 || 0) : c2;
+  const b1 = tem1 ? (D.m1 || 0) : c1;
+  const b2 = tem2 ? (D.m2 || 0) : c2;
+  const sv = suavizar(b1, b2);
+  const r1 = sv.t1, r2 = sv.t2;
   return {
     t1: r1, t2: r2,               /* o que se desenha */
     c1: c1, c2: c2,               /* o comandado, para o fantasma */
@@ -4679,6 +4735,9 @@ $("btSonSalvar").onclick=function(){
    o operador precisa saber a diferenca entre "mandei" e "tem torque". */
 function motorPintar(d){
   [1,2].forEach(function(k){
+    const ch=$("chSrv"+k);
+    if(ch) ch.className="ch"+(((k===1)?d.srv1:d.srv2)?" on":"")+
+                        (d.sonEst===1?" indo":"");
     const b=$("btMotor"+k),t=$("btMotor"+k+"T");if(!b||!t)return;
     const nome=tr("EIXO")+" "+k;
     if(d.sonReg===0){
@@ -4846,8 +4905,6 @@ function aplicar(d){
   t.textContent=erro?("Recusado: "+erro):d.msg;
   t.className="tira"+(erro||d.modo==="FALHA"?" er":(pronto?" ok":""));
 
-  $("btServos").textContent=tr(d.servos?"Desabilitar servos":"Habilitar servos");
-  $("btServos").className="b "+(d.servos?"":"pri");
   $("e1").classList.toggle("feita",pronto);
   $("sb1").textContent=pronto?("elos "+d.l1.toFixed(0)+"+"+d.l2.toFixed(0)+" mm · calibrado")
     :(d.servos?"falta calibrar":"servos desligados");
@@ -4927,14 +4984,10 @@ function aplicar(d){
   $("cInv2").className="ch"+(d.inv2?" on":"");
 
   const temCal=d.cal1&&d.cal2;
-  $("calEstado").textContent=temCal
-    ? ("calibrado · J1 "+d.j1min.toFixed(0)+"…"+d.j1max.toFixed(0)+"° · J2 "+
-       d.j2min.toFixed(0)+"…"+d.j2max.toFixed(0)+"°")
-    : "sem calibracao · modo de instalacao, jog livre";
   /* Estava desabilitando direto, sem dizer por que: botao apagado e mudo
      e a reclamacao mais antiga deste painel. Vai por acao(), como todos
      os outros. */
-  acao("CalApagar",
+  acao("CalApagar2",
        (d.modo!=="MANUAL"&&d.modo!=="CALIBRANDO")
          ? "apague a calibracao com o robo parado: "+(RM[d.modo]||d.modo)
        : !temCal ? "nao ha calibracao gravada para apagar" : "");
@@ -5117,7 +5170,12 @@ function tick(){
      esta escolhida. No computador ele virou coluna fixa e nao ha mais
      aba "enc" para escolher -- amarrar a consulta a aba deixava a coluna
      sempre aberta mostrando dado do momento em que a pagina carregou. */
-  if($("pnEnc")&&$("pnEnc").offsetParent)encAtualizar();
+  /* Enquanto o operador esta movendo, o painel do encoder cede a vez. O
+     WebServer do ESP32 atende UMA conexao por vez: status + encoder a
+     cada 220 ms disputando com o heartbeat do jog de 100 ms atrasava o
+     heartbeat, e jog sem heartbeat por 350 ms PARA o eixo -- travada de
+     verdade, no motor, nao no desenho. */
+  if(!jogando() && $("pnEnc") && $("pnEnc").offsetParent) encAtualizar();
   fetch("/api/status").then(function(r){return r.json();}).then(function(d){
     quedas=0;aplicar(d);
   }).catch(function(){
@@ -5705,7 +5763,12 @@ try{const a=localStorage.getItem("aba");if(a)abaInicial=a;}catch(e){}
 irAba(abaInicial);
 
 setInterval(tick,220);
-setInterval(pintar,45);
+/* Desenho no ritmo do monitor. O setInterval de 45 ms nao se alinhava
+   com os quadros da tela, entao um a cada tres saia repetido ou pulado
+   -- tremia mesmo com dado novo. O rAF tambem para sozinho quando a aba
+   sai da frente, em vez de gastar bateria desenhando o que ninguem ve. */
+function quadro(){ pintar(); requestAnimationFrame(quadro); }
+requestAnimationFrame(quadro);
 tick();
 lerPontos();
 sdAtualizar(true);

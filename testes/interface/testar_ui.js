@@ -1992,6 +1992,77 @@ async function fecharGaveta(pag) {
 
 
   // ------------------------------------------------------------------
+  // Fluidez do desenho. O /api/status chega a cada 220 ms e o desenho
+  // roda por quadro: sem suavizacao o braco repetia a mesma pose varias
+  // vezes e SALTAVA -- uns 4,5 quadros por segundo de movimento, que e o
+  // "parece que esta travando". O robo nao anda aos saltos; era o
+  // desenho que mostrava assim.
+  // ------------------------------------------------------------------
+  // Amostra o desenho DURANTE a transicao, pelo caminho de verdade: um
+  // valor novo chega do /api/status e os quadros seguintes tem de passar
+  // por angulos no meio, em vez de saltar.
+  await t.request.post(BASE + '/teste/estado', { data: { t1: 0, t2: 0, m1ok: false, m2ok: false } });
+  await t.waitForTimeout(900);
+
+  await t.evaluate(() => {
+    window.__am = [];
+    window.__amOn = true;
+    (function laco(){
+      if (!window.__amOn) return;
+      window.__am.push(postura().t1);
+      requestAnimationFrame(laco);
+    })();
+  });
+  await t.request.post(BASE + '/teste/estado', { data: { t1: 10 } });
+  await t.waitForTimeout(1400);
+  const am = await t.evaluate(() => { window.__amOn = false; return window.__am; });
+
+  const meio = am.filter(v => v > 0.05 && v < 9.9).length;
+  checar(meio >= 2,
+         'Movimento: o braco desenhado glisa entre as amostras em vez de saltar',
+         meio + ' quadros no meio do caminho, de ' + am.length);
+  checar(am.length && am[am.length - 1] === 10,
+         'Movimento: e encosta no valor de verdade, sem sobra permanente',
+         String(am[am.length - 1]));
+
+  // Salto que NAO e movimento -- zerar a maquina, recuperar posicao pelo
+  // encoder -- nao pode ser glisado: o braco nao percorreu aquele
+  // caminho, e desenha-lo seria mostrar movimento que nao houve.
+  await t.evaluate(() => {
+    window.__am2 = [];
+    window.__amOn2 = true;
+    (function laco(){
+      if (!window.__amOn2) return;
+      window.__am2.push(postura().t1);
+      requestAnimationFrame(laco);
+    })();
+  });
+  await t.request.post(BASE + '/teste/estado', { data: { t1: 90 } });
+  await t.waitForTimeout(1000);
+  const am2 = await t.evaluate(() => { window.__amOn2 = false; return window.__am2; });
+  const meio2 = am2.filter(v => v > 11 && v < 89).length;
+  checar(meio2 === 0,
+         'Movimento: mudanca de referencial pula direto, sem desenhar percurso',
+         meio2 + ' quadros no meio (tem de ser zero)');
+
+  // O desenho tem de andar no ritmo do monitor, nao num temporizador
+  // fixo que nao se alinha com os quadros.
+  const porQuadro = await t.evaluate(async () => {
+    let n = 0;
+    const antes = pintar;
+    window.pintar = function(){ n++; return antes.apply(this, arguments); };
+    await new Promise(r => setTimeout(r, 350));
+    window.pintar = antes;
+    return n;
+  });
+  checar(porQuadro >= 8,
+         'Movimento: o desenho roda por quadro do monitor, nao a cada 45 ms',
+         porQuadro + ' quadros em 350 ms');
+
+  await t.request.post(BASE + '/teste/estado', { data: { t1: 0, t2: 0 } });
+  await t.waitForTimeout(700);
+
+  // ------------------------------------------------------------------
   // Os botoes do motor no cabecalho. Ligar e desligar torque e a coisa
   // que mais se aperta na maquina, e estava enterrada numa gaveta de
   // Ajustes. Sao DOIS porque cada driver e um escravo Modbus proprio:
@@ -2124,13 +2195,13 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(1200);
   const ingles = await t.evaluate(() => ({
     abas: [...document.querySelectorAll('#abas button span')].map(e => e.textContent.trim()),
-    servos: document.getElementById('btServos').textContent.trim(),
+    eixo: document.getElementById('btMotor1').textContent.trim(),
     idioma: (() => { try { return localStorage.getItem('idioma'); } catch (e) { return null; } })(),
   }));
   checar(ingles.abas.includes('Program') && ingles.abas.includes('Table'),
          'Idioma: as abas ficam em ingles', ingles.abas.join(' '));
-  checar(/servos/i.test(ingles.servos) && /able/i.test(ingles.servos),
-         'Idioma: os botoes principais tambem', ingles.servos);
+  checar(/AXIS/.test(ingles.eixo),
+         'Idioma: os botoes principais tambem', ingles.eixo);
   checar(ingles.idioma === 'en', 'Idioma: a escolha fica gravada no navegador');
 
   // As notas longas NAO sao traduzidas -- e proposital, e a tela nao

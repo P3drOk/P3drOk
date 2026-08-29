@@ -2823,12 +2823,80 @@ E o zero move só os eixos que têm torque: com um driver no barramento
 leva o que responde e deixa o outro quieto, em vez de recusar ou de
 mandar pulso para um eixo parado (**V08d**, **V08e**).
 
+## R95 · Um motor ausente derrubava a máquina em FALHA  ✅
+
+Reportado como "não consigo habilitar, e às vezes quero mover para 0 e
+ele não deixa porque o sistema vê que só tem um motor conectado".
+
+Com um driver no barramento, `servosHabilitar(false, 0)` — o desabilitar
+das duas juntas — falhava na junta 2, e eu tratava esse "não confirmou"
+como o caso grave: eixo possivelmente energizado, sem caminho para
+cortar, portanto `FALHA`. Em `FALHA` **todo comando é recusado**,
+inclusive ir ao zero. O robô travava por causa de um motor que não está
+lá.
+
+Faltava uma distinção que agora é explícita (`sonJaEnergizou[2]`):
+
+| a junta | o "não confirmou" significa |
+|---|---|
+| **nunca teve torque** | o driver não está no barramento — nada a cortar |
+| **tinha torque** | pode estar energizada e não há segundo caminho — **FALHA** |
+
+Só a segunda derruba a máquina. A primeira diz o que é e segue.
+Cenário **V09**, que também confere que ir ao zero volta a funcionar
+depois e que o caso grave continua grave.
+
+Junto, as chaves por eixo em *Ajustes → Preparar a máquina* — uma
+`teclinha` para cada torque, ao lado dos dois botões do cabeçalho.
+
+## R96 · Duas calibrações para a mesma coisa  ✅
+
+*Ajustes → Preparar a máquina* tinha um bloco "Curso das juntas" que
+abria o **mesmo** assistente do cartão de calibração guiada — os botões
+do cartão guiado literalmente clicavam nos de Ajustes. Dois lugares para
+a mesma operação só fazem o operador perguntar qual é a diferença, e não
+havia nenhuma.
+
+Ficou a guiada, que é onde os passos aparecem na ordem em que dependem
+um do outro. O bloco duplicado saiu.
+
+## R97 · O braço parecia travar, e era o desenho  ✅
+
+Reportado como "o movimento do braço parece que está travando".
+
+O `/api/status` chega a cada **220 ms**; o desenho rodava a cada 45 ms.
+Resultado: a mesma pose desenhada cinco vezes seguidas e então um salto —
+**~4,5 quadros por segundo de movimento real**. O robô não anda aos
+saltos; era o desenho que mostrava assim.
+
+Três coisas mudaram, e a primeira é a que resolve:
+
+1. **O braço desenhado glisa entre as amostras.** Aproximação amortecida
+   (τ = 90 ms), não extrapolação por velocidade: extrapolar passa do
+   ponto toda vez que o eixo para, e um braço que ultrapassa e volta
+   mente sobre onde a ponta esteve. Um salto maior que 30° é mudança de
+   referencial — zerar a máquina, recuperar posição pelo encoder — e
+   pula direto, porque ali o braço não percorreu caminho nenhum.
+   Medido: **24 quadros no meio do caminho** onde antes eram zero.
+
+2. **O desenho passou a rodar por quadro do monitor** (`requestAnimation‐
+   Frame`) em vez de um `setInterval` de 45 ms, que não se alinhava com a
+   tela — um a cada três saía repetido ou pulado, e tremia mesmo com dado
+   novo. De brinde, para sozinho quando a aba sai da frente.
+
+3. **Menos disputa pelo servidor durante o jog.** O WebServer do ESP32
+   atende **uma conexão por vez**. Status + painel do encoder a cada
+   220 ms disputando com o heartbeat do jog de 100 ms atrasava o
+   heartbeat — e jog sem heartbeat por 350 ms **para o eixo**. Essa era
+   travada de verdade, no motor. O painel do encoder cede a vez enquanto
+   alguém está movendo.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **392 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **219 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **397 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **223 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

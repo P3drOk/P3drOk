@@ -19,6 +19,16 @@ static bool    sonPedidoEraLigar = false;
 static bool    sonAguardando     = false;
 static uint8_t sonPedidoJunta    = 0;
 
+// Se ESTE firmware chegou a energizar cada junta desde o boot.
+//
+// E o que separa os dois "desabilitar nao confirmou". Junta que tinha
+// torque e nao respondeu ao corte e o caso grave: o eixo pode estar
+// energizado e nao existe segundo caminho para cortar -- isso e FALHA.
+// Junta que nunca foi energizada e um driver que nao esta no barramento:
+// nao ha o que cortar, e derrubar a maquina por isso travava o robo por
+// causa de um motor que nao esta la.
+static bool    sonJaEnergizou[2] = {false, false};
+
 
 static int8_t   jogDir[2]     = {0, 0};
 static uint32_t jogUltimoMs[2] = {0, 0};
@@ -45,6 +55,7 @@ bool motoresIniciar() {
   sonPedidoEraLigar = false;
   sonAguardando     = false;
   sonPedidoJunta    = 0;
+  sonJaEnergizou[0] = sonJaEnergizou[1] = false;
   J1.habilitado = J2.habilitado = false;
 
   // O habilita nao tem pino: vai por Modbus, na tarefa do encoder. No
@@ -157,10 +168,15 @@ bool servosSupervisionar(bool& habilitouAgora) {
   // o portao aberto porque "talvez ainda tenha torque" seria ler o campo
   // ao contrario do que ele serve. Que o eixo pode estar energizado quem
   // diz e a FALHA e a mensagem, que e onde essa informacao ajuda.
+  bool cortePerdidoComTorque = false;
   for (uint8_t k = 1; k <= 2; k++) {
     if (junta != 0 && junta != k) continue;
     Junta& j = (k == 1) ? J1 : J2;
-    j.habilitado = pedidoEraLigar && encoderSonJuntaOk(k);
+    const bool ok = encoderSonJuntaOk(k);
+    if (!pedidoEraLigar && !ok && sonJaEnergizou[k - 1]) cortePerdidoComTorque = true;
+    j.habilitado = pedidoEraLigar && ok;
+    if (pedidoEraLigar && ok) sonJaEnergizou[k - 1] = true;
+    if (!pedidoEraLigar && ok) sonJaEnergizou[k - 1] = false;
   }
   servosLigados = J1.habilitado && J2.habilitado;
 
@@ -185,9 +201,21 @@ bool servosSupervisionar(bool& habilitouAgora) {
       definirMensagem("Nao consegui habilitar: %s", motivo);
       return false;
     }
-    // Desabilitar que falhou e outra coisa inteiramente. O eixo pode
-    // estar energizado, o firmware nao sabe, e nao existe segundo
-    // caminho para cortar. Isso e FALHA.
+    // Desabilitar que falhou tem duas leituras, e so uma e grave.
+    //
+    // A junta nunca teve torque: e um driver que nao esta no barramento.
+    // Nao ha o que cortar. Derrubar a maquina aqui a travava por causa
+    // de um motor ausente -- e em FALHA todo comando e recusado,
+    // inclusive levar o braco ao zero com o eixo que existe.
+    if (!cortePerdidoComTorque) {
+      definirMensagem("Sem resposta ao desabilitar: %s. "
+                      "Esse driver nunca foi energizado -- confira se ele "
+                      "esta no barramento", motivo);
+      return false;
+    }
+    // A junta TINHA torque e nao respondeu ao corte. Agora sim: o eixo
+    // pode estar energizado, o firmware nao sabe, e nao existe segundo
+    // caminho para cortar.
     definirMensagem("DESABILITAR NAO CONFIRMOU: %s. "
                     "Corte a potencia dos drivers pelo contator.", motivo);
     return true;

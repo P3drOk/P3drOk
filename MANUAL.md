@@ -448,6 +448,14 @@ Um eixo sem torque não recebe pulso, de propósito: o gerador contaria
 passos com o eixo parado e todo limite de curso passaria a apontar para o
 lugar errado.
 
+As mesmas duas chaves aparecem em *Ajustes → Preparar a máquina*, uma por
+eixo. É o mesmo comando: os botões do cabeçalho são o atalho.
+
+> **Um motor só na bancada.** Habilite o eixo que existe e trabalhe nele.
+> Desabilitar o eixo que não está no barramento avisa que aquele driver
+> não respondeu e segue — não derruba a máquina, porque um driver que
+> nunca teve torque não tem o que cortar.
+
 | cor | o que significa |
 |---|---|
 | verde | aquele eixo tem torque |
