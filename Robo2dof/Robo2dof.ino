@@ -109,7 +109,18 @@ static bool irParaPassos(long p1, long p2, bool exigeCalibracao = true) {
   return true;
 }
 
-static void irParaAngulos(float t1, float t2, bool exigeCalibracao = true) {
+// NOMEAR UM ANGULO nao exige calibracao, e por padrao.
+//
+// Os dois caminhos que chegam aqui -- "ir para o zero" e "ir para um
+// angulo" -- sao a mesma frase do operador, so muda o numero. Com o
+// encoder dizendo onde a junta esta, mandar ela para 60 graus e uma
+// ordem completa sem calibracao nenhuma; e sem calibracao o jog ja
+// rodava livre, no modo de instalacao.
+//
+// Ir a um PONTO GRAVADO e outra coisa e continua exigindo: aquele ponto
+// foi gravado num referencial calibrado, e persegui-lo sem ele manda o
+// braco para um lugar que ninguem escolheu.
+static void irParaAngulos(float t1, float t2, bool exigeCalibracao = false) {
   if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2),
                    exigeCalibracao)) {
     definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
@@ -506,9 +517,7 @@ static void processarComando(const Comando& c) {
       break;
 
     case CMD_IR_HOME:
-      // Sem exigir calibracao: ir a 0 grau e o que se faz para SAIR do
-      // estado nao calibrado, nao algo que dependa dele.
-      if (modoAtual == MODO_MANUAL) irParaAngulos(0.0f, 0.0f, false);
+      if (modoAtual == MODO_MANUAL) irParaAngulos(0.0f, 0.0f);
       break;
 
     case CMD_CALIB_INICIAR:

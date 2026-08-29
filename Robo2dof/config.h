@@ -248,6 +248,26 @@ static const uint32_t SON_PRAZO_MS        = 2000;
 // braco energizado nao e.
 static const uint32_t OTA_PRAZO_SON_MS    = 1500;
 
+// A partir daqui a contagem de passos DEIXOU de descrever o braco.
+//
+// Com servo ligado, uma divergencia entre o comandado e o medido e perda
+// de passo, e quem cuida dela e o assentamento -- que retoca ate
+// maxCorrecaoGraus (teto de 15) e acima disso denuncia em vez de mexer.
+//
+// Existe um terceiro caso que nao e nem um nem outro: o painel do
+// operador chegou a mostrar "comandado 1986,79 graus, medido -230,05,
+// erro +2216,85". Isso nao e perda de passo -- nenhum braco perde dois
+// mil graus. E a contagem tendo perdido o sentido, porque o motor nao
+// seguiu os pulsos (engrenagem eletronica errada, driver em falha, eixo
+// preso). Continuar confiando nela e pior do que jogar fora: todo limite
+// de curso, todo destino e todo erro passam a ser calculados sobre um
+// numero que nao existe.
+//
+// 45 graus e muito acima de qualquer erro de seguimento legitimo e muito
+// abaixo do disparate. Passando disso com o eixo PARADO e a leitura boa,
+// a contagem e reescrita pelo encoder -- e a maquina avisa.
+static const float DIVERGENCIA_MAXIMA_GRAUS = 45.0f;
+
 static const uint16_t ENC_PERIODO_MIN_MS = 20;      // teto de 50 leituras/s
 static const uint16_t ENC_PERIODO_PADRAO = 50;
 // Tempo maximo esperando a resposta do driver. 100 ms e o que o monitor

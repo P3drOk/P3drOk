@@ -524,13 +524,13 @@ async function fecharGaveta(pag) {
     joy: !!document.getElementById('joy').offsetParent,
     prec: !!document.getElementById('btPrec').offsetParent,
     jb: document.querySelectorAll('#pnMover .jb').length,
-    passo: document.querySelectorAll('#segPasso button').length,
-    modo: document.querySelectorAll('#segModo button').length,
+    vel: !!document.getElementById('inVelMov'),
+    rele: !!document.getElementById('btTesteMov'),
   }));
   checar(!controles.joy && controles.prec && controles.jb === 4 &&
-         controles.passo === 4 && controles.modo === 2,
-         'Painel: os controles continuam la, e o joystick sai no computador',
-         controles.jb + ' botoes de passo, joystick e precisao visiveis');
+         controles.vel && controles.rele,
+         'Painel: setas, velocidade e teste de rele na aba Mover; joystick fora no computador',
+         JSON.stringify(controles));
 
   // A tira de estado e UMA peca. Antes eram cinco pares soltos, e no
   // celular a fila encostava no PARAR e a primeira lampada saia da tela.
@@ -1342,8 +1342,8 @@ async function fecharGaveta(pag) {
     sd1: document.getElementById('anSd1').textContent,
     vo1: document.getElementById('anVo1').textContent,
     n2:  document.getElementById('anN2').textContent,
-    larg: document.getElementById('cvPos').width,
     sub: document.getElementById('sbAnal').textContent,
+    larg: document.getElementById('cvPos').width,
   }));
   // 1 linha e so o cabecalho: sem amostra a tabela nao prova nada.
   checar(anal.linhas > 1, 'Encoder: a tabela lista as amostras captadas',
@@ -1688,44 +1688,17 @@ async function fecharGaveta(pag) {
   checar(casou === '2', 'Robo 2D: o seletor da aba Mover segue o eixo escolhido no desenho',
          'selJunta = ' + casou);
 
-  // ---- PASSO: um toque anda o incremento escolhido e para ----
-  // E o modo padrao. Antes um toque rapido comecava e parava o jog, e o
-  // eixo andava um tiquinho imprevisivel -- o mesmo gesto querendo dizer
-  // duas coisas.
+  // ---- JOG: segurar anda, soltar para ----
+  // Foi ensaiado aqui um modo "passo" com incrementos fixos de 1, 5, 10
+  // e 30 graus. Saiu a pedido de quem opera: na bancada o que se quer e
+  // encostar e ver o braco andar, nao escolher um numero antes. O gesto
+  // voltou a ser um so -- segurar anda, soltar para -- e o valor exato
+  // vai pelo campo "ir para o angulo", que existe para isso.
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(250);
-  await t.request.post(BASE + '/teste/estado', { data: { t1: 20, t2: 0, m1ok: false, m2ok: false } });
+  await t.request.post(BASE + '/teste/estado',
+    { data: { t1: 20, t2: 0, m1ok: false, m2ok: false } });
   await t.waitForTimeout(700);
-  await t.locator('#segPasso button[data-p="10"]').click();
-  await t.waitForTimeout(120);
-  rotas = [];
-  const setaPasso = t.locator('#pnMover .jb').first();
-  await setaPasso.dispatchEvent('pointerdown', { pointerId: 7 });
-  await setaPasso.dispatchEvent('pointerup', { pointerId: 7 });
-  await t.waitForTimeout(400);
-  const passo = rotas.find(x => x.split('?')[0] === '/api/mover');
-  checar(!!passo && /t1=30/.test(passo),
-         'Passo: com incremento 10, um toque leva a junta de 20 para 30 graus',
-         passo || rotas.join(' '));
-  const semJog = rotas.filter(x => x.split('?')[0] === '/api/jog');
-  checar(semJog.length === 0,
-         'Passo: e o toque NAO vira jog continuo -- um gesto, um significado',
-         semJog.length + ' chamadas a /api/jog');
-
-  await t.locator('#segPasso button[data-p="1"]').click();
-  await t.waitForTimeout(120);
-  rotas = [];
-  await setaPasso.dispatchEvent('pointerdown', { pointerId: 8 });
-  await setaPasso.dispatchEvent('pointerup', { pointerId: 8 });
-  await t.waitForTimeout(400);
-  const passo1 = rotas.find(x => x.split('?')[0] === '/api/mover');
-  checar(!!passo1 && /t1=21/.test(passo1),
-         'Passo: trocando para 1 grau, o mesmo toque anda 1 grau',
-         passo1 || rotas.join(' '));
-
-  // Botoes de seta do jog, no modo CONTINUO.
-  await t.locator('#segModo button[data-m="continuo"]').click();
-  await t.waitForTimeout(150);
   rotas = [];
   const seta = t.locator('#pnMover .jb').first();
   await seta.dispatchEvent('pointerdown', { pointerId: 5 });

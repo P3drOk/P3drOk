@@ -5081,6 +5081,89 @@ static void teste_V14_velocidade_por_motor() {
   rodarComWeb(60);
 }
 
+// ---------------------------------------------------------------------
+// V15: NOMEAR UM ANGULO nao exige calibracao.
+//
+// "Ir para o zero" ja tinha sido liberado; "ir para um angulo" nao, e a
+// diferenca nao tem razao de ser -- as duas sao a mesma frase, so muda o
+// numero. Com o encoder dizendo onde a junta esta, mandar ela para 60
+// graus e uma ordem completa sem calibracao nenhuma.
+//
+// Ir a um PONTO GRAVADO continua exigindo: aquele ponto foi gravado num
+// referencial calibrado.
+// ---------------------------------------------------------------------
+static void teste_V15_ir_a_um_angulo_sem_calibracao() {
+  secao("V15  Ir para um angulo nomeado, sem calibracao");
+  reiniciarSistema();
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(150);
+
+  J1.calibrada = J2.calibrada = false;
+  configEncoder.reg[0] = configEncoder.reg[1] = 0;
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, 83.0f));
+  rodarComWeb(40);
+
+  // Exatamente o caso relatado: eixo 1 em 83 graus, pedido 60.
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, 60.0f, 0.0f);
+  rodarComWeb(80);
+  nota("de 83 para 60 graus sem calibracao: modo=%d -- \"%s\"",
+       (int)modoAtual, ultimaMensagem);
+  checar(modoAtual == MODO_POSICIONANDO, "V15a",
+         "nomear um angulo nao exige calibracao: e a mesma frase do ir ao zero");
+
+  uint32_t t = 0;
+  while (motoresEmMovimento() && t < 30000) { rodarComWeb(40); t += 40; }
+  nota("chegou em %.2f graus", (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 60.0f) < 1.0f, "V15b",
+         "e chega no angulo pedido");
+}
+
+// ---------------------------------------------------------------------
+// V16: quando a contagem para de descrever o braco, ela e reancorada.
+//
+// O painel do operador chegou a mostrar "comandado 1986,79 graus, medido
+// -230,05, erro +2216,85". Isso nao e perda de passo -- nenhum braco
+// perde dois mil graus. E a contagem tendo perdido o sentido porque o
+// motor nao seguiu os pulsos. Continuar confiando nela e pior do que
+// joga-la fora: todo limite de curso e todo destino passam a ser
+// calculados sobre um numero que nao existe.
+// ---------------------------------------------------------------------
+static void teste_V16_contagem_perdida_e_reancorada() {
+  secao("V16  Contagem que se perdeu volta a ser a do encoder");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  g_espelharEixo = false;
+
+  // O encoder mede uma posicao, e a contagem de passos vai para MUITO
+  // longe dela -- e o que acontece quando o motor nao segue os pulsos.
+  const float medido = passosParaGraus(J1, posicaoJ1());
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, medido + 600.0f));
+  rodarComWeb(400);
+
+  const float conta = passosParaGraus(J1, posicaoJ1());
+  nota("contagem %.1f graus, encoder %.1f graus -- \"%s\"",
+       (double)conta, (double)encoderLer(1).graus, ultimaMensagem);
+  checar(fabsf(conta - encoderLer(1).graus) < 1.0f, "V16a",
+         "acima do teto, a contagem e reescrita pelo encoder: e ele que "
+         "sabe onde o braco esta");
+  checar(strstr(ultimaMensagem, "reancorada") != nullptr, "V16b",
+         "e a maquina DIZ que reescreveu -- mudar a posicao em silencio "
+         "seria a tela trocando de numero sem ninguem entender por que");
+
+  // Abaixo do teto NADA muda: divergencia pequena continua sendo perda
+  // de passo, e continua sendo do assentamento.
+  const float antes = passosParaGraus(J1, posicaoJ1());
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, antes + 3.0f));
+  rodarComWeb(400);
+  nota("divergencia de 3 graus: contagem ficou em %.2f",
+       (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - (antes + 3.0f)) < 0.5f, "V16c",
+         "divergencia pequena nao e reancorada: ela e perda de passo, e "
+         "quem cuida dela e o assentamento");
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6696,6 +6779,8 @@ int main() {
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V13_escala_do_encoder_ensinada();
   teste_V14_velocidade_por_motor();
+  teste_V15_ir_a_um_angulo_sem_calibracao();
+  teste_V16_contagem_perdida_e_reancorada();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

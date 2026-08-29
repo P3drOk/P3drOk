@@ -171,15 +171,37 @@ button,input{font:inherit;color:inherit}
  padding:8px 10px;margin-bottom:9px;border-radius:4px;
  background:var(--painel);border:1px solid var(--linha);color:var(--letra)}
 /* Ir para um angulo numa linha so: de onde esta, para onde vai. */
+/* Velocidade numa barra, ao lado do braco: e olhando ele andar que se
+   acerta velocidade, nao numa gaveta de ajustes. */
+.velLinha{display:flex;align-items:center;gap:10px;margin:10px 0 8px}
+.velLinha label{font-size:12px;color:var(--letra2);flex:0 0 auto}
+.velLinha input[type=range]{flex:1;min-width:0;accent-color:var(--arco)}
+.velLinha b{font-family:var(--mono);font-size:12px;color:var(--letra);
+ min-width:38px;text-align:right}
+/* Botoes lado a lado quando sao do mesmo assunto: dois botoes largos
+   empilhados ocupavam duas linhas para dizer duas palavras. */
+.linhaBt{display:flex;gap:7px;align-items:stretch;margin-bottom:6px}
+.linhaBt .b{margin:0;flex:1}
+/* Botao quadrado, so simbolo: "gravar ponto na posicao atual" e uma
+   frase para uma acao que se faz dezenas de vezes seguidas. */
+.bq{flex:0 0 auto;width:44px;display:grid;place-items:center;border:none;
+ border-radius:4px;cursor:pointer;background:var(--face);color:var(--letra2)}
+.bq.ok{background:var(--pronto);color:#fff}
+.bq:disabled{opacity:.45;cursor:default}
+.bq .ic{width:19px;height:19px}
 .irAng{display:flex;align-items:center;gap:7px;margin-bottom:6px}
 .irAng #irDe{font-family:var(--mono);font-size:12px;color:var(--letra2);
  min-width:58px;text-align:right}
 .irAng .seta{color:var(--letra3)}
 .irAng input{flex:1;min-width:70px;max-width:none;width:auto;text-align:right}
 .motores{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
+/* SEM TORQUE E VERMELHO, nao cinza.
+   Cinza dizia "nao sei" -- e a maquina sabe: ela releu o registrador do
+   driver antes de responder. O unico estado em que ela de fato nao sabe
+   e enquanto o barramento nao confirmou, e esse e o ambar. */
 .motor{flex:0 0 auto;border:none;font-family:var(--mono);font-size:12px;font-weight:700;
  letter-spacing:.08em;padding:12px 14px;border-radius:4px;cursor:pointer;color:#fff;
- background:var(--linha2);box-shadow:0 3px 0 rgba(0,0,0,.25)}
+ background:var(--brasa);box-shadow:0 3px 0 rgba(0,0,0,.25)}
 .motor.on{background:var(--pronto)}
 .motor.indo{background:var(--quente)}
 .motor.ruim{background:var(--brasa)}
@@ -901,14 +923,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="encCel"><span class="rot">junta 2</span><b id="eM2">--</b></div>
             </div>
             
-          </div>
-        </div>
-
-        <div class="et">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-grafico"/></svg></div>
-            <div class="tx"><div class="tt">Analise detalhada</div>
-            <span class="sb" id="sbAnal">tudo que foi captado</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
+            <h4>Analise detalhada</h4>
             <div class="grafico"><canvas id="cvPos"></canvas>
               <div class="legenda">
                 <div class="lg g1"><i></i>junta 1 medida</div>
@@ -954,19 +969,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="encCel"><span class="rot">faixa percorrida</span><b id="anFx2">--</b></div>
             </div>
 
-            <h4>Ultimas amostras</h4>
+            <h4>Ultimas amostras <span class="pq2" id="sbAnal"></span></h4>
             <div class="tabAmostras"><table id="tabEnc"><tbody></tbody></table></div>
             <button class="b mini" id="btEncCsv">Baixar tudo em CSV</button>
             <div class="pq2" id="qEncCsv"></div>
-            
-          </div>
-        </div>
 
-        <div class="et">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-onda"/></svg></div>
-            <div class="tx"><div class="tt">Diagnostico da linha</div>
-            <span class="sb">quando nao esta lendo</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
+            <h4>Diagnostico da linha</h4>
             <button class="b mini" id="btEncTestar">Testar a linha agora</button>
             <div class="pq2" id="qEncTestar"></div>
             <div class="res" id="encRel">--</div>
@@ -1072,10 +1080,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <select id="selJunta"><option value="1">Eixo 1</option><option value="2">Eixo 2</option></select></div>
             <div class="agora" id="movAgora">--</div>
 
-            <div class="seg" id="segModo">
-              <button data-m="passo" class="on">Passo</button>
-              <button data-m="continuo">Continuo</button>
-            </div>
             <div class="eixo">
               <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;<small>ANTI-HOR</small></button>
               <div class="id"><span class="rot">junta 1</span><div class="fx" id="fx1"></div></div>
@@ -1086,14 +1090,16 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
               <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
-            <div class="seg" id="segPasso">
-              <button data-p="1">1&deg;</button>
-              <button data-p="5" class="on">5&deg;</button>
-              <button data-p="10">10&deg;</button>
-              <button data-p="30">30&deg;</button>
-            </div>
             <div class="joyMotivo" id="joyMotivo"></div>
-            <button class="b mini" id="btPrec">Precisao: desligada</button>
+            <div class="velLinha">
+              <label for="inVelMov">Velocidade</label>
+              <input type="range" id="inVelMov" min="10" max="100" step="5">
+              <b id="velMovTx">--</b>
+            </div>
+            <div class="linhaBt">
+              <button class="b mini" id="btPrec">Precisao: desligada</button>
+              <button class="b mini" id="btTesteMov">Testar rele</button>
+            </div>
             <button class="b mini x" id="btRefer">Zerar a maquina aqui</button>
             <div class="pq2" id="qRefer"></div>
             <div class="nt">O curso e contado a partir da referencia: zerar
@@ -1110,9 +1116,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="pq2" id="qMoverSel"></div>
 
             <h4>Atalhos</h4>
-            <button class="b ok" id="btGravar">Gravar ponto na posicao atual</button>
+            <div class="linhaBt">
+              <button class="bq ok" id="btGravar" title="Gravar ponto na posicao atual">
+                <svg class="ic" aria-hidden="true"><use href="#i-alvo"/></svg></button>
+              <button class="b mini" id="btHome">Ir para o zero da maquina</button>
+            </div>
             <div class="pq2" id="qGravar"></div>
-            <button class="b mini" id="btHome">Ir para o zero da maquina</button>
             <div class="pq2" id="qHome"></div>
 
           </div>
@@ -1899,68 +1908,50 @@ function jogOff(j,el){
   if(el)el.classList.remove("press");
   ping("/api/jog?j="+j+"&d=0");
 }
-/* ---------- passo a passo, em graus ----------
-   Dois modos, e a diferenca fica dita na tela em vez de escondida no
-   gesto: em PASSO um toque anda o incremento escolhido e para; em
-   CONTINUO a seta anda enquanto estiver apertada, como sempre andou.
-   Um toque rapido no modo continuo andava um tiquinho imprevisivel --
-   era o mesmo gesto querendo dizer duas coisas. */
-let modoPasso = true;
-let passoGraus = 5;
+/* ---------- as setas ----------
+   Voltaram a ser jog puro: segura e anda, solta e para. O modo de passo
+   com incremento fixo saiu -- ele obrigava a escolher um numero antes de
+   mexer no braco, e mexer no braco tem de ser direto. Quem quer chegar a
+   um angulo exato usa "ir para um angulo", logo abaixo, que e onde essa
+   frase ja existe.
 
-/* O angulo de onde a junta ESTA. Prefere o que o encoder mediu: e a
-   posicao de verdade do braco. Sem leitura, cai no comandado, que e o
-   que o firmware acha -- e o unico numero que existe ali. */
+   O angulo de onde a junta ESTA. Prefere o que o encoder mediu: e a
+   posicao de verdade do braco. Sem leitura, cai no comandado. */
 function anguloAtual(j){
   if(j===1) return (D.m1ok ? D.m1 : D.t1) || 0;
   return (D.m2ok ? D.m2 : D.t2) || 0;
 }
 
-/* Um passo: leva a junta ao angulo atual mais o incremento, e deixa a
-   outra onde esta. Quem calcula a velocidade e a rampa e o firmware --
-   e o mesmo caminho de "ir para um angulo", que ja existia. */
-function darPasso(j,sentido){
-  const alvo = anguloAtual(j) + sentido*passoGraus;
-  const t1 = (j===1) ? alvo : anguloAtual(1);
-  const t2 = (j===2) ? alvo : anguloAtual(2);
-  post("/api/mover?t1="+t1.toFixed(2)+"&t2="+t2.toFixed(2),"qMoverSel");
-}
-
 document.querySelectorAll(".jb").forEach(function(b){
   b.addEventListener("pointerdown",function(e){
     e.preventDefault();
-    const j=+b.dataset.j, d=+b.dataset.d;
+    const j=+b.dataset.j;
     juntaSel=j;
     const sel=$("selJunta"); if(sel) sel.value=String(j);
-    if(modoPasso){ b.classList.add("press"); darPasso(j,d); return; }
     jogOn(b.dataset.j,b.dataset.d,b);
   });
   ["pointerup","pointerleave","pointercancel"].forEach(function(v){
-    b.addEventListener(v,function(){
-      if(modoPasso){ b.classList.remove("press"); return; }
-      jogOff(b.dataset.j,b);
-    });});
+    b.addEventListener(v,function(){ jogOff(b.dataset.j,b); });});
 });
 
-document.querySelectorAll("#segModo button").forEach(function(b){
-  b.onclick=function(){
-    modoPasso = (b.dataset.m==="passo");
-    document.querySelectorAll("#segModo button").forEach(function(x){
-      x.classList.toggle("on",x===b);});
-    /* Trocar de modo com uma seta apertada deixaria o eixo andando sem
-       ninguem segurando nada. */
-    jogOff("1"); jogOff("2");
-    const sp=$("segPasso"); if(sp) sp.style.display = modoPasso ? "" : "none";
-  };
-});
-document.querySelectorAll("#segPasso button").forEach(function(b){
-  b.onclick=function(){
-    passoGraus = +b.dataset.p;
-    document.querySelectorAll("#segPasso button").forEach(function(x){
-      x.classList.toggle("on",x===b);});
-  };
-});
 $("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
+/* Velocidade do jog numa barra, em POR CENTO do que a maquina aceita.
+   Antes so existia em Ajustes, em graus por segundo, longe do braco --
+   e velocidade e coisa que se acerta olhando o braco andar. */
+const VEL_MAX_JOG = 60;      /* graus/s no topo da barra */
+let velEnviando = false;
+$("inVelMov").oninput=function(){
+  $("velMovTx").textContent=$("inVelMov").value+"%";
+};
+$("inVelMov").onchange=function(){
+  if(velEnviando) return;
+  velEnviando=true;
+  const g=(VEL_MAX_JOG*(+$("inVelMov").value)/100).toFixed(1);
+  post("/api/config?velN="+g).then(function(){velEnviando=false;})
+                             .catch(function(){velEnviando=false;});
+};
+$("btTesteMov").onclick=function(){post("/api/teste/rele","qMoverSel");};
+
 $("btMoverSel").onclick=function(){
   const j=juntaSel;
   const alvo=parseFloat($("inMtSel").value);
@@ -4583,9 +4574,12 @@ function analisar(d){
     anCel("anFx"+k,faixa>0?String(faixa):"--");
   });
 
+  /* A analise deixou de ser gaveta propria e virou secao da mesma
+     leitura. O tamanho da coleta continua tendo que aparecer: a tabela
+     mostra so as ultimas 40, e sem esse numero nao da para saber se a
+     estatistica acima veio de 40 leituras ou de 4000. */
   const total=encAmostras.length;
-  $("sbAnal").textContent = total
-    ? total+" amostras guardadas" : "tudo que foi captado";
+  $("sbAnal").textContent=total?("· "+total+" amostras"):"";
 
   /* Tabela: as ultimas, mais novas em cima. Mais que isso o operador nao
      le, e o CSV leva tudo. */
@@ -4818,7 +4812,16 @@ function encAplicar(d){
 
 function encAtualizar(){
   return fetch("/api/encoder").then(function(r){return r.json();})
-   .then(encAplicar).catch(function(){});
+   .then(encAplicar)
+   .catch(function(e){
+     /* O catch existe para a REDE cair sem encher a tela de erro. Ele
+        engolia tambem defeito de codigo dentro de encAplicar, e ai meia
+        tela parava de atualizar sem nada explicando -- foi assim que uma
+        variavel removida derrubou tabela, travamento e zero de uma vez.
+        Falha de rede segue silenciosa; defeito vai para o console. */
+     if(e instanceof TypeError && /fetch|network/i.test(e.message||"")) return;
+     if(e) console.error("encAplicar:", e);
+   });
 }
 
 /* As chaves sao locais ate o operador salvar: mudar o formato do valor a
@@ -5191,6 +5194,10 @@ function aplicar(d){
     $("inPv1").value=d.ppv1;$("inRd1").value=d.red1;
     $("inPv2").value=d.ppv2;$("inRd2").value=d.red2;
     if($("inFv1"))$("inFv1").value=(d.fvel1!==undefined?d.fvel1:1);
+    if($("inVelMov")&&d.velN!==undefined){
+      const pc=Math.round(Math.min(100,Math.max(10,d.velN/VEL_MAX_JOG*100)));
+      $("inVelMov").value=pc; $("velMovTx").textContent=pc+"%";
+    }
     if($("inFv2"))$("inFv2").value=(d.fvel2!==undefined?d.fvel2:1);
     $("inL1").value=d.l1;$("inL2").value=d.l2;$("inDb").value=d.dobra;
     $("inEy").value=d.envY;$("inEr").value=d.envR;
@@ -5314,6 +5321,7 @@ function aplicar(d){
   else if(rodando)pintarLista();
 }
 
+let encPulos = 0;
 function tick(){
   /* O cartao so e consultado quando a aba de arquivos esta aberta: o
      WebServer atende uma conexao por vez e cada requisicao a mais
@@ -5328,7 +5336,22 @@ function tick(){
      cada 220 ms disputando com o heartbeat do jog de 100 ms atrasava o
      heartbeat, e jog sem heartbeat por 350 ms PARA o eixo -- travada de
      verdade, no motor, nao no desenho. */
-  if(!jogando() && $("pnEnc") && $("pnEnc").offsetParent) encAtualizar();
+  /* A leitura do encoder alimenta duas telas: o painel da aba Encoder e
+     a pagina Encoder da configuracao (zero absoluto, assentamento,
+     travamento). Consultar so quando o PAINEL esta a vista deixava a
+     pagina de configuracao mostrando "--" para sempre. */
+  const cfgEnc = $("veuCfg") && $("veuCfg").classList.contains("on") &&
+                 $("cfgEncoder") && $("cfgEncoder").offsetParent;
+  const precisaEnc = cfgEnc || ($("pnEnc") && $("pnEnc").offsetParent);
+  /* Ceder a vez durante o jog e ECONOMIA, nao regra: se um temporizador
+     de jog vazasse, "jogando" ficaria verdadeiro para sempre e o painel
+     do encoder morreria em silencio, sem nada na tela explicando.
+     Entao a cada quarta volta a consulta acontece de qualquer jeito. */
+  encPulos = jogando() ? (encPulos + 1) : 0;
+  if(precisaEnc && (!jogando() || encPulos >= 4)){
+    if(encPulos >= 4) encPulos = 0;
+    encAtualizar();
+  }
   fetch("/api/status").then(function(r){return r.json();}).then(function(d){
     quedas=0;aplicar(d);
   }).catch(function(){

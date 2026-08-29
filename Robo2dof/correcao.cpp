@@ -3,6 +3,7 @@
 #include "motores.h"
 #include "cinematica.h"
 #include "solda.h"
+#include "armazenamento.h"
 #include <string.h>
 #include <math.h>
 
@@ -435,7 +436,45 @@ static void avisarImplausivel(uint8_t k, float graus) {
                   (double)j.grausMin, (double)j.grausMax);
 }
 
+// A contagem de passos parou de descrever o braco: reescreve pelo
+// encoder. Ver DIVERGENCIA_MAXIMA_GRAUS em config.h para o porque.
+//
+// Roda com o servo LIGADO, que e onde o assentamento manda -- mas so
+// acima do teto em que o assentamento ja desistiu. Abaixo dele nada
+// muda: divergencia pequena continua sendo perda de passo, e continua
+// sendo do assentamento.
+static void reancorarSeAContagemSePerdeu() {
+  if (motoresEmMovimento()) return;
+  if (correcaoEmCurso()) return;
+
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    Junta& j = (k == 1) ? J1 : J2;
+    if (configEncoder.reg[i] == 0) continue;
+    if (j.passosPorGrau <= 0.0f) continue;
+    if (!leituraConfiavel(k)) continue;
+
+    const LeituraEncoder L = encoderLer(k);
+    const float conta = passosParaGraus(j, (k == 1) ? posicaoJ1() : posicaoJ2());
+    const float dif   = L.graus - conta;
+    if (fabsf(dif) < DIVERGENCIA_MAXIMA_GRAUS) continue;
+
+    ajustarContagem(j, grausParaPassos(j, L.graus));
+    // Dizer sempre: reescrever a posicao da maquina em silencio seria a
+    // tela mudando de numero sem ninguem entender por que.
+    definirMensagem("Junta %u: a contagem tinha se perdido (%.0f graus de "
+                    "diferenca) e foi reancorada no encoder, que mede "
+                    "%.2f graus", (unsigned)k, (double)dif, (double)L.graus);
+    logEvento("contagem reancorada na junta %u: %.1f -> %.1f graus",
+              (unsigned)k, (double)conta, (double)L.graus);
+  }
+}
+
 void seguirEixoSolto() {
+  // A contagem perdida se conserta com servo ligado ou desligado: e o
+  // caso em que ela deixou de significar qualquer coisa.
+  reancorarSeAContagemSePerdeu();
+
   // Regra unica e dura: servo ligado, nao segue. Com servo ligado uma
   // divergencia e perda de passo, e quem cuida disso e o assentamento.
   if (servosLigados) return;

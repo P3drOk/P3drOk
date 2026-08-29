@@ -1030,6 +1030,62 @@ banco de interface, que serve exatamente esta saida.
 
 Comprimida: 80.836 -> 61.159 bytes, com a interface maior do que antes.
 
+## R111 · A contagem de passos perdia o sentido, e o erro nascia daí  ✅
+
+O painel mostrava `ERRO +2216,85°` porque o **comandado** não era uma
+medida: é o contador de passos do firmware, que só vale enquanto cada
+pulso vira movimento. Perdido um destravamento, um religamento ou um eixo
+segurado à mão, o contador segue andando sozinho e o "erro" passa a medir
+a distância entre o braço e uma ficção.
+
+A resposta não foi esconder o número — foi **reancorar o contador**. Com
+o braço parado e a diferença passando de `DIVERGENCIA_MAXIMA_GRAUS`
+(45°), o firmware reescreve o contador a partir do encoder, registra o
+evento e diz na tela que reancorou. O encoder é a verdade da posição; o
+contador é conveniência de quem gera pulso.
+
+## R112 · Ângulo nomeado passou a funcionar sem calibração  ✅
+
+`irParaAngulos()` exigia calibração das duas juntas. Numa máquina em
+montagem — um driver ligado, nenhum limite ensinado — digitar 60° não
+fazia nada e **nada explicava o silêncio**. Mas ir para um ângulo nomeado
+não precisa de limites: precisa de escala, que o encoder já dá. A
+exigência caiu; o que continua valendo é a trava de segurança
+(`movimentoSeguro`) e ter ao menos uma junta habilitada.
+
+## R113 · O modo "passo" saiu: um gesto, um significado  ✅
+
+Foram acrescentados incrementos fixos de 1°, 5°, 10° e 30° na aba Mover.
+Na bancada o gesto que se quer é encostar e ver o braço andar — não
+escolher um número antes de tocar. Os incrementos saíram, o jog voltou a
+ser gesto único (segurar anda, soltar para) e o valor exato continua indo
+pelo campo "ir para o ângulo", que existe exatamente para isso.
+
+No lugar deles entrou o que faltava de verdade na aba: um **controle de
+velocidade** e o **teste de relé**, que antes só existiam em outra tela.
+"Gravar ponto" virou um botão quadrado com o símbolo do alvo.
+
+## R114 · Os eixos começam vermelhos, não cinza  ✅
+
+`EIXO 1` / `EIXO 2` nasciam cinza — cor de "não sei". Mas o estado
+inicial é sabido: **sem torque**. Cinza convidava a supor que talvez
+estivessem ligados. O fundo passou a ser o mesmo vermelho de "sem
+torque", e o verde só aparece quando o driver confirma o comando de
+habilita no barramento.
+
+## R115 · Um `catch` vazio escondeu meia tela  ✅
+
+`encAtualizar()` terminava em `.catch(function(){})` para a rede poder
+cair sem encher a tela de erro. Ele engolia também **defeito de código**:
+ao fundir as três gavetas do encoder numa seção só, uma variável usada
+logo abaixo saiu junto, `encAplicar` passou a lançar `ReferenceError`, e
+com ele pararam de atualizar a tabela de amostras, o aviso de travamento
+e o estado do zero — **cinco sintomas sem parentesco aparente, um único
+defeito**.
+
+Falha de rede segue silenciosa; qualquer outra vai para o console. O
+banco de interface ganhou a guarda de console limpo justamente para isso.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -3207,8 +3263,8 @@ regra existir.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **418 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **240 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **423 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **237 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).
