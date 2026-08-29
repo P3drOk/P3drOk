@@ -2,32 +2,40 @@
 #include "config.h"
 
 // =====================================================================
-//  Assistente de calibracao.
+//  CALIBRACAO: QUATRO MARCAS, E NADA MAIS.
 //
-//  Papel de cada coisa (era o ponto mais confuso do codigo antigo):
-//   - passosPorGrau vem da engrenagem eletronica do driver x reducao
-//     mecanica. E um numero CONHECIDO, nao medido no olho.
-//   - a calibracao mede os LIMITES DE CURSO fisicos de cada junta.
-//   Ao final o assistente mostra os limites convertidos em graus para
-//   voce conferir se batem com a realidade da maquina.
+//  Levar a junta 1 ao limite POSITIVO e marcar; ao NEGATIVO e marcar; o
+//  mesmo na junta 2. Acabou. O operador chega em cada limite como
+//  preferir -- com torque, pelo jog; ou com os motores soltos,
+//  empurrando o braco com a mao.
+//
+//  Do que foi marcado sai tudo:
+//    - o CURSO de cada junta;
+//    - o ZERO, que passa a ser o MEIO do curso -- a unica escolha que
+//      nao pede numero nenhum;
+//    - a ESCALA DO ENCODER em contagens por grau, quando ele leu as duas
+//      marcas: entre elas ha um tanto de contagens e um tanto de graus, e
+//      a divisao e a escala, com sinal.
+//
+//  O que continua declarado, e so isto: a REDUCAO do redutor. Ela e
+//  mecanica, esta escrita no que se comprou, e com um sensor so antes do
+//  redutor nenhuma medida a revela.
+//
+//  E CALIBRAR E OPCIONAL. Sem limites a maquina opera igual -- ela so
+//  fica sem protecao de curso. Nada e recusado por falta de calibracao.
 // =====================================================================
 
 void calibIniciar();
 
-// Confirma a etapa atual do assistente. Os dois numeros sao opcionais e
-// mudam de significado conforme a etapa:
-//
-//   CAL_HOME       angulo REAL de cada junta nesta posicao de referencia.
-//                  0 e 0 significa "braco esticado apontando para +X",
-//                  que e a postura que a cinematica chama de zero.
-//
-//   CAL_CONCLUIDO  curso REAL de cada junta, medido com transferidor ou
-//                  inclinometro. Zero = nao aferir, mantem a resolucao
-//                  que esta nos ajustes.
-//
-// Nas demais etapas os numeros sao ignorados.
+// Marca a etapa atual e avanca. Os dois numeros continuam na assinatura
+// porque a fila de comandos os carrega, mas nenhum e usado: a calibracao
+// nao pergunta nada.
 void calibConfirmar(float f1 = 0.0f, float f2 = 0.0f);
 void calibCancelar();
+
+// A primeira etapa e a unica em que nada foi medido: e ali, e so ali,
+// que trocar o sentido de um eixo nao contradiz uma marca ja feita.
+bool calibNaPrimeiraEtapa();
 
 // Esquece a calibracao gravada nas duas juntas: limites, referencia e a
 // marca de "calibrada". O robo volta ao modo de instalacao, com o jog

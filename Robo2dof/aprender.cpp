@@ -74,12 +74,13 @@ bool aprenderEntrar(const char** motivo) {
     if (motivo) *motivo = "espere o braco parar";
     return false;
   }
-  // Ponto de programa e um par de angulos. Sem calibracao nao ha angulo:
-  // ha contagem de pulsos, que nao quer dizer nada na peca.
-  if (!J1.calibrada || !J2.calibrada) {
-    if (motivo) *motivo = "calibre as juntas antes de ensinar pontos";
-    return false;
-  }
+  // CALIBRAR E OPCIONAL, e ensinar pontos nao depende disso.
+  //
+  // O argumento antigo era que sem calibracao nao ha angulo, so contagem
+  // de pulsos. Mas um ponto ensinado e gravado na mesma regua com que
+  // sera reproduzido: se a regua nao mudar, o braco volta exatamente
+  // para onde estava. O que a calibracao acrescenta e a PROTECAO DE
+  // CURSO -- saber onde estao os batentes --, e isso e outra coisa.
 
   // Ninguem ensina caminho com o arco aberto.
   soldaDesligar();

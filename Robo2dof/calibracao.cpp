@@ -8,48 +8,70 @@
 
 bool calibAtiva() { return estadoCalib != CAL_INATIVO; }
 
-// Posicao dos contadores no instante em que o HOME foi gravado. Cancelar
-// a calibracao depois disso precisa DESFAZER o zerarPosicoes(): senao os
-// limites recuperados do NVS se referem ao zero antigo e passam a
-// proteger a regiao errada, com erro igual a distancia entre os dois.
-static long origemAntesDoZero1 = 0;
-static long origemAntesDoZero2 = 0;
-static bool origemFoiDeslocada = false;
+// =====================================================================
+//  CALIBRAR SAO QUATRO MARCAS
+//
+//  Limite positivo do eixo 1, limite negativo do eixo 1, e o mesmo no
+//  eixo 2. Nada digitado. O operador pode chegar em cada limite como
+//  preferir: com torque, no jog; ou com os motores soltos, empurrando o
+//  braco com a mao -- nos dois casos o que se grava e onde a junta ESTA.
+//
+//  Do que foi marcado sai:
+//    - o CURSO de cada junta, em passos;
+//    - o ZERO, que passa a ser o MEIO do curso. E a unica escolha que
+//      nao pede numero nenhum, e a que deixa a area util centrada;
+//    - a ESCALA DO ENCODER em contagens por grau, quando ele leu as duas
+//      marcas. Ela sai de graca: entre as duas marcas ha um tanto de
+//      contagens e um tanto de graus, e a divisao e a escala.
+//
+//  O que NAO sai daqui, e continua declarado: a REDUCAO do redutor. Ela
+//  e mecanica, esta escrita no que o operador comprou, e com um sensor
+//  so antes do redutor nenhuma medida a revela.
+// =====================================================================
+static long    marcaP[2] = {0, 0}, marcaN[2] = {0, 0};
+static bool    temP[2]   = {false, false}, temN[2] = {false, false};
+static int32_t encP[2]   = {0, 0}, encN[2] = {0, 0};
+static bool    encPok[2] = {false, false}, encNok[2] = {false, false};
 
 uint8_t calibEixoAtivo() {
   switch (estadoCalib) {
-    case CAL_J1_NEG: case CAL_J1_VOLTA_NEG:
-    case CAL_J1_POS: case CAL_J1_VOLTA_POS: return 1;
-    case CAL_J2_NEG: case CAL_J2_VOLTA_NEG:
-    case CAL_J2_POS: case CAL_J2_VOLTA_POS: return 2;
+    case CAL_J1_POS: case CAL_J1_NEG: return 1;
+    case CAL_J2_POS: case CAL_J2_NEG: return 2;
     default: return 0;
   }
 }
 
+// A primeira etapa e a unica em que nada foi medido ainda: e ali, e so
+// ali, que trocar o sentido de um eixo nao contradiz uma marca ja feita.
+bool calibNaPrimeiraEtapa() { return estadoCalib == CAL_J1_POS; }
+
 // ---------------------------------------------------------------------
 void calibIniciar() {
-  // O assistente pede que o operador leve o braco ate os limites: sem
-  // torque nos drivers nao ha o que medir, so contador correndo solto.
-  if (!servosLigados) {
-    definirMensagem("Habilite os servos antes de calibrar");
-    return;
-  }
-
+  // Nao se exige mais torque para comecar.
+  //
+  // A calibracao passou a ser "leve o eixo ate o batente e marque", e a
+  // maneira mais segura de chegar num batente e com o motor SOLTO,
+  // empurrando com a mao -- que era justamente o que a exigencia
+  // antiga proibia. Com torque tambem funciona: o jog leva ate la.
   soldaDesligar();
   pararSuave();
   jogZerar();
 
-  origemFoiDeslocada = false;
+  for (uint8_t i = 0; i < 2; i++) {
+    temP[i] = temN[i] = false;
+    encPok[i] = encNok[i] = false;
+  }
 
-  // Enquanto nao houver calibracao valida, a protecao de postura fica
-  // desativada de proposito: e o operador que esta definindo os limites.
+  // Enquanto nao houver calibracao nova, a protecao de curso fica
+  // desativada de proposito: e o operador que esta definindo os limites,
+  // e proteger com os limites velhos o impediria de chegar nos novos.
   J1.calibrada = false;
   J2.calibrada = false;
 
   modoAtual   = MODO_CALIBRANDO;
-  estadoCalib = CAL_HOME;
+  estadoCalib = CAL_J1_POS;
   aplicarVelocidadeManual();
-  definirMensagem("Calibracao: leve o braco ate a posicao de referencia");
+  definirMensagem("Leve a junta 1 ate o limite POSITIVO e marque");
 }
 
 void calibCancelar() {
@@ -60,16 +82,9 @@ void calibCancelar() {
 
   carregarConfiguracoes();   // restaura a calibracao anterior
 
-  // Desfaz o zerarPosicoes() do CAL_HOME. Depois do zero, a posicao 0
-  // corresponde ao ponto fisico que valia origemAntesDoZero: a posicao
-  // atual na referencia antiga e origemAntesDoZero + posicao atual.
-  if (origemFoiDeslocada) {
-    if (J1.motor) J1.motor->setCurrentPosition(posicaoJ1() + origemAntesDoZero1);
-    if (J2.motor) J2.motor->setCurrentPosition(posicaoJ2() + origemAntesDoZero2);
-    origemFoiDeslocada = false;
-    Serial.println("[CAL] Origem anterior restaurada.");
-  }
-
+  // Nao ha mais o que desfazer na contagem: o zero so e deslocado no
+  // fim, quando as quatro marcas ja existem. Cancelar no meio nao mexeu
+  // em origem nenhuma.
   aplicarVelocidadeManual();
   aplicarAceleracao();
   definirMensagem("Calibracao cancelada");
@@ -390,8 +405,9 @@ void calibApagar() {
     js[i]->passosMin = 0;
     js[i]->passosMax = 0;
     js[i]->grausHome = 0.0f;
+    temP[i] = temN[i] = false;
+    encPok[i] = encNok[i] = false;
   }
-  origemFoiDeslocada = false;
   estadoCalib = CAL_INATIVO;
   if (modoAtual == MODO_CALIBRANDO) modoAtual = MODO_MANUAL;
 
@@ -401,101 +417,102 @@ void calibApagar() {
   aplicarAceleracao();
 
   Serial.println("[CAL] Calibracao apagada do NVS.");
-  definirMensagem("Calibracao apagada. O jog esta livre; calibre antes de executar programa");
+  // Sem limites a maquina NAO para de funcionar: ela so deixa de ter
+  // protecao de curso. Dizer "calibre antes de executar" era a versao
+  // antiga, em que quase tudo ficava trancado.
+  definirMensagem("Limites apagados. A maquina segue operando, sem protecao de curso");
 }
 
 // ---------------------------------------------------------------------
-static void voltarParaZero(Junta& j) {
-  if (!j.motor) return;
-  j.motor->setSpeedInHz(grausPorSegParaHz(j, velAuto));
-  j.motor->moveTo(0);
+// Grava uma marca: onde a junta ESTA agora, em passos, e o que o encoder
+// estava lendo no mesmo instante.
+// ---------------------------------------------------------------------
+static void gravarMarca(uint8_t k, bool positivo) {
+  const uint8_t i = k - 1;
+  const long pos = (k == 1) ? posicaoJ1() : posicaoJ2();
+  const LeituraEncoder L = encoderLer(k);
+  const bool lendo = L.valido && L.idadeMs <= ENC_IDADE_MAX_MS;
+
+  if (positivo) { marcaP[i] = pos; temP[i] = true; encP[i] = L.bruto; encPok[i] = lendo; }
+  else          { marcaN[i] = pos; temN[i] = true; encN[i] = L.bruto; encNok[i] = lendo; }
 }
 
-// Sanidade do que foi medido. Se o operador percorreu uma etapa no
-// sentido contrario (ou o pino DIR esta invertido), min e max saem
-// trocados e o intervalo nao contem o zero - que e justamente onde o
-// assistente deixa o braco. Sem esta checagem o robo trava assim que a
-// calibracao termina.
-static bool ajustarCurso(Junta& j, uint8_t numero) {
-  if (j.passosMin > j.passosMax) {
-    const long t = j.passosMin;
-    j.passosMin = j.passosMax;
-    j.passosMax = t;
-    Serial.printf("[CAL] Junta %u: limites invertidos, corrigidos.\n",
-                  (unsigned)numero);
-  }
-  if (j.passosMin > 0) j.passosMin = 0;
-  if (j.passosMax < 0) j.passosMax = 0;
-
-  // Em GRAUS, nao em passos. O criterio antigo (> 10 passos) aceitava
-  // 0,4 grau na resolucao padrao - menos que os 2 x MARGEM_LIMITE_GRAUS
-  // que posturaValida() desconta. O resultado era um intervalo util
-  // negativo: nenhuma postura passava e os dois eixos travavam.
+// ---------------------------------------------------------------------
+// Fecha uma junta a partir das duas marcas dela.
+//
+// O ZERO passa a ser o MEIO do curso. Antes o zero era um ponto que o
+// operador declarava com um angulo digitado; aqui ele sai da propria
+// medida, e sai centrado -- os limites viram -curso/2 e +curso/2, e
+// nenhuma postura nasce encostada num deles.
+// ---------------------------------------------------------------------
+static bool fecharJunta(Junta& j, uint8_t k) {
+  const uint8_t i = k - 1;
+  if (!temP[i] || !temN[i]) return false;
   if (j.passosPorGrau <= 0.0f) return false;
-  const float curso = (float)(j.passosMax - j.passosMin) / j.passosPorGrau;
-  return curso >= CURSO_MINIMO_GRAUS;
-}
 
-// ---------------------------------------------------------------------
-// AFERICAO DA RESOLUCAO
-//
-// A calibracao mede o curso em PULSOS. Para virar graus, o firmware
-// divide por passosPorGrau -- que vem de passosPorVolta x reducao, dois
-// numeros DIGITADOS. Se qualquer um estiver errado, o braco de verdade
-// fica numa posicao e o da tela em outra, proporcionalmente.
-//
-// O assistente acabou de varrer o curso inteiro da junta: e a maior
-// base de medida que a maquina tem. Se o operador medir esse curso com
-// um transferidor e informar quantos graus foram de fato, sai a
-// resolucao real, sem precisar de encoder.
-//
-//     passosPorGrau = pulsos contados / graus medidos
-//
-// A reducao e reescrita para explicar essa resolucao com a engrenagem
-// eletronica informada, para o painel de ajustes continuar coerente e o
-// valor sobreviver a um recalculo.
-// ---------------------------------------------------------------------
-static bool aferirResolucao(Junta& j, float cursoRealGraus, uint8_t numero) {
-  if (cursoRealGraus <= 0.0f) return false;          // nao aferir
+  long lo = marcaN[i], hi = marcaP[i];
+  if (lo > hi) { const long t = lo; lo = hi; hi = t; }
 
-  const long pulsos = j.passosMax - j.passosMin;
-  if (pulsos < 10 || cursoRealGraus < CURSO_MINIMO_GRAUS) {
-    Serial.printf("[CAL] Junta %u: afericao ignorada (%ld pulsos, %.1f graus).\n",
-                  (unsigned)numero, pulsos, cursoRealGraus);
-    return false;
+  const float curso = (float)(hi - lo) / j.passosPorGrau;
+  if (curso < CURSO_MINIMO_GRAUS) return false;
+
+  const long meio = lo + (hi - lo) / 2;
+  const long agora = (k == 1) ? posicaoJ1() : posicaoJ2();
+  ajustarContagem(j, agora - meio);
+  j.passosMin = lo - meio;
+  j.passosMax = hi - meio;
+  j.grausHome = 0.0f;
+  j.calibrada = true;
+
+  // A ESCALA DO ENCODER SAI DE GRACA.
+  //
+  // Entre as duas marcas ha um tanto de contagens (o encoder viu) e um
+  // tanto de graus (a contagem de passos, dividida pela resolucao). A
+  // divisao das duas E a escala, com sinal: encoder que conta para tras
+  // enquanto a junta avanca da escala negativa, e o angulo sai certo sem
+  // chave de inversao nenhuma.
+  //
+  // Isto era uma tela separada, com marca, movimento e um numero
+  // digitado. Agora e uma consequencia de ter calibrado.
+  if (encPok[i] && encNok[i]) {
+    // Complemento de dois: a volta do contador de 32 bits sai sozinha.
+    const int32_t dCont = (int32_t)((uint32_t)encP[i] - (uint32_t)encN[i]);
+    const float dGraus  = (float)(marcaP[i] - marcaN[i]) / j.passosPorGrau;
+    if (fabsf(dGraus) >= CURSO_MINIMO_GRAUS && labs((long)dCont) >= 50) {
+      configEncoder.contagensPorGrau[i] = (float)dCont / dGraus;
+      Serial.printf("[CAL] Junta %u: escala do encoder medida em %.2f "
+                    "contagens por grau (%ld contagens em %.1f graus)\n",
+                    (unsigned)k, (double)configEncoder.contagensPorGrau[i],
+                    (long)dCont, (double)dGraus);
+    }
   }
-
-  const float antes = j.passosPorGrau;
-  const float ppg   = (float)pulsos / cursoRealGraus;
-  j.passosPorGrau = ppg;
-  if (j.passosPorVolta > 0) {
-    j.reducao = ppg * 360.0f / (float)j.passosPorVolta;
-  }
-  Serial.printf("[CAL] Junta %u aferida: %ld pulsos em %.2f graus -> "
-                "%.3f pulsos/grau (era %.3f), reducao %.4f\n",
-                (unsigned)numero, pulsos, cursoRealGraus, ppg, antes, j.reducao);
   return true;
 }
 
 static void concluir() {
-  const bool ok1 = ajustarCurso(J1, 1);
-  const bool ok2 = ajustarCurso(J2, 2);
+  const bool ok1 = fecharJunta(J1, 1);
+  const bool ok2 = fecharJunta(J2, 2);
 
-  if (!ok1 || !ok2) {
+  if (!ok1 && !ok2) {
     estadoCalib = CAL_INATIVO;
     modoAtual   = MODO_MANUAL;
-    J1.calibrada = false;
-    J2.calibrada = false;
     aplicarVelocidadeManual();
     aplicarAceleracao();
-    definirMensagem("Calibracao descartada: junta %s com curso menor que %.0f graus. Refaca movendo ate os limites reais.",
-                    !ok1 ? "1" : "2", CURSO_MINIMO_GRAUS);
+    definirMensagem("Nada medido: o curso ficou menor que %.0f graus nas duas "
+                    "juntas. Leve o eixo ate os batentes de verdade",
+                    (double)CURSO_MINIMO_GRAUS);
     return;
   }
 
-  J1.calibrada = true;
-  J2.calibrada = true;
   recalcularResolucao();   // converte o curso medido para graus
+
+  // O encoder passa a ler o mesmo angulo que a contagem: a referencia
+  // dele e reancorada na posicao atual, ja com a escala nova.
+  encoderPendente = configEncoder;
+  encoderReconfigurar();
+  encoderDefinirZero(1, passosParaGraus(J1, posicaoJ1()));
+  encoderDefinirZero(2, passosParaGraus(J2, posicaoJ2()));
+
   salvarConfiguracoes();
 
   estadoCalib = CAL_INATIVO;
@@ -503,121 +520,118 @@ static void concluir() {
   aplicarVelocidadeManual();
   aplicarAceleracao();
 
-  definirMensagem("Calibrado: J1 %.1f a %.1f, J2 %.1f a %.1f graus",
-                  J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
+  if (ok1 && ok2)
+    definirMensagem("Calibrado: J1 %.1f a %.1f, J2 %.1f a %.1f graus. "
+                    "O zero e o meio do curso",
+                    J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
+  else
+    definirMensagem("Junta %u calibrada: %.1f a %.1f graus. A outra nao teve "
+                    "curso suficiente e ficou sem limites",
+                    ok1 ? 1u : 2u,
+                    ok1 ? J1.grausMin : J2.grausMin,
+                    ok1 ? J1.grausMax : J2.grausMax);
 }
 
 // ---------------------------------------------------------------------
-void calibConfirmar(float f1, float f2) {
+// Os dois numeros continuam na assinatura porque a fila de comandos os
+// carrega, mas a calibracao nao usa mais nenhum: ela nao pergunta nada.
+void calibConfirmar(float, float) {
   switch (estadoCalib) {
-    case CAL_HOME:
-      jogZerar();
-      pararSuave();
-      origemAntesDoZero1 = posicaoJ1();
-      origemAntesDoZero2 = posicaoJ2();
-      origemFoiDeslocada = true;
-      zerarPosicoes();
-      J1.passosMin = J1.passosMax = 0;
-      J2.passosMin = J2.passosMax = 0;
-      // Onde o braco REALMENTE esta, em graus. O contador zera aqui, mas
-      // zero passo nao e zero grau: a cinematica chama de zero o braco
-      // esticado apontando para +X. Sem este offset o desenho na tela sai
-      // girado em relacao a maquina.
-      J1.grausHome = f1;
-      J2.grausHome = f2;
-      recalcularResolucao();
+    case CAL_J1_POS:
+      jogZerar(); pararSuave();
+      gravarMarca(1, true);
       estadoCalib = CAL_J1_NEG;
-      if (f1 != 0.0f || f2 != 0.0f) {
-        definirMensagem("Referencia gravada em %.1f / %.1f graus. Leve a junta 1 ao limite negativo",
-                        f1, f2);
-      } else {
-        definirMensagem("Referencia gravada. Leve a junta 1 ao limite negativo");
-      }
+      definirMensagem("Limite positivo da junta 1 marcado. Agora o NEGATIVO");
       break;
 
     case CAL_J1_NEG:
-      jogZerar();
-      J1.passosMin = posicaoJ1();
-      voltarParaZero(J1);
-      estadoCalib = CAL_J1_VOLTA_NEG;
-      break;
-
-    case CAL_J1_POS:
-      jogZerar();
-      J1.passosMax = posicaoJ1();
-      voltarParaZero(J1);
-      estadoCalib = CAL_J1_VOLTA_POS;
-      break;
-
-    case CAL_J2_NEG:
-      jogZerar();
-      J2.passosMin = posicaoJ2();
-      voltarParaZero(J2);
-      estadoCalib = CAL_J2_VOLTA_NEG;
+      jogZerar(); pararSuave();
+      gravarMarca(1, false);
+      estadoCalib = CAL_J2_POS;
+      definirMensagem("Junta 1 medida. Leve a junta 2 ate o limite POSITIVO");
       break;
 
     case CAL_J2_POS:
-      jogZerar();
-      J2.passosMax = posicaoJ2();
-      voltarParaZero(J2);
-      estadoCalib = CAL_J2_VOLTA_POS;
+      jogZerar(); pararSuave();
+      gravarMarca(2, true);
+      estadoCalib = CAL_J2_NEG;
+      definirMensagem("Limite positivo da junta 2 marcado. Agora o NEGATIVO");
       break;
 
-    case CAL_CONCLUIDO: {
-      // A partir daqui o zero novo e o oficial: nao ha mais o que desfazer.
-      origemFoiDeslocada = false;
-      // Aferir ANTES de concluir: concluir() valida o curso minimo e
-      // converte para graus, e as duas coisas dependem da resolucao.
-      const bool a1 = aferirResolucao(J1, f1, 1);
-      const bool a2 = aferirResolucao(J2, f2, 2);
-      if (a1 || a2) recalcularResolucao();
+    case CAL_J2_NEG:
+      jogZerar(); pararSuave();
+      gravarMarca(2, false);
+      estadoCalib = CAL_CONCLUIDO;
       concluir();
       break;
-    }
 
     default:
-      break;   // estados de retorno automatico ignoram o botao
+      break;
   }
 }
 
 // ---------------------------------------------------------------------
-void calibAtualizar() {
-  if (modoAtual != MODO_CALIBRANDO) return;
+// CALIBRAR COM OS MOTORES SOLTOS
+//
+// O jeito mais seguro de chegar num batente e com o motor sem torque,
+// empurrando o braco com a mao. So que ai o gerador de pulso nao anda, e
+// a contagem -- que e o que a marca grava -- ficaria parada nos quatro
+// limites.
+//
+// Entao, enquanto a calibracao esta aberta, cada junta SEM torque tem a
+// contagem puxada pelo encoder. Nao e o seguimento de eixo solto de
+// sempre: aquele escreve uma posicao ABSOLUTA e por isso exige o zero
+// absoluto ja ensinado. Aqui basta o DELTA, e delta nao precisa de
+// origem nenhuma.
+//
+// A conversao de contagem para passo dispensa a reducao: os dois numeros
+// sao por volta do MOTOR, e o redutor cancela na divisao.
+//
+//     passos por contagem = passosPorVolta / contagensPorVolta
+//
+// Com a escala ja ensinada, usa-se ela, que e medida em vez de digitada.
+// ---------------------------------------------------------------------
+static int32_t ultimoBruto[2] = {0, 0};
+static bool    temUltimo[2]   = {false, false};
 
-  switch (estadoCalib) {
-    case CAL_J1_VOLTA_NEG:
-      if (J1.motor && !J1.motor->isRunning()) {
-        aplicarVelocidadeManual();
-        estadoCalib = CAL_J1_POS;
-        definirMensagem("Leve a junta 1 ao limite positivo");
-      }
-      break;
+static void puxarPelaMao(uint8_t k) {
+  const uint8_t i = k - 1;
+  Junta& j = (k == 1) ? J1 : J2;
 
-    case CAL_J1_VOLTA_POS:
-      if (J1.motor && !J1.motor->isRunning()) {
-        aplicarVelocidadeManual();
-        estadoCalib = CAL_J2_NEG;
-        definirMensagem("Junta 1 pronta. Leve a junta 2 ao limite negativo");
-      }
-      break;
+  if (j.habilitado) { temUltimo[i] = false; return; }
+  if (configEncoder.reg[i] == 0) { temUltimo[i] = false; return; }
 
-    case CAL_J2_VOLTA_NEG:
-      if (J2.motor && !J2.motor->isRunning()) {
-        aplicarVelocidadeManual();
-        estadoCalib = CAL_J2_POS;
-        definirMensagem("Leve a junta 2 ao limite positivo");
-      }
-      break;
+  const LeituraEncoder L = encoderLer(k);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) { temUltimo[i] = false; return; }
 
-    case CAL_J2_VOLTA_POS:
-      if (J2.motor && !J2.motor->isRunning()) {
-        aplicarVelocidadeManual();
-        estadoCalib = CAL_CONCLUIDO;
-        definirMensagem("Curso medido. Confira os valores e conclua");
-      }
-      break;
+  if (!temUltimo[i]) { ultimoBruto[i] = L.bruto; temUltimo[i] = true; return; }
 
-    default:
-      break;
+  // Complemento de dois: a volta do contador de 32 bits sai sozinha.
+  const int32_t d = (int32_t)((uint32_t)L.bruto - (uint32_t)ultimoBruto[i]);
+  if (d == 0) return;
+  ultimoBruto[i] = L.bruto;
+
+  float passosPorContagem;
+  const float cpg = configEncoder.contagensPorGrau[i];
+  if (j.passosPorGrau > 0.0f && (cpg > 0.0001f || cpg < -0.0001f)) {
+    passosPorContagem = j.passosPorGrau / cpg;
+  } else {
+    const float cv = configEncoder.contagensPorVolta[i];
+    if (cv < 1.0f || j.passosPorVolta == 0) return;
+    passosPorContagem = (float)j.passosPorVolta / cv;
   }
+
+  const long passos = lroundf((float)d * passosPorContagem);
+  if (passos == 0) return;
+  const long agora = (k == 1) ? posicaoJ1() : posicaoJ2();
+  ajustarContagem(j, agora + passos);
+}
+
+// Nao ha mais etapa automatica: entre uma marca e a outra quem move o
+// braco e o operador -- com o jog, ou com a mao.
+void calibAtualizar() {
+  if (modoAtual != MODO_CALIBRANDO) { temUltimo[0] = temUltimo[1] = false; return; }
+  if (motoresEmMovimento()) return;
+  puxarPelaMao(1);
+  puxarPelaMao(2);
 }

@@ -42,28 +42,23 @@ static void tarefaRede(void* p) {
 }
 
 // ---------------------------------------------------------------------
-// Porta unica de posicionamento. Valida, nesta ordem: calibracao, servos,
+// Porta unica de posicionamento. Valida, nesta ordem: seguranca, servos,
 // a postura de DESTINO e o INTERIOR do caminho ate ela.
 //
 // O interior importa: moverCoordenado() interpola nas juntas, e o
 // envelope cartesiano nao e convexo nesse espaco - da para ir de um ponto
 // permitido a outro raspando a ponta na mesa no meio do trajeto.
-// 'exigeCalibracao' e false so para o zero. Ir a 0 grau e a operacao de
-// INSTALACAO: e o que se faz depois de referenciar o braco a mao, antes
-// de existir calibracao nenhuma. Exigir calibracao ali era um ciclo
-// fechado -- para calibrar e preciso mover, e para mover era preciso
-// calibrar. As protecoes nao somem por isso: posturaValidaDet() ja trata
-// "sem calibracao nada e violacao", que e o mesmo modo de instalacao em
-// que o jog ja rodava livre.
 //
-// Ir a um PONTO GRAVADO continua exigindo: o ponto foi gravado num
-// referencial calibrado, e persegui-lo sem calibracao manda o braco para
-// um lugar que ninguem escolheu.
-static bool irParaPassos(long p1, long p2, bool exigeCalibracao = true) {
-  if (exigeCalibracao && (!J1.calibrada || !J2.calibrada)) {
-    definirMensagem("Calibre as juntas antes de usar posicionamento");
-    return false;
-  }
+// CALIBRACAO NAO E MAIS EXIGIDA EM LUGAR NENHUM.
+//
+// Ela era um portao: sem limites medidos, posicionar era recusado. Mas
+// um ponto gravado e um par de contagens na MESMA regua com que ele vai
+// ser perseguido -- se a regua nao mudou, o braco volta exatamente para
+// onde estava. O que a calibracao acrescenta e a PROTECAO DE CURSO, e
+// posturaValidaDet() ja trata "sem limites, nada e violacao". Quem
+// protege ali sao os batentes da maquina e o operador, exatamente como
+// no jog, que sempre rodou livre.
+static bool irParaPassos(long p1, long p2) {
   if (!movimentoSeguro) {
     definirMensagem("Movimento bloqueado: intertravamento de seguranca");
     return false;
@@ -109,20 +104,10 @@ static bool irParaPassos(long p1, long p2, bool exigeCalibracao = true) {
   return true;
 }
 
-// NOMEAR UM ANGULO nao exige calibracao, e por padrao.
-//
-// Os dois caminhos que chegam aqui -- "ir para o zero" e "ir para um
-// angulo" -- sao a mesma frase do operador, so muda o numero. Com o
-// encoder dizendo onde a junta esta, mandar ela para 60 graus e uma
-// ordem completa sem calibracao nenhuma; e sem calibracao o jog ja
-// rodava livre, no modo de instalacao.
-//
-// Ir a um PONTO GRAVADO e outra coisa e continua exigindo: aquele ponto
-// foi gravado num referencial calibrado, e persegui-lo sem ele manda o
-// braco para um lugar que ninguem escolheu.
-static void irParaAngulos(float t1, float t2, bool exigeCalibracao = false) {
-  if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2),
-                   exigeCalibracao)) {
+// Nomear um angulo: "ir para o zero" e "ir para um angulo" sao a mesma
+// frase do operador, so muda o numero.
+static void irParaAngulos(float t1, float t2) {
+  if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) {
     definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
   }
 }
@@ -452,11 +437,6 @@ static void processarComando(const Comando& c) {
         definirMensagem("Espere o braco parar para gravar o canto");
         break;
       }
-      if (!J1.calibrada || !J2.calibrada) {
-        definirMensagem("Calibre as juntas antes de ensinar a mesa: sem curso "
-                        "medido nao ha coordenada confiavel");
-        break;
-      }
       // O canto e onde a PONTA esta -- ela e a ferramenta, e a area util
       // e dela. O cotovelo passa por cima da mesa o tempo todo.
       float xc, yc, xp, yp;
@@ -633,9 +613,9 @@ static void processarComando(const Comando& c) {
       // So na etapa HOME: dali em diante ja ha limite medido, e trocar o
       // sinal do eixo depois inverteria o significado do que foi medido.
       const bool naReferencia = (modoAtual == MODO_CALIBRANDO &&
-                                 estadoCalib == CAL_HOME);
+                                 calibNaPrimeiraEtapa());
       if (modoAtual != MODO_MANUAL && !naReferencia) {
-        definirMensagem("Troque o sentido em manual ou na etapa de referencia");
+        definirMensagem("Troque o sentido em manual ou na primeira etapa da calibracao");
         break;
       }
       if (motoresEmMovimento()) {
@@ -1045,12 +1025,9 @@ void loop() {
       break;
 
     case MODO_CALIBRANDO:
-      // O retorno automatico ao zero nao pode ser interrompido pelo jog.
-      if (calibEixoAtivo() == 0 ||
-          estadoCalib == CAL_J1_NEG || estadoCalib == CAL_J1_POS ||
-          estadoCalib == CAL_J2_NEG || estadoCalib == CAL_J2_POS) {
-        jogAtualizar();
-      }
+      // Nao ha mais etapa automatica: em todas elas quem move o braco e
+      // o operador, entao o jog vale sempre.
+      jogAtualizar();
       calibAtualizar();
       break;
 

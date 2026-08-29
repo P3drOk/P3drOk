@@ -20,10 +20,7 @@ static const char* const NOMES_MODO[] = {
   "POSICIONANDO", "CALIBRANDO", "FALHA"
 };
 static const char* const NOMES_CALIB[] = {
-  "INATIVO", "HOME",
-  "J1_NEG", "J1_VOLTA_NEG", "J1_POS", "J1_VOLTA_POS",
-  "J2_NEG", "J2_VOLTA_NEG", "J2_POS", "J2_VOLTA_POS",
-  "CONCLUIDO"
+  "INATIVO", "J1_POS", "J1_NEG", "J2_POS", "J2_NEG", "CONCLUIDO"
 };
 
 // ---------------------------------------------------------------------
@@ -168,11 +165,11 @@ static void handleStatus() {
   lerSnapshot(s);
 
   const char* modo  = (s.modo  < 7)  ? NOMES_MODO[s.modo]   : "?";
-  const char* calib = (s.calib < 11) ? NOMES_CALIB[s.calib] : "?";
+  const char* calib = (s.calib < 6) ? NOMES_CALIB[s.calib] : "?";
 
   uint8_t eixoCalib = 0;
-  if (s.calib >= CAL_J1_NEG && s.calib <= CAL_J1_VOLTA_POS) eixoCalib = 1;
-  if (s.calib >= CAL_J2_NEG && s.calib <= CAL_J2_VOLTA_POS) eixoCalib = 2;
+  if (s.calib == CAL_J1_POS || s.calib == CAL_J1_NEG) eixoCalib = 1;
+  if (s.calib == CAL_J2_POS || s.calib == CAL_J2_NEG) eixoCalib = 2;
 
   // Estado do aprendizado vai no status, e nao numa rota propria: a
   // tela precisa saber que o braco esta solto TODO ciclo, e nao so
@@ -543,8 +540,8 @@ static void handleSentido() {
   Snapshot s;
   lerSnapshot(s);
   if (s.modo != MODO_MANUAL &&
-      !(s.modo == MODO_CALIBRANDO && s.calib == CAL_HOME)) {
-    erro("troque o sentido com o robo em manual, ou na etapa de referencia da calibracao");
+      !(s.modo == MODO_CALIBRANDO && s.calib == CAL_J1_POS)) {
+    erro("troque o sentido com o robo em manual, ou na primeira etapa da calibracao");
     return;
   }
   enfileirar(CMD_INVERTER_EIXO, j, argL("v", 0) != 0 ? 1 : 0);

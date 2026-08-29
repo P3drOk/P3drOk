@@ -180,15 +180,15 @@ static void prepararRoboCalibrado(float grausCurso = 90.0f) {
   rodarComWeb(10);
 }
 
-// Percorre o assistente inteiro, colocando os limites onde o teste
-// mandar. 'cursoReal' e o que o operador mediu com transferidor
-// (0 = nao aferir); 'home1/home2' e o angulo declarado na referencia.
+// Percorre a calibracao inteira: quatro marcas e nada mais.
+//
+// A assinatura antiga carregava o angulo declarado na referencia e o
+// curso medido com transferidor. Nenhum dos dois existe: a calibracao
+// nao pergunta nada. Os parametros ficaram para os cenarios antigos
+// continuarem compilando, e sao ignorados.
 static bool rodarAssistente(long passosNeg, long passosPos,
-                            float home1, float home2,
-                            float cursoReal1, float cursoReal2) {
-  // Esperar por tempo fixo nao serve: entre uma etapa e a outra o eixo
-  // volta ao zero, e quanto maior o curso mais isso demora. Espera-se a
-  // ETAPA mudar.
+                            float = 0.0f, float = 0.0f,
+                            float = 0.0f, float = 0.0f) {
   auto ateEtapa = [&](EstadoCalib alvo) {
     uint32_t t = 0;
     while (estadoCalib != alvo && t < 20000) { rodarComWeb(20); t += 20; }
@@ -196,20 +196,17 @@ static bool rodarAssistente(long passosNeg, long passosPos,
   };
 
   enviarComando(CMD_CALIB_INICIAR);
-  ateEtapa(CAL_HOME);
-  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, home1, home2);
-  ateEtapa(CAL_J1_NEG);
+  if (!ateEtapa(CAL_J1_POS)) return false;
 
-  J1.motor->setCurrentPosition(passosNeg);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J1_POS);
   J1.motor->setCurrentPosition(passosPos);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_NEG);
-  J2.motor->setCurrentPosition(passosNeg);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J1_NEG);
+  J1.motor->setCurrentPosition(passosNeg);
   enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_POS);
   J2.motor->setCurrentPosition(passosPos);
-  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_CONCLUIDO);
+  enviarComando(CMD_CALIB_CONFIRMAR); ateEtapa(CAL_J2_NEG);
+  J2.motor->setCurrentPosition(passosNeg);
+  enviarComando(CMD_CALIB_CONFIRMAR);
 
-  enviarComando(CMD_CALIB_CONFIRMAR, 0, 0, cursoReal1, cursoReal2);
   const bool fim = ateEtapa(CAL_INATIVO);
   rodarComWeb(60);
   return fim;
@@ -1832,8 +1829,8 @@ static void teste_C03_cordao_bom_passa() {
 // =====================================================================
 
 // ---------------------------------------------------------------------
-static void teste_E01_aferir_resolucao() {
-  secao("E01  Resolucao digitada errada: o curso medido corrige?");
+static void teste_E01_resolucao_declarada() {
+  secao("E01  Resolucao digitada errada: o que a maquina reporta?");
   reiniciarSistema();
   enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
 
@@ -1849,89 +1846,84 @@ static void teste_E01_aferir_resolucao() {
   // O braco varre 5556 pulsos de curso. Com a reducao 2:1 de verdade,
   // isso sao 100 graus reais -- mas a maquina vai calcular 200.
   const long meio = 2778;
-  rodarAssistente(-meio, +meio, 0, 0, 0, 0);   // sem aferir
+  rodarAssistente(-meio, +meio);
   const float cursoCru = J1.grausMax - J1.grausMin;
 
   checar(fabsf(cursoCru - 200.0f) < 1.0f, "E01a",
-         "sem aferir, a maquina reporta o curso pela resolucao digitada");
+         "o curso reportado sai da resolucao declarada: e ela que traduz "
+         "pulso em grau");
   nota("%.2f pulsos/grau digitados -> curso calculado de %.1f graus",
        ppgAntes, cursoCru);
   nota("O braco de verdade girou 100. A conta esta certa; o numero que");
-  nota("entrou nela e que estava errado.");
+  nota("entrou nela e que estava errado -- e o redutor e onde se conserta.");
 
-  // Agora o operador mede com transferidor e informa os 100 graus reais.
-  rodarAssistente(-meio, +meio, 0, 0, 100.0f, 100.0f);
+  // O conserto e declarar o redutor. E o unico numero que a calibracao
+  // nao mede: com um sensor so, antes do redutor, nenhuma medida revela
+  // a relacao dele.
+  prepararConfigPendente();
+  configPendente.red1 = 2.0f;
+  configPendente.red2 = 2.0f;
+  enviarComando(CMD_APLICAR_CONFIG); rodarComWeb(60);
 
-  const float ppgDepois = J1.passosPorGrau;
-  const float cursoAferido = J1.grausMax - J1.grausMin;
+  const float cursoCerto = J1.grausMax - J1.grausMin;
+  nota("redutor declarado 2:1 -> %.2f pulsos/grau, curso %.1f graus",
+       J1.passosPorGrau, cursoCerto);
+  checar(fabsf(cursoCerto - 100.0f) < 1.0f, "E01b",
+         "declarado o redutor, o curso medido passa a sair nos graus reais "
+         "-- sem refazer a calibracao");
 
-  checar(fabsf(cursoAferido - 100.0f) < 0.1f &&
-         fabsf(ppgDepois - 55.56f) < 0.2f, "E01b",
-         "informado o curso real, a resolucao e recalculada pelos pulsos contados");
-  nota("curso informado 100 graus, %ld pulsos contados", 2 * meio);
-  nota("resolucao: %.2f -> %.2f pulsos/grau; curso agora %.2f graus",
-       ppgAntes, ppgDepois, cursoAferido);
-
-  // A reducao no painel de ajustes tem de explicar a nova resolucao,
-  // senao um recalculo posterior desfaz a afericao.
-  const float ppgRecalc = (J1.passosPorVolta * J1.reducao) / 360.0f;
-  checar(fabsf(J1.reducao - 2.0f) < 0.01f &&
-         fabsf(ppgRecalc - ppgDepois) < 0.05f, "E01c",
-         "a reducao mostrada passa a explicar a resolucao aferida");
-  nota("reducao reescrita para %.4f : 1  (o redutor real e 2:1)", J1.reducao);
-  nota("recalculo a partir dela: %.2f pulsos/grau -- bate com a aferida",
-       ppgRecalc);
-
-  // E o braco parado no meio do curso tem de ler o angulo certo.
+  // E o braco parado no meio do curso le zero: o zero E o meio.
   J1.motor->setCurrentPosition(0); rodarComWeb(5);
-  checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 0.01f, "E01d",
-         "no meio do curso o software le o mesmo angulo que o braco esta");
+  checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 0.01f, "E01c",
+         "no meio do curso o software le zero: o zero e o meio do curso");
   nota("pulso 0 -> %.3f graus", passosParaGraus(J1, posicaoJ1()));
 }
 
 // ---------------------------------------------------------------------
-static void teste_E02_angulo_da_referencia() {
-  secao("E02  Referencia gravada fora do zero: o desenho acompanha?");
+// E02: o ZERO sai da propria medida.
+//
+// Antes o operador declarava, num campo, o angulo real do braco na
+// posicao de referencia. Era o unico jeito de a cinematica saber para
+// onde o braco aponta -- e era mais um numero para errar, com o sintoma
+// de o desenho na tela sair girado em relacao a maquina.
+//
+// Agora o zero e o MEIO DO CURSO. Nao se pergunta nada, e a area util
+// nasce centrada: os limites saem -curso/2 e +curso/2, e nenhuma postura
+// comeca encostada num batente.
+// ---------------------------------------------------------------------
+static void teste_E02_o_zero_e_o_meio_do_curso() {
+  secao("E02  O zero sai da medida: e o meio do curso");
   reiniciarSistema();
   enviarComando(CMD_SERVOS, 1); rodarComWeb(30);
 
-  // A cinematica chama de zero o braco esticado apontando para +X. Aqui
-  // a referencia e gravada com a junta 1 a 30 graus e a 2 a -15.
-  const long meio = (long)(60.0f * ((10000 * 1.0f) / 360.0f));
-  rodarAssistente(-meio, +meio, 30.0f, -15.0f, 0, 0);
+  // Marcas assimetricas de proposito: o operador nao para no meio, ele
+  // para nos batentes, e eles raramente sao simetricos em relacao a onde
+  // a contagem estava.
+  const float ppg = J1.passosPorGrau;
+  const long pos = (long)(+100.0f * ppg);
+  const long neg = (long)( -20.0f * ppg);
+  rodarAssistente(neg, pos);
 
-  J1.motor->setCurrentPosition(0);
-  J2.motor->setCurrentPosition(0);
-  rodarComWeb(5);
-  const float t1 = passosParaGraus(J1, posicaoJ1());
-  const float t2 = passosParaGraus(J2, posicaoJ2());
+  nota("marcas em %ld e %ld pulsos -> curso J1 de %.1f a %.1f graus",
+       neg, pos, J1.grausMin, J1.grausMax);
+  checar(fabsf(J1.grausMin + 60.0f) < 0.6f &&
+         fabsf(J1.grausMax - 60.0f) < 0.6f, "E02a",
+         "o curso de 120 graus sai centrado no zero, sem ninguem declarar "
+         "angulo nenhum");
 
-  checar(fabsf(t1 - 30.0f) < 0.05f && fabsf(t2 + 15.0f) < 0.05f, "E02a",
-         "na referencia o software le os angulos que o operador declarou");
-  nota("contador em zero pulso -> software le %.2f / %.2f graus", t1, t2);
+  // O braco esta parado no limite negativo, que foi a ultima marca. Ele
+  // tem de ler o limite negativo, nao zero.
+  const float ondeEsta = passosParaGraus(J1, posicaoJ1());
+  nota("o braco ficou no limite negativo e le %.2f graus", ondeEsta);
+  checar(fabsf(ondeEsta - J1.grausMin) < 0.6f, "E02b",
+         "e a contagem continua descrevendo onde o braco parou: o "
+         "deslocamento do zero move a regua, nao o braco");
 
   // Ida e volta exata: sem isso todo ponto gravado escorregaria.
   const long p = grausParaPassos(J1, 47.5f);
-  checar(fabsf(passosParaGraus(J1, p) - 47.5f) < 0.02f, "E02b",
-         "graus -> passos -> graus fecha, com o offset no meio");
+  checar(fabsf(passosParaGraus(J1, p) - 47.5f) < 0.02f, "E02c",
+         "graus -> passos -> graus fecha");
   nota("47.5 graus -> %ld passos -> %.3f graus", p, passosParaGraus(J1, p));
-
-  // Os limites deslocam junto.
-  checar(fabsf(J1.grausMin - (-30.0f)) < 0.5f &&
-         fabsf(J1.grausMax - (90.0f)) < 0.5f, "E02c",
-         "o curso calibrado e reportado nos angulos reais da maquina");
-  nota("curso da junta 1: %.1f a %.1f graus (60 para cada lado de 30)",
-       J1.grausMin, J1.grausMax);
-
-  // E a ponta desenhada tem de sair onde a postura real coloca.
-  float xc, yc, xp, yp;
-  cinematicaDireta(t1, t2, xc, yc, xp, yp);
-  float xr, yr, xe, ye;
-  cinematicaDireta(30.0f, -15.0f, xr, yr, xe, ye);
-  checar(fabsf(xp - xe) < 0.1f && fabsf(yp - ye) < 0.1f, "E02d",
-         "a ponta no desenho cai onde a postura real do braco coloca");
-  nota("ponta desenhada (%.0f, %.0f) mm; postura real 30/-15 da (%.0f, %.0f)",
-       xp, yp, xe, ye);
 }
 
 // ---------------------------------------------------------------------
@@ -2061,8 +2053,11 @@ static void teste_F02_apagar_calibracao() {
   const long antes = posicaoJ1();
   for (int i = 0; i < 6; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(70); }
   enviarComando(CMD_JOG, 1, 0); rodarComWeb(400);
-  // Com dois pontos gravados, a recusa tem de ser pela calibracao --
-  // e nao por falta de pontos.
+  // Sem limites o jog continua livre -- e o PROGRAMA tambem roda.
+  //
+  // Ele era recusado por falta de calibracao. Os pontos, porem, foram
+  // gravados nesta mesma regua: executa-los devolve o braco aos mesmos
+  // lugares. O que se perde sem calibracao e a protecao de curso.
   progLimpar();
   for (int i = 0; i < 2; i++) {
     J1.motor->setCurrentPosition(grausParaPassos(J1, 10.0f + 15.0f * i));
@@ -2071,9 +2066,13 @@ static void teste_F02_apagar_calibracao() {
     progAdicionarPonto(posicaoJ1(), posicaoJ2(), &mp);
   }
   const char* m = nullptr;
-  const bool progRecusado = !progIniciar(true, &m);
-  checar(posicaoJ1() != antes && progRecusado && m && strstr(m, "calibre"),
-         "F02d", "modo de instalacao: jog livre, mas programa recusado");
+  const bool progRodou = progIniciar(true, &m);
+  nota("sem limites medidos: jog andou=%d, programa iniciou=%d (%s)",
+       (int)(posicaoJ1() != antes), (int)progRodou, m ? m : "sem motivo");
+  checar(posicaoJ1() != antes && progRodou,
+         "F02d", "sem calibracao a maquina opera igual: jog livre E programa "
+                 "rodando -- o que falta e a protecao de curso, nao a operacao");
+  progParar();
   nota("jog andou %ld passos | %u pontos gravados", posicaoJ1() - antes,
        (unsigned)progQuantidade());
   nota("programa: %s", m ? m : "ACEITO");
@@ -4617,16 +4616,16 @@ static void teste_V08_zero_sem_calibracao() {
          fabsf(passosParaGraus(J2, posicaoJ2())) < 1.0f, "V08b",
          "e chega nos dois eixos");
 
-  // Ponto GRAVADO continua exigindo calibracao: ele foi gravado num
-  // referencial calibrado, e persegui-lo sem ela manda o braco para um
-  // lugar que ninguem escolheu.
-  // Espera voltar ao manual: ponto so se grava com o robo parado, e a
-  // ida ao zero acabou de terminar.
+  // E IR A UM PONTO GRAVADO tambem nao exige.
+  //
+  // O argumento antigo era que o ponto foi gravado num referencial
+  // calibrado. Mas o ponto e um par de CONTAGENS, e a contagem nao muda
+  // por a calibracao ter sido apagada: perseguir aquele par leva o braco
+  // exatamente para onde ele estava quando o ponto foi gravado. O que se
+  // perde sem calibracao e a protecao de curso -- e essa se perde de
+  // qualquer jeito, tendo ou nao um ponto gravado.
   uint32_t tm = 0;
   while (modoAtual != MODO_MANUAL && tm < 5000) { rodarComWeb(40); tm += 40; }
-  // Calibracao de mentira com curso que contem o zero: e preciso para
-  // GRAVAR o ponto. Ela sai logo abaixo -- o que se testa e o que
-  // acontece quando ela nao existe mais.
   J1.calibrada = J2.calibrada = true;
   {
     const long p = (long)(90.0f * J1.passosPorGrau);
@@ -4637,17 +4636,21 @@ static void teste_V08_zero_sem_calibracao() {
   rodarComWeb(10);
   enviarComando(CMD_PONTO_GRAVAR);
   rodarComWeb(40);
+  const long alvoP1 = posicaoJ1();
   nota("pontos gravados: %u", (unsigned)progQuantidade());
   J1.calibrada = J2.calibrada = false;
-  // Le a recusa no ciclo seguinte ao comando: deixar rodar demais aqui
-  // faz a mensagem do movimento ANTERIOR terminar por cima dela.
+  // Sai do ponto para haver caminho a percorrer.
+  if (J1.motor) J1.motor->setCurrentPosition(alvoP1 - grausParaPassos(J1, 20.0f));
+  rodarComWeb(10);
   enviarComando(CMD_IR_PARA_PONTO, 0);
-  rodarComWeb(4);
-  nota("ponto gravado, tentado sem calibracao: modo=%d -- \"%s\"",
-       (int)modoAtual, ultimaMensagem);
-  checar(strstr(ultimaMensagem, "alibre") != nullptr &&
-         modoAtual != MODO_POSICIONANDO, "V08c",
-         "mas ir a um ponto GRAVADO continua exigindo calibracao");
+  rodarComWeb(60);
+  uint32_t tp = 0;
+  while (motoresEmMovimento() && tp < 20000) { rodarComWeb(40); tp += 40; }
+  nota("ponto gravado, perseguido sem calibracao: %ld passos (gravado em %ld)",
+       posicaoJ1(), alvoP1);
+  checar(labs(posicaoJ1() - alvoP1) < 40, "V08c",
+         "e ir a um ponto GRAVADO tambem funciona sem calibracao: o ponto e "
+         "uma contagem, e a contagem nao mudou");
 
   // Com um driver so: leva o eixo que tem torque, deixa o outro quieto.
   reiniciarSistema();
@@ -5318,12 +5321,127 @@ static void teste_V18_vigia_usa_a_escala_medida() {
   rodarComWeb(200);
   nota("eixo preso com o comando andando: travamentos=%u -- \"%s\"",
        (unsigned)(correcaoTravamento().total - travAntes), ultimaMensagem);
-  checar(correcaoTravamento().total > travAntes, "V18d",
-         "eixo que nao responde ao pulso continua sendo acusado e parado");
+  checar(correcaoTravamento().total > travAntes && !motoresEmMovimento(), "V18d",
+         "eixo que nao responde ao pulso continua sendo acusado E parado, "
+         "quando ha regua medida para julgar");
 
+  // SEM regua medida o vigia AVISA, mas nao encosta no movimento.
+  //
+  // Parar o braco a partir de dois numeros digitados foi o que fazia a
+  // maquina "travar as vezes": um pulsos-por-volta errado no driver e um
+  // braco andando normalmente vira eixo travado meio segundo depois de
+  // arrancar.
+  correcaoLimparTravamento();
+  configEncoder.contagensPorGrau[0] = 0.0f;
+  const uint32_t travAntes2 = correcaoTravamento().total;
+  const float preso2 = passosParaGraus(J1, posicaoJ1());
+  const int32_t travado2 = g_uart.escravo[0].posicao;
+  moverCoordenado(grausParaPassos(J1, preso2 + 30.0f), posicaoJ2(), 20.0f);
+  // Noventa ciclos: o vigia dispara aos 500 ms e o movimento de 30 graus
+  // a 20 graus/s so terminaria bem depois. Se o braco parar aqui, foi o
+  // vigia que o parou.
+  bool aindaAndando = true, avisou = false;
+  for (int k = 0; k < 90; k++) {
+    g_uart.escravo[0].parar();
+    g_uart.escravo[0].posicao = travado2;   // eixo preso
+    rodarComWeb(10);
+    if (strstr(ultimaMensagem, "escala") != nullptr) avisou = true;
+    if (!motoresEmMovimento()) { aindaAndando = false; break; }
+  }
+  nota("sem escala medida: travamentos=%u, ainda andando=%d, avisou=%d",
+       (unsigned)(correcaoTravamento().total - travAntes2),
+       (int)aindaAndando, (int)avisou);
+  checar(aindaAndando && avisou, "V18e",
+         "sem regua medida o vigia avisa e nao para o braco: cortar o "
+         "movimento por causa de numero digitado e o que fazia a maquina "
+         "travar do nada");
+
+  pararSuave();
+  rodarComWeb(200);
   J1.passosPorVolta = ppvVerdadeiro;
   configEncoder.contagensPorGrau[0] = 0.0f;
+  correcaoLimparTravamento();
   g_espelharEixo = false;
+}
+
+// ---------------------------------------------------------------------
+// V19: calibrar com os motores SOLTOS, empurrando o braco com a mao.
+//
+// "so preciso deixar livre os motores, mover ate o ponto maximo no eixo
+// 1 positivo e depois o max negativo, e depois o mesmo com o eixo dois,
+// isso e a calibracao, calculo automatico dai."
+//
+// Sem torque o gerador de pulso nao anda, e a contagem -- que e o que a
+// marca grava -- ficaria parada nos quatro limites. Enquanto a
+// calibracao esta aberta, cada junta sem torque tem a contagem puxada
+// pelo encoder.
+// ---------------------------------------------------------------------
+static void teste_V19_calibrar_com_a_mao() {
+  secao("V19  Calibrar com os motores soltos, empurrando com a mao");
+  reiniciarSistema();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  g_espelharEixo = false;
+
+  // Motores soltos: e assim que se chega num batente sem bater.
+  enviarComando(CMD_SERVOS, 0, 0);
+  rodarComWeb(300);
+  nota("torque: junta 1=%d, junta 2=%d",
+       (int)J1.habilitado, (int)J2.habilitado);
+
+  enviarComando(CMD_CALIB_INICIAR);
+  rodarComWeb(200);
+  checar(modoAtual == MODO_CALIBRANDO && estadoCalib == CAL_J1_POS, "V19a",
+         "a calibracao abre sem exigir torque: o batente se alcanca com a "
+         "mao, e era exatamente isso que a exigencia antiga proibia");
+
+  // Empurrar o braco com a mao = mover o escravo do encoder. A contagem
+  // tem de ir junto.
+  const float cv  = configEncoder.contagensPorVolta[0];
+  auto empurrar = [&](uint8_t k, float graus) {
+    const Junta& j = (k == 1) ? J1 : J2;
+    const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+    g_uart.escravo[k - 1].parar();
+    g_uart.escravo[k - 1].posicao +=
+        (int32_t)lroundf((graus * red / 360.0f) * cv);
+    rodarComWeb(300);
+  };
+
+  const long partiu = posicaoJ1();
+  empurrar(1, +70.0f);
+  nota("empurrado 70 graus com a mao: contagem andou %.1f graus",
+       (double)((posicaoJ1() - partiu) / J1.passosPorGrau));
+  checar(fabsf((posicaoJ1() - partiu) / J1.passosPorGrau - 70.0f) < 3.0f, "V19b",
+         "com o motor solto a contagem e puxada pelo encoder: e a mao que "
+         "move o braco, e a tela acompanha");
+
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(120);
+  empurrar(1, -110.0f);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(120);
+  empurrar(2, +40.0f);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(120);
+  empurrar(2, -100.0f);
+  enviarComando(CMD_CALIB_CONFIRMAR); rodarComWeb(300);
+
+  nota("J1 de %.1f a %.1f, J2 de %.1f a %.1f graus -- \"%s\"",
+       (double)J1.grausMin, (double)J1.grausMax,
+       (double)J2.grausMin, (double)J2.grausMax, ultimaMensagem);
+  checar(modoAtual == MODO_MANUAL && estadoCalib == CAL_INATIVO, "V19c",
+         "quatro marcas e acabou: nao ha etapa de volta, nem numero a digitar");
+  checar(J1.calibrada && fabsf((J1.grausMax - J1.grausMin) - 110.0f) < 5.0f, "V19d",
+         "o curso da junta 1 sai dos dois batentes, sem transferidor");
+  checar(fabsf(J1.grausMin + J1.grausMax) < 2.0f, "V19e",
+         "e o zero e o MEIO do curso: os limites saem simetricos sem "
+         "ninguem declarar angulo nenhum");
+
+  // A escala do encoder sai de graca da mesma medida.
+  nota("escala medida na junta 1: %.2f contagens por grau",
+       (double)configEncoder.contagensPorGrau[0]);
+  const float esperada = cv * J1.reducao / 360.0f;
+  checar(fabsf(configEncoder.contagensPorGrau[0] - esperada) < esperada * 0.05f,
+         "V19f",
+         "a escala do encoder sai da propria calibracao: entre as duas "
+         "marcas ha um tanto de contagens e um tanto de graus");
 }
 
 static void teste_P07_estop_a_prova_de_falha() {
@@ -6722,19 +6840,19 @@ static void teste_K02_sentido_durante_a_calibracao() {
 
   enviarComando(CMD_CALIB_INICIAR);
   rodarComWeb(200);
-  nota("modo=%d etapa=%d (CAL_HOME=%d)", (int)modoAtual, (int)estadoCalib,
-       (int)CAL_HOME);
-  checar(modoAtual == MODO_CALIBRANDO && estadoCalib == CAL_HOME, "K02a",
-         "o assistente para na etapa de referencia");
+  nota("modo=%d etapa=%d (CAL_J1_POS=%d)", (int)modoAtual, (int)estadoCalib,
+       (int)CAL_J1_POS);
+  checar(modoAtual == MODO_CALIBRANDO && estadoCalib == CAL_J1_POS, "K02a",
+         "a calibracao abre pedindo o limite positivo da junta 1");
 
   // E exatamente aqui que o operador aperta a seta e ve o braco ir para o
-  // outro lado. Mandar cancelar o assistente para consertar era pedir
+  // outro lado. Mandar cancelar a calibracao para consertar era pedir
   // para ele desistir.
   const int cod = webPost("/api/sentido?j=1&v=1");
   rodarComWeb(200);
-  nota("na etapa de referencia: HTTP %d -- \"%s\"", cod, ultimaMensagem);
+  nota("na primeira etapa: HTTP %d -- \"%s\"", cod, ultimaMensagem);
   checar(cod == 200 && J1.inverterDir, "K02b",
-         "na etapa de referencia da para inverter sem cancelar o assistente");
+         "na primeira etapa da para inverter sem cancelar a calibracao");
 
   // Depois de medir o primeiro limite, NAO: trocar o sinal do eixo agora
   // inverteria o significado do que ja foi medido.
@@ -6877,8 +6995,8 @@ int main() {
   teste_C02_braco_fora_da_area();
   teste_C03_cordao_bom_passa();
 
-  teste_E01_aferir_resolucao();
-  teste_E02_angulo_da_referencia();
+  teste_E01_resolucao_declarada();
+  teste_E02_o_zero_e_o_meio_do_curso();
   teste_E03_sem_informar_nada();
 
   teste_F01_jog_livre_sem_calibracao();
@@ -6945,6 +7063,7 @@ int main() {
   teste_V16_contagem_perdida_e_reancorada();
   teste_V17_junta_com_torque_nao_e_seguida();
   teste_V18_vigia_usa_a_escala_medida();
+  teste_V19_calibrar_com_a_mao();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

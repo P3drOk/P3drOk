@@ -613,12 +613,33 @@ static void vigiarTravamento() {
         trav.ativo = true;
         trav.junta = k;
         trav.total++;
-        // Parar o eixo e a acao, nao o aviso: continuar forcando contra o
-        // batente aquece o servo e torce a mecanica.
-        jogZerar();
-        pararSuave();
-        definirMensagem("Junta %u travada: o comando anda e o eixo nao. "
-                        "Encostou no batente?", (unsigned)k);
+
+        // PARAR O BRACO EXIGE UMA REGUA MEDIDA.
+        //
+        // Este vigia compara o que o encoder ve com o que o gerador de
+        // pulso deveria estar produzindo. Quando essa segunda conta sai
+        // de numeros DIGITADOS (pulsos por volta e contagens por volta),
+        // basta um deles estar errado para um braco andando normalmente
+        // ser declarado travado -- e ai o vigia corta o movimento, meio
+        // segundo depois de arrancar. Foi essa a queixa: "as vezes
+        // trava".
+        //
+        // Com escala ensinada -- e a calibracao ensina sozinha -- a
+        // regua e medida na propria maquina, e ai parar e a acao certa:
+        // continuar forcando contra o batente aquece o servo e torce a
+        // mecanica. Sem ela, o vigia AVISA e nao encosta no movimento.
+        const float cpg = configEncoder.contagensPorGrau[i];
+        const bool reguaMedida = (cpg > 0.0001f || cpg < -0.0001f);
+        if (reguaMedida) {
+          jogZerar();
+          pararSuave();
+          definirMensagem("Junta %u travada: o comando anda e o eixo nao. "
+                          "Encostou no batente?", (unsigned)k);
+        } else {
+          definirMensagem("Junta %u parece travada, mas a escala do encoder "
+                          "nunca foi medida -- calibre para o aviso valer. "
+                          "O movimento segue.", (unsigned)k);
+        }
       }
     }
   }

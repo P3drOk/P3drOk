@@ -500,17 +500,23 @@ enum Modo : uint8_t {
   MODO_FALHA
 };
 
+// CALIBRAR SAO QUATRO MARCAS, E NADA MAIS.
+//
+// Levar o eixo 1 ao limite positivo e marcar; ao negativo e marcar; o
+// mesmo no eixo 2. Acabou. Dali sai tudo: o curso de cada junta, o zero
+// (o meio do curso) e -- quando o encoder esta lendo -- a escala dele em
+// contagens por grau, sem ninguem digitar nada.
+//
+// O que existia antes: declarar o angulo real na referencia, ir ao
+// limite, VOLTAR ao zero sozinho, ir ao outro limite, voltar de novo, e
+// no fim medir o curso com transferidor para informar a resolucao. Onze
+// estados e dois numeros medidos a mao, para chegar no mesmo lugar.
 enum EstadoCalib : uint8_t {
   CAL_INATIVO,
-  CAL_HOME,
-  CAL_J1_NEG,
-  CAL_J1_VOLTA_NEG,
   CAL_J1_POS,
-  CAL_J1_VOLTA_POS,
-  CAL_J2_NEG,
-  CAL_J2_VOLTA_NEG,
+  CAL_J1_NEG,
   CAL_J2_POS,
-  CAL_J2_VOLTA_POS,
+  CAL_J2_NEG,
   CAL_CONCLUIDO
 };
 

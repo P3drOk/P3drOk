@@ -250,10 +250,8 @@ bool progIniciar(bool modoEnsaio, const char** motivo) {
     if (motivo) *motivo = "grave pelo menos 2 pontos";
     return false;
   }
-  if (!J1.calibrada || !J2.calibrada) {
-    if (motivo) *motivo = "calibre as juntas antes de executar";
-    return false;
-  }
+  // Executar nao exige calibracao: os pontos foram gravados nesta mesma
+  // regua. O que a calibracao da e a protecao de curso.
   // Vale para o ensaio tambem: ele move o braco pelo percurso inteiro.
   if (!servosLigados) {
     if (motivo) *motivo = "habilite os servos antes de executar";

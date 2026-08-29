@@ -152,10 +152,9 @@ bool trajIniciarReproducao(const char** motivo) {
     if (motivo) *motivo = "nenhuma trajetoria gravada";
     return false;
   }
-  if (!J1.calibrada || !J2.calibrada) {
-    if (motivo) *motivo = "calibre as duas juntas antes de reproduzir";
-    return false;
-  }
+  // Reproduzir nao exige calibracao: a trajetoria foi gravada nesta
+  // mesma regua e volta pelo mesmo caminho. Sem limites medidos o que
+  // falta e a protecao de curso, nao a capacidade de repetir.
   // A reproducao aciona o rele e move os dois eixos: sem servos ela so
   // conta passos e desmancha a referencia de calibracao.
   if (!servosLigados) {

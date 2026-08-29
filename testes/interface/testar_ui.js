@@ -933,30 +933,36 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(500);
   await t.screenshot({ path: SAIDA + '/celular-6-curso.png' });
 
-  // Assistente de calibracao: campos que so aparecem onde fazem sentido.
-  for (const [calib, rotulo, temCampos] of [
-    ['HOME',      'Junta 1 esta em',      true],
-    ['J1_NEG',    '',                     false],
-    ['CONCLUIDO', 'Curso real da junta 1', true],
+  // CALIBRAR SAO QUATRO MARCAS, e nenhuma delas pede numero.
+  //
+  // A tela antiga tinha campo de medida em duas etapas: o angulo real na
+  // referencia e o curso medido com transferidor. Os dois sairam -- o
+  // zero e o meio do curso, e a escala do encoder sai das proprias
+  // marcas.
+  for (const [calib, passo, eixo] of [
+    ['J1_POS', 1, 1], ['J1_NEG', 2, 1], ['J2_POS', 3, 2], ['J2_NEG', 4, 2],
   ]) {
-    await t.request.post(BASE + '/teste/estado', { data: { calib, calibEixo: 0 } });
+    await t.request.post(BASE + '/teste/estado', { data: { calib, calibEixo: eixo } });
     await t.waitForTimeout(500);
     const est = await t.evaluate(() => ({
       veu: document.getElementById('veu').classList.contains('on'),
-      vis: document.getElementById('cMed').style.display !== 'none',
-      l1: document.getElementById('cMedL1').textContent.trim(),
-      g1: document.getElementById('cG1').value,
+      passo: document.getElementById('cPasso').textContent,
+      instr: document.getElementById('cInstr').textContent,
+      onde: document.getElementById('cOnde').textContent,
+      campos: document.querySelectorAll('#veu input[type=number]').length,
     }));
-    checar(est.veu && est.vis === temCampos && (!temCampos || est.l1 === rotulo),
-           'assistente na etapa ' + calib + ': campos de medida ' +
-           (temCampos ? 'aparecem' : 'somem'),
-           temCampos ? ('"' + est.l1 + '" preenchido com ' + est.g1) : 'ocultos');
+    checar(est.veu && new RegExp('PASSO ' + passo + ' DE 4').test(est.passo) &&
+           est.campos === 0,
+           'Calibracao: etapa ' + calib + ' e o passo ' + passo + ' de 4, sem campo a digitar',
+           est.passo + ' | ' + est.instr);
+    checar(/junta \d+: -?[\d.]+/.test(est.onde),
+           'Calibracao: a tela diz onde a junta da vez esta agora', est.onde);
   }
 
-  // O sentido do eixo se descobre errado APERTANDO a seta no assistente.
-  // Tem de dar para consertar ali, sem cancelar tudo.
+  // O sentido do eixo se descobre errado APERTANDO a seta. Tem de dar
+  // para consertar ali, sem cancelar tudo.
   await t.request.post(BASE + '/teste/estado',
-    { data: { calib: 'HOME', calibEixo: 0 } });
+    { data: { calib: 'J1_POS', calibEixo: 1 } });
   await t.waitForTimeout(500);
   const setas = await t.evaluate(() => {
     const b = [...document.querySelectorAll('#cJ1 .jb')];
@@ -965,39 +971,36 @@ async function fecharGaveta(pag) {
              sent: document.getElementById('cSent').style.display !== 'none' };
   });
   // Junta e coisa que gira: seta para os lados nao quer dizer nada aqui.
-  checar(/\u21ba/.test(setas.txt) && /\u21bb/.test(setas.txt),
-         'assistente: os botoes de jog falam em sentido de rotacao, nao em lados',
+  checar(/↺/.test(setas.txt) && /↻/.test(setas.txt),
+         'Calibracao: os botoes de jog falam em sentido de rotacao, nao em lados',
          setas.txt + '  (data-d: ' + setas.dir + ')');
   checar(setas.sent,
-         'assistente: na etapa de referencia aparece a conferencia de sentido');
+         'Calibracao: na primeira etapa aparece a conferencia de sentido');
 
   rotas = [];
   await t.locator('#cInv1').click();
   await t.waitForTimeout(300);
   const inv = rotas.find(x => x.split('?')[0] === '/api/sentido');
   checar(!!inv && /j=1/.test(inv),
-         'assistente: inverter a junta 1 chama /api/sentido sem cancelar o assistente',
+         'Calibracao: inverter a junta 1 chama /api/sentido sem cancelar a calibracao',
          inv || 'nada');
 
-  // Depois de medir o primeiro limite, o sentido some: ja ha medida que
-  // seria invertida junto.
+  // Depois da primeira marca o sentido some: ja ha medida que seria
+  // invertida junto.
   await t.request.post(BASE + '/teste/estado', { data: { calib: 'J1_NEG' } });
   await t.waitForTimeout(500);
   checar(!(await t.evaluate(() =>
              document.getElementById('cSent').style.display !== 'none')),
-         'assistente: passada a referencia, a troca de sentido sai da tela');
-  await t.request.post(BASE + '/teste/estado', { data: { calib: 'CONCLUIDO' } });
-  await t.waitForTimeout(500);
+         'Calibracao: feita a primeira marca, a troca de sentido sai da tela');
 
-  // Confirmar na etapa de conclusao manda o curso medido.
+  // Marcar chama a rota, e sem numero nenhum a tiracolo.
   rotas = [];
-  await t.evaluate(() => { document.getElementById('cG1').value = '58.5';
-                           document.getElementById('cG2').value = '61.0'; });
   await t.locator('#cOk').click();
   await t.waitForTimeout(300);
   const conf = rotas.find(x => x.startsWith('/api/calib/confirmar'));
-  checar(!!conf && /g1=58\.5/.test(conf) && /g2=61/.test(conf),
-         'concluir a calibracao envia o curso realmente medido', conf);
+  checar(!!conf && !/g1=|g2=/.test(conf),
+         'Calibracao: marcar chama a rota sem numero a tiracolo -- nao ha o que perguntar',
+         conf || 'nada');
   await t.request.post(BASE + '/teste/estado', { data: { calib: 'INATIVO' } });
   await t.waitForTimeout(400);
 
@@ -1613,66 +1616,40 @@ async function fecharGaveta(pag) {
   checar(/16\.500|16,500/.test(resumo.txt) && /458/.test(resumo.txt),
          'Calibracao: com a reducao e a resolucao de cada junta',
          resumo.txt.slice(0, 70));
-  checar(/comandado/.test(resumo.vivo) && /medido/.test(resumo.vivo),
-         'Calibracao: e a conferencia comandado x medido, que fecha o laco',
-         resumo.vivo.split('\n')[0]);
 
-  // Passo 1: engrenagem eletronica, pelo encoder.
+  // O REDUTOR e o unico numero que a calibracao nao mede: o encoder fica
+  // no eixo do motor, antes dele, e com um sensor so desse lado nenhuma
+  // medida revela a relacao. As duas telas de afericao avulsa
+  // ("engrenagem eletronica" e "reducao mecanica pelo encoder") sairam:
+  // a calibracao mede a escala sozinha, das proprias marcas.
   await t.evaluate(() => {
-    const alvo = document.getElementById('btAfMarcar').closest('.et');
+    const alvo = document.getElementById('btRedSalvar').closest('.et');
     document.querySelectorAll('#cfgCalib .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
-  await t.waitForTimeout(250);
-  rotas = [];
-  await t.locator('#btAfMarcar').click();
-  await t.waitForTimeout(300);
-  checar(rotas.some(x => x === '/api/aferir/marcar?j=1'),
-         'Calibracao: "Marcar o inicio" manda a junta escolhida');
-
-  await t.request.post(BASE + '/teste/calibracao',
-    { data: { marca1: true, passos1: 9500, voltas1: 2.375 } });
-  await t.waitForTimeout(900);
-  const contagemAf = await t.evaluate(() =>
-    document.getElementById('afConta').textContent.trim());
-  checar(/9500 passos/.test(contagemAf) && /2\.375/.test(contagemAf),
-         'Calibracao: a contagem mostra passos comandados E voltas do motor',
-         contagemAf);
-
-  // Passo 2: reducao. O botao so libera com marca E angulo.
-  await t.evaluate(() => {
-    const alvo = document.getElementById('btRdMarcar').closest('.et');
-    document.querySelectorAll('#cfgCalib .et')
-      .forEach(x => x.classList.toggle('aberta', x === alvo));
-  });
-  await t.waitForTimeout(250);
-  await t.request.post(BASE + '/teste/estado', { data: { afer1: 9500 } });
-  await t.waitForTimeout(500);
-  const semAngulo = await t.evaluate(() => ({
-    dis: document.getElementById('btRdAplicar').disabled,
-    motivo: document.getElementById('qRdAplicar').textContent.trim(),
-  }));
-  checar(semAngulo.dis && /angulo/i.test(semAngulo.motivo),
-         'Calibracao: sem o angulo de referencia o botao trava e diz o porque',
-         semAngulo.motivo);
-
-  // Os atalhos preenchem o angulo: 90 do esquadro e o caminho recomendado.
-  await t.locator('#cfgCalib [data-rdg="90"]').click();
-  await t.waitForTimeout(300);
-  const comAtalho = await t.evaluate(() => ({
-    v: document.getElementById('rdG').value,
-    dis: document.getElementById('btRdAplicar').disabled,
-  }));
-  checar(comAtalho.v === '90' && !comAtalho.dis,
-         'Calibracao: o atalho do esquadro preenche 90 e libera o botao',
-         'valor ' + comAtalho.v);
-
-  rotas = [];
-  await t.locator('#btRdAplicar').click();
   await t.waitForTimeout(400);
-  checar(rotas.some(x => x === '/api/aferir/reducao?j=1&g=90'),
-         'Calibracao: a medida da reducao leva a junta e o angulo real',
-         rotas.join(' ') || 'nada');
+  const red = await t.evaluate(() => ({
+    r1: document.getElementById('inRd1').value,
+    sb: document.getElementById('sbRed').textContent.trim(),
+    sumiu: !document.getElementById('btAfMarcar') &&
+           !document.getElementById('btRdAplicar') &&
+           !document.getElementById('guiaLista'),
+  }));
+  checar(red.sumiu,
+         'Calibracao: as telas de afericao avulsa e a lista guiada sairam -- '
+         + 'a calibracao mede sozinha');
+  checar(parseFloat(red.r1) > 0 && /:/.test(red.sb),
+         'Calibracao: o redutor de cada junta continua declaravel',
+         'junta 1 = ' + red.r1 + '  |  ' + red.sb);
+
+  rotas = [];
+  await t.evaluate(() => { document.getElementById('inRd1').value = '20'; });
+  await t.locator('#btRedSalvar').click();
+  await t.waitForTimeout(400);
+  const posRed = rotas.find(x => x.split('?')[0] === '/api/config');
+  checar(!!posRed && /red1=20/.test(posRed),
+         'Calibracao: salvar o redutor manda so ele, sem carregar o resto junto',
+         posRed || 'nada');
 
   // Area da mesa.
   await t.evaluate(() => {
@@ -1696,17 +1673,18 @@ async function fecharGaveta(pag) {
   checar(rotas.some(x => x.split('?')[0] === '/api/mesa/canto'),
          'Calibracao: "Gravar canto" chama a rota certa', rotas.join(' '));
 
-  // Sem calibracao, ensinar a mesa e recusado: sem curso medido nao ha
-  // coordenada em que confiar.
+  // ENSINAR A MESA NAO EXIGE MAIS CALIBRACAO. Calibrar virou opcional em
+  // toda a maquina: o canto e uma coordenada, e a coordenada existe com
+  // ou sem limites medidos.
   await t.request.post(BASE + '/teste/estado', { data: { cal1: false } });
   await t.waitForTimeout(600);
   const mesaBloq = await t.evaluate(() => ({
     dis: document.getElementById('btMesaCanto').disabled,
     motivo: document.getElementById('qMesaCanto').textContent.trim(),
   }));
-  checar(mesaBloq.dis && /calibre/i.test(mesaBloq.motivo),
-         'Calibracao: sem calibracao, ensinar a mesa e recusado com motivo',
-         mesaBloq.motivo);
+  checar(!mesaBloq.dis && !/calibre/i.test(mesaBloq.motivo),
+         'Calibracao: sem limites medidos a mesa continua podendo ser ensinada',
+         mesaBloq.motivo || 'sem impedimento');
   await t.request.post(BASE + '/teste/estado', { data: { cal1: true, afer1: 0 } });
   await t.request.post(BASE + '/teste/calibracao',
     { data: { marca1: false, passos1: 0, voltas1: 0 } });
@@ -2041,70 +2019,22 @@ async function fecharGaveta(pag) {
   // O passo do sentido nao tem medida: e uma conferencia, e a marca dela
   // vive no navegador. Limpa-se antes para o cenario comecar com um
   // passo pendente de verdade -- senao a maquina do banco ja nasce toda
-  // calibrada e a lista nunca mostra o "proximo".
-  await t.evaluate(() => { try { localStorage.removeItem('guiaSentido'); } catch (e) {} });
-  await t.reload({ waitUntil: 'domcontentloaded' });
-  await t.waitForTimeout(800);
-  await t.evaluate(() => {
-    if (!document.getElementById('veuCfg').classList.contains('on'))
-      document.getElementById('btCfg').click();
-  });
-  await t.waitForTimeout(300);
-  await t.locator('#cfgAbas button[data-cfg="calib"]').click();
-  await t.waitForTimeout(800);
-
-  const guia = await t.evaluate(() => {
-    const ps = [...document.querySelectorAll('#guiaLista .gp')];
-    return {
-      n: ps.length,
-      ordem: ps.map(e => e.dataset.guia),
-      ok: ps.filter(e => e.classList.contains('ok')).map(e => e.dataset.guia),
-      agora: ps.filter(e => e.classList.contains('agora')).map(e => e.dataset.guia),
-      frase: document.getElementById('guiaAgora').textContent.trim(),
-      sub: document.getElementById('sbGuia').textContent.trim(),
-      guardado: [...document.querySelectorAll('#cfgCalib .tt')]
-                  .some(e => /Onde isto fica guardado/.test(e.textContent)),
-    };
-  });
-  checar(guia.n === 4 &&
-         guia.ordem.join(',') === 'sentido,reducao,curso,mesa',
-         'Calibracao guiada: quatro passos, na ordem em que um depende do outro',
-         guia.ordem.join(' > '));
-  checar(guia.agora.length === 1 && guia.agora[0] === 'sentido' &&
-         guia.ok.indexOf('sentido') < 0,
-         'Calibracao guiada: exatamente UM passo marcado como o proximo',
-         'agora: ' + guia.agora + ', prontos: ' + guia.ok);
-  checar(/proximo passo|prontos/.test(guia.frase) && guia.sub.length > 0,
-         'Calibracao guiada: e diz em palavras o que falta fazer agora',
-         guia.frase + '  |  ' + guia.sub);
-  checar(!guia.guardado,
-         'Calibracao: o cartao "Onde isto fica guardado" saiu; nao dizia o que fazer');
-
-  // O passo aponta para quem faz o trabalho -- e o cartao abre.
-  await t.locator('#guiaLista [data-guia="mesa"]').click();
-  await t.waitForTimeout(500);
-  const abriu = await t.evaluate(() => {
-    const bt = document.getElementById('btMesaCanto');
-    return { visivel: !!bt.offsetParent,
-             cartaoAberto: bt.closest('.et').classList.contains('aberta') };
-  });
-  checar(abriu.visivel && abriu.cartaoAberto,
-         'Calibracao guiada: tocar num passo abre o cartao que faz aquilo',
-         JSON.stringify(abriu));
-
-  // Conferir o sentido marca o passo 1 -- e o proximo anda.
-  await t.locator('#cfgAbas button[data-cfg="calib"]').click();
-  await t.waitForTimeout(300);
-  await t.locator('#btGuiaSentidoOk').click();
-  await t.waitForTimeout(900);
-  const depois = await t.evaluate(() => {
-    const ps = [...document.querySelectorAll('#guiaLista .gp')];
-    return { ok: ps.filter(e => e.classList.contains('ok')).map(e => e.dataset.guia),
-             agora: ps.filter(e => e.classList.contains('agora')).map(e => e.dataset.guia) };
-  });
-  checar(depois.ok.indexOf('sentido') >= 0 && depois.agora.indexOf('sentido') < 0,
-         'Calibracao guiada: conferido o sentido, o passo fecha e o proximo assume',
-         JSON.stringify(depois));
+  // A LISTA GUIADA SAIU.
+  //
+  // Ela apontava quatro passos -- sentido, reducao, curso, mesa -- porque
+  // calibrar era um percurso longo com dependencias entre etapas. Agora
+  // calibrar sao quatro marcas e nada mais, e um indice para quatro
+  // marcas e mais tela do que trabalho.
+  const semGuia = await t.evaluate(() => ({
+    lista: !!document.getElementById('guiaLista'),
+    afericao: !!document.getElementById('btAfMarcar'),
+    reducaoEnc: !!document.getElementById('btRdAplicar'),
+    calibrar: !!document.getElementById('btCalIni2'),
+  }));
+  checar(!semGuia.lista && !semGuia.afericao && !semGuia.reducaoEnc,
+         'Calibracao: a lista guiada e as afericoes avulsas sairam da tela');
+  checar(semGuia.calibrar,
+         'Calibracao: e o que sobrou e um botao so -- calibrar');
 
   // ------------------------------------------------------------------
   // AJUSTES DA MAQUINA em linguagem de operador.

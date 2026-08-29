@@ -1484,18 +1484,14 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 
             <h4 class="dobra" id="hAvancado">Avancado &mdash; numeros da montagem</h4>
             <div id="avancado" class="oculto">
-              <div class="nt av">Daqui para baixo sao numeros de montagem. Mexer
-              neles sem medir muda a escala de tudo: o desenho na tela para de
-              bater com o braco, e a area util passa a proteger o lugar errado.
-              A pagina <b>Calibracao</b> acha estes valores medindo, em vez de
-              adivinhar.</div>
+              <div class="nt av">Daqui para baixo sao numeros de montagem.
+              Mexer neles sem medir muda a escala de tudo: o desenho na tela
+              para de bater com o braco. O <b>redutor</b> mora na pagina
+              Calibracao, junto do resto da escala.</div>
 
-              <h4>Resolucao da junta 1</h4>
-              <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv1" min="1"></div>
-              <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd1" min="0.01" step="0.01"><span class="un">: 1</span></div>
-              <h4>Resolucao da junta 2</h4>
-              <div class="cp"><label>Pulsos por volta do motor</label><input type="number" id="inPv2" min="1"></div>
-              <div class="cp"><label>Reducao mecanica</label><input type="number" id="inRd2" min="0.01" step="0.01"><span class="un">: 1</span></div>
+              <h4>Pulsos por volta do motor</h4>
+              <div class="cp"><label>Junta 1</label><input type="number" id="inPv1" min="1"></div>
+              <div class="cp"><label>Junta 2</label><input type="number" id="inPv2" min="1"></div>
               <div class="res" id="resumoRes">--</div>
 
               <h4>Sentido dos eixos</h4>
@@ -1517,18 +1513,24 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 
     </div>
     <div class="pane" id="cfgCalib">
-      <div class="et aberta" id="etGuia">
+      <div class="et aberta">
         <div class="cab"><div class="mk"><svg class="ic"><use href="#i-mira"/></svg></div>
-          <div class="tx"><div class="tt">Calibracao guiada</div>
-          <span class="sb" id="sbGuia">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="tx"><div class="tt">Calibrar o braco</div>
+          <span class="sb" id="sbCurso">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          
-          <div class="guia" id="guiaLista"></div>
-          <div class="res" id="guiaAgora">--</div>
-          <button class="b mini" id="btGuiaSentidoOk">Ja conferi o sentido dos eixos</button>
-          <div class="pq2" id="qGuiaSentidoOk"></div>
-          <div class="nt">Cada passo abre o cartao que faz o trabalho, logo
-          abaixo. Nada aqui e atalho: e o mesmo caminho, na ordem certa.</div>
+          <div class="nt">Quatro marcas: <b>junta 1 no limite positivo</b>,
+          <b>junta 1 no negativo</b>, e o mesmo na <b>junta 2</b>. Nada a
+          digitar. Dali sai o curso de cada junta, o zero (o meio do curso) e
+          a escala do encoder.</div>
+          <div class="nt">Chegue no batente com as setas, ou <b>solte o motor
+          daquele eixo</b> e empurre o braco com a mao.</div>
+          <button class="b pri" id="btCalIni2">Calibrar agora</button>
+          <div class="pq2" id="qCalIni2"></div>
+          <div class="res" id="calVivo">--</div>
+          <button class="b mini x" id="btCalApagar2">Apagar os limites</button>
+          <div class="pq2" id="qCalApagar2"></div>
+          <div class="nt">Calibrar e <b>opcional</b>: sem limites a maquina
+          opera igual, so fica sem protecao de curso.</div>
         </div>
       </div>
 
@@ -1538,85 +1540,34 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <span class="sb" id="sbCalib">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
           <div class="grelha" id="calResumo"></div>
-          
-          <div class="res" id="calVivo">--</div>
-          
         </div>
       </div>
 
       <div class="et">
-        <div class="cab"><div class="mk">1</div>
-          <div class="tx"><div class="tt">Engrenagem eletronica</div>
-          <span class="sb">sem instrumento nenhum</span></div><div class="chv">&#9654;</div></div>
+        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-engrenagem"/></svg></div>
+          <div class="tx"><div class="tt">Redutor de cada junta</div>
+          <span class="sb" id="sbRed">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          
-          <div class="cp"><label>Junta</label>
-            <select id="afJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
-          <button class="b mini" id="btAfMarcar">1 &middot; Marcar o inicio aqui</button>
-          <div class="pq2" id="qAfMarcar"></div>
-          <div class="nt">Agora mova o eixo com as setas, <b>bastante</b>
-          &mdash; pelo menos um quarto de volta do motor.</div>
-          <div class="res" id="afConta">--</div>
-          <button class="b pri mini" id="btAfEnc">2 &middot; Medir passos por volta</button>
-          <div class="pq2" id="qAfEnc"></div>
+          <div class="nt">O unico numero que a calibracao <b>nao mede</b>. O
+          encoder fica no eixo do motor, antes do redutor: com um sensor so
+          desse lado, nenhuma medida revela a relacao dele. Declare o que voce
+          comprou.</div>
+          <div class="cp"><label>Junta 1 &middot; redutor</label>
+            <input type="number" id="inRd1" min="0.1" step="0.1"><span class="un">: 1</span></div>
+          <div class="cp"><label>Junta 2 &middot; redutor</label>
+            <input type="number" id="inRd2" min="0.1" step="0.1"><span class="un">: 1</span></div>
+          <button class="b pri mini" id="btRedSalvar">Salvar</button>
+          <div class="pq2" id="qRedSalvar"></div>
+          <div class="nt">Se o curso medido sair em graus que nao batem com a
+          maquina, e aqui que se conserta &mdash; sem refazer a calibracao.</div>
         </div>
       </div>
 
       <div class="et">
-        <div class="cab"><div class="mk">2</div>
-          <div class="tx"><div class="tt">Reducao mecanica</div>
-          <span class="sb">precisa de uma referencia, uma so</span></div><div class="chv">&#9654;</div></div>
-        <div class="dentro">
-          
-          <div class="cp"><label>Junta</label>
-            <select id="rdJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
-          <button class="b mini" id="btRdMarcar">1 &middot; Marcar o inicio aqui</button>
-          <div class="pq2" id="qRdMarcar"></div>
-          <div class="res" id="rdConta">--</div>
-          <div class="nt">De onde tirar a referencia, da melhor para a pior:</div>
-          <div class="tr"><b>1.</b>&nbsp;<span><b>Esquadro (90&deg;)</b> &mdash; um
-          esquadro de carpinteiro da 90 graus com precisao muito boa e todo mundo
-          tem um. Encoste numa face, marque, gire ate a outra, aplique 90.</span></div>
-          <div class="tr"><b>2.</b>&nbsp;<span><b>Curso entre batentes</b> &mdash; o
-          maior angulo disponivel, e quanto maior o angulo menor o erro relativo.
-          Precisa do curso real, medido uma vez.</span></div>
-          <div class="tr"><b>3.</b>&nbsp;<span><b>Volta completa</b>, se a junta der
-          uma &mdash; nao precisa de instrumento: basta reconhecer que voltou ao
-          mesmo lugar.</span></div>
-          <div class="cp"><label>2 &middot; Angulo real</label>
-            <input type="number" id="rdG" min="5" step="1" placeholder="90"><span class="un">°</span></div>
-          <div class="linhaB">
-            <button class="b mini" data-rdg="90">esquadro 90&deg;</button>
-            <button class="b mini" data-rdg="180">meia volta</button>
-            <button class="b mini" data-rdg="360">volta inteira</button>
-          </div>
-          <button class="b pri mini" id="btRdAplicar">3 &middot; Gravar a reducao medida</button>
-          <div class="pq2" id="qRdAplicar"></div>
-          
-        </div>
-      </div>
-
-      <div class="et">
-        <div class="cab"><div class="mk">3</div>
-          <div class="tx"><div class="tt">Curso das juntas</div>
-          <span class="sb" id="sbCurso">--</span></div><div class="chv">&#9654;</div></div>
-        <div class="dentro">
-          <div class="nt">Onde cada junta bate. E o assistente que leva voce ate
-          os batentes e grava os limites &mdash; e deles que sai toda protecao de
-          curso.</div>
-          <button class="b pri" id="btCalIni2">Abrir o assistente de calibracao</button>
-          <div class="pq2" id="qCalIni2"></div>
-          <button class="b mini x" id="btCalApagar2">Apagar a calibracao gravada</button>
-          <div class="pq2" id="qCalApagar2"></div>
-        </div>
-      </div>
-
-      <div class="et">
-        <div class="cab"><div class="mk">4</div>
+        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
           <div class="tx"><div class="tt">Area da mesa</div>
           <span class="sb" id="sbMesa">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          
           <div class="perigo">Ensine os cantos com a <b>ponta</b> da tocha, nao com
           o cotovelo. A area e da ferramenta &mdash; o cotovelo passa por cima da
           mesa o tempo todo e nao solda nada.</div>
@@ -1625,7 +1576,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="res" id="mesaEstado">--</div>
           <button class="b mini x" id="btMesaLimpar">Apagar a area ensinada</button>
           <div class="pq2" id="qMesaLimpar"></div>
-          
         </div>
       </div>
 
@@ -1890,20 +1840,19 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 </div></div>
 
 <div class="veu" id="veu"><div class="cx">
-  <h2>Calibracao das juntas</h2>
+  <h2>Calibrar o braco</h2>
   <div class="pp" id="cPasso">--</div>
   <div class="pgr"><i id="cBarra"></i></div>
   <div class="ins" id="cInstr"></div>
 
-  <!-- Aparece so nas etapas em que os numeros significam alguma coisa:
-       o angulo da referencia no HOME e o curso realmente medido no fim. -->
-  <div id="cMed" style="display:none">
-    <div class="cp"><label id="cMedL1">Junta 1</label>
-      <input type="number" id="cG1" step="0.1"><span class="un">°</span></div>
-    <div class="cp"><label id="cMedL2">Junta 2</label>
-      <input type="number" id="cG2" step="0.1"><span class="un">°</span></div>
-    <div class="nt" id="cMedNota"></div>
-  </div>
+  <!-- Onde a junta da vez esta AGORA. E o unico numero da tela, e ele nao
+       se digita: se le. -->
+  <div class="res" id="cOnde">--</div>
+
+  <div class="nt">Chegue no batente do jeito que preferir: com as setas
+  abaixo, ou <b>soltando o motor daquele eixo</b> e empurrando o braco
+  com a mao &mdash; nos dois casos o que se grava e onde a junta esta.</div>
+
   <div class="eixo" id="cJ1">
     <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;</button>
     <div class="id"><span class="rot">junta 1</span></div>
@@ -1915,10 +1864,10 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
     <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;</button>
   </div>
 
-  <!-- So na etapa de referencia: e aqui que o operador descobre que o
-       braco gira ao contrario, e mandar cancelar para consertar era
-       pedir para ele desistir do assistente. Depois desta etapa ja ha
-       limite medido, e trocar o sinal inverteria o que foi medido. -->
+  <!-- So na PRIMEIRA etapa: e aqui que o operador descobre que o braco
+       gira ao contrario, e mandar cancelar para consertar era pedir para
+       ele desistir. Da segunda em diante ja ha marca feita, e trocar o
+       sinal inverteria o que foi medido. -->
   <div id="cSent" style="display:none">
     <div class="nt"><b>Confira o sentido antes de medir.</b> Aperte
     &#8635; (horario) em cada junta e veja para que lado ela vai de
@@ -1928,7 +1877,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
     <div class="tr"><div class="ch" id="cInv2"><i></i></div>
       <span>inverter a junta 2</span></div>
   </div>
-  <button class="b pri" id="cOk">Confirmar</button>
+  <button class="b pri" id="cOk">Marcar este limite</button>
   <button class="b mini" id="cNao">Cancelar</button>
 </div></div>
 
@@ -2020,6 +1969,9 @@ $("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
    --------------------------------------------------------------------- */
 const VEL_GRAUS_MAX = 120;   /* teto da barra; o firmware aceita ate 720 */
 const VEL_GRAUS_MIN = 1;
+/* Tempo de subida ate a velocidade escolhida. E ele que se mantem
+   constante -- nao a aceleracao. */
+const VEL_RAMPA_S = 0.35;
 
 function alcanceMm(){ return (D.l1||200)+(D.l2||200); }
 function grausParaMm(g){ return g*Math.PI*alcanceMm()/180; }
@@ -2045,9 +1997,18 @@ function velEnviar(g){
   velUltimoEnviado=gg;
   /* Os dois campos de uma vez: o jog e o posicionamento sao o mesmo
      gesto para quem opera, e separa-los so fazia a barra parecer que
-     nao funcionava. */
+     nao funcionava.
+
+     E a RAMPA vai junto. A aceleracao era um numero fixo, entao subir a
+     velocidade so alongava a subida: a 120 graus/s com rampa de 60
+     graus/s a segunda demorava dois segundos para chegar na velocidade
+     pedida, e o movimento inteiro virava rampa -- o braco parecia
+     engasgar em vez de andar. Amarrando a rampa a velocidade, o TEMPO
+     de subida fica constante e o movimento tem a mesma cara em qualquer
+     velocidade. */
   const v=gg.toFixed(1);
-  post("/api/config?velN="+v+"&velA="+v)
+  const a=Math.min(5000,Math.max(10,gg/VEL_RAMPA_S)).toFixed(0);
+  post("/api/config?velN="+v+"&velA="+v+"&acel1="+a+"&acel2="+a)
     .then(function(){velEnviando=false;})
     .catch(function(){velEnviando=false;});
 }
@@ -2170,12 +2131,9 @@ $("sInv2").onclick=function(){inverterEixo(2,!D.inv2);};
 $("cInv1").onclick=function(){inverterEixo(1,!D.inv1);};
 $("cInv2").onclick=function(){inverterEixo(2,!D.inv2);};
 $("cOk").onclick=function(){
-  /* Os dois campos so sao enviados nas etapas em que eles significam
-     alguma coisa; vazio vira 0, que o firmware entende como "nao mexer". */
-  const usa=$("cMed").style.display!=="none";
-  const g1=usa?(parseFloat($("cG1").value)||0):0;
-  const g2=usa?(parseFloat($("cG2").value)||0):0;
-  post("/api/calib/confirmar?g1="+g1+"&g2="+g2);
+  /* A calibracao nao pergunta mais nada: os dois numeros da rota ficaram
+     por compatibilidade e vao sempre em zero. */
+  post("/api/calib/confirmar");
 };
 $("cNao").onclick    =function(){post("/api/calib/cancelar");};
 $("btGravar").onclick=function(){post("/api/ponto/gravar").then(lerPontos);};
@@ -2424,19 +2382,10 @@ function calibAtualizar(){
             "bem afastado dos outros")
          : "nenhum canto ensinado ainda");
 
-    /* Contagem ao vivo das duas medicoes. Ver o numero subir e o que
-       mostra que a medida esta acontecendo. */
-    const jA=+($("afJ")||{value:1}).value, jR=+($("rdJ")||{value:1}).value;
-    const conta=function(n){
-      if(!j["marca"+n]) return "marque o inicio para comecar a contar";
-      return j["passos"+n]+" passos comandados  ·  "+
-             j["voltas"+n].toFixed(4)+" volta(s) do motor pelo encoder"+
-             (j["enc"+n]?"":"  ·  SEM LEITURA CONFIAVEL");
-    };
-    if($("afConta")) $("afConta").textContent=conta(jA);
-    if($("rdConta")) $("rdConta").textContent=conta(jR);
-
-    guiaPintar(j);
+    $("sbRed").textContent = j.red1.toFixed(2)+" : 1  ·  "+
+                             j.red2.toFixed(2)+" : 1";
+    if($("inRd1")!==document.activeElement) $("inRd1").value=j.red1;
+    if($("inRd2")!==document.activeElement) $("inRd2").value=j.red2;
 
     /* Comandado x medido: a conferencia final. */
     const cmp=function(n){
@@ -2456,152 +2405,35 @@ setInterval(function(){
     calibAtualizar();
 }, 500);
 
-/* =====================================================================
-   CALIBRACAO GUIADA
-   O pedido: "necessito apenas encontrar a posicao [de referencia], poder
-   se mover pela mesa, e saber a reducao mecanica de cada eixo para o
-   desenho ser preciso".
-   Sao quatro passos, e a ORDEM importa -- cada um usa o anterior:
-     1. sentido   o eixo gira para o lado que a cinematica espera?
-                  Se nao, todo o resto e medido ao contrario.
-     2. reducao   quantas voltas do motor cabem num grau da junta. Sem
-                  ela o desenho na tela nao bate com o braco.
-     3. curso     ate onde cada junta vai. Depende da reducao: o curso e
-                  medido em graus.
-     4. mesa      onde a peca fica. Depende do curso: os cantos sao
-                  gravados com a ponta, e a ponta so vai aonde o curso
-                  deixa.
-   Este cartao nao refaz nenhum deles: ele diz qual e o proximo e abre o
-   cartao que faz o trabalho. Duplicar a acao aqui seria duplicar a
-   regra, e regra duplicada e regra que diverge.
-   ===================================================================== */
-const GUIA=[
-  {id:"sentido", n:"Sentido dos eixos",
-   por:"o braco tem de girar para o lado que o desenho mostra",
-   alvo:"sInv1"},
-  {id:"reducao", n:"Reducao de cada eixo",
-   por:"e ela que faz o desenho bater com o braco",
-   alvo:"btRdMarcar"},
-  {id:"curso",   n:"Curso das juntas",
-   por:"ate onde cada junta pode ir",
-   alvo:"btCalIni2"},
-  {id:"mesa",    n:"Area da mesa",
-   por:"onde a peca fica -- fora dela o braco nao se move",
-   alvo:"btMesaCanto"}
-];
-/* O sentido nao tem "pronto" gravado: nao ha o que medir, so o que
-   conferir. Fica marcado quando o operador diz que conferiu, e isso vive
-   no navegador -- e uma nota para ele mesmo, nao configuracao da
-   maquina. */
-function guiaSentidoOk(){
-  try{ return localStorage.getItem("guiaSentido")==="1"; }catch(e){ return false; }
-}
-function guiaPintar(j){
-  const feito={
-    sentido: guiaSentidoOk(),
-    /* Reducao 1,000 e o valor de fabrica: enquanto os dois eixos
-       estiverem nele, ninguem mediu nada. */
-    reducao: (Math.abs(j.red1-1)>0.001)||(Math.abs(j.red2-1)>0.001),
-    curso:   !!(j.cal1&&j.cal2),
-    mesa:    !!j.mesaOn
-  };
-  let prox=null;
-  let h="";
-  GUIA.forEach(function(p,i){
-    const ok=feito[p.id];
-    if(!ok&&!prox)prox=p;
-    h+='<div class="gp'+(ok?" ok":(prox===p?" agora":""))+'" data-guia="'+p.id+'">'+
-       '<div class="n">'+(ok?"\u2713":(i+1))+'</div>'+
-       '<div class="tt2">'+p.n+'<small>'+(ok?"pronto":p.por)+'</small></div></div>';
-  });
-  $("guiaLista").innerHTML=h;
-  $("guiaLista").querySelectorAll("[data-guia]").forEach(function(e){
-    e.onclick=function(){guiaIr(e.dataset.guia);};});
-
-  $("guiaAgora").textContent = prox
-    ? ("proximo passo: "+prox.n+" \u2014 "+prox.por)
-    : "os quatro passos estao prontos. O desenho na tela representa o braco de verdade.";
-  $("sbGuia").textContent = prox
-    ? (GUIA.filter(function(p){return feito[p.id];}).length+" de 4 prontos")
-    : "calibrada";
-}
-/* Abrir o cartao que faz o trabalho e levar o olho ate ele. */
-function guiaIr(id){
-  const p=GUIA.filter(function(x){return x.id===id;})[0];
-  if(!p)return;
-  const el=$(p.alvo);
-  if(!el)return;
-  if(id==="sentido"){
-    const av=$("avancado");
-    /* O sentido mora no "Avancado" da pagina Maquina: abrir a gaveta na
-       pagina certa e revelar o bloco, senao o passo aponta para o nada. */
-    irCfg("maquina");
-    const et=el.closest(".et");
-    if(et)et.classList.add("aberta");
-    if(av&&av.classList.contains("oculto"))$("hAvancado").click();
-  }else{
-    const et=el.closest(".et");
-    if(et)et.classList.add("aberta");
-  }
-  setTimeout(function(){
-    el.scrollIntoView({behavior:"smooth",block:"center"});
-  },80);
-}
-$("btGuiaSentidoOk").onclick=function(){
-  try{localStorage.setItem("guiaSentido","1");}catch(e){}
-  acao("GuiaSentidoOk","sentido conferido.");
-  calibAtualizar();
-};
-
-$("btRdMarcar").onclick=function(){
-  post("/api/aferir/marcar?j="+$("rdJ").value).then(calibAtualizar);};
-$("btRdAplicar").onclick=function(){
-  const g=parseFloat($("rdG").value);
-  if(!(g>=5)){acao("RdAplicar","informe o angulo real: 90 do esquadro, ou o curso");return;}
-  acao("RdAplicar","");
-  post("/api/aferir/reducao?j="+$("rdJ").value+"&g="+g).then(calibAtualizar);};
-document.querySelectorAll("[data-rdg]").forEach(function(b){
-  b.onclick=function(){$("rdG").value=b.dataset.rdg;};});
-
 $("btMesaCanto").onclick=function(){
   post("/api/mesa/canto").then(calibAtualizar);};
 $("btMesaLimpar").onclick=function(){
   if(!confirm("Apagar a area da mesa ensinada?\n\nO braco volta a se proteger so pelo Y minimo e pelo raio da base."))return;
   post("/api/mesa/limpar").then(calibAtualizar);};
 
-/* A calibracao guiada e o UNICO caminho. Havia um segundo bloco em
-   Ajustes que abria o mesmo assistente, e ter dois lugares para a mesma
-   coisa so faz o operador perguntar qual e a diferenca -- nao havia
-   nenhuma. Aqui e onde ela mora, na ordem em que os passos acontecem. */
 $("btCalIni2").onclick=function(){ post("/api/calib/iniciar","qCalIni2"); };
 $("btCalApagar2").onclick=function(){
-  if(confirm(tr("Apagar a calibracao gravada?")+"\n\n"+
-             tr("O robo volta ao modo de instalacao: jog livre e sem limite de "+
-                "curso, programa e trajetoria recusados ate calibrar de novo.")))
+  if(confirm(tr("Apagar os limites gravados?")+"\n\n"+
+             tr("A maquina continua operando -- ela so fica sem protecao de curso.")))
     post("/api/calib/apagar","qCalApagar2");
 };
+/* O redutor e o unico numero que a calibracao nao mede: com o encoder no
+   eixo do motor, antes do redutor, nenhuma medida revela a relacao dele.
+   Salvar aqui manda so ele; o resto do formulario de ajustes segue
+   valendo o que ja estava. */
+$("btRedSalvar").onclick=function(){
+  const r1=parseFloat($("inRd1").value), r2=parseFloat($("inRd2").value);
+  if(!(r1>0)||!(r2>0)){acao("RedSalvar","o redutor tem de ser maior que zero");return;}
+  acao("RedSalvar","");
+  post("/api/config?red1="+r1+"&red2="+r2,"qRedSalvar").then(calibAtualizar);
+};
 
-/* ---------- zerar aqui e aferir a reducao ---------- */
-/* Os pulsos contados desde a marca aparecem em tempo real: sem isso o
-   operador nao tem como saber se a marca pegou. E o botao de gravar so
-   liga quando ha marca E graus digitados -- apertar e nao acontecer nada
-   e o mesmo defeito de sempre, com outro nome. */
-/* Os dois botoes de medida so ligam quando ha marca: apertar e nao
-   acontecer nada e o defeito mais antigo deste painel. A contagem ao
-   vivo (passos e voltas do motor) vem de /api/calibracao, em
-   calibAtualizar() -- aqui fica so o estado dos botoes. */
+/* Gravar canto so liga quando ha o que gravar: apertar e nao acontecer
+   nada e o defeito mais antigo deste painel. Calibracao deixou de ser
+   exigencia -- a mesa e ensinada em coordenada, e a coordenada existe
+   com ou sem limites medidos. */
 function afEstado(){
-  const aj=+$("afJ").value, ap=(aj===2?D.afer2:D.afer1)||0;
-  const rj=+$("rdJ").value, rp=(rj===2?D.afer2:D.afer1)||0;
-  acao("AfEnc", !D.modo ? "sem contato com o robo"
-      : ap===0 ? "marque o inicio e gire o eixo primeiro"
-      : porQueNaoMove(D,false));
-  acao("RdAplicar", !D.modo ? "sem contato com o robo"
-      : rp===0 ? "marque o inicio e gire o eixo primeiro"
-      : !(parseFloat($("rdG").value)>=5) ? "informe o angulo real de referencia"
-      : porQueNaoMove(D,false));
   acao("MesaCanto", !D.modo ? "sem contato com o robo"
-      : (!D.cal1||!D.cal2) ? "calibre as juntas antes de ensinar a mesa"
       : D.modo!=="MANUAL" ? "ensine a mesa com o robo parado no manual"
       : D.movendo ? "espere o braco parar" : "");
 }
@@ -2613,17 +2445,6 @@ $("btRefer").onclick=function(){
              "estiver mesmo na referencia, a area util inteira sai do lugar."))
     post("/api/referenciar");
 };
-$("afJ").onchange=afEstado;
-$("rdJ").onchange=afEstado;
-$("rdG").oninput=afEstado;
-$("btAfMarcar").onclick=function(){
-  post("/api/aferir/marcar?j="+$("afJ").value).then(afEstado);
-};
-$("btAfEnc").onclick=function(){
-  post("/api/aferir/encoder?j="+$("afJ").value)
-   .then(function(){carregou=false;});
-};
-
 $("btReset").onclick =function(){
   /* carregou=false faz o proximo status repreencher os campos: sem isso o
      formulario continuava mostrando os valores antigos e o "Salvar"
@@ -5189,16 +5010,14 @@ $("btEncZerar").onclick=function(){
 /* ---------- status ---------- */
 const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
  EXECUTANDO:"executa",POSICIONANDO:"movendo",CALIBRANDO:"calibra",FALHA:"falha"};
-const PC={HOME:[1,"Leve o braco ate a posicao de referencia (o zero da maquina) e confirme."],
- J1_NEG:[2,"Mova a junta 1 ate o limite fisico negativo e confirme."],
- J1_VOLTA_NEG:[2,"Aguarde: a junta 1 volta ao zero."],
- J1_POS:[3,"Mova a junta 1 ate o limite fisico positivo e confirme."],
- J1_VOLTA_POS:[3,"Aguarde: a junta 1 volta ao zero."],
- J2_NEG:[4,"Mova a junta 2 ate o limite fisico negativo e confirme."],
- J2_VOLTA_NEG:[4,"Aguarde: a junta 2 volta ao zero."],
- J2_POS:[5,"Mova a junta 2 ate o limite fisico positivo e confirme."],
- J2_VOLTA_POS:[5,"Aguarde: a junta 2 volta ao zero."],
- CONCLUIDO:[6,"Curso medido. Confira os limites em graus: se nao baterem com a maquina real, o erro esta na resolucao daquele eixo."]};
+/* Quatro marcas, e acabou. Nao ha etapa de volta ao zero, nem numero a
+   digitar: o curso, o zero (o meio do curso) e a escala do encoder saem
+   todos das proprias marcas. */
+const PC={J1_POS:[1,"Leve a junta 1 ate o limite POSITIVO -- o batente -- e marque."],
+ J1_NEG:[2,"Agora a junta 1 ate o limite NEGATIVO."],
+ J2_POS:[3,"Junta 1 medida. Leve a junta 2 ate o limite POSITIVO."],
+ J2_NEG:[4,"E a junta 2 ate o limite NEGATIVO. Esta e a ultima."],
+ CONCLUIDO:[4,"Calculando..."]};
 
 let quedas=0,ultN=-1,ultCal="";
 /* Um botao fora de acao tem que dizer por que. Desabilitar em silencio e
@@ -5471,47 +5290,21 @@ function aplicar(d){
   }else{
     veu.classList.add("on");
     const p=PC[d.calib]||[0,""];
-    $("cPasso").textContent="PASSO "+p[0]+" DE 6";
+    $("cPasso").textContent="PASSO "+p[0]+" DE 4";
     $("cInstr").textContent=p[1];
-    $("cBarra").style.width=(p[0]/6*100)+"%";
+    $("cBarra").style.width=(p[0]/4*100)+"%";
     $("cJ1").style.display=(d.calibEixo===1||d.calibEixo===0)?"grid":"none";
     $("cJ2").style.display=(d.calibEixo===2||d.calibEixo===0)?"grid":"none";
-    $("cOk").disabled=/VOLTA/.test(d.calib);
-    $("cOk").textContent=d.calib==="CONCLUIDO"?"Concluir e salvar":"Confirmar";
-
-    const med=$("cMed");
-    /* A conferencia de sentido so na etapa de referencia: dali em diante
-       ja ha limite medido, e trocar o sinal do eixo inverteria o
-       significado do que foi medido. */
-    $("cSent").style.display=(d.calib==="HOME")?"block":"none";
-    if(d.calib==="HOME"){
-      med.style.display="block";
-      $("cMedL1").textContent="Junta 1 esta em";
-      $("cMedL2").textContent="Junta 2 esta em";
-      if(ultCal!=="HOME"){$("cG1").value=0;$("cG2").value=0;}
-      $("cMedNota").innerHTML=
-        "Deixe <b>0 e 0</b> se o braco estiver na postura que a cinematica "+
-        "chama de zero: <b>elo 1 apontando para a direita, na horizontal</b>, "+
-        "e <b>elo 2 alinhado com o elo 1</b> (braco esticado). Se a sua "+
-        "referencia for outra postura, informe aqui os angulos reais dela "+
-        "&mdash; sem isso o desenho na tela sai girado em relacao a maquina.";
-    }else if(d.calib==="CONCLUIDO"){
-      med.style.display="block";
-      $("cMedL1").textContent="Curso real da junta 1";
-      $("cMedL2").textContent="Curso real da junta 2";
-      const c1=Math.abs(d.j1max-d.j1min), c2=Math.abs(d.j2max-d.j2min);
-      if(ultCal!=="CONCLUIDO"){
-        $("cG1").value=c1.toFixed(1);$("cG2").value=c2.toFixed(1);}
-      $("cMedNota").innerHTML=
-        "Pelos <b>pulsos contados</b> e pela resolucao que esta nos ajustes, "+
-        "o curso deu <b>"+c1.toFixed(1)+"°</b> na junta 1 e <b>"+c2.toFixed(1)+
-        "°</b> na junta 2.<br><br>Meca o curso de verdade com transferidor ou "+
-        "inclinometro e corrija aqui. O firmware recalcula a resolucao pelos "+
-        "pulsos que acabou de contar &mdash; e a maior base de medida que a "+
-        "maquina tem, entao sai preciso. Batendo com o medido, e so confirmar.";
-    }else{
-      med.style.display="none";
-    }
+    /* Onde a junta da vez esta agora -- medida, quando o encoder le. */
+    const jj=d.calibEixo||1;
+    const med=(jj===1)?d.m1:d.m2, temMed=(jj===1)?d.m1ok:d.m2ok;
+    const cont=(jj===1)?d.t1:d.t2;
+    $("cOnde").textContent="junta "+jj+": "+
+      (temMed?med.toFixed(2)+"\u00b0 (medido)":cont.toFixed(2)+"\u00b0");
+    /* A conferencia de sentido so na PRIMEIRA etapa: da segunda em
+       diante ja ha marca feita, e trocar o sinal do eixo inverteria o
+       significado dela. */
+    $("cSent").style.display=(d.calib==="J1_POS")?"block":"none";
   }
   ultCal=d.calib;
 
