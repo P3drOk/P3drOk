@@ -555,16 +555,10 @@ enum TipoComando : uint8_t {
   CMD_CALIB_CANCELAR,
   CMD_CALIB_APAGAR,     // esquece a calibracao gravada e volta ao modo de instalacao
   CMD_REFERENCIAR,      // o braco esta na posicao de referencia: sincroniza a contagem
-  CMD_AFERIR_MARCAR,    // a = junta: marca a contagem atual como inicio da medida
-  CMD_AFERIR_APLICAR,   // a = junta, f1 = graus realmente percorridos
-  // Afere a engrenagem eletronica pelo ENCODER, sem transferidor: o
-  // encoder conta as voltas do motor e a conta sai sozinha. A reducao
-  // mecanica continua sendo declarada -- o encoder esta antes dela.
-  CMD_AFERIR_ENCODER,   // a = junta
-  // Ensina a ESCALA do encoder: a = junta, f1 = graus que a junta andou
-  // desde a marca. Sai contagens por grau da junta, medida nesta
-  // maquina -- sem passar por contagens-por-volta nem reducao.
-  CMD_ENC_ESCALA,
+  // As quatro afericoes avulsas sairam: engrenagem eletronica pelo
+  // encoder, reducao contra um esquadro, escala do encoder e resolucao
+  // por transferidor. Todas existiam porque a calibracao media so os
+  // limites; agora ela mede a escala sozinha, das proprias marcas.
   // Ensina a referencia absoluta: "esta junta esta AGORA em f1 graus".
   // Com encoder absoluto e a unica calibracao que sobra.
   CMD_ENSINAR_ZERO,     // a = junta, f1 = graus
@@ -583,8 +577,7 @@ enum TipoComando : uint8_t {
   CMD_PROG_REPETIR,     // roda de novo o ultimo programa executado
   CMD_MANUTENCAO_OK,    // zera o contador de ciclos desde a manutencao
 
-  // Calibracao pelo encoder e area util ensinada.
-  CMD_AFERIR_REDUCAO,   // a = junta, f1 = angulo real de referencia
+  // Area util ensinada.
   CMD_MESA_CANTO,       // ensina um canto na posicao atual da ponta
   CMD_MESA_LIMPAR,
 

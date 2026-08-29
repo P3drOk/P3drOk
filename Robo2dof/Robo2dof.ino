@@ -119,11 +119,11 @@ static const char* NOME_CMD[] = {
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
-  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","AFERIR_ENCODER","ENC_ESCALA",
+  "REFERENCIAR",
   "ENSINAR_ZERO","ESQUECER_ZERO","INVERTER_EIXO",
   "APLICAR_ENCODER","ENCODER_ZERAR","APRENDER",
   "PROG_PAUSAR","PROG_DESFAZER","PROG_REPETIR","MANUTENCAO_OK",
-  "AFERIR_REDUCAO","MESA_CANTO","MESA_LIMPAR","JOG_XY",
+  "MESA_CANTO","MESA_LIMPAR","JOG_XY",
   "ARQ_SALVAR_PROG","ARQ_APLICAR_PROG","ARQ_SALVAR_TRAJ",
   "ARQ_CARREGAR_TRAJ","ARQ_LIBERAR_TRAJ","ARQ_SALVAR_CONFIG",
   "APAGAR_TUDO"
@@ -423,11 +423,6 @@ static void processarComando(const Comando& c) {
       break;
     }
 
-    case CMD_AFERIR_REDUCAO:
-      if (modoAtual == MODO_MANUAL) aferirReducaoPeloEncoder((uint8_t)c.a, c.f1);
-      else definirMensagem("Afira com o robo parado no modo manual");
-      break;
-
     case CMD_MESA_CANTO: {
       if (modoAtual != MODO_MANUAL) {
         definirMensagem("Ensine os cantos da mesa com o robo parado no manual");
@@ -524,26 +519,6 @@ static void processarComando(const Comando& c) {
       }
       calibReferenciar();
       logEvento("referenciado na posicao atual");
-      break;
-
-    case CMD_AFERIR_MARCAR:
-      if (modoAtual == MODO_MANUAL) aferirMarcar((uint8_t)c.a);
-      else definirMensagem("Afira com o robo parado no modo manual");
-      break;
-
-    case CMD_AFERIR_APLICAR:
-      if (modoAtual == MODO_MANUAL) aferirAplicar((uint8_t)c.a, c.f1);
-      else definirMensagem("Afira com o robo parado no modo manual");
-      break;
-
-    case CMD_AFERIR_ENCODER:
-      if (modoAtual == MODO_MANUAL) aferirPelosEncoder((uint8_t)c.a);
-      else definirMensagem("Afira com o robo parado no modo manual");
-      break;
-
-    case CMD_ENC_ESCALA:
-      if (modoAtual == MODO_MANUAL) ensinarEscalaEncoder((uint8_t)c.a, c.f1);
-      else definirMensagem("Ensine a escala com o robo parado no modo manual");
       break;
 
     case CMD_ENSINAR_ZERO: {

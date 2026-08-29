@@ -1063,9 +1063,39 @@ static void ciclo() {
   }
   if (configEncoder.reg[vez] == 0) return;   // junta nao configurada
 
+  // QUEM NAO RESPONDE HA MUITO TEMPO PERGUNTA-SE DE VEZ EM QUANDO.
+  //
+  // O ciclo alternava as duas juntas sempre. Numa bancada com um driver
+  // so -- que e o caso mais comum durante a montagem -- metade das
+  // leituras era uma espera ate o timeout, e essa espera acontece na
+  // MESMA tarefa que divide o nucleo 0 com a rede. O sintoma nao e o
+  // motor: e a tela engasgando, "as vezes trava".
+  //
+  // Depois de cinco falhas seguidas a junta muda de regime: continua
+  // sendo perguntada, uma vez a cada dez ciclos, o suficiente para
+  // reaparecer sozinha assim que o cabo voltar. Uma leitura boa devolve
+  // o ritmo normal na hora.
+  static uint8_t  falhasSeguidas[2] = {0, 0};   // NOLINT
+  static uint32_t ciclos = 0;
+  ciclos++;
+  if (falhasSeguidas[vez] >= 5 && (ciclos % 10) != 0) {
+    const uint8_t outra = (uint8_t)(1 - vez);
+    // A outra junta so assume se ela propria estiver respondendo --
+    // senao as duas mudas viravam duas leituras por ciclo em vez de
+    // nenhuma.
+    if (configEncoder.reg[outra] != 0 && falhasSeguidas[outra] < 5) {
+      vez = outra;
+    } else {
+      vez = outra;
+      return;
+    }
+  }
+
   int32_t bruto = 0;
   uint8_t motivo = MOTIVO_OK;
   const bool ok = lerPosicao(vez, bruto, motivo);
+  if (ok) falhasSeguidas[vez] = 0;
+  else if (falhasSeguidas[vez] < 255) falhasSeguidas[vez]++;
   publicar(vez, ok, bruto, motivo);
   avisarNoSerial(vez, ok);
   vez = (uint8_t)(1 - vez);

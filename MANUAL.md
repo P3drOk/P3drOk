@@ -185,7 +185,7 @@ escreve registrador):
 | `cinematica.h/.cpp` | direta e inversa do braço 2R, validação de postura e de caminho |
 | `trajetoria.h/.cpp` | gravação e reprodução a mão livre |
 | `programa.h/.cpp` | pontos, cordões em reta interpolada, deslocamentos |
-| `calibracao.h/.cpp` | assistente de curso das juntas |
+| `calibracao.h/.cpp` | as quatro marcas de curso das juntas |
 | `solda.h/.cpp` | relé, com as proteções |
 | `armazenamento.h/.cpp` | cartão SD, tarefa própria no núcleo 0 |
 | `rede.h/.cpp` | ponto de acesso, mDNS, DNS de captura |
@@ -384,21 +384,36 @@ energia. No cartão, o backup em **Arquivos → ajustes** leva a calibração e
 a mesa **junto**. Backup gravado por uma versão anterior não apaga
 nenhuma das duas: o que o arquivo não traz, ele não mexe.
 
-### 5.2.1 Calibração do curso
+### 5.2.1 Calibração: quatro marcas, e é opcional
 
 O braço tem **limite físico**: sem saber onde ele está, o firmware não
-tem como impedir uma batida. A calibração ensina isso.
+tem como impedir uma batida. A calibração ensina isso — e **só isso**.
 
-O assistente percorre: referência → limite negativo da J1 → volta →
-limite positivo da J1 → o mesmo para a J2. Em cada limite, o operador
-leva o eixo com o jog até onde ele *pode* ir e confirma.
+**Calibrar é opcional.** Sem limites medidos a máquina opera igual: jog,
+ir para um ângulo, ponto gravado, programa, trajetória, aprendizado e
+área da mesa, tudo funciona. O que falta é a proteção de curso. Nada é
+recusado por falta de calibração.
 
-Depois disso o firmware conhece `passosMin`/`passosMax` de cada junta, e
-**recusa** qualquer movimento — jog, ponto, cordão — que saia daí. A
-barra de curso no painel mostra onde o eixo está dentro do que foi
-medido.
+**São quatro marcas:** junta 1 no limite **positivo**, junta 1 no
+**negativo**, e o mesmo na junta 2. Nada a digitar. Chegue no batente do
+jeito que preferir — com as setas do jog, ou **soltando o motor daquele
+eixo** e empurrando o braço com a mão. Nos dois casos o que se grava é
+onde a junta está.
 
-> Isso é uma **proteção por software**. Ela vale enquanto a calibração
+Do que foi marcado sai tudo:
+
+| | |
+|---|---|
+| **curso** de cada junta | a distância entre as duas marcas |
+| **zero** | o **meio do curso** — a única escolha que não pede número, e a que deixa a área útil centrada |
+| **escala do encoder** | contagens por grau: entre as duas marcas há um tanto de contagens e um tanto de graus, e a divisão é a escala, com sinal |
+
+O único número que continua declarado é a **redução do redutor**. Ela é
+mecânica, está escrita no que você comprou, e com um sensor só antes do
+redutor nenhuma medida a revela. Se o curso medido sair em graus que não
+batem com a máquina, é ali que se conserta — sem refazer a calibração.
+
+> A proteção de curso é **por software**. Ela vale enquanto a calibração
 > corresponder à máquina. Trocar a montagem, afrouxar o acoplamento ou
 > mexer na redução invalida a calibração — recalibre.
 
@@ -478,27 +493,7 @@ registrador no driver e ver o valor lá.
 > está atrás dele é a origem de onde os limites de curso são contados —
 > errar ali desloca a área útil inteira.
 
-#### O encoder simplifica duas coisas na calibração
-
-**1. Aferir a engrenagem eletrônica sem transferidor.**
-
-A resolução de uma junta é `passosPorGrau = passosPorVolta × redução / 360`.
-São dois números, e cada um erra de um jeito:
-
-| | |
-|---|---|
-| **redução** | é mecânica, está no redutor, você sabe qual comprou — e o encoder **não consegue medi-la**, porque conta no eixo do *motor*, antes do redutor |
-| **engrenagem eletrônica** (`passosPorVolta`) | é parâmetro do driver, e é o que mais se erra: troca-se o driver, refaz-se um parâmetro, e o número declarado deixa de bater |
-
-O sintoma de errar a engrenagem eletrônica é o braço andar menos (ou
-mais) do que a tela diz, sem nada apontar o culpado.
-
-Isso o encoder mede sozinho: **Marcar o início → girar bastante → Aferir
-pelo encoder**. Ele conta as voltas do motor e a conta sai. Some um dos
-dois números da equação; a redução continua sendo declarada por quem
-montou a máquina.
-
-**2. Detecção de travamento.**
+#### Detecção de travamento
 
 Antes do encoder, encostar no batente era invisível para o firmware: ele
 continuava contando pulsos, o driver continuava recebendo, e o motor
@@ -518,6 +513,7 @@ no meio de um cordão:
 | exige o medido **claramente** parado | menos de um quinto do esperado |
 | por **meio segundo** | a leitura vem a 20 Hz: menos que isso seria julgar com duas ou três amostras |
 | **sem leitura, se cala** | cabo solto no encoder não pode parar o braço no meio de um cordão |
+| **parar exige régua medida** | ele só corta o movimento quando a escala do encoder foi medida (a calibração mede). Sem ela, avisa e não encosta no braço — julgar por número digitado foi o que fazia a máquina travar do nada |
 
 ### 5.2.2 O desenho mostra onde o braço ESTÁ
 
@@ -612,9 +608,9 @@ igual. A tela diz qual dos dois está valendo.
 
 **As regras duras:**
 
-1. Só a partir do modo `MANUAL`, com o braço parado e as juntas
-   calibradas — ponto de programa é um par de ângulos, e sem calibração
-   não há ângulo.
+1. Só a partir do modo `MANUAL` e com o braço parado. **Calibração não é
+   exigida**: um ponto gravado é um par de contagens na mesma régua com
+   que será perseguido.
 2. O arco é desligado ao entrar. Ninguém ensina caminho soldando.
 3. Sair do modo manual (executar, reproduzir, calibrar, falha) encerra o
    aprendizado. O botão vermelho também.
@@ -836,7 +832,8 @@ rota exige o texto de novo (`conf=APAGAR`): a tela pode ter um defeito, a
 porta não pode confiar nela. Só funciona com o robô parado no modo
 manual.
 
-Depois de apagar, **o braço precisa ser calibrado de novo** antes de
+Depois de apagar, **o braço opera sem proteção de curso** até ser
+calibrado de novo. Antes de
 trabalhar.
 
 ### 5.11 Máquina: saúde, registro, conexão, firmware e idioma
@@ -924,13 +921,12 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/solda` | relé |
 | `POST /api/prog/*` | programa de pontos |
 | `POST /api/traj/*` | trajetória a mão livre |
-| `POST /api/calib/*` | assistente de calibração |
+| `POST /api/calib/*` | as quatro marcas da calibração |
 | `POST /api/config` | parâmetros da máquina |
 | `POST /api/config/reset` | restaura os **parâmetros** de fábrica |
 | `POST /api/apagar/tudo` | apaga a memória interna inteira e reinicia — exige `conf=APAGAR` |
 | `POST /api/sentido` | inverter o sentido de um eixo |
 | `POST /api/referenciar` | zerar a máquina na posição atual |
-| `POST /api/aferir/*` | aferir a redução mecânica pelo movimento real |
 | `GET  /api/encoder` | leitura, derivados, configuração e quadro cru |
 | `POST /api/encoder/config` | ligação Modbus |
 | `POST /api/encoder/padroes` | volta aos padrões medidos |
@@ -938,7 +934,6 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/encoder/cacar` | caçada do registrador |
 | `POST /api/encoder/zerar` | zera a contagem aqui |
 | `POST /api/correcao` | assentamento pelo encoder |
-| `POST /api/aferir/encoder` | afere a engrenagem eletrônica pelo encoder |
 | `POST /api/travamento/ok` | limpa o aviso de travamento |
 | `POST /api/zero/config` | o que fazer ao ligar a máquina |
 | `POST /api/zero/ensinar` | ensina a referência absoluta de uma junta |
@@ -954,7 +949,6 @@ nunca chamada, ou chamada e nunca registrada.
 | `POST /api/ota` | envio do firmware (multipart) |
 | `POST /api/sd/prever`, `GET /api/sd/previa` | miniatura de uma peça do cartão |
 | `GET  /api/calibracao` | tudo da aba Calibração, num JSON |
-| `POST /api/aferir/reducao` | mede a redução pelo encoder (`j`, `g` = ângulo real) |
 | `POST /api/mesa/canto` | ensina um canto na posição atual da ponta |
 | `POST /api/mesa/limpar` | apaga a área ensinada |
 | `GET  /api/sd/*`, `POST /api/sd/*` | cartão |

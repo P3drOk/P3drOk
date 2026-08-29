@@ -194,7 +194,7 @@ static void handleStatus() {
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
     "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
-    "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,\"afer1\":%ld,\"afer2\":%ld,"
+    "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
@@ -228,7 +228,7 @@ static void handleStatus() {
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
-    (unsigned)suavidadePartida, aferirPassosDesde(1), aferirPassosDesde(2),
+    (unsigned)suavidadePartida,
     (unsigned)MAX_PONTOS,
     s.v1Hz, s.v2Hz, s.vPontaMmS, J1.passosPorGrau, J2.passosPorGrau,
     elo1Mm, elo2Mm, folgaDobra, envYMin, envRaioMin,
@@ -419,25 +419,6 @@ static void handleProgRepetir() {
   }
   enfileirar(CMD_PROG_REPETIR);
 }
-// Redução medida pelo encoder: a rota exige o angulo de referencia, e o
-// core 1 confere de novo antes de gravar.
-static void handleAferirReducao() {
-  registrarContatoOperador();
-  if (!exigirManual()) return;
-  const long j = argL("j", 0);
-  if (j != 1 && j != 2) { erro("junta invalida"); return; }
-  if (!server.hasArg("g")) {
-    erro("informe o angulo real de referencia (90 do esquadro, ou o curso)");
-    return;
-  }
-  const float g = argF("g", 0.0f);
-  if (g < 5.0f || g > 3600.0f) {
-    erro("angulo de referencia fora de faixa: use de 5 a 3600 graus");
-    return;
-  }
-  enfileirar(CMD_AFERIR_REDUCAO, j, 0, g);
-}
-
 static void handleMesaCanto() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -460,8 +441,6 @@ static void handleCalibracao() {
     "\"ppv1\":%lu,\"ppv2\":%lu,\"red1\":%.4f,\"red2\":%.4f,"
     "\"ppg1\":%.3f,\"ppg2\":%.3f,"
     "\"g1min\":%.2f,\"g1max\":%.2f,\"g2min\":%.2f,\"g2max\":%.2f,"
-    "\"marca1\":%s,\"marca2\":%s,\"voltas1\":%.4f,\"voltas2\":%.4f,"
-    "\"passos1\":%ld,\"passos2\":%ld,"
     "\"enc1\":%s,\"enc2\":%s,"
     "\"mesaOn\":%s,\"mesaN\":%u,\"mesaX0\":%.1f,\"mesaX1\":%.1f,"
     "\"mesaY0\":%.1f,\"mesaY1\":%.1f,"
@@ -470,10 +449,6 @@ static void handleCalibracao() {
     (unsigned long)J1.passosPorVolta, (unsigned long)J2.passosPorVolta,
     J1.reducao, J2.reducao, J1.passosPorGrau, J2.passosPorGrau,
     J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax,
-    aferirTemMarcaBoa(1) ? "true" : "false",
-    aferirTemMarcaBoa(2) ? "true" : "false",
-    aferirVoltasDesde(1), aferirVoltasDesde(2),
-    aferirPassosDesde(1), aferirPassosDesde(2),
     leituraConfiavel(1) ? "true" : "false",
     leituraConfiavel(2) ? "true" : "false",
     areaMesa.definida ? "true" : "false", (unsigned)areaMesa.cantos,
@@ -493,11 +468,11 @@ static void handleReproduzir() { registrarContatoOperador(); enfileirar(CMD_REPR
 static void handleTrajLimpar() { registrarContatoOperador(); enfileirar(CMD_TRAJ_LIMPAR); }
 static void handleHome()       { registrarContatoOperador(); enfileirar(CMD_IR_HOME); }
 static void handleCalibIni()   { registrarContatoOperador(); enfileirar(CMD_CALIB_INICIAR); }
-// g1/g2: angulo da referencia na etapa HOME, curso real medido na etapa
-// de conclusao. Ausentes ou zero mantem o comportamento antigo.
+// Marcar a etapa atual. A calibracao nao pergunta nada: g1/g2 ficaram
+// aceitos e ignorados para uma tela velha em cache nao virar erro.
 static void handleCalibConf() {
   registrarContatoOperador();
-  enfileirar(CMD_CALIB_CONFIRMAR, 0, 0, argF("g1", 0.0f), argF("g2", 0.0f));
+  enfileirar(CMD_CALIB_CONFIRMAR);
 }
 static void handleCalibCanc()  { registrarContatoOperador(); enfileirar(CMD_CALIB_CANCELAR); }
 static void handleCalibApagar(){ registrarContatoOperador(); enfileirar(CMD_CALIB_APAGAR); }
@@ -506,28 +481,6 @@ static void handleReferenciar(){
   if (!exigirManual()) return;
   enfileirar(CMD_REFERENCIAR);
 }
-static void handleAferirMarcar(){
-  registrarContatoOperador();
-  if (!exigirManual()) return;
-  const long j = argL("j", 0);
-  if (j != 1 && j != 2) { erro("junta invalida"); return; }
-  enfileirar(CMD_AFERIR_MARCAR, j);
-}
-static void handleAferirAplicar(){
-  registrarContatoOperador();
-  if (!exigirManual()) return;
-  const long  j = argL("j", 0);
-  const float g = argF("g", 0.0f);
-  if (j != 1 && j != 2) { erro("junta invalida"); return; }
-  // Graus medidos precisam ser um angulo de verdade: dividir pulsos por
-  // um numero perto de zero manda a resolucao para o infinito.
-  if (!(g > 0.5f) || g > 3600.0f) {
-    erro("digite quantos graus o eixo girou de verdade");
-    return;
-  }
-  enfileirar(CMD_AFERIR_APLICAR, j, 0, g);
-}
-
 // Sentido do eixo. Nao passa por exigirManual(): a etapa de referencia
 // da calibracao tambem aceita, porque e exatamente ali que o operador
 // descobre que o braco gira para o outro lado. Quem decide de verdade e
@@ -1099,24 +1052,6 @@ static void handleEncoderConfig() {
 // Assentamento pelo encoder. Parametro que mexe em movimento so muda com
 // o robo parado -- e o core 1 confere de novo na hora de aplicar.
 // Aferir a engrenagem eletronica pelo encoder, sem transferidor.
-// Ensina a escala do encoder: j = junta, g = graus que ela andou desde
-// a marca. E o numero que faz o angulo na tela ser o do braco.
-static void handleEncEscala() {
-  registrarContatoOperador();
-  if (!exigirManual()) return;
-  const long j = argL("j", 0);
-  if (j != 1 && j != 2) { erro("junta invalida"); return; }
-  enfileirar(CMD_ENC_ESCALA, j, 0, argF("g", 0.0f));
-}
-
-static void handleAferirEncoder() {
-  registrarContatoOperador();
-  if (!exigirManual()) return;
-  const long j = argL("j", 0);
-  if (j != 1 && j != 2) { erro("junta invalida"); return; }
-  enfileirar(CMD_AFERIR_ENCODER, j);
-}
-
 // Limpa o aviso de travamento depois que o operador resolveu.
 static void handleTravamentoOk() {
   registrarContatoOperador();
@@ -1571,7 +1506,6 @@ void servidorIniciar() {
   server.on("/api/prog/desfazer", HTTP_POST, handleProgDesfazer);
   server.on("/api/prog/repetir",  HTTP_POST, handleProgRepetir);
   server.on("/api/manutencao/ok", HTTP_POST, handleManutencaoOk);
-  server.on("/api/aferir/reducao", HTTP_POST, handleAferirReducao);
   server.on("/api/mesa/canto",    HTTP_POST, handleMesaCanto);
   server.on("/api/mesa/limpar",   HTTP_POST, handleMesaLimpar);
   server.on("/api/calibracao",    HTTP_GET,  handleCalibracao);
@@ -1609,8 +1543,6 @@ void servidorIniciar() {
   server.on("/api/calib/cancelar",  HTTP_POST, handleCalibCanc);
   server.on("/api/calib/apagar",    HTTP_POST, handleCalibApagar);
   server.on("/api/referenciar",     HTTP_POST, handleReferenciar);
-  server.on("/api/aferir/marcar",   HTTP_POST, handleAferirMarcar);
-  server.on("/api/aferir/aplicar",  HTTP_POST, handleAferirAplicar);
   server.on("/api/sentido",         HTTP_POST, handleSentido);
 
   server.on("/api/rede",           HTTP_GET,  handleRede);
@@ -1624,8 +1556,6 @@ void servidorIniciar() {
   server.on("/api/son/config",     HTTP_POST, handleSonConfig);
   server.on("/api/correcao",       HTTP_POST, handleCorrecao);
   server.on("/api/aprender",       HTTP_POST, handleAprender);
-  server.on("/api/aferir/encoder", HTTP_POST, handleAferirEncoder);
-  server.on("/api/encoder/escala", HTTP_POST, handleEncEscala);
   server.on("/api/travamento/ok",  HTTP_POST, handleTravamentoOk);
   server.on("/api/zero/config",    HTTP_POST, handleZeroConfig);
   server.on("/api/zero/ensinar",   HTTP_POST, handleEnsinarZero);

@@ -757,7 +757,7 @@ static void teste_A10_json_status() {
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
     "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
-    "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,\"afer1\":%ld,\"afer2\":%ld,"
+    "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
     "\"l1\":%.1f,\"l2\":%.1f,\"dobra\":%.1f,\"envY\":%.1f,\"envR\":%.1f,"
@@ -778,7 +778,7 @@ static void teste_A10_json_status() {
     999.9f, "false","false","false",
     180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
     999999UL, 999.999f, 999999UL, 999.999f,
-    "false","false", 255u, -2000000L, -2000000L,
+    "false","false", 255u,
     40u,
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
     9999.9f, 9999.9f, 90.0f, -9999.9f, 9999.9f,
@@ -2393,64 +2393,6 @@ static void teste_H03_zerar_na_posicao() {
   nota("em modo %d: HTTP %d -- \"%s\"", (int)modoAtual, cod2, webCorpo());
   checar(modoAtual != MODO_MANUAL && cod2 == 400, "H03c",
          "recusado, com motivo, quando o robo nao esta em manual");
-}
-
-static void teste_H04_aferir_reducao() {
-  secao("H04  Aferir a reducao mecanica pelo movimento real");
-  reiniciarSistema();
-  prepararRoboCalibrado();
-
-  // O operador declarou 20:1, mas a maquina tem 16,5:1. O sintoma e o
-  // braco andar menos do que a tela mostra.
-  webPost("/api/config?ppv1=4000&red1=20");
-  rodarComWeb(120);
-  const float ppgAntes = J1.passosPorGrau;
-  const float ppg2Antes = J2.passosPorGrau;
-
-  checar(webPost("/api/aferir/marcar?j=1") == 200, "H04a",
-         "POST /api/aferir/marcar aceita a junta 1");
-  rodarComWeb(120);
-
-  // Gira o eixo: 45 graus pela conta ERRADA de 20:1.
-  const long pulsos = (long)(45.0f * ppgAntes);
-  J1.motor->setCurrentPosition(posicaoJ1() + pulsos);
-  rodarComWeb(20);
-  nota("contados %ld pulsos desde a marca", aferirPassosDesde(1));
-  checar(aferirPassosDesde(1) == pulsos, "H04b",
-         "os pulsos desde a marca aparecem para a interface");
-
-  // Transferidor no eixo: ele andou 54,5 graus de verdade.
-  const int cod = webPost("/api/aferir/aplicar?j=1&g=54.5");
-  rodarComWeb(200);
-  const float esperado = (float)pulsos / 54.5f;
-  nota("reducao %.2f -> %.2f (%.1f -> %.1f pulsos/grau) -- \"%s\"",
-       20.0, (double)J1.reducao, (double)ppgAntes, (double)J1.passosPorGrau,
-       ultimaMensagem);
-  checar(cod == 200 && fabsf(J1.passosPorGrau - esperado) < 0.5f, "H04c",
-         "a resolucao passa a ser pulsos contados / graus medidos");
-  checar(fabsf(J1.reducao - 16.5f) < 0.2f, "H04d",
-         "a reducao mecanica exibida vira a real (16,5:1)");
-  checar(fabsf(J2.passosPorGrau - ppg2Antes) < 0.01f, "H04e",
-         "a outra junta nao e tocada");
-
-  // Sem marca nao ha o que aferir.
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  const float ppg2 = J2.passosPorGrau;
-  webPost("/api/aferir/aplicar?j=2&g=30");
-  rodarComWeb(120);
-  nota("sem marcar antes: \"%s\"", ultimaMensagem);
-  checar(strstr(ultimaMensagem, "arque") != nullptr &&
-         fabsf(J2.passosPorGrau - ppg2) < 0.01f, "H04f",
-         "sem marca o sistema diz o que faltou em vez de gravar lixo");
-
-  // Angulo perto de zero mandaria a resolucao para o infinito.
-  const int codG = webPost("/api/aferir/aplicar?j=1&g=0");
-  nota("g=0: HTTP %d -- \"%s\"", codG, webCorpo());
-  checar(codG == 400 &&
-         webPost("/api/aferir/aplicar?j=1&g=-40") == 400 &&
-         webPost("/api/aferir/aplicar?j=9&g=40")  == 400, "H04g",
-         "angulo invalido e junta inexistente sao recusados na porta");
 }
 
 static void teste_H05_desenho_vira_programa() {
@@ -4900,107 +4842,6 @@ static void teste_V12_leitura_absurda_nao_e_confiavel() {
 // A escala ensinada e um numero so, medido na propria maquina: marque,
 // leve o braco ate um angulo que voce CONHECE, diga quantos graus foram.
 // ---------------------------------------------------------------------
-static void teste_V13_escala_do_encoder_ensinada() {
-  secao("V13  O angulo na tela e o do braco, nao o da conta");
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoderDasDuasJuntas();
-  rodarComWeb(300);
-
-  // Contagens por volta ERRADAS de proposito: 4x o valor real. E o que
-  // acontece quando alguem digita o numero do catalogo errado.
-  encoderPendente = configEncoder;
-  encoderPendente.contagensPorVolta[0] = 40000.0f;
-  enviarComando(CMD_APLICAR_ENCODER);
-  rodarComWeb(300);
-
-  // O braco vai andar 90 graus DE VERDADE. O encoder acompanha: a
-  // maquina de teste move 10000 contagens por volta do motor, com
-  // reducao 1 -- entao 90 graus da junta sao 2500 contagens.
-  g_uart.escravo[0].posicao = 500000;
-  rodarComWeb(300);
-  enviarComando(CMD_AFERIR_MARCAR, 1);
-  rodarComWeb(60);
-
-  const int32_t noventaGraus = 2500;
-  g_uart.escravo[0].posicao = 500000 + noventaGraus;
-  rodarComWeb(300);
-
-  const float antes = encoderLer(1).graus;
-  nota("com contagens por volta 4x erradas, 90 graus de braco viram %.1f na tela",
-       (double)antes);
-  checar(fabsf(antes - 90.0f) > 20.0f, "V13a",
-         "o cenario de fato produz a escala errada que o operador ve");
-
-  // Ensina: o braco andou 90 graus.
-  webPost("/api/encoder/escala?j=1&g=90");
-  rodarComWeb(300);
-
-  const float depois = encoderLer(1).graus - encoderLer(1).referencia * 0.0f;
-  nota("escala ensinada: %.2f contagens por grau; a tela agora diz %.2f graus",
-       (double)configEncoder.contagensPorGrau[0], (double)depois);
-  checar(fabsf(configEncoder.contagensPorGrau[0] - (float)noventaGraus / 90.0f) < 0.5f,
-         "V13b", "a escala sai da propria maquina: contagens medidas por grau andado");
-
-  // Agora o teste que importa: leva o braco a mais 90 graus e a tela tem
-  // de dizer 90 a mais. E o "0 no braco = 0 na tela, 90 = 90".
-  const float base = encoderLer(1).graus;
-  g_uart.escravo[0].posicao += noventaGraus;
-  rodarComWeb(300);
-  const float agora = encoderLer(1).graus;
-  nota("mais 90 graus de braco: tela foi de %.1f para %.1f (delta %.1f)",
-       (double)base, (double)agora, (double)(agora - base));
-  checar(fabsf((agora - base) - 90.0f) < 1.0f, "V13c",
-         "90 graus de braco viram 90 graus na tela");
-
-  // Encoder que conta PARA TRAS enquanto a junta avanca: a escala guarda
-  // o sinal, e o angulo sai certo sem chave de inversao.
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoderDasDuasJuntas();
-  rodarComWeb(300);
-  g_uart.escravo[0].posicao = 500000;
-  rodarComWeb(300);
-  enviarComando(CMD_AFERIR_MARCAR, 1);
-  rodarComWeb(60);
-  g_uart.escravo[0].posicao = 500000 - noventaGraus;   // conta para tras
-  rodarComWeb(300);
-  webPost("/api/encoder/escala?j=1&g=90");
-  rodarComWeb(300);
-  nota("encoder invertido: escala %.2f contagens por grau",
-       (double)configEncoder.contagensPorGrau[0]);
-  checar(configEncoder.contagensPorGrau[0] < 0.0f, "V13d",
-         "encoder que conta para tras da escala negativa -- o sinal vem junto");
-
-  const float b2 = encoderLer(1).graus;
-  g_uart.escravo[0].posicao -= noventaGraus;
-  rodarComWeb(300);
-  nota("mais 90 graus com encoder invertido: %.1f -> %.1f",
-       (double)b2, (double)encoderLer(1).graus);
-  checar(fabsf((encoderLer(1).graus - b2) - 90.0f) < 1.0f, "V13e",
-         "e o angulo continua crescendo junto com o braco");
-
-  // Movimento curto nao vira escala: mediria ruido de leitura.
-  const float guardada = configEncoder.contagensPorGrau[0];
-  enviarComando(CMD_AFERIR_MARCAR, 1);
-  rodarComWeb(60);
-  g_uart.escravo[0].posicao -= 20;
-  rodarComWeb(200);
-  webPost("/api/encoder/escala?j=1&g=1");
-  rodarComWeb(200);
-  nota("tentativa com 1 grau: \"%s\"", ultimaMensagem);
-  checar(configEncoder.contagensPorGrau[0] == guardada, "V13f",
-         "movimento curto e recusado: mediria ruido de leitura, nao engrenagem");
-}
-
-// ---------------------------------------------------------------------
-// V14: velocidade por motor.
-//
-// As duas juntas tem mecanica diferente -- reducao, massa, braco de
-// alavanca -- e a que carrega mais nem sempre aguenta a velocidade que
-// serve para a outra. Um fator por junta compoe com os tres presets em
-// vez de duplicar cada um deles.
-// ---------------------------------------------------------------------
 static void teste_V14_velocidade_por_motor() {
   secao("V14  Cada motor na velocidade que ele aguenta");
   reiniciarSistema();
@@ -5442,6 +5283,47 @@ static void teste_V19_calibrar_com_a_mao() {
          "V19f",
          "a escala do encoder sai da propria calibracao: entre as duas "
          "marcas ha um tanto de contagens e um tanto de graus");
+}
+
+// ---------------------------------------------------------------------
+// V20: junta muda nao pode roubar o barramento a cada ciclo.
+//
+// "o sistema esta apresentando travamento as vezes." Numa bancada com um
+// driver so -- o caso mais comum durante a montagem -- o ciclo do
+// encoder alternava as duas juntas sempre, e metade das leituras era uma
+// espera ate o timeout. Essa espera acontece na MESMA tarefa que divide
+// o nucleo 0 com a rede: o sintoma nao e o motor, e a tela engasgando.
+// ---------------------------------------------------------------------
+static void teste_V20_junta_muda_nao_rouba_o_barramento() {
+  secao("V20  Junta que nao responde deixa de ser perguntada toda vez");
+  reiniciarSistema();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(400);
+
+  // A junta 2 some do barramento: driver desligado, cabo fora.
+  g_uart.escravo[1].mudo = true;
+  const uint32_t falhasAntes = encoderLer(2).falhas;
+  const uint32_t okAntes     = encoderLer(1).leituras;
+  rodarComWeb(4000);
+  const uint32_t novasFalhas = encoderLer(2).falhas - falhasAntes;
+  const uint32_t novasOk     = encoderLer(1).leituras - okAntes;
+
+  nota("em 4 s: %u tentativa(s) na junta muda, %u leitura(s) boas na junta 1",
+       (unsigned)novasFalhas, (unsigned)novasOk);
+  checar(novasOk > 0, "V20a",
+         "a junta que responde continua sendo lida");
+  // Sem o recuo as duas seriam perguntadas em pe de igualdade: a muda
+  // teria mais ou menos a mesma contagem da boa.
+  checar(novasFalhas * 3 < novasOk, "V20b",
+         "e a muda passa a ser perguntada de longe em longe, em vez de "
+         "gastar metade do barramento esperando timeout");
+
+  // Voltando a responder, ela volta ao ritmo normal na hora.
+  g_uart.escravo[1].mudo = false;
+  rodarComWeb(1500);
+  nota("religada: leituras na junta 2 = %u", (unsigned)encoderLer(2).leituras);
+  checar(encoderLer(2).leituras > 0, "V20c",
+         "e o cabo voltando, a junta reaparece sozinha");
 }
 
 static void teste_P07_estop_a_prova_de_falha() {
@@ -5970,7 +5852,6 @@ static void teste_R01_o_segundo_driver() {
 // devolve lixo e some.
 // ---------------------------------------------------------------------
 static const char* ROTAS_POST[] = {
-  "/api/aferir/aplicar", "/api/aferir/encoder", "/api/aferir/marcar",
   "/api/aprender", "/api/calib/apagar", "/api/calib/cancelar",
   "/api/calib/confirmar", "/api/calib/iniciar", "/api/config",
   "/api/config/reset", "/api/apagar/tudo", "/api/correcao", "/api/encoder/cacar",
@@ -6599,116 +6480,6 @@ static void teste_T05_travamento_para_o_programa() {
 // A diferenca para a medida antiga, que contava pulsos comandados, e
 // justamente essa imunidade -- e este cenario prova as duas coisas.
 // ---------------------------------------------------------------------
-static void teste_U01_reducao_pelo_encoder() {
-  secao("U01  Medir a reducao pelo encoder, contra uma referencia");
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoder(90, true, 500000);
-  rodarComWeb(300);
-
-  // A maquina acredita numa reducao de 16,5. A de verdade e 20.
-  webPost("/api/config?ppv1=10000&red1=16.5");
-  rodarComWeb(150);
-  nota("declarado: %lu passos/volta, reducao %.3f",
-       (unsigned long)J1.passosPorVolta, (double)J1.reducao);
-
-  webPost("/api/aferir/marcar?j=1");
-  rodarComWeb(100);
-  checar(aferirTemMarcaBoa(1), "U01a",
-         "a marca guarda a contagem do encoder, nao so os passos");
-
-  // O operador leva a junta 90 graus (esquadro). Com reducao REAL de 20,
-  // 90 graus de junta sao 5 voltas do motor.
-  const float cv = configEncoder.contagensPorVolta[0];
-  g_uart.escravo[0].parar();
-  g_uart.escravo[0].posicao += (int32_t)lroundf(5.0f * cv);
-  rodarComWeb(400);
-  nota("depois de girar: %.4f volta(s) do motor pelo encoder",
-       (double)aferirVoltasDesde(1));
-  checar(fabsf(aferirVoltasDesde(1) - 5.0f) < 0.01f, "U01b",
-         "o encoder conta as voltas do motor -- e so isso que ele sabe medir");
-
-  const int cod = webPost("/api/aferir/reducao?j=1&g=90");
-  rodarComWeb(200);
-  nota("aferindo com 90 graus de esquadro: HTTP %d, reducao agora %.4f -- \"%s\"",
-       cod, (double)J1.reducao, ultimaMensagem);
-  checar(cod == 200 && fabsf(J1.reducao - 20.0f) < 0.05f, "U01c",
-         "5 voltas do motor para 90 graus de junta dao reducao 20:1");
-  checar(fabsf(J1.passosPorGrau - 10000.0f * 20.0f / 360.0f) < 0.5f, "U01d",
-         "e a resolucao e recalculada com a reducao nova");
-
-  // A prova de que isto e melhor que contar pulsos: o mesmo movimento com
-  // o eixo ESCORREGANDO. Os pulsos comandados mentem; as voltas do motor,
-  // nao -- o encoder ve o eixo, nao a intencao.
-  webPost("/api/aferir/marcar?j=1");
-  rodarComWeb(100);
-  const long passosAntes = aferirPassosDesde(1);
-  // Comanda 10 voltas de pulso, mas o eixo so da 5: escorregou metade.
-  if (J1.motor) J1.motor->setCurrentPosition(posicaoJ1() + (long)(10.0f * 10000.0f));
-  g_uart.escravo[0].posicao += (int32_t)lroundf(5.0f * cv);
-  rodarComWeb(400);
-  nota("eixo escorregando: %ld passos comandados, %.3f volta(s) de verdade",
-       aferirPassosDesde(1) - passosAntes, (double)aferirVoltasDesde(1));
-  webPost("/api/aferir/reducao?j=1&g=90");
-  rodarComWeb(200);
-  nota("reducao apos o escorregao: %.4f", (double)J1.reducao);
-  checar(fabsf(J1.reducao - 20.0f) < 0.05f, "U01e",
-         "eixo escorregando nao estraga a medida: quem conta e o encoder");
-}
-
-// =====================================================================
-//  U02 - O que a medida da reducao RECUSA
-// =====================================================================
-static void teste_U02_reducao_recusa() {
-  secao("U02  A medida da reducao recusa o que nao da para medir");
-  reiniciarSistema();
-  prepararRoboCalibrado();
-  prepararEncoder(90, true, 500000);
-  rodarComWeb(300);
-  const float redAntes = J1.reducao;
-
-  // 1. Sem marca.
-  int cod = webPost("/api/aferir/reducao?j=1&g=90");
-  rodarComWeb(150);
-  nota("sem marca: HTTP %d -- \"%s\"", cod, ultimaMensagem);
-  checar(fabsf(J1.reducao - redAntes) < 0.001f, "U02a",
-         "sem marca nao mede nada");
-
-  // 2. Movimento curto demais: mede o ruido, nao a engrenagem.
-  webPost("/api/aferir/marcar?j=1");
-  rodarComWeb(100);
-  const float cv = configEncoder.contagensPorVolta[0];
-  g_uart.escravo[0].parar();
-  g_uart.escravo[0].posicao += (int32_t)lroundf(0.05f * cv);
-  rodarComWeb(400);
-  webPost("/api/aferir/reducao?j=1&g=90");
-  rodarComWeb(150);
-  nota("0,05 volta do motor: reducao %.3f -- \"%s\"",
-       (double)J1.reducao, ultimaMensagem);
-  checar(fabsf(J1.reducao - redAntes) < 0.001f, "U02b",
-         "menos de um quarto de volta do motor e recusado: mediria o ruido");
-
-  // 3. Angulo de referencia curto demais.
-  g_uart.escravo[0].posicao += (int32_t)lroundf(3.0f * cv);
-  rodarComWeb(400);
-  cod = webPost("/api/aferir/reducao?j=1&g=2");
-  rodarComWeb(150);
-  nota("referencia de 2 graus: HTTP %d, reducao %.3f", cod, (double)J1.reducao);
-  checar(cod != 200 && fabsf(J1.reducao - redAntes) < 0.001f, "U02c",
-         "angulo de referencia curto e recusado ja na porta: erro relativo enorme");
-
-  // 4. Resultado implausivel: a referencia informada nao bate com o eixo.
-  cod = webPost("/api/aferir/reducao?j=1&g=3000");
-  rodarComWeb(150);
-  nota("3 voltas do motor para 3000 graus: HTTP %d, reducao %.4f -- \"%s\"",
-       cod, (double)J1.reducao, ultimaMensagem);
-  checar(fabsf(J1.reducao - redAntes) < 0.001f, "U02d",
-         "reducao abaixo de 0,5 nao existe nesta maquina: recusa em vez de gravar");
-}
-
-// =====================================================================
-//  U03 - A area da mesa ensinada pelos cantos
-// =====================================================================
 static void teste_U03_area_da_mesa() {
   secao("U03  A mesa ensinada pelos cantos, e o limite que ela cria");
   reiniciarSistema();
@@ -7009,7 +6780,6 @@ int main() {
   teste_H01_velocidade_de_cordao();
   teste_H02_suavidade_da_partida();
   teste_H03_zerar_na_posicao();
-  teste_H04_aferir_reducao();
   teste_H05_desenho_vira_programa();
   teste_H06_rotas_da_interface();
 
@@ -7057,13 +6827,13 @@ int main() {
   teste_V10_habilitar_so_a_junta_2();
   teste_V11_posicionar_respeita_precisao();
   teste_V12_leitura_absurda_nao_e_confiavel();
-  teste_V13_escala_do_encoder_ensinada();
   teste_V14_velocidade_por_motor();
   teste_V15_ir_a_um_angulo_sem_calibracao();
   teste_V16_contagem_perdida_e_reancorada();
   teste_V17_junta_com_torque_nao_e_seguida();
   teste_V18_vigia_usa_a_escala_medida();
   teste_V19_calibrar_com_a_mao();
+  teste_V20_junta_muda_nao_rouba_o_barramento();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();
@@ -7079,8 +6849,6 @@ int main() {
   teste_T03_todo_json_valido();
   teste_T04_pausa_na_aproximacao();
   teste_T05_travamento_para_o_programa();
-  teste_U01_reducao_pelo_encoder();
-  teste_U02_reducao_recusa();
   teste_U03_area_da_mesa();
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();

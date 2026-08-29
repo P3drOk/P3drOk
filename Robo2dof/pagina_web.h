@@ -1676,14 +1676,10 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
             <h4 class="dobra">Escala do angulo</h4>
             <div class="sub">
-            
-            <div class="cp"><label>Junta</label>
-              <select id="escJunta"><option value="1">1</option><option value="2">2</option></select></div>
-            <button class="b mini" id="btEscMarcar">1 &middot; Marcar aqui</button>
-            <div class="pq2" id="qEscMarcar"></div>
-            <div class="cp"><label>Graus que andou</label><input type="number" id="inEscG" step="1" value="90"><span class="un">°</span></div>
-            <button class="b pri" id="btEscGravar">2 &middot; Gravar escala</button>
-            <div class="pq2" id="qEscGravar"></div>
+            <div class="nt">Quantas contagens o encoder da por grau da junta.
+            <b>A calibracao mede isto sozinha</b> &mdash; entre o limite
+            positivo e o negativo ha um tanto de contagens e um tanto de graus.
+            Aqui so se le o que ela achou.</div>
             <div class="res" id="escAtual">--</div>
             <button class="b mini x" id="btEscLimpar">Voltar ao calculo antigo</button>
             <div class="pq2" id="qEscLimpar"></div>
@@ -2245,21 +2241,15 @@ function salvar(vc){
 $("btSalvar").onclick=function(){salvar($("inVc2").value);};
 
 /* ---------- escala do angulo ----------
-   Dois toques: marca onde esta, leva a junta ate um angulo conhecido e
-   diz quantos graus foram. O firmware divide e guarda contagens por
-   grau -- um numero medido, no lugar de dois digitados. */
-$("btEscMarcar").onclick=function(){
-  post("/api/aferir/marcar?j="+$("escJunta").value,"qEscMarcar");
-};
-$("btEscGravar").onclick=function(){
-  post("/api/encoder/escala?j="+$("escJunta").value+"&g="+($("inEscG").value||0),
-       "qEscGravar");
-};
+   Ela era ensinada aqui, em dois toques: marca onde esta, leva a junta
+   ate um angulo conhecido, diz quantos graus foram. Virou consequencia
+   de calibrar -- a calibracao ja anda de um limite ao outro, e ali estao
+   as contagens e os graus de que a divisao precisa. O que sobra aqui e
+   a leitura, e o botao de voltar ao calculo antigo. */
 $("btEscLimpar").onclick=function(){
   /* Zerar volta ao caminho antigo (contagens por volta + reducao) sem
-     apagar mais nada. */
-  const j=$("escJunta").value;
-  post("/api/encoder/config?cg"+j+"=0","qEscLimpar");
+     apagar mais nada. Vale para as duas juntas: nao ha mais seletor. */
+  post("/api/encoder/config?cg1=0&cg2=0","qEscLimpar");
 };
 
 /* =====================================================================

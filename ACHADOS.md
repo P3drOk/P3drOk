@@ -1206,6 +1206,95 @@ em telas diferentes — subir a barra do jog e o posicionamento continuar
 lerdo. O modo Precisão continua com o valor dele, que é o propósito
 daquele botão.
 
+## R122 · Calibrar virou quatro marcas — e virou opcional  ✅
+
+> "quero que vc remova tudo alinhado a calibração do sistema, vamos
+> reformular isto, o sistema por si deve funcionar sem a necessidade de
+> calibração... agora só preciso deixar livre os motores, mover até o
+> ponto máximo no eixo 1 positivo e depois o max negativo, e depois o
+> mesmo com o eixo dois, isso é a calibração, cálculo automático daí"
+
+Calibrar eram **onze estados**: declarar o ângulo real na referência, ir
+ao limite, **voltar ao zero sozinho**, ir ao outro limite, voltar de
+novo, e no fim medir o curso com transferidor para informar a resolução.
+Mais três telas de aferição avulsa ao lado — engrenagem eletrônica pelo
+encoder, redução contra um esquadro, escala do encoder —, cada uma com
+marca, movimento e um número a informar.
+
+Agora são **quatro marcas**: junta 1 no limite positivo, junta 1 no
+negativo, e o mesmo na junta 2. Nada digitado. Dali sai:
+
+- o **curso** de cada junta;
+- o **zero**, que passa a ser o **meio do curso** — a única escolha que
+  não pede número, e a que deixa a área útil centrada;
+- a **escala do encoder** em contagens por grau. Ela sai de graça: entre
+  as duas marcas há um tanto de contagens e um tanto de graus, e a
+  divisão é a escala, com sinal. Era uma tela inteira; virou consequência
+  de ter calibrado.
+
+O batente se alcança com o motor **solto**, empurrando o braço com a mão
+— que era exatamente o que a exigência antiga (`Habilite os servos antes
+de calibrar`) proibia. Enquanto a calibração está aberta, a junta sem
+torque tem a contagem puxada pelo encoder. Não é o seguimento de eixo
+solto de sempre: aquele escreve posição **absoluta** e por isso exige o
+zero absoluto já ensinado; aqui basta o **delta**, e delta não precisa de
+origem. A conversão dispensa a redução — contagens por volta e pulsos por
+volta são ambos por volta do *motor*, e o redutor cancela na divisão.
+
+Sobrou **um** número declarado: a redução do redutor. Com um sensor só,
+antes dele, nenhuma medida a revela — isso é física, não limitação de
+software.
+
+## R123 · Nada mais é recusado por falta de calibração  ✅
+
+Programa, trajetória, aprendizado, ir a um ponto gravado e ensinar a mesa
+eram todos recusados sem calibração. O argumento era "sem calibração não
+há ângulo, há contagem de pulsos". Mas um ponto gravado é um par de
+**contagens na mesma régua** com que ele vai ser perseguido: se a régua
+não mudou, o braço volta exatamente para onde estava.
+
+O que a calibração acrescenta é a **proteção de curso** — e só ela.
+`posturaValidaDet()` já tratava "sem limites, nada é violação". Os
+portões saíram; a proteção ficou.
+
+## R124 · O travamento: parar o braço exige régua medida  ✅
+
+> "o sistema está apresentando travamento às vezes"
+
+O vigia de travamento comparava a velocidade medida pelo encoder com uma
+esperada calculada de `pulsos por volta × contagens por volta` — dois
+números **digitados**. Basta um deles não bater com o driver para o
+esperado sair várias vezes maior que o real, e aí um braço andando
+normalmente é declarado travado meio segundo depois de arrancar — e o
+vigia **corta o movimento**.
+
+Agora ele só **para** quando a escala do encoder foi medida (e a
+calibração mede sozinha). Sem ela, avisa e não encosta no braço. Um vigia
+que interrompe a operação a partir de um número que ninguém conferiu é
+pior que nenhum.
+
+## R125 · A junta muda deixou de roubar o barramento  ✅
+
+O ciclo do encoder alternava as duas juntas sempre. Numa bancada com um
+driver só — o caso mais comum durante a montagem — **metade das leituras
+era uma espera até o timeout**, e essa espera acontece na mesma tarefa
+que divide o núcleo 0 com a rede. O sintoma não era o motor: era a tela
+engasgando.
+
+Depois de cinco falhas seguidas a junta muda de regime: continua sendo
+perguntada, uma vez a cada dez ciclos — o suficiente para reaparecer
+sozinha quando o cabo voltar. Uma leitura boa devolve o ritmo normal na
+hora.
+
+## R126 · A rampa passou a acompanhar a velocidade  ✅
+
+A aceleração era um número fixo, então subir a velocidade só alongava a
+subida: a 120 °/s com rampa de 60 °/s² a subida levava dois segundos e o
+movimento inteiro virava rampa — o braço parecia engasgar em vez de
+andar. O controle de velocidade agora manda a rampa junto, calculada para
+que o **tempo** de subida fique constante. O movimento tem a mesma cara
+em qualquer velocidade.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -3383,8 +3472,8 @@ regra existir.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **431 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **249 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **417 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **247 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).
