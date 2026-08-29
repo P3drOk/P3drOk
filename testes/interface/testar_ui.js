@@ -652,17 +652,17 @@ async function fecharGaveta(pag) {
   checar(ico.classes,
          'icones: todos usam a mesma classe, entao mudam de tamanho juntos');
 
-  // O icone da engrenagem era um gear do Feather editado a mao, com os
-  // arcos malformados -- desenhava errado em todo navegador.
+  // A engrenagem do cabecalho virou o link "Configuracao", logo depois do
+  // titulo. O que este guarda protege continua sendo o mesmo: o acesso a
+  // configuracao existe no cabecalho e tem tamanho de alvo de toque.
   const eng = await t.evaluate(() => {
-    const svg = document.querySelector('#btCfg svg');
-    const u = svg && svg.querySelector('use');
-    const alvo = u ? document.querySelector(u.getAttribute('href')) : null;
-    if (!alvo) return { ok: false, motivo: 'a engrenagem nao vem do sprite' };
-    const r = document.getElementById('btCfg').getBoundingClientRect();
-    return { ok: r.width > 8 && r.height > 8, larg: r.width, alt: r.height };
+    const b = document.getElementById('btCfg');
+    if (!b) return { ok: false, motivo: 'sem acesso a configuracao no cabecalho' };
+    const r = b.getBoundingClientRect();
+    return { ok: r.width > 20 && r.height > 12,
+             txt: b.textContent.trim(), larg: r.width, alt: r.height };
   });
-  checar(eng.ok, 'icones: a engrenagem do cabecalho vem do sprite e tem tamanho',
+  checar(eng.ok, 'cabecalho: a Configuracao fica logo depois do titulo, alcancavel',
          JSON.stringify(eng));
 
   // Todo botao com id tem handler.
@@ -1611,10 +1611,103 @@ async function fecharGaveta(pag) {
     { data: { marca1: false, passos1: 0, voltas1: 0 } });
   await fecharGaveta(t);
 
-  // Botoes de seta do jog.
+  // ---- selecionar o eixo tocando no proprio braco ----
+  // A cor de cada elo diz se aquela junta tem torque; o anel diz qual
+  // esta selecionada. Duas perguntas diferentes, dois sinais diferentes.
+  await t.locator('#abas button[data-aba="mesa"]').click();
+  await t.waitForTimeout(400);
+  await t.request.post(BASE + '/teste/estado',
+    { data: { t1: 0, t2: 0, m1ok: false, m2ok: false, srv1: true, srv2: false, sonEst: 2 } });
+  await t.waitForTimeout(800);
+
+  // Toca no MEIO do elo 1: da base ao cotovelo, com as duas juntas em 0
+  // o braco fica deitado no eixo X.
+  const selJ = await t.evaluate(() => {
+    const L1 = D.l1 || 200;
+    const r = cv.getBoundingClientRect();
+    const clique = (mx, my) => {
+      const ev = new MouseEvent('click', { bubbles: true,
+        clientX: r.left + ox + mx * esc, clientY: r.top + oy - my * esc });
+      cv.dispatchEvent(ev);
+    };
+    clique(L1 * 0.5, 0);            /* meio do elo 1 */
+    const a = juntaSel;
+    clique(L1 + (D.l2 || 200) * 0.5, 0);   /* meio do elo 2 */
+    return { aposElo1: a, aposElo2: juntaSel };
+  });
+  checar(selJ.aposElo1 === 1 && selJ.aposElo2 === 2,
+         'Robo 2D: tocar em cada elo seleciona aquela junta',
+         JSON.stringify(selJ));
+
+  // Tocar SOBRE o braco nao pode mandar o robo andar: seria o oposto do
+  // que "escolher o eixo" quer dizer.
   rotas = [];
+  await t.evaluate(() => {
+    const r = cv.getBoundingClientRect();
+    cv.dispatchEvent(new MouseEvent('click', { bubbles: true,
+      clientX: r.left + ox + (D.l1 || 200) * 0.5 * esc, clientY: r.top + oy }));
+  });
+  await t.waitForTimeout(300);
+  const andou = rotas.filter(x => x.split('?')[0] === '/api/mover_xy');
+  checar(andou.length === 0,
+         'Robo 2D: tocar no braco escolhe o eixo, nao manda a ponta para la',
+         andou.length + ' chamadas a /api/mover_xy');
+
+  // O seletor da aba Mover segue a escolha feita no desenho: um
+  // conceito, dois lugares de tocar. Escolhe o eixo 2 por ultimo, que e
+  // o que se vai conferir la.
+  await t.evaluate(() => {
+    const r = cv.getBoundingClientRect();
+    cv.dispatchEvent(new MouseEvent('click', { bubbles: true,
+      clientX: r.left + ox + ((D.l1 || 200) + (D.l2 || 200) * 0.5) * esc,
+      clientY: r.top + oy }));
+  });
+  await t.waitForTimeout(300);
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(300);
+  const casou = await t.evaluate(() => document.getElementById('selJunta').value);
+  checar(casou === '2', 'Robo 2D: o seletor da aba Mover segue o eixo escolhido no desenho',
+         'selJunta = ' + casou);
+
+  // ---- PASSO: um toque anda o incremento escolhido e para ----
+  // E o modo padrao. Antes um toque rapido comecava e parava o jog, e o
+  // eixo andava um tiquinho imprevisivel -- o mesmo gesto querendo dizer
+  // duas coisas.
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(250);
+  await t.request.post(BASE + '/teste/estado', { data: { t1: 20, t2: 0, m1ok: false, m2ok: false } });
+  await t.waitForTimeout(700);
+  await t.locator('#segPasso button[data-p="10"]').click();
+  await t.waitForTimeout(120);
+  rotas = [];
+  const setaPasso = t.locator('#pnMover .jb').first();
+  await setaPasso.dispatchEvent('pointerdown', { pointerId: 7 });
+  await setaPasso.dispatchEvent('pointerup', { pointerId: 7 });
+  await t.waitForTimeout(400);
+  const passo = rotas.find(x => x.split('?')[0] === '/api/mover');
+  checar(!!passo && /t1=30/.test(passo),
+         'Passo: com incremento 10, um toque leva a junta de 20 para 30 graus',
+         passo || rotas.join(' '));
+  const semJog = rotas.filter(x => x.split('?')[0] === '/api/jog');
+  checar(semJog.length === 0,
+         'Passo: e o toque NAO vira jog continuo -- um gesto, um significado',
+         semJog.length + ' chamadas a /api/jog');
+
+  await t.locator('#segPasso button[data-p="1"]').click();
+  await t.waitForTimeout(120);
+  rotas = [];
+  await setaPasso.dispatchEvent('pointerdown', { pointerId: 8 });
+  await setaPasso.dispatchEvent('pointerup', { pointerId: 8 });
+  await t.waitForTimeout(400);
+  const passo1 = rotas.find(x => x.split('?')[0] === '/api/mover');
+  checar(!!passo1 && /t1=21/.test(passo1),
+         'Passo: trocando para 1 grau, o mesmo toque anda 1 grau',
+         passo1 || rotas.join(' '));
+
+  // Botoes de seta do jog, no modo CONTINUO.
+  await t.locator('#segModo button[data-m="continuo"]').click();
+  await t.waitForTimeout(150);
+  rotas = [];
   const seta = t.locator('#pnMover .jb').first();
   await seta.dispatchEvent('pointerdown', { pointerId: 5 });
   await t.waitForTimeout(230);

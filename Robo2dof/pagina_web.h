@@ -127,24 +127,29 @@ button,input{font:inherit;color:inherit}
    rotulo lado a lado -- que se le da esquerda para a direita como o
    painel de uma maquina, e que encolhe inteira em vez de perder um
    campo. */
-.lamps{display:flex;margin-left:auto;min-width:0;
- background:var(--face);border:1px solid var(--linha);border-radius:5px;
- overflow:hidden}
-.lp{display:flex;flex-direction:row;align-items:center;gap:6px;min-width:0;
- padding:6px 10px;border-left:1px solid var(--linha)}
-.lp:first-child{border-left:none}
-.olho{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--linha2);
- box-shadow:inset 0 1px 2px var(--sombra)}
-.lp.on .olho{background:var(--pronto);box-shadow:0 0 9px var(--pronto)}
-.lp.at .olho{background:var(--arco);box-shadow:0 0 9px var(--arco)}
-.lp.hot .olho{background:var(--quente);box-shadow:0 0 14px var(--quente);animation:pi .7s infinite}
-.lp.er .olho{background:var(--brasa);box-shadow:0 0 12px var(--brasa);animation:pi .45s infinite}
+/* OS STATUS SAO SECUNDARIOS.
+   Eles estavam com caixa, borda e halo aceso, competindo com os
+   controles pela atencao -- e controle do robo tem de ganhar de
+   diagnostico. Aqui viraram texto apagado com um ponto pequeno: legivel
+   quando se procura, invisivel quando nao se procura.
+   O que continua chamando e o que PRECISA chamar: alarme e emergencia,
+   que piscam em vermelho. */
+.lamps{display:flex;margin-left:auto;min-width:0;opacity:.55}
+.lp{display:flex;flex-direction:row;align-items:center;gap:5px;min-width:0;
+ padding:5px 8px}
+.olho{flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:var(--linha2)}
+.lp.on .olho{background:var(--pronto)}
+.lp.at .olho{background:var(--arco)}
+.lp.hot .olho{background:var(--quente)}
+/* A falha e a excecao: ela TEM de furar a discricao. */
+.lp.er{opacity:1}
+.lp.er .olho{background:var(--brasa);box-shadow:0 0 10px var(--brasa);animation:pi .45s infinite}
 @keyframes pi{50%{opacity:.25;box-shadow:none}}
-.lp span{font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;color:var(--letra2);
+.lp span{font-family:var(--mono);font-size:8px;letter-spacing:.08em;color:var(--letra3);
  text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Aceso, o rotulo acende junto: ponto colorido com legenda apagada ao
    lado obriga a olhar duas vezes para ler o mesmo estado. */
-.lp.on span,.lp.at span,.lp.hot span,.lp.er span{color:var(--letra)}
+.lp.er span{color:var(--brasa);font-weight:700}
 /* O campo do modo e o unico que muda de palavra: reservar largura evita
    a tira inteira pular de tamanho a cada troca de estado. */
 #lModo{min-width:96px}
@@ -160,6 +165,22 @@ button,input{font:inherit;color:inherit}
    estado -- verde tem torque, cinza nao, ambar esperando o barramento
    responder. Nao e o PARAR e nao pode ser confundido com ele. */
 .ch.indo{opacity:.55;animation:pi .7s infinite}
+/* O joystick sai no COMPUTADOR: as setas de passo fazem o mesmo com
+   mais precisao, e ele so ocupava o espaco dos controles que importam.
+   No celular ele fica -- ali nao ha setas confortaveis, e arrastar o
+   polegar continua sendo o jeito natural de levar o braco. */
+@media(min-width:761px){ .joyCx,.joyLe{display:none} }
+/* Posicao atual, grande o bastante para se ler de longe: e o numero que
+   o operador confere antes de mandar o proximo comando. */
+.agora{font-family:var(--mono);font-size:15px;letter-spacing:.02em;
+ padding:8px 10px;margin-bottom:9px;border-radius:4px;
+ background:var(--painel);border:1px solid var(--linha);color:var(--letra)}
+/* Ir para um angulo numa linha so: de onde esta, para onde vai. */
+.irAng{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.irAng #irDe{font-family:var(--mono);font-size:12px;color:var(--letra2);
+ min-width:58px;text-align:right}
+.irAng .seta{color:var(--letra3)}
+.irAng input{flex:1;min-width:0}
 .motores{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
 .motor{flex:0 0 auto;border:none;font-family:var(--mono);font-size:12px;font-weight:700;
  letter-spacing:.08em;padding:12px 14px;border-radius:4px;cursor:pointer;color:#fff;
@@ -368,6 +389,16 @@ body.semNotasCfg .cfgRol .nt{display:none}
 .cadeado .ic{font-size:17px;color:var(--letra3);flex:0 0 auto}
 .cadeado:hover{border-color:var(--arco2)}
 .cadeado:hover .ic{color:var(--arco)}
+/* "Robo 2DOF | Configuracao": a configuracao logo depois do titulo, do
+   tamanho de um link e nao de um botao -- alcancavel sem disputar
+   espaco com o que controla o robo. O subtitulo do modelo saiu: ele
+   nao dizia nada que o operador precisasse na hora de operar. */
+.divisor{color:var(--linha2);font-size:15px;margin:0 -4px}
+.cfgLink{background:none;border:none;color:var(--letra2);cursor:pointer;
+ font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+ text-transform:uppercase;padding:6px 8px;border-radius:3px}
+.cfgLink:hover{color:var(--arco)}
+.cfgLink.on{color:var(--arco);background:var(--face)}
 .ajd{background:var(--face);border:1px solid var(--linha);border-radius:3px;
  width:30px;height:30px;flex:0 0 auto;cursor:pointer;color:var(--letra3);
  font-family:var(--mono);font-size:13px;font-weight:600;margin-left:10px}
@@ -493,12 +524,26 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
    largura da tela, e chutar um valor deixaria a gaveta escondida atras
    dele em algum telefone. */
 .placa{position:relative;z-index:80}
-.cfgVeu{align-items:flex-start;
- padding-top:calc(var(--altCab, 82px) + 8px);
- padding-bottom:calc(var(--altAbas, 0px) + 8px)}
-.cfgVeu .cfgCx{max-width:760px;width:100%;
- height:calc(100vh - var(--altCab, 82px) - var(--altAbas, 0px) - 24px);
+/* A CONFIGURACAO E UMA SECAO, NAO UM POPUP.
+   Ela ocupava 760 px no meio de um veu escurecido -- lia como uma
+   caixa de dialogo, e caixa de dialogo pede para ser fechada logo. Como
+   secao ela ocupa a tela inteira abaixo do cabecalho e pode respirar:
+   cabem linhas de configuracao de ponta a ponta, no lugar de uma coluna
+   estreita rolando sem fim. */
+.cfgVeu{align-items:flex-start;padding:0;background:var(--fundo);
+ backdrop-filter:none;
+ padding-top:var(--altCab, 82px);
+ padding-bottom:var(--altAbas, 0px)}
+.cfgVeu .cfgCx{max-width:none;width:100%;border:none;border-radius:0;
+ height:calc(100vh - var(--altCab, 82px) - var(--altAbas, 0px));
  display:flex;flex-direction:column;padding:0;overflow:hidden}
+/* As linhas de configuracao acompanham a largura nova em vez de
+   esticarem um campo so por toda a tela. */
+@media(min-width:900px){
+  .cfgRol{padding:16px 28px 24px}
+  .cfgRol .dentro{max-width:1100px}
+  .cfgRol .cp{max-width:560px}
+}
 .cfgTopo{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;
  border-bottom:1px solid var(--linha)}
 .cfgTopo h2{flex:1;margin:0}
@@ -765,10 +810,8 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 <div class="app">
   <header class="placa">
     <div class="nome">ROBO<b>2DOF</b></div>
-    <div class="mod">ESTACAO DE SOLDA<br>2 EIXOS · SERVO AC</div>
-    <button class="ajd eng" id="btCfg" title="Configuracao">
-      <svg class="ic" aria-hidden="true"><use href="#i-engrenagem"/></svg>
-    </button>
+    <span class="divisor">|</span>
+    <button class="cfgLink" id="btCfg">Configuracao</button>
     <div class="lamps">
       <div class="lp" id="lModo"><i class="olho"></i><span id="lModoT">--</span></div>
       <div class="lp" id="lServo"><i class="olho"></i><span>servo</span></div>
@@ -986,11 +1029,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <span>J1 <b id="joyA">0%</b></span>
               <span>J2 <b id="joyB">0%</b></span>
             </div>
-            <div class="joyMotivo" id="joyMotivo"></div>
-            <div class="nt">Mais longe do centro, mais rapido. Soltou, parou.</div>
-            <button class="b mini" id="btPrec">Precisao: desligada</button>
 
-            <h4>Passo a passo</h4>
+            <div class="cp"><label>Junta</label>
+              <select id="selJunta"><option value="1">Eixo 1</option><option value="2">Eixo 2</option></select></div>
+            <div class="agora" id="movAgora">--</div>
+
+            <div class="seg" id="segModo">
+              <button data-m="passo" class="on">Passo</button>
+              <button data-m="continuo">Continuo</button>
+            </div>
             <div class="eixo">
               <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;<small>ANTI-HOR</small></button>
               <div class="id"><span class="rot">junta 1</span><div class="fx" id="fx1"></div></div>
@@ -1001,28 +1048,35 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
               <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
-            <div class="nt">Girou ao contrario do botao? <b>Ajustes &rarr;
-            Sentido dos eixos</b>.</div>
+            <div class="seg" id="segPasso">
+              <button data-p="1">1&deg;</button>
+              <button data-p="5" class="on">5&deg;</button>
+              <button data-p="10">10&deg;</button>
+              <button data-p="30">30&deg;</button>
+            </div>
+            <div class="joyMotivo" id="joyMotivo"></div>
+            <button class="b mini" id="btPrec">Precisao: desligada</button>
+            <button class="b mini x" id="btRefer">Zerar a maquina aqui</button>
+            <div class="pq2" id="qRefer"></div>
+            <div class="nt">O curso e contado a partir da referencia: zerar
+            fora dela desloca a area util inteira.</div>
 
             <h4>Ir para um angulo</h4>
-            <div class="cp"><label>Junta 1</label><input type="number" id="inMt1" step="0.5"><span class="un">°</span></div>
-            <button class="b mini" id="btMover1">Levar a junta 1</button>
-            <div class="pq2" id="qMover1"></div>
-            <div class="cp"><label>Junta 2</label><input type="number" id="inMt2" step="0.5"><span class="un">°</span></div>
-            <button class="b mini" id="btMover2">Levar a junta 2</button>
-            <div class="pq2" id="qMover2"></div>
-            <button class="b mini" id="btMover">Levar as duas</button>
-            <div class="pq2" id="qMover"></div>
+            <div class="irAng">
+              <span id="irDe">--</span>
+              <span class="seta">&rarr;</span>
+              <input type="number" id="inMtSel" step="0.5" placeholder="alvo">
+              <span class="un">&deg;</span>
+              <button class="b mini" id="btMoverSel">Levar</button>
+            </div>
+            <div class="pq2" id="qMoverSel"></div>
 
             <h4>Atalhos</h4>
             <button class="b ok" id="btGravar">Gravar ponto na posicao atual</button>
             <div class="pq2" id="qGravar"></div>
             <button class="b mini" id="btHome">Ir para o zero da maquina</button>
             <div class="pq2" id="qHome"></div>
-            <button class="b mini x" id="btRefer">Zerar a maquina aqui</button>
-            <div class="pq2" id="qRefer"></div>
-            <div class="nt">O curso e contado a partir da referencia: zerar
-            fora dela desloca a area util inteira.</div>
+
           </div>
         </div>
       </section>
@@ -1807,11 +1861,82 @@ function jogOff(j,el){
   if(el)el.classList.remove("press");
   ping("/api/jog?j="+j+"&d=0");
 }
+/* ---------- passo a passo, em graus ----------
+   Dois modos, e a diferenca fica dita na tela em vez de escondida no
+   gesto: em PASSO um toque anda o incremento escolhido e para; em
+   CONTINUO a seta anda enquanto estiver apertada, como sempre andou.
+   Um toque rapido no modo continuo andava um tiquinho imprevisivel --
+   era o mesmo gesto querendo dizer duas coisas. */
+let modoPasso = true;
+let passoGraus = 5;
+
+/* O angulo de onde a junta ESTA. Prefere o que o encoder mediu: e a
+   posicao de verdade do braco. Sem leitura, cai no comandado, que e o
+   que o firmware acha -- e o unico numero que existe ali. */
+function anguloAtual(j){
+  if(j===1) return (D.m1ok ? D.m1 : D.t1) || 0;
+  return (D.m2ok ? D.m2 : D.t2) || 0;
+}
+
+/* Um passo: leva a junta ao angulo atual mais o incremento, e deixa a
+   outra onde esta. Quem calcula a velocidade e a rampa e o firmware --
+   e o mesmo caminho de "ir para um angulo", que ja existia. */
+function darPasso(j,sentido){
+  const alvo = anguloAtual(j) + sentido*passoGraus;
+  const t1 = (j===1) ? alvo : anguloAtual(1);
+  const t2 = (j===2) ? alvo : anguloAtual(2);
+  post("/api/mover?t1="+t1.toFixed(2)+"&t2="+t2.toFixed(2),"qMoverSel");
+}
+
 document.querySelectorAll(".jb").forEach(function(b){
-  b.addEventListener("pointerdown",function(e){e.preventDefault();jogOn(b.dataset.j,b.dataset.d,b);});
+  b.addEventListener("pointerdown",function(e){
+    e.preventDefault();
+    const j=+b.dataset.j, d=+b.dataset.d;
+    juntaSel=j;
+    const sel=$("selJunta"); if(sel) sel.value=String(j);
+    if(modoPasso){ b.classList.add("press"); darPasso(j,d); return; }
+    jogOn(b.dataset.j,b.dataset.d,b);
+  });
   ["pointerup","pointerleave","pointercancel"].forEach(function(v){
-    b.addEventListener(v,function(){jogOff(b.dataset.j,b);});});
+    b.addEventListener(v,function(){
+      if(modoPasso){ b.classList.remove("press"); return; }
+      jogOff(b.dataset.j,b);
+    });});
 });
+
+document.querySelectorAll("#segModo button").forEach(function(b){
+  b.onclick=function(){
+    modoPasso = (b.dataset.m==="passo");
+    document.querySelectorAll("#segModo button").forEach(function(x){
+      x.classList.toggle("on",x===b);});
+    /* Trocar de modo com uma seta apertada deixaria o eixo andando sem
+       ninguem segurando nada. */
+    jogOff("1"); jogOff("2");
+    const sp=$("segPasso"); if(sp) sp.style.display = modoPasso ? "" : "none";
+  };
+});
+document.querySelectorAll("#segPasso button").forEach(function(b){
+  b.onclick=function(){
+    passoGraus = +b.dataset.p;
+    document.querySelectorAll("#segPasso button").forEach(function(x){
+      x.classList.toggle("on",x===b);});
+  };
+});
+$("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
+$("btMoverSel").onclick=function(){
+  const j=juntaSel;
+  const alvo=parseFloat($("inMtSel").value);
+  /* Sem alvo, DIZER que falta o alvo. Sair calado deixava o botao
+     parecendo quebrado. */
+  if(isNaN(alvo)){
+    const q=$("qMoverSel");
+    if(q){q.textContent=tr("digite o angulo de destino");q.style.display="block";}
+    return;
+  }
+  const t1=(j===1)?alvo:anguloAtual(1);
+  const t2=(j===2)?alvo:anguloAtual(2);
+  post("/api/mover?t1="+t1.toFixed(2)+"&t2="+t2.toFixed(2),"qMoverSel");
+};
 /* Setas do teclado no mesmo sentido dos botoes: esquerda = anti-horario. */
 const TK={ArrowLeft:["1","1"],ArrowRight:["1","-1"],ArrowUp:["2","1"],ArrowDown:["2","-1"]};
 addEventListener("keydown",function(e){
@@ -2816,7 +2941,7 @@ function paleta(){
   palQuando=t;
   PAL={papel:cor("--papel"),grade:cor("--grade"),arco:cor("--arco"),
        quente:cor("--quente"),brasa:cor("--brasa"),letra:cor("--letra"),
-       letra2:cor("--letra2"),letra3:cor("--letra3"),
+       letra2:cor("--letra2"),letra3:cor("--letra3"),pronto:cor("--pronto"),
        elo1:t==="escuro"?"#8b98a9":"#5a6675",
        elo2:t==="escuro"?"#b7c2d1":"#8794a5",
        juntaF:t==="escuro"?"#2a333e":"#ffffff",
@@ -2866,10 +2991,10 @@ const ALT_ELO1=110, ALT_ELO2=64;
 const DESVIO_VISIVEL = 0.5;   /* graus */
 
 function legendaPostura(z){
+  /* A frase do desvio saiu junto com o tracejado da vista de cima: ela
+     so descrevia aquele tracejado. O que sobra e de onde vem a posicao
+     desenhada, que continua importando. */
   if(!z.medido) return "posicao comandada (sem leitura do encoder)";
-  if(z.desvio > DESVIO_VISIVEL)
-    return "posicao MEDIDA pelo encoder  ·  tracejado = comandado, "+
-           z.desvio.toFixed(2)+"\u00b0 de desvio";
   return z.completo ? "posicao medida pelo encoder"
                     : "posicao medida (uma junta sem leitura)";
 }
@@ -3438,25 +3563,38 @@ function pintar(){
   const p=P(L1*Math.cos(t1)+L2*Math.cos(t2),L1*Math.sin(t1)+L2*Math.sin(t2));
   const e1=Math.max(4,L1*esc*0.085), e2=Math.max(3,L2*esc*0.068);
 
-  /* Fantasma do comandado: onde o firmware ACHA que o braco esta. */
-  if(PZ.medido && PZ.desvio > DESVIO_VISIVEL){
-    const f1=PZ.c1*Math.PI/180, f2=(PZ.c1+PZ.c2)*Math.PI/180;
-    const fc=P(L1*Math.cos(f1),L1*Math.sin(f1));
-    const fp=P(L1*Math.cos(f1)+L2*Math.cos(f2),L1*Math.sin(f1)+L2*Math.sin(f2));
-    ct.save();
-    ct.strokeStyle=C.letra3;ct.globalAlpha=.42;
-    ct.setLineDash([6,5]);ct.lineWidth=Math.max(2,e2*.5);ct.lineCap="round";
-    ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(fc[0],fc[1]);ct.lineTo(fp[0],fp[1]);
-    ct.stroke();
-    ct.setLineDash([]);ct.globalAlpha=1;ct.restore();
-  }
+  /* O fantasma tracejado do comandado saiu da vista de cima: ele existia
+     so para mostrar o DESVIO entre o que o firmware comanda e o que o
+     encoder mede, e essa medicao nao faz parte da operacao. Um tracejado
+     em volta do braco tambem se confundia com a trajetoria de solda, que
+     e outra coisa inteiramente. A vista 3D continua com o dele. */
 
+  /* A COR DE CADA ELO DIZ SE AQUELA JUNTA TEM TORQUE.
+     Verde tem, vermelho nao. E a mesma informacao dos botoes do
+     cabecalho, no lugar onde o operador esta olhando: no braco.
+     Enquanto o barramento nao confirma, fica cinza -- "mandei" e "tem
+     torque" nao sao a mesma coisa desde que o habilita virou Modbus. */
+  const corDoEixo=function(k){
+    if(D.sonEst===1) return C.letra3;
+    return ((k===1)?D.srv1:D.srv2) ? C.pronto : C.brasa;
+  };
   ct.save();ct.shadowColor=cor("--sombra");ct.shadowBlur=8;ct.shadowOffsetY=3;
-  ct.strokeStyle=C.elo1;ct.lineWidth=e1;
+  ct.strokeStyle=corDoEixo(1);ct.lineWidth=e1;
   ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(c[0],c[1]);ct.stroke();
-  ct.strokeStyle=C.elo2;ct.lineWidth=e2;
+  ct.strokeStyle=corDoEixo(2);ct.lineWidth=e2;
   ct.beginPath();ct.moveTo(c[0],c[1]);ct.lineTo(p[0],p[1]);ct.stroke();
   ct.restore();
+
+  /* A junta SELECIONADA ganha um anel. Cor diz torque, anel diz foco --
+     duas perguntas diferentes, dois sinais diferentes. */
+  {
+    const alvo = (juntaSel===2) ? c : [ox,oy];
+    const raio = (juntaSel===2) ? e2*1.5 : e1*1.5;
+    ct.save();
+    ct.strokeStyle=C.arco;ct.lineWidth=2.5;ct.globalAlpha=.9;
+    ct.beginPath();ct.arc(alvo[0],alvo[1],raio,0,TAU);ct.stroke();
+    ct.restore();
+  }
   /* nervura clara ao longo dos elos */
   ct.strokeStyle="rgba(255,255,255,.22)";ct.lineWidth=Math.max(1,e1*.18);
   ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(c[0],c[1]);ct.stroke();
@@ -3545,11 +3683,50 @@ function mmDe(e){
   const r=cv.getBoundingClientRect();
   return [(e.clientX-r.left-ox)/esc,(oy-(e.clientY-r.top))/esc];
 }
+/* Qual junta esta selecionada no desenho. Os controles da aba Mover
+   seguem esta escolha, entao selecionar aqui e o mesmo que escolher la:
+   um conceito, dois lugares de tocar. */
+let juntaSel = 1;
+
+/* Distancia do ponto ao segmento, em mm da mesa. E como se decide em
+   qual elo o dedo caiu. */
+function distSegmento(px,py,ax,ay,bx,by){
+  const dx=bx-ax, dy=by-ay, L=dx*dx+dy*dy;
+  let u = L>1e-9 ? ((px-ax)*dx+(py-ay)*dy)/L : 0;
+  u=Math.max(0,Math.min(1,u));
+  return Math.hypot(px-(ax+dx*u), py-(ay+dy*u));
+}
+
+/* Em qual elo o toque caiu, ou 0 se caiu na mesa. A folga acompanha o
+   zoom: o alvo tem de ser do tamanho do dedo, nao do desenho. */
+function juntaNoPonto(q){
+  const L1=D.l1||200,L2=D.l2||200,PZ=postura();
+  const t1=PZ.t1*Math.PI/180, t2=(PZ.t1+PZ.t2)*Math.PI/180;
+  const cx=L1*Math.cos(t1), cy=L1*Math.sin(t1);
+  const px=cx+L2*Math.cos(t2), py=cy+L2*Math.sin(t2);
+  const folga=Math.max(14, 22/(esc||1));
+  const d1=distSegmento(q[0],q[1],0,0,cx,cy);
+  const d2=distSegmento(q[0],q[1],cx,cy,px,py);
+  if(d1>folga && d2>folga) return 0;
+  return (d2<=d1) ? 2 : 1;      /* empate vai para o antebraco, que fica por cima */
+}
+
 cv.addEventListener("click",function(e){
   /* No modo desenho o toque e traco; no modo posicionar e arraste.
      Nem um nem outro manda o braco para o ponto tocado. */
   if(desOn||posOn)return;
   const q=mmDe(e);
+
+  /* Tocar SOBRE o braco seleciona aquela junta. So o que cai fora do
+     braco e que vira "leve a ponta ate aqui" -- senao um toque para
+     escolher o eixo mandaria o robo andar, que e o oposto do esperado. */
+  const j=juntaNoPonto(q);
+  if(j){
+    juntaSel=j;
+    const sel=$("selJunta"); if(sel) sel.value=String(j);
+    pintar();
+    return;
+  }
   post("/api/mover_xy?x="+q[0].toFixed(1)+"&y="+q[1].toFixed(1));
 });
 
@@ -4786,6 +4963,23 @@ function aplicar(d){
   if(!jaEnquadrou){jaEnquadrou=true;autoEnquadrar();}
   sonPintar(d);
   motorPintar(d);
+  /* Posicao atual da junta selecionada -- e o numero que o operador
+     confere antes de mandar o proximo comando. Diz tambem DE ONDE veio:
+     medido pelo encoder ou comandado pelo firmware. */
+  {
+    const ag=$("movAgora");
+    if(ag){
+      const med=(juntaSel===1)?d.m1ok:d.m2ok;
+      const v=(juntaSel===1)?(d.m1ok?d.m1:d.t1):(d.m2ok?d.m2:d.t2);
+      ag.textContent=tr("Eixo")+" "+juntaSel+": "+(v||0).toFixed(2)+"\u00b0  "+
+        (med?tr("(medido)"):tr("(comandado)"));
+    }
+    const de=$("irDe");
+    if(de){
+      const v=(juntaSel===1)?(d.m1ok?d.m1:d.t1):(d.m2ok?d.m2:d.t2);
+      de.textContent=(v||0).toFixed(1)+"\u00b0";
+    }
+  }
   /* A escala ensinada, se houver. Numero grande e o normal: um encoder
      de 17 bits com reducao 16 da milhares de contagens por grau. */
   const e1=$("escAtual");
@@ -4964,7 +5158,7 @@ function aplicar(d){
     $("inL1").value=d.l1;$("inL2").value=d.l2;$("inDb").value=d.dobra;
     $("inEy").value=d.envY;$("inEr").value=d.envR;
     $("inEsc").value=d.escala;
-    $("inMt1").value=d.t1.toFixed(1);$("inMt2").value=d.t2.toFixed(1);
+
   }
 
   const veu=$("veu");
@@ -5665,23 +5859,9 @@ $("btArco").onclick=function(){
   if(confirm("O ARCO VAI ABRIR AGORA.\n\nMascara, aterramento na peca e area livre conferidos?"))
     post("/api/solda?v=1");
 };
-/* Levar UMA junta e mandar a outra para onde ela ja esta: o firmware
-   recebe um destino completo e nao precisa de rota nova, e a junta que
-   nao se quer mexer nao anda um pulso. Serve para o caso de um motor so
-   no barramento -- da para levar o eixo que tem torque sem que o outro
-   entre na conta. */
-function moverJuntas(t1,t2,onde){
-  post("/api/mover?t1="+t1+"&t2="+t2,onde);
-}
-$("btMover1").onclick=function(){
-  moverJuntas($("inMt1").value||0, (D.t2!==undefined?D.t2:0), "qMover1");
-};
-$("btMover2").onclick=function(){
-  moverJuntas((D.t1!==undefined?D.t1:0), $("inMt2").value||0, "qMover2");
-};
-$("btMover").onclick=function(){
-  moverJuntas($("inMt1").value||0, $("inMt2").value||0, "qMover");
-};
+/* Os tres botoes de "levar" viraram um so, ligado a junta selecionada:
+   o alvo e uma linha, e a junta se escolhe no desenho ou no seletor.
+   Ver btMoverSel, junto do passo a passo. */
 /* A escala de reproducao ja existia no firmware (escalaVelocidadeTraj) e
    nao tinha campo: ficava presa em 100%. */
 $("inEsc").onchange=function(){

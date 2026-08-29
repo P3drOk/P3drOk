@@ -3102,12 +3102,68 @@ são traduzidas.
 
 A página caiu de 63,5 kB para **57,2 kB** comprimida.
 
+## R107 · Interface de operação: 2D, aba Mover e cabeçalho  ✅
+
+Revisão pedida por itens. O que entrou nesta rodada:
+
+**O tracejado de erro saiu da vista de cima.** Ele desenhava o
+*comandado* atrás do *medido* para mostrar o desvio entre os dois — uma
+medição de diagnóstico, não de operação. E um tracejado em volta do braço
+se confundia com a trajetória de solda, que é outro conceito. A vista 3D
+continua com o dela, como pedido.
+
+**Os eixos são selecionáveis no próprio desenho.** Tocar num elo escolhe
+aquela junta; o seletor da aba Mover segue. A cor de cada elo diz se ela
+tem torque — verde tem, vermelho não, cinza enquanto o barramento não
+confirma. Um anel marca a selecionada: **cor diz torque, anel diz foco**,
+duas perguntas diferentes com dois sinais diferentes.
+
+Tocar *sobre* o braço escolhe o eixo e **não** manda a ponta para lá — só
+o toque que cai fora do braço vira "leve a ponta até aqui". Um toque para
+escolher o eixo que fizesse o robô andar seria o oposto do esperado.
+
+**Passo a passo em graus.** As setas ganharam dois modos, ditos na tela
+em vez de escondidos no gesto: em **Passo** um toque anda o incremento
+escolhido (1°, 5°, 10°, 30°) e para; em **Contínuo** a seta anda enquanto
+apertada, como sempre andou. Antes um toque rápido começava e parava o
+jog e o eixo andava um tiquinho imprevisível — o mesmo gesto querendo
+dizer duas coisas.
+
+O passo reusa o caminho que já existia: leva a junta ao ângulo atual mais
+o incremento. Quem calcula velocidade e rampa continua sendo o firmware.
+O "ângulo atual" prefere o que o **encoder mediu** — a posição de verdade
+do braço — e cai no comandado só quando não há leitura.
+
+**"Ir para um ângulo" virou uma linha:** de onde está → alvo → Levar,
+ligado à junta selecionada. Os três botões viraram um.
+
+**"Zerar a máquina" subiu** para junto do passo a passo, que é onde ela
+é usada.
+
+**Os status ficaram secundários.** Tinham caixa, borda e halo aceso,
+competindo com os controles — e controle do robô tem de ganhar de
+diagnóstico. Viraram texto apagado com um ponto pequeno. **A falha é a
+exceção e continua furando a discrição**, em vermelho piscando: o que
+precisa chamar continua chamando.
+
+**"Robô 2DOF | Configuração"** no cabeçalho, do tamanho de um link. E a
+configuração deixou de ser um popup de 760 px sobre véu escurecido:
+ocupa a tela inteira abaixo do cabeçalho, como seção.
+
+O joystick saiu **no computador**, onde as setas de passo fazem o mesmo
+com mais precisão. No celular ele fica: ali não há setas confortáveis e
+arrastar o polegar continua sendo o gesto natural.
+
+Três guardas do banco pegaram defeitos meus nesta rodada — id duplicado
+(`btRefer` em dois lugares), botão sem ação, e o botão de levar saindo
+calado quando o alvo estava vazio.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **418 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **233 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **239 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).
