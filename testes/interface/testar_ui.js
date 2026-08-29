@@ -1223,7 +1223,7 @@ async function fecharGaveta(pag) {
     return { total: ns.length, visiveis: vis.length,
              alturaPane: document.getElementById('cfgMaquina').scrollHeight };
   });
-  checar(notas.total > 5 && notas.visiveis === 0,
+  checar(notas.total > 0 && notas.visiveis === 0,
          'Gaveta: as explicacoes longas nascem escondidas, e a gaveta abre enxuta',
          notas.total + ' notas, ' + notas.visiveis + ' visiveis, pane ' +
          notas.alturaPane + 'px');
@@ -1235,7 +1235,12 @@ async function fecharGaveta(pag) {
                 .filter(n => n.getBoundingClientRect().height > 0).length,
     alturaPane: document.getElementById('cfgMaquina').scrollHeight,
   }));
-  checar(comNotas.visiveis > 5 && comNotas.alturaPane > notas.alturaPane,
+  // O que importa e a PROPRIEDADE -- o "?" traz as notas de volta e a
+  // gaveta cresce -- e nao quantas notas existem. Amarrar num numero fez
+  // este guarda reprovar quando as explicacoes longas foram enxugadas,
+  // que era exatamente o que se queria fazer.
+  checar(comNotas.visiveis > 0 && comNotas.visiveis > notas.visiveis &&
+         comNotas.alturaPane > notas.alturaPane,
          'Gaveta: e o "?" da propria gaveta traz o manual de volta',
          comNotas.visiveis + ' notas, pane ' + comNotas.alturaPane + 'px');
 
@@ -2320,7 +2325,11 @@ async function fecharGaveta(pag) {
     const n = document.querySelector('#pnProg .nt');
     return n ? n.textContent.slice(0, 60) : '';
   });
-  checar(/[çãõéí]/i.test(nota1) || /cordao|ponto|braco/i.test(nota1),
+  // A propriedade: as notas NAO sao traduzidas -- seguem em portugues
+  // mesmo com a tela em ingles. Amarrar em palavras especificas fez este
+  // guarda reprovar quando as notas foram enxugadas; o que vale e nao
+  // haver ingles nelas.
+  checar(!/\b(the|with|only|arm|axis|point)\b/i.test(nota1) && nota1.length > 0,
          'Idioma: as notas longas seguem em portugues, como documentado',
          nota1.slice(0, 50));
 

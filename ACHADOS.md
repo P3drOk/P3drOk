@@ -3026,11 +3026,87 @@ E recusar em silêncio deixaria você sem saber o que consertar — o painel
 do encoder passou a dizer, na linha da junta, *"N° — fora de escala.
 Confira contagens por volta, o formato de 32 bits e o registrador"*.
 
+## R104 · O ângulo na tela era o da conta, não o do braço  ✅
+
+Relato: o 2D/3D fora de sincronia com o braço — o sistema mede 360° e o
+número não bate, mova mais ou mova menos.
+
+O ângulo do encoder saía de **dois números digitados**:
+
+```c
+voltasMotor = (bruto − referencia) / contagensPorVolta   // catálogo
+graus       = voltasMotor · 360 / reducao + grausHome     // catálogo
+```
+
+Errar qualquer um dos dois sai em escala errada, e **nada na tela
+denuncia**: o braço em 90° mostra 47, ou 300. Pior, os dois erros se
+compensam parcialmente, então acertar um só piora antes de melhorar.
+
+**Correção: uma escala direta, medida pela própria máquina.**
+`contagensPorGrau[2]` — contagens do encoder por grau **da junta**. Um
+número só, e não se digita: marque, leve a junta até um ângulo que você
+**conhece**, diga quantos graus ela andou. A conta é uma divisão.
+
+O **sinal vem junto**: encoder que conta para trás enquanto a junta
+avança dá escala negativa, e o ângulo sai certo sem chave de inversão
+separada.
+
+`encoderDefinirZero()` passou a usar a mesma conversão — os dois lados da
+mesma conta feitos por caminhos diferentes deixariam o zero ensinado
+deslocado da leitura que a tela mostra.
+
+**0 = não ensinada**, e nesse estado vale o caminho antigo inteiro: quem
+já tinha a máquina andando continua andando. Cenário **V13**: 90° de
+braço viram 90° na tela, o sinal é capturado, e movimento curto demais é
+recusado porque mediria ruído de leitura em vez de engrenagem.
+
+## R105 · Velocidade por motor  ✅
+
+As duas juntas têm mecânica diferente — redução, massa, braço de alavanca
+— e a que carrega mais nem sempre aguenta a velocidade que serve para a
+outra. Redução e aceleração já eram por junta; velocidade não era.
+
+`Junta.fatorVel` multiplica a velocidade escolhida em cada motor. Um
+fator por junta **compõe** com os três presets em vez de duplicar cada um
+deles: escolhe-se o ritmo da máquina num lugar só, e cada motor segue no
+que ele aguenta.
+
+O movimento **coordenado** é a exceção, e a razão importa: aplicar um
+fator diferente em cada junta faria as duas chegarem em instantes
+diferentes, e o caminho deixaria de ser reto no espaço das juntas — que é
+o que `moverCoordenado()` existe para garantir. Lá o fator entra pela
+junta **mais restrita**: o movimento inteiro anda no que a mais lenta
+aguenta, e as duas continuam chegando junto. Cenário **V14** mede os dois
+casos.
+
+## R106 · A interface falava demais  ✅
+
+51 notas explicativas longas — cerca de 15 kB de prosa — saíram da tela.
+Ficou o que o botão não diz.
+
+Os **seis blocos de perigo ficaram intactos**: braço que desce pelo
+próprio peso, arco que abre, máscara e aterramento. Enxugar uma interface
+não é tirar aviso de segurança de uma máquina de solda.
+
+Três notas viraram uma linha cada, onde havia restrição real que a tela
+não mostra de outro jeito: o braço só solta com zero ensinado nas duas
+juntas, registrador errado do habilita estraga o driver, e a chave de
+torque é por eixo.
+
+Dois guardas do banco de interface estavam amarrados em **números** em
+vez de propriedades — quantas notas reaparecem ao tocar no "?", e quais
+palavras aparecem numa nota. Os dois reprovaram quando as notas foram
+enxugadas, que era exatamente o que se queria fazer. Passaram a medir a
+propriedade: o "?" traz as notas de volta e a gaveta cresce; as notas não
+são traduzidas.
+
+A página caiu de 63,5 kB para **57,2 kB** comprimida.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **407 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **418 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **233 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

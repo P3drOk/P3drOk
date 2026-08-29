@@ -762,7 +762,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 <symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
 </defs></svg>
 
-
 <div class="app">
   <header class="placa">
     <div class="nome">ROBO<b>2DOF</b></div>
@@ -805,11 +804,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="roda"><canvas id="cvR2"></canvas>
                 <span class="rot">junta 2</span></div>
             </div>
-            <div class="nt">O ponteiro grosso e onde o <b>encoder</b> diz que o
-            eixo esta; o fino e onde o firmware <b>mandou</b> ele estar. A
-            abertura entre os dois e o erro. O disco pequeno no centro gira
-            junto com o eixo do motor &mdash; se ele para de girar enquanto o
-            braco anda, a leitura morreu.</div>
+            
             <div class="encGrade">
               <div class="encCel"><span class="rot">junta 1 comandado</span><b id="eC1">--</b></div>
               <div class="encCel"><span class="rot">junta 1 medido</span><b id="eM1">--</b></div>
@@ -824,10 +819,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
                 <div class="lg g2"><i></i>erro junta 2</div>
               </div>
             </div>
-            <div class="nt">O grafico mostra <b>comandado menos medido</b>, em
-            graus da junta, nos ultimos instantes. Linha reta em zero quer dizer
-            que o braco foi para onde foi mandado. <b>Degrau ou deriva quer dizer
-            passo perdido</b> &mdash; e o valor nao volta sozinho.</div>
+            
           </div>
         </div>
 
@@ -842,10 +834,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
                 <div class="lg g2"><i></i>junta 2 medida</div>
               </div>
             </div>
-            <div class="nt">Aqui e a <b>posicao medida</b> em si, nao o erro.
-            Uma rampa limpa e movimento bom; degrau vertical sem o braco ter
-            andado e leitura falhando; linha reta com o braco andando e leitura
-            morta.</div>
 
             <h4>Numeros da junta 1</h4>
             <div class="encGrade tres">
@@ -884,26 +872,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="encCel"><span class="rot">inversoes</span><b id="anIv2">--</b></div>
               <div class="encCel"><span class="rot">faixa percorrida</span><b id="anFx2">--</b></div>
             </div>
-            <div class="nt"><b>Velocidade, RPM e sentido saem do proprio
-            encoder</b>, medidos pelo firmware entre duas leituras &mdash; nao e
-            a velocidade que o firmware mandou, e a que o eixo fez. Comparar as
-            duas e o jeito de ver escorregamento.
-            <br><b>Passos andados</b> soma o caminho, nao a diferenca entre as
-            pontas: ir e voltar nao da zero, da o dobro. <b>Inversoes</b> conta
-            trocas de sentido de verdade &mdash; tremor de um passo nao conta, e
-            e por isso que esse numero serve para achar folga.</div>
-            <div class="nt"><b>Oscilacao</b> e o quanto o erro balanca em torno
-            da media. Media alta com oscilacao baixa e desalinhamento &mdash; da
-            para corrigir na referencia. Oscilacao alta e folga ou ruido, e
-            corrigir a referencia nao resolve.</div>
 
             <h4>Ultimas amostras</h4>
             <div class="tabAmostras"><table id="tabEnc"><tbody></tbody></table></div>
             <button class="b mini" id="btEncCsv">Baixar tudo em CSV</button>
             <div class="pq2" id="qEncCsv"></div>
-            <div class="nt">O CSV traz <b>toda</b> a janela guardada, nao so o
-            que cabe na tabela: instante, bruto, medido, comandado e erro das
-            duas juntas. E para abrir na planilha e olhar a curva com calma.</div>
+            
           </div>
         </div>
 
@@ -915,36 +889,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <button class="b mini" id="btEncTestar">Testar a linha agora</button>
             <div class="pq2" id="qEncTestar"></div>
             <div class="res" id="encRel">--</div>
-            <div class="nt">O mesmo autoteste do programa de bancada, so que
-            <b>aqui dentro</b>, com Wi-Fi, cartao e os motores rodando &mdash; que
-            e onde o problema aparece. Leia de cima para baixo:
-            <br><b>eco</b> &mdash; os proprios bytes voltam? Se sim, a ligacao
-            ESP32&harr;MAX485 esta boa <i>dentro do sistema</i> e o que sobra e o
-            barramento. Se nao, o problema nem chegou no par A/B.
-            <br><b>f3 r0</b> e <b>f4 r0</b> &mdash; e assim que se acha o driver.
-            Ate <b>EXCECAO</b> e boa noticia: quer dizer que ele esta ai e
-            respondeu, so a pergunta e que nao serve.
-            <br>A ultima linha e a pergunta de verdade, com o registrador que
-            esta configurado.</div>
+            
             <button class="b mini" id="btEncCacar">Procurar o registrador</button>
             <button class="b mini" id="btEncComparar">Comparar agora</button>
             <div class="pq2" id="qEncCacar"></div>
-            <div class="nt">Nao existe manual do mapa Modbus do T3D. O jeito
-            honesto de achar o registrador da posicao e este: aperte
-            <b>Procurar o registrador</b>, depois <b>mova o braco a mao,
-            bastante</b>, e aperte <b>Comparar agora</b>. O registrador que
-            andou junto com o eixo e a posicao &mdash; os outros nao andam. O
-            que variar <b>mais</b> e a palavra baixa; o vizinho de cima, que
-            variou pouco, e a alta.</div>
+            
             <button class="b mini" id="btEncZerar">Zerar a contagem aqui</button>
             <div class="pq2" id="qEncZerar"></div>
             <div class="res" id="encEstado">--</div>
-            <div class="nt">Ultima conversa no fio, byte a byte &mdash; a
-            mesma coisa que o programa de teste de bancada mostra. Se depois
-            da seta de volta vier <b>(silencio)</b>, ninguem respondeu: veja
-            fio A/B, o DE/RE e o <b>endereco</b>. Se vierem bytes mas a
-            leitura nao vale, o driver respondeu outra coisa: veja a
-            <b>funcao</b> e o <b>registrador</b>.</div>
+            
             <div class="res" id="encQuadro">--</div>
           </div>
         </div>
@@ -1060,10 +1013,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="pq2" id="qMover2"></div>
             <button class="b mini" id="btMover">Levar as duas</button>
             <div class="pq2" id="qMover"></div>
-            <div class="nt">Vai na velocidade de <b>deslocamento</b>. Com
-            <b>Precisao</b> ligada (botao acima) ele anda fino, para chegar
-            perto da peca sem susto. A velocidade se muda em <b>Ajustes &rarr;
-            Velocidades</b>.</div>
 
             <h4>Atalhos</h4>
             <button class="b ok" id="btGravar">Gravar ponto na posicao atual</button>
@@ -1096,9 +1045,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <button class="b mini" id="btAprFim">3 &middot; Encerrar</button>
             <div class="pq2" id="qAprFim"></div>
             <div class="aprEst" id="aprEst">desligado</div>
-            <div class="nt">O braco so solta com <b>zero absoluto ensinado nas
-            duas juntas</b>. Sem isso o modo vale igual, com torque, pelas setas.
-            Ao encerrar, o torque <b>nao</b> volta sozinho.</div>
+            <div class="nt">Solta so com o zero absoluto ensinado nas duas juntas.</div>
             <div id="lista"></div>
             <button class="b mini" id="btLimpar">Apagar programa</button>
             <button class="b mini" id="btDesf">Desfazer</button>
@@ -1136,12 +1083,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="pq2" id="qRepetir"></div>
               <div class="cont" id="contPecas">--</div>
             </div>
-            <div class="nt"><b>Pausar</b> fecha o arco e guarda em que ponto do
-            cordao parou; retomar continua dali, em vez de refazer o trecho por
-            cima do que ja foi soldado. O arco reabre com o mesmo tempo de
-            abertura do inicio &mdash; a poca esfriou na pausa.<br><br>
-            <b>Mais uma peca</b> repete o mesmo programa sem reabrir o arquivo:
-            e o caso normal de producao.</div>
+            
           </div>
         </div>
 
@@ -1150,14 +1092,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="tx"><div class="tt">Importar desenho DXF</div>
             <span class="sb" id="sbDxf">nenhum arquivo</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">Desenhe a peca no CAD, salve como <b>DXF</b> e traga
-            o arquivo para ca. Ele e lido aqui no proprio aparelho &mdash; o robo
-            recebe so a lista de pontos ja pronta, entao arquivo grande nao
-            entope o ESP32.</div>
-            <div class="nt">Sao aproveitadas as entidades que viram caminho:
-            <b>LINE</b>, <b>LWPOLYLINE</b>, <b>POLYLINE</b>, <b>ARC</b> e
-            <b>CIRCLE</b>. Texto, cotas e hachuras sao ignorados. Contornos
-            separados viram cordoes separados, com deslocamento entre eles.</div>
+
             <input type="file" id="dxfArq" accept=".dxf,text/plain" hidden>
             <button class="b pri" id="btDxfAbrir">Escolher arquivo DXF</button>
             <div class="res" id="dxfInfo">--</div>
@@ -1167,10 +1102,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             para arquivo em polegadas.</div>
             <button class="b" id="btDxfPos">Posicionar na mesa</button>
             <div class="pq2" id="qDxfPos"></div>
-            <div class="nt">Na mesa de tracado voce arrasta o desenho com o dedo,
-            gira, espelha e redimensiona. A barra mostra em tempo real quantos
-            pontos caem <b>fora</b> da area que o braco alcanca &mdash; posicione
-            ate zerar e so entao aplique.</div>
+            
           </div>
         </div>
 
@@ -1179,9 +1111,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="tx"><div class="tt">Trajetoria a mao livre</div>
             <span class="sb" id="sbTraj">nenhuma gravada</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">Grava o caminho inteiro enquanto voce move o braco, com o
-            estado do arco em cada instante. Serve para percurso organico; para
-            cordao reto use os pontos acima, que saem em reta de verdade.</div>
+            
             <div class="nt"><b>Sem mover o braco:</b> na mesa de tracado, o botao
             <b>DES</b> deixa riscar o caminho com o dedo em cima do desenho. O
             traco vira programa de pontos na hora.</div>
@@ -1306,12 +1236,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <span>torque no eixo 1</span></div>
             <div class="tr"><div class="ch" id="chSrv2"><i></i></div>
               <span>torque no eixo 2</span></div>
-            <div class="nt">Uma chave por eixo, porque cada driver responde
-            sozinho no barramento. Com um driver ligado voce trabalha no eixo
-            que existe: o <b>jog</b> dele anda e <b>ir para 0 grau</b> leva so
-            ele. Programa, trajetoria e cordao continuam precisando dos dois
-            &mdash; com um eixo sem torque nao sai meio desenho, sai desenho
-            torto.</div>
+            <div class="nt">Uma chave por eixo. Programa e cordao precisam dos dois.</div>
             <div class="pq2" id="qSon"></div>
             <div class="nt" id="ntSonFio">O habilita vai pelo <b>RS485</b>, nao por fio.
             Se o barramento cair, o driver fica como estava &mdash; quem corta de
@@ -1332,18 +1257,8 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <span class="sb" id="sbRede">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
             <div class="res" id="redeEnd">--</div>
-            <div class="nt">A maquina tem <b>Wi-Fi proprio</b> e so isso. Ela nao
-            entra na rede de ninguem, nao procura roteador e nao fala com a
-            internet: o painel nao depende de nada de fora para funcionar.</div>
-            <div class="nt">Entre no Wi-Fi da maquina e abra qualquer um dos dois
-            enderecos. Depois de entrar na rede, o celular costuma oferecer abrir
-            o painel sozinho &mdash; e digitar qualquer coisa na barra de
-            endereco tambem cai aqui.</div>
-            <div class="nt">Ja houve aqui um modo de entrar na rede da oficina.
-            Ele saiu porque o ESP32 tem <b>um radio so</b>: ligado nas duas redes,
-            o ponto de acesso e obrigado a acompanhar o canal do roteador e o
-            radio passa a dividir tempo. Isso vira atraso e tremor no joystick, e
-            o heartbeat do jog e justamente o que nao pode atrasar.</div>
+
+            
           </div>
         </div>
 
@@ -1363,22 +1278,18 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <button data-v="custom">Ajustar</button>
             </div>
             <div class="res" id="resumoVel">--</div>
-            <div class="nt">Tres velocidades prontas cobrem o dia a dia.
-            <b>Lento</b> para posicionar peca e aprender a maquina, <b>Normal</b>
-            para trabalhar, <b>Rapido</b> so para deslocamento longo entre
-            cordoes. O cordao anda mais devagar que o resto de proposito: e ele
-            que define a penetracao.</div>
+            
             <div id="velCustom" class="oculto">
               <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
               <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="0.1" step="0.1"><span class="un">°/s</span></div>
               <div class="cp"><label>Deslocamento</label><input type="number" id="inVa" min="0.1" step="0.5"><span class="un">°/s</span></div>
               <div class="cp"><label>Cordao</label><input type="number" id="inVc2" min="0.5" step="0.5"><span class="un">mm/s</span></div>
-              <div class="nt">Em <b>graus por segundo</b>, nao em pulsos. Hz
-              significa velocidades diferentes em cada junta: com reducao 16,5
-              numa e 4 na outra, os mesmos 3000 Hz davam 6,5 °/s numa e 27 na
-              outra. Em graus por segundo as duas acompanham. O joystick usa a
-              velocidade de jog como teto: no centro do disco o eixo fica
-              parado, na borda ele anda nessa velocidade.</div>
+              <div class="cp"><label>Fator do motor 1</label><input type="number" id="inFv1" min="0.05" max="3" step="0.05"><span class="un">x</span></div>
+              <div class="cp"><label>Fator do motor 2</label><input type="number" id="inFv2" min="0.05" max="3" step="0.05"><span class="un">x</span></div>
+              <div class="nt">Multiplica a velocidade acima em cada motor.
+              <b>1</b> = igual nos dois. Serve para a junta que carrega mais e
+              nao aguenta o ritmo da outra.</div>
+              
             </div>
 
             <h4>Partida e parada</h4>
@@ -1389,20 +1300,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <button data-r="custom">Ajustar</button>
             </div>
             <div class="res" id="resumoRampa">--</div>
-            <div class="nt"><b>Macia</b> sai e para sem tranco: e o que se usa
-            quando o braco esta perdendo posicao, porque tranco e a causa numero
-            um de perda de passo. <b>Firme</b> chega antes, e util em movimento
-            curto. Na duvida, <b>Media</b>.</div>
+            
             <div id="rampaCustom" class="oculto">
               <div class="cp"><label>Aceleracao da junta 1</label><input type="number" id="inA1" min="1" step="5"><span class="un">°/s²</span></div>
               <div class="cp"><label>Aceleracao da junta 2</label><input type="number" id="inA2" min="1" step="5"><span class="un">°/s²</span></div>
               <div class="cp"><label>Suavidade da partida</label><input type="number" id="inSuav" min="0" max="255" step="10"></div>
-              <div class="nt">A aceleracao esta em graus por segundo ao quadrado
-              &mdash; quantos °/s o eixo ganha a cada segundo. 60 quer dizer que
-              ele leva um segundo para chegar a 60 °/s. A <b>suavidade</b> e a
-              rampa em S: com zero a aceleracao entra de uma vez e a partida da
-              o tranco que voce sente; quanto maior, mais devagar a propria
-              aceleracao cresce.</div>
+              
             </div>
 
             <button class="b pri" id="btSalvar">Salvar velocidade e partida</button>
@@ -1410,14 +1313,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 
             <h4>Ate onde o braco pode ir</h4>
             <div class="res" id="resumoArea">--</div>
-            <div class="nt">Sao os travoes que recusam um movimento <b>antes</b>
-            de ele acontecer. Nao mudam o que a maquina sabe fazer: mudam o que
-            ela aceita fazer.
-            <br><b>Fim de curso</b> &mdash; nao passa dos limites medidos na
-            calibracao. <b>Cotovelo</b> &mdash; nao deixa o antebraco fechar
-            sobre o braco e bater nele mesmo. <b>Mesa e base</b> &mdash; nao
-            deixa a ponta descer sobre a mesa nem varrer por cima da propria
-            base.</div>
+            
             <div class="tr"><div class="ch" id="pCur"><i></i></div>
               <span>fim de curso das juntas</span></div>
             <div class="tr"><div class="ch" id="pDob"><i></i></div>
@@ -1449,30 +1345,18 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
                 <span>inverter a junta 1</span></div>
               <div class="tr"><div class="ch" id="sInv2"><i></i></div>
                 <span>inverter a junta 2</span></div>
-              <div class="nt">Se o braco vai para um lado e o desenho na tela vai
-              para o outro, o sinal do eixo esta trocado &mdash; nenhuma
-              calibracao conserta isso, porque o erro nao e de escala, e de
-              sinal. Marque aqui em vez de trocar fio no driver.<br>A cinematica
-              espera angulo crescente no sentido <b>anti-horario</b>, com a junta
-              1 em zero apontando para a <b>direita</b>.</div>
 
               <h4>Margens de seguranca</h4>
               <div class="cp"><label>Folga de dobra</label><input type="number" id="inDb" min="0" max="90"><span class="un">°</span></div>
               <div class="cp"><label>Y minimo</label><input type="number" id="inEy"><span class="un">mm</span></div>
               <div class="cp"><label>Raio morto</label><input type="number" id="inEr" min="0"><span class="un">mm</span></div>
-              <div class="nt">Sao os numeros por tras das tres protecoes acima.
-              <b>Folga de dobra</b>: quantos graus antes de o cotovelo fechar de
-              todo o movimento e recusado. <b>Y minimo</b>: a linha, em
-              milimetros, abaixo da qual a ponta nao desce. <b>Raio morto</b>: o
-              circulo em volta do centro da base por onde o antebraco nao
-              passa.</div>
+              
               <button class="b pri" id="btSalvarGeo">Salvar margens</button>
               <div class="pq2" id="qSalvarGeo"></div>
             </div>
           </div>
         </div>
-      
-      
+
     </div>
     <div class="pane" id="cfgCalib">
       <div class="et aberta" id="etGuia">
@@ -1480,10 +1364,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="tx"><div class="tt">Calibracao guiada</div>
           <span class="sb" id="sbGuia">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt">Quatro passos, nesta ordem. <b>A ordem importa</b>: cada
-          um usa o resultado do anterior, e fazer fora de ordem obriga a refazer.
-          O que ja estiver pronto aparece marcado &mdash; da para parar no meio e
-          voltar depois.</div>
+          
           <div class="guia" id="guiaLista"></div>
           <div class="res" id="guiaAgora">--</div>
           <button class="b mini" id="btGuiaSentidoOk">Ja conferi o sentido dos eixos</button>
@@ -1499,15 +1380,9 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <span class="sb" id="sbCalib">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
           <div class="grelha" id="calResumo"></div>
-          <div class="nt">A resolucao de cada junta e
-          <b>passos por volta &times; reducao &divide; 360</b>. Sao dois numeros, e
-          cada um erra de um jeito diferente &mdash; por isso os passos 1 e 2
-          abaixo medem um de cada vez.</div>
+          
           <div class="res" id="calVivo">--</div>
-          <div class="nt">Comparar o <b>comandado</b> com o <b>medido</b> depois de
-          mover e a conferencia final: se os dois andarem juntos, a resolucao
-          esta certa. Se o medido andar menos, a reducao declarada esta maior
-          que a real (e vice-versa).</div>
+          
         </div>
       </div>
 
@@ -1516,12 +1391,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="tx"><div class="tt">Engrenagem eletronica</div>
           <span class="sb">sem instrumento nenhum</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt">Quantos <b>passos</b> o driver precisa para dar uma volta
-          no motor. E um parametro do T3D, e o numero que mais se erra: troca-se o
-          driver, refaz-se um parametro, e o declarado aqui deixa de bater. O
-          sintoma e o braco andar menos (ou mais) do que a tela diz.<br><br>
-          O encoder mede isso <b>sozinho</b>: manda-se um tanto conhecido de
-          passos e pergunta-se quantas voltas o motor deu.</div>
+          
           <div class="cp"><label>Junta</label>
             <select id="afJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
           <button class="b mini" id="btAfMarcar">1 &middot; Marcar o inicio aqui</button>
@@ -1539,19 +1409,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="tx"><div class="tt">Reducao mecanica</div>
           <span class="sb">precisa de uma referencia, uma so</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt">O encoder esta no eixo do <b>motor</b>, antes do
-          redutor, e o angulo que ele mostra ja e calculado com a reducao
-          &mdash; entao <b>nao da para tirar a reducao dele</b>: seria tirar o
-          numero de uma conta que usa o proprio numero. Com um sensor so, e
-          antes do redutor, a relacao do redutor e invisivel. Isso e fisica,
-          nao limitacao de programa.
-          <br>O que ele da de graca, e com muita precisao, e a contagem de
-          <b>voltas do motor</b>. Falta <b>uma</b> referencia do lado da junta,
-          e a reducao sai exata:<br>
-          &nbsp;&nbsp;<b>reducao = voltas do motor &times; 360 &divide; angulo real</b>
-          <br>Contar voltas reais e melhor que contar pulsos comandados: pulso
-          erra junto com a engrenagem eletronica e junto com perda de passo. O
-          encoder mede o eixo, nao a intencao.</div>
+          
           <div class="cp"><label>Junta</label>
             <select id="rdJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
           <button class="b mini" id="btRdMarcar">1 &middot; Marcar o inicio aqui</button>
@@ -1576,9 +1434,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           </div>
           <button class="b pri mini" id="btRdAplicar">3 &middot; Gravar a reducao medida</button>
           <div class="pq2" id="qRdAplicar"></div>
-          <div class="nt">Depois de gravar, <b>confira</b>: mande o braco um tanto
-          conhecido e veja se o medido acompanha o comandado, no quadro do topo
-          desta pagina. E o que fecha o laco.</div>
+          
         </div>
       </div>
 
@@ -1602,12 +1458,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="tx"><div class="tt">Area da mesa</div>
           <span class="sb" id="sbMesa">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt">A area util deixou de ser dois numeros digitados e passou
-          a ser <b>ensinada</b>: leve a ponta a cada canto da mesa e grave. O
-          retangulo e a caixa que contem os cantos ensinados.<br><br>
-          Dali para fora o braco <b>nao anda</b> &mdash; nem por programa, nem
-          pelas setas. Se a ponta parar fora da area, so o movimento que a traz de
-          volta e liberado: o braco nunca se prende do lado de fora.</div>
+          
           <div class="perigo">Ensine os cantos com a <b>ponta</b> da tocha, nao com
           o cotovelo. A area e da ferramenta &mdash; o cotovelo passa por cima da
           mesa o tempo todo e nao solda nada.</div>
@@ -1616,9 +1467,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="res" id="mesaEstado">--</div>
           <button class="b mini x" id="btMesaLimpar">Apagar a area ensinada</button>
           <div class="pq2" id="qMesaLimpar"></div>
-          <div class="nt">Sem area ensinada a maquina volta a se proteger so pelo
-          <b>Y minimo</b> e pelo <b>raio morto da base</b>, que continuam valendo
-          em qualquer caso &mdash; o raio da base e mecanica, nao mesa.</div>
+          
         </div>
       </div>
 
@@ -1641,11 +1490,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <button class="b mini" id="btTravOk">Resolvido, limpar o aviso</button>
               <div class="pq2" id="qTravOk"></div>
             </div>
-            <div class="nt">Quando o braco chega, o encoder diz onde ele
-            <b>realmente</b> parou e o sistema da um retoque curto se precisar.
-            E isto que faz <b>sair de uma posicao e voltar cair no mesmo
-            lugar</b>: sem assentamento, o erro de um movimento entra no
-            proximo e o desvio cresce sem nunca voltar.</div>
 
             <div class="tr"><div class="ch" id="crOnCh"><i></i></div>
               <span>assentar no fim de cada movimento</span></div>
@@ -1657,15 +1501,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="cp"><label>Tentativas</label><input type="number" id="crTent" min="1" max="10" step="1"></div>
             <button class="b pri" id="btCorrSalvar">Salvar correcao</button>
             <div class="pq2" id="qCorrSalvar"></div>
-            <div class="nt"><b>Tolerancia</b>: abaixo disso ja esta bom, e o
-            eixo nao fica cutucando. <b>Teto do retoque</b>: acima disso o
-            sistema NAO corrige, ele <b>denuncia</b> &mdash; erro de varios
-            graus nao e folga, e acoplamento solto, registrador errado ou
-            reducao errada, e empurrar o braco achando que esta consertando e
-            o jeito mais rapido de bater a ferramenta em alguma coisa.
-            <br>O retoque nunca sai do curso calibrado, nunca acontece com a
-            solda ligada, e a parada de emergencia cancela ele junto com todo
-            o resto.</div>
+            
           </div>
         </div>
 
@@ -1675,12 +1511,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <span class="sb" id="sbZero">avancado</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
             <div class="res" id="zEstado">--</div>
-            <div class="nt">O encoder do servo guarda a posicao com a maquina
-            <b>desligada</b>. Se alguem empurrar o braco a mao com tudo apagado,
-            ao ligar ele sabe onde esta. Isso dispensa fim de curso: em vez de
-            procurar batente, a maquina <b>le</b> onde esta.
-            <br>Para isso ela precisa saber uma coisa so: <b>qual contagem do
-            encoder corresponde a 0 grau</b>. Ensina-se uma vez.</div>
 
             <div class="cadeado" id="zCadeado">
               <div class="ic">&#128274;</div>
@@ -1690,10 +1520,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 
             <div class="trancavel">
               <h4>Ensinar o zero</h4>
-              <div class="nt">Leve o braco ate uma postura que voce sabe medir
-              (o batente, um gabarito, o esquadro), meca o angulo <b>de
-              verdade</b> e informe. Nao precisa ser 0: informe o angulo em que
-              a junta esta agora, e o sistema calcula o resto.</div>
+              
               <div class="cp"><label>Junta</label>
                 <select id="zJ"><option value="1">junta 1</option><option value="2">junta 2</option></select></div>
               <div class="cp"><label>Esta agora em</label><input type="number" id="zG" step="0.1" value="0"><span class="un">&deg;</span></div>
@@ -1712,11 +1539,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="cp"><label>Ja considero no zero</label><input type="number" id="zTol" min="0.05" max="10" step="0.05"><span class="un">&deg;</span></div>
               <button class="b pri mini" id="btZsalvar">Salvar</button>
               <div class="pq2" id="qZsalvar"></div>
-              <div class="nt"><b>O braco so anda depois que voce habilita os
-              servos</b>, que e uma acao sua na tela. Enquanto ninguem habilitar,
-              ele nao tem como se mexer &mdash; por mais que esta chave esteja
-              ligada. E se o zero estiver fora do curso calibrado, ele nao vai:
-              furar a protecao seria pior que nao ir.</div>
+              
             </div>
           </div>
         </div>
@@ -1743,14 +1566,24 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
             <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
             <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
+            <h4 class="dobra">Escala do angulo</h4>
+            <div class="sub">
+            
+            <div class="cp"><label>Junta</label>
+              <select id="escJunta"><option value="1">1</option><option value="2">2</option></select></div>
+            <button class="b mini" id="btEscMarcar">1 &middot; Marcar aqui</button>
+            <div class="pq2" id="qEscMarcar"></div>
+            <div class="cp"><label>Graus que andou</label><input type="number" id="inEscG" step="1" value="90"><span class="un">°</span></div>
+            <button class="b pri" id="btEscGravar">2 &middot; Gravar escala</button>
+            <div class="pq2" id="qEscGravar"></div>
+            <div class="res" id="escAtual">--</div>
+            <button class="b mini x" id="btEscLimpar">Voltar ao calculo antigo</button>
+            <div class="pq2" id="qEscLimpar"></div>
+            </div>
+
             <h4 class="dobra">Habilita (SON)</h4>
             <div class="sub">
-            <div class="nt">O habilita dos servos vai por este mesmo barramento.
-            O registrador nao se adivinha: ache com <b>ferramentas/teste_rs485</b>
-            (modos <b>d</b>, <b>d2</b>, <b>s</b>) e grave o numero aqui.
-            Escrever em parametro errado de um servo drive troca engrenagem
-            eletronica, modo de controle ou limite de torque &mdash; e isso nao
-            se desfaz por esta tela.</div>
+            <div class="nt">Registrador errado estraga o driver. Ache com <b>ferramentas/teste_rs485</b> antes de gravar.</div>
             <div class="cp"><label>Registrador do habilita</label><input type="number" id="sonReg" min="0" max="65535"></div>
             <div class="cp"><label>Valor que habilita</label><input type="number" id="sonL" min="0" max="65535"></div>
             <div class="cp"><label>Valor que desabilita</label><input type="number" id="sonD" min="0" max="65535"></div>
@@ -1770,24 +1603,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <span>posicao em 32 bits (dois registradores)</span></div>
             <div class="tr"><div class="ch" id="encLo"><i></i></div>
               <span>palavra baixa vem primeiro</span></div>
-            <div class="nt">Muito driver Modbus manda a palavra baixa antes da
-            alta. Errar isto faz a posicao dar saltos de dezenas de milhares em
-            vez de crescer suave &mdash; se for o que voce ve, marque aqui.</div>
+            
             <button class="b pri" id="btEncSalvar">Salvar ligacao</button>
             <div class="pq2" id="qEncSalvar"></div>
             <button class="b mini" id="btEncPadroes">Voltar aos padroes medidos</button>
             <div class="pq2" id="qEncPadroes"></div>
-            <div class="nt">Configuracao salva por uma <b>versao anterior</b> do
-            firmware continua valendo depois de atualizar &mdash; o que esta
-            gravado ganha do padrao novo. Se voce atualizou e a leitura parou,
-            este botao e o primeiro a tentar: ele volta tudo para o que foi
-            medido nesta maquina (19200 8N1, funcao 4, registrador 5, palavra
-            baixa primeiro, 131072 contagens).</div>
-            <div class="nt"><b>Registrador 0 quase nunca e a posicao.</b> Nos
-            drivers T3D a faixa baixa e a tabela de parametros. A posicao costuma
-            estar mais acima; use <code>ferramentas/teste_rs485</code> para achar,
-            ou tente um endereco aqui e olhe o grafico &mdash; o certo acompanha o
-            eixo quando voce move o braco.</div>
+
           </div>
         </div>
 
@@ -1800,10 +1621,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <span class="sb" id="sbSaude">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
             <div class="grelha" id="saudeG"></div>
-            <div class="nt">Estes numeros respondem "esta tudo bem?" sem cabo
-            nenhum. A <b>taxa</b> do encoder e a que mais diz: 100% e barramento
-            saudavel; 60% nao e "meio quebrado", e cabo, terminacao ou
-            aterramento &mdash; e vai piorar.</div>
+            
             <button class="b mini" id="btManut">Registrar manutencao feita</button>
             <div class="pq2" id="qManut"></div>
             <div class="nt">Zera o contador de ciclos desde a ultima
@@ -1817,9 +1635,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <span class="sb">o que a maquina fez nas ultimas horas</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
             <div class="res" id="regLista">--</div>
-            <div class="nt">Sai da memoria da maquina, entao funciona sem
-            cartao &mdash; que e justamente quando isto costuma ser consultado.
-            Com cartao, o registro completo fica em <b>/log/</b>.</div>
+            
           </div>
         </div>
 
@@ -1834,10 +1650,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="qrCx"><canvas id="qrPainel" width="180" height="180"></canvas>
                 <div class="qrLg">2. abrir o painel</div></div>
             </div>
-            <div class="nt">O primeiro codigo entra na rede Wi-Fi da maquina; o
-            segundo abre esta tela. Na maioria dos celulares o painel abre
-            sozinho ao entrar na rede &mdash; o segundo codigo e para quando
-            nao abre.</div>
+            
           </div>
         </div>
 
@@ -1865,13 +1678,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="dentro">
             <button class="b mini" id="btIdioma">English</button>
             <div class="pq2" id="qIdioma"></div>
-            <div class="nt">Portugues e ingles, e so. O padrao e portugues.
-            Traduz o que o operador toca: abas, botoes, rotulos, a tela de
-            saude e a tira de estado. <b>As notas longas de explicacao
-            continuam em portugues</b> &mdash; elas sao o manual embutido desta
-            maquina, escritas para quem a monta, e traduzir mal um texto que
-            explica por que o arco fecha na pausa e pior do que deixa-lo como
-            esta.</div>
+            
           </div>
         </div>
 
@@ -1880,14 +1687,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="tx"><div class="tt">Copia da configuracao no cartao</div>
             <span class="sb" id="sbCfgCartao">--</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt">Tudo que a maquina tem de configuracao &mdash;
-            calibracao, curso das juntas, reducao, area da mesa, zero, encoder,
-            velocidades &mdash; <b>se copia sozinho para o cartao</b>, num
-            arquivo reservado. A maquina continua lendo a memoria interna ao
-            ligar; o cartao existe para o dia em que ela se perde: placa
-            trocada, firmware regravado, "apagar tudo" apertado sem querer.
-            <br>Nao e ponto de restauracao: e um espelho do estado atual.
-            Calibracao refeita errado e espelhada errada.</div>
+            
             <button class="b mini" id="btCfgRestaurar">Restaurar do cartao</button>
             <div class="pq2" id="qCfgRestaurar"></div>
             <div class="nt">Programas e trajetorias sao outra coisa: ficam na
@@ -1907,10 +1707,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <h4>Restaurar os padroes</h4>
             <button class="b mini" id="btReset">Restaurar padroes</button>
             <div class="pq2" id="qReset"></div>
-            <div class="nt">Devolve <b>parametros</b> de fabrica: velocidades,
-            aceleracao, resolucao, medidas dos elos, protecoes. <b>Nao</b> mexe
-            na calibracao, na mesa ensinada nem no zero absoluto &mdash; quem so
-            queria as velocidades de volta nao perde a instalacao.</div>
 
             <h4>Apagar tudo</h4>
             <div class="perigo"><b>Isto apaga a instalacao inteira</b> e
@@ -2204,9 +2000,28 @@ function salvar(vc){
     "&velA="+$("inVa").value+"&velCordao="+vc+"&acel1="+$("inA1").value+
     "&acel2="+$("inA2").value+"&ppv1="+$("inPv1").value+"&red1="+$("inRd1").value+
     "&ppv2="+$("inPv2").value+"&red2="+$("inRd2").value+
+    "&fvel1="+($("inFv1").value||1)+"&fvel2="+($("inFv2").value||1)+
     "&suav="+$("inSuav").value);
 }
 $("btSalvar").onclick=function(){salvar($("inVc2").value);};
+
+/* ---------- escala do angulo ----------
+   Dois toques: marca onde esta, leva a junta ate um angulo conhecido e
+   diz quantos graus foram. O firmware divide e guarda contagens por
+   grau -- um numero medido, no lugar de dois digitados. */
+$("btEscMarcar").onclick=function(){
+  post("/api/aferir/marcar?j="+$("escJunta").value,"qEscMarcar");
+};
+$("btEscGravar").onclick=function(){
+  post("/api/encoder/escala?j="+$("escJunta").value+"&g="+($("inEscG").value||0),
+       "qEscGravar");
+};
+$("btEscLimpar").onclick=function(){
+  /* Zerar volta ao caminho antigo (contagens por volta + reducao) sem
+     apagar mais nada. */
+  const j=$("escJunta").value;
+  post("/api/encoder/config?cg"+j+"=0","qEscLimpar");
+};
 
 /* =====================================================================
    AJUSTES EM LINGUAGEM DE OPERADOR
@@ -2277,7 +2092,6 @@ function prot(){
 $("pCur").onclick=function(){D.protCurso=!D.protCurso;prot();};
 $("pDob").onclick=function(){D.protDobra=!D.protDobra;prot();};
 $("pEnv").onclick=function(){D.protEnv=!D.protEnv;prot();};
-
 
 /* =====================================================================
    ABA CALIBRACAO
@@ -3240,7 +3054,6 @@ function pintar3D(){
   const t1=PZ.t1*Math.PI/180, t2=(PZ.t1+PZ.t2)*Math.PI/180;
   const cx=L1*Math.cos(t1), cy=L1*Math.sin(t1);
   const px=cx+L2*Math.cos(t2), py=cy+L2*Math.sin(t2);
-
 
   /* Sombra: elipse borrada sob cada junta, e uma faixa entre elas. Sem
      sombra a peca flutua e a altura nao se le. */
@@ -4385,7 +4198,6 @@ function rodaPintar(i,d){
   ct.fillText(L.ok?(L.graus.toFixed(1)+"°"):"--", cx, cy+rc+Math.max(11,R*0.18));
 }
 
-
 function medirTela(cv,ct){
   if(!cv||!ct)return;
   const d=window.devicePixelRatio||1,r=cv.parentElement.getBoundingClientRect();
@@ -4974,6 +4786,18 @@ function aplicar(d){
   if(!jaEnquadrou){jaEnquadrou=true;autoEnquadrar();}
   sonPintar(d);
   motorPintar(d);
+  /* A escala ensinada, se houver. Numero grande e o normal: um encoder
+     de 17 bits com reducao 16 da milhares de contagens por grau. */
+  const e1=$("escAtual");
+  if(e1){
+    const cg=[d.cg1,d.cg2];
+    e1.textContent=[1,2].map(function(k){
+      const v=cg[k-1];
+      return "junta "+k+": "+((v===undefined||Math.abs(v)<0.0001)
+        ? tr("nao ensinada (usa contagens por volta e reducao)")
+        : (v.toFixed(2)+" "+tr("contagens por grau")));
+    }).join("\n");
+  }
   const pronto=d.cal1&&d.cal2&&d.servos;
   const rodando=(d.modo==="EXECUTANDO");
   const movendo=d.movendo;
@@ -5135,6 +4959,8 @@ function aplicar(d){
     $("inSuav").value=d.suav;
     $("inPv1").value=d.ppv1;$("inRd1").value=d.red1;
     $("inPv2").value=d.ppv2;$("inRd2").value=d.red2;
+    if($("inFv1"))$("inFv1").value=(d.fvel1!==undefined?d.fvel1:1);
+    if($("inFv2"))$("inFv2").value=(d.fvel2!==undefined?d.fvel2:1);
     $("inL1").value=d.l1;$("inL2").value=d.l2;$("inDb").value=d.dobra;
     $("inEy").value=d.envY;$("inEr").value=d.envR;
     $("inEsc").value=d.escala;
@@ -5282,7 +5108,6 @@ function tick(){
       $("tira").className="tira er";}
   });
 }
-
 
 /* =====================================================================
    NAVEGACAO POR ABAS
@@ -5447,7 +5272,6 @@ const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc"};
       b.addEventListener("click",function(){irAba(b.dataset.aba);});
     });
 })();
-
 
 /* =====================================================================
    GAVETA DE CONFIGURACAO

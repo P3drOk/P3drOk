@@ -535,6 +535,10 @@ enum TipoComando : uint8_t {
   // encoder conta as voltas do motor e a conta sai sozinha. A reducao
   // mecanica continua sendo declarada -- o encoder esta antes dela.
   CMD_AFERIR_ENCODER,   // a = junta
+  // Ensina a ESCALA do encoder: a = junta, f1 = graus que a junta andou
+  // desde a marca. Sai contagens por grau da junta, medida nesta
+  // maquina -- sem passar por contagens-por-volta nem reducao.
+  CMD_ENC_ESCALA,
   // Ensina a referencia absoluta: "esta junta esta AGORA em f1 graus".
   // Com encoder absoluto e a unica calibracao que sobra.
   CMD_ENSINAR_ZERO,     // a = junta, f1 = graus

@@ -812,7 +812,14 @@ static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
     leitura[i].bruto    = bruto;
     leitura[i].idadeMs  = 0;
     leitura[i].leituras++;
-    if (cv > 0.5f) {
+    // Escala ensinada ganha do par contagens-por-volta + reducao: ela foi
+    // MEDIDA nesta maquina, e os outros dois foram digitados.
+    const float cpg = configEncoder.contagensPorGrau[i];
+    if (cpg > 0.0001f || cpg < -0.0001f) {
+      leitura[i].graus  = (float)(bruto - leitura[i].referencia) / cpg + j.grausHome;
+      leitura[i].erro   = comandado - leitura[i].graus;
+      leitura[i].valido = true;
+    } else if (cv > 0.5f) {
       const float voltasMotor = (float)(bruto - leitura[i].referencia) / cv;
       leitura[i].graus  = voltasMotor * 360.0f / red + j.grausHome;
       leitura[i].erro   = comandado - leitura[i].graus;
@@ -909,14 +916,22 @@ bool encoderDefinirZero(uint8_t junta, float graus) {
   const LeituraEncoder L = encoderLer(junta);
   if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) return false;
 
-  const float cv  = configEncoder.contagensPorVolta[i];
-  const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
-  if (cv < 1.0f) return false;
-
-  // graus da junta -> voltas do motor -> contagens. A referencia e a
-  // contagem que sobraria se a junta estivesse em zero.
-  const float voltas = (graus - j.grausHome) * red / 360.0f;
-  const int32_t ref  = L.bruto - (int32_t)lroundf(voltas * cv);
+  // Tem de usar a MESMA conversao de publicar(), senao o zero ensinado
+  // sai deslocado da leitura que a tela mostra -- os dois lados da mesma
+  // conta feitos por caminhos diferentes.
+  const float cpg = configEncoder.contagensPorGrau[i];
+  int32_t ref;
+  if (cpg > 0.0001f || cpg < -0.0001f) {
+    ref = L.bruto - (int32_t)lroundf((graus - j.grausHome) * cpg);
+  } else {
+    const float cv  = configEncoder.contagensPorVolta[i];
+    const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+    if (cv < 1.0f) return false;
+    // graus da junta -> voltas do motor -> contagens. A referencia e a
+    // contagem que sobraria se a junta estivesse em zero.
+    const float voltas = (graus - j.grausHome) * red / 360.0f;
+    ref = L.bruto - (int32_t)lroundf(voltas * cv);
+  }
 
   portENTER_CRITICAL(&travaEnc);
   leitura[i].referencia = ref;

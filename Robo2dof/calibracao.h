@@ -79,6 +79,21 @@ void aferirMarcar(uint8_t junta);
 // Some um dos dois numeros da conta. A reducao continua sendo declarada
 // por quem montou a maquina -- mas com um numero a menos para errar.
 bool aferirPelosEncoder(uint8_t junta);
+
+// Ensina a ESCALA do encoder: quantas contagens ele dá por GRAU da junta.
+//
+// O caminho antigo tira o ângulo de dois números digitados -- contagens
+// por volta do motor e redução da engrenagem. Errar qualquer um sai em
+// ângulo com escala errada, e nada na tela denuncia: o braço em 90 graus
+// mostra 47, ou 300.
+//
+// Aqui o número sai da própria máquina: marque, leve o braço até um
+// ângulo que você CONHECE (o batente, um esquadro, um transferidor), e
+// diga quantos graus ele andou. A conta é uma divisão.
+//
+// O sinal vem junto: encoder que conta para trás enquanto a junta avança
+// dá escala negativa, e o ângulo sai certo sem chave de inversão.
+bool ensinarEscalaEncoder(uint8_t junta, float grausAndados);
 // ---------------------------------------------------------------------
 // AFERIR A REDUCAO MECANICA -- pelo encoder, contra UMA referencia
 //

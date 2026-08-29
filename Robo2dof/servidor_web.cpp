@@ -207,6 +207,7 @@ static void handleStatus() {
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"sonReg\":%u,\"sonL\":%u,\"sonD\":%u,\"sonF16\":%s,\"sonEst\":%u,"
     "\"srv1\":%s,\"srv2\":%s,"
+    "\"fvel1\":%.2f,\"fvel2\":%.2f,\"cg1\":%.3f,\"cg2\":%.3f,"
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
@@ -254,6 +255,9 @@ static void handleStatus() {
     (unsigned)configSon.valDesliga, configSon.funcao16 ? "true" : "false",
     (unsigned)encoderSonEstado(),
     J1.habilitado ? "true" : "false", J2.habilitado ? "true" : "false",
+    (double)J1.fatorVel, (double)J2.fatorVel,
+    (double)configEncoder.contagensPorGrau[0],
+    (double)configEncoder.contagensPorGrau[1],
     msgSegura);
 
   server.send(200, "application/json", json);
@@ -611,6 +615,8 @@ static void handleConfig() {
   const float rd2 = argF("red2", J2.reducao);
   const long es = argL("escala", escalaVelocidadeTraj);
   const long sv = argL("suav", suavidadePartida);
+  const float fv1 = argF("fvel1", J1.fatorVel);
+  const float fv2 = argF("fvel2", J2.fatorVel);
   const long iv1 = argL("inv1", J1.inverterDir ? 1 : 0);
   const long iv2 = argL("inv2", J2.inverterDir ? 1 : 0);
 
@@ -622,6 +628,13 @@ static void handleConfig() {
   // sensata num braco de solda.
   if (vn > 720.0f || vp > 720.0f || va > 720.0f || a1 > 5000.0f || a2 > 5000.0f) {
     erro("velocidade ou rampa fora de faixa"); return;
+  }
+  // O fator multiplica a velocidade escolhida. Fora desta faixa ele
+  // deixa de ser ajuste e vira outra velocidade: 0,05 e vinte vezes mais
+  // devagar, 3 e o triplo -- alem disso o teto de graus/s ja nao seria
+  // respeitado.
+  if (fv1 < 0.05f || fv1 > 3.0f || fv2 < 0.05f || fv2 > 3.0f) {
+    erro("o fator de velocidade de cada junta vai de 0,05 a 3"); return;
   }
 
   prepararConfigPendente();
@@ -637,6 +650,8 @@ static void handleConfig() {
   configPendente.red2         = rd2;
   configPendente.escalaTraj   = (uint16_t)constrain(es, 10, 200);
   configPendente.suavidade    = (uint8_t)constrain(sv, 0, 255);
+  configPendente.fVel1        = fv1;
+  configPendente.fVel2        = fv2;
   configPendente.inv1         = (iv1 != 0);
   configPendente.inv2         = (iv2 != 0);
 
@@ -1064,6 +1079,10 @@ static void handleEncoderConfig() {
   c.reg[1]        = (uint16_t)constrain(argL("reg2", c.reg[1]), 0, 65535);
   c.contagensPorVolta[0] = argF("cv1", c.contagensPorVolta[0]);
   c.contagensPorVolta[1] = argF("cv2", c.contagensPorVolta[1]);
+  // A escala ensinada tambem passa por aqui, para dar um caminho de
+  // ZERAR (0 = nao ensinada, volta ao caminho antigo) sem apagar o resto.
+  c.contagensPorGrau[0] = argF("cg1", c.contagensPorGrau[0]);
+  c.contagensPorGrau[1] = argF("cg2", c.contagensPorGrau[1]);
 
   if (c.funcao != 3 && c.funcao != 4) { erro("funcao Modbus deve ser 3 ou 4"); return; }
   if (c.baud < 1200 || c.baud > 500000) { erro("velocidade fora de faixa"); return; }
@@ -1083,6 +1102,16 @@ static void handleEncoderConfig() {
 // Assentamento pelo encoder. Parametro que mexe em movimento so muda com
 // o robo parado -- e o core 1 confere de novo na hora de aplicar.
 // Aferir a engrenagem eletronica pelo encoder, sem transferidor.
+// Ensina a escala do encoder: j = junta, g = graus que ela andou desde
+// a marca. E o numero que faz o angulo na tela ser o do braco.
+static void handleEncEscala() {
+  registrarContatoOperador();
+  if (!exigirManual()) return;
+  const long j = argL("j", 0);
+  if (j != 1 && j != 2) { erro("junta invalida"); return; }
+  enfileirar(CMD_ENC_ESCALA, j, 0, argF("g", 0.0f));
+}
+
 static void handleAferirEncoder() {
   registrarContatoOperador();
   if (!exigirManual()) return;
@@ -1599,6 +1628,7 @@ void servidorIniciar() {
   server.on("/api/correcao",       HTTP_POST, handleCorrecao);
   server.on("/api/aprender",       HTTP_POST, handleAprender);
   server.on("/api/aferir/encoder", HTTP_POST, handleAferirEncoder);
+  server.on("/api/encoder/escala", HTTP_POST, handleEncEscala);
   server.on("/api/travamento/ok",  HTTP_POST, handleTravamentoOk);
   server.on("/api/zero/config",    HTTP_POST, handleZeroConfig);
   server.on("/api/zero/ensinar",   HTTP_POST, handleEnsinarZero);

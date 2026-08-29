@@ -105,6 +105,60 @@ void aferirMarcar(uint8_t junta) {
 }
 
 // ---------------------------------------------------------------------
+// Ensina a escala do encoder pela propria maquina. Ver calibracao.h.
+// ---------------------------------------------------------------------
+bool ensinarEscalaEncoder(uint8_t junta, float grausAndados) {
+  if (junta != 1 && junta != 2) return false;
+  const uint8_t i = junta - 1;
+
+  if (!marcaFeita[i] || !marcaEncoderBoa[i]) {
+    definirMensagem("Marque o inicio da junta %u com o encoder lendo, "
+                    "antes de ensinar a escala", (unsigned)junta);
+    return false;
+  }
+  if (motoresEmMovimento()) {
+    definirMensagem("Espere o braco parar para ensinar a escala");
+    return false;
+  }
+  // Movimento curto mede mais ruido de leitura que engrenagem. Cinco
+  // graus ja poem o erro de uma contagem tres ordens de grandeza abaixo
+  // do que se esta medindo.
+  if (fabsf(grausAndados) < 5.0f) {
+    definirMensagem("Mova pelo menos 5 graus: %.1f e curto demais para medir",
+                    (double)grausAndados);
+    return false;
+  }
+
+  const LeituraEncoder L = encoderLer(junta);
+  if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) {
+    definirMensagem("Sem leitura do encoder na junta %u agora", (unsigned)junta);
+    return false;
+  }
+
+  // Complemento de dois: a volta do contador de 32 bits sai certa sozinha.
+  const int32_t dCont = (int32_t)((uint32_t)L.bruto - (uint32_t)marcaEncoder[i]);
+  if (labs((long)dCont) < 50) {
+    definirMensagem("A contagem mal mudou (%ld) -- o encoder esta lendo "
+                    "este eixo?", (long)dCont);
+    return false;
+  }
+
+  // O SINAL fica: encoder que conta para tras enquanto a junta avanca da
+  // escala negativa, e o angulo sai certo sem chave de inversao.
+  const float escala = (float)dCont / grausAndados;
+
+  configEncoder.contagensPorGrau[i] = escala;
+  encoderPendente = configEncoder;
+  encoderReconfigurar();
+  salvarConfiguracoes();
+
+  definirMensagem("Junta %u: %.1f contagens por grau (%ld contagens em %.1f graus). "
+                  "O angulo na tela passa a ser o do braco",
+                  (unsigned)junta, (double)escala, (long)dCont, (double)grausAndados);
+  return true;
+}
+
+// ---------------------------------------------------------------------
 bool aferirPelosEncoder(uint8_t junta) {
   if (junta != 1 && junta != 2) return false;
   const uint8_t i = junta - 1;

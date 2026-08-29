@@ -123,7 +123,7 @@ static const char* NOME_CMD[] = {
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
   "CALIB_INI","CALIB_CONF","CALIB_CANC","CALIB_APAGAR",
-  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","AFERIR_ENCODER",
+  "REFERENCIAR","AFERIR_MARCAR","AFERIR_APLICAR","AFERIR_ENCODER","ENC_ESCALA",
   "ENSINAR_ZERO","ESQUECER_ZERO","INVERTER_EIXO",
   "APLICAR_ENCODER","ENCODER_ZERAR","APRENDER",
   "PROG_PAUSAR","PROG_DESFAZER","PROG_REPETIR","MANUTENCAO_OK",
@@ -550,6 +550,11 @@ static void processarComando(const Comando& c) {
     case CMD_AFERIR_ENCODER:
       if (modoAtual == MODO_MANUAL) aferirPelosEncoder((uint8_t)c.a);
       else definirMensagem("Afira com o robo parado no modo manual");
+      break;
+
+    case CMD_ENC_ESCALA:
+      if (modoAtual == MODO_MANUAL) ensinarEscalaEncoder((uint8_t)c.a, c.f1);
+      else definirMensagem("Ensine a escala com o robo parado no modo manual");
       break;
 
     case CMD_ENSINAR_ZERO: {

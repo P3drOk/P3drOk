@@ -269,10 +269,19 @@ static void programarVelocidade(Junta& j, int i, uint32_t hz) {
 // Cada junta recebe a MESMA velocidade angular, convertida com o seu
 // proprio passosPorGrau. Antes as duas recebiam o mesmo Hz, e a de menor
 // reducao andava varias vezes mais rapido.
+// Cada junta anda na velocidade escolhida VEZES o fator dela. Ver
+// Junta.fatorVel em estado.h: a que carrega mais nem sempre aguenta a
+// velocidade que serve para a outra.
+static float velDaJunta(const Junta& j, float base) {
+  const float f = (j.fatorVel > 0.01f) ? j.fatorVel : 1.0f;
+  const float v = base * f;
+  return (v > 0.01f) ? v : 0.01f;
+}
+
 void aplicarVelocidadeManual() {
   const float g = modoPrecisao ? velPrecisao : velNormal;
-  programarVelocidade(J1, 0, grausPorSegParaHz(J1, g));
-  programarVelocidade(J2, 1, grausPorSegParaHz(J2, g));
+  programarVelocidade(J1, 0, grausPorSegParaHz(J1, velDaJunta(J1, g)));
+  programarVelocidade(J2, 1, grausPorSegParaHz(J2, velDaJunta(J2, g)));
 }
 
 void aplicarAceleracao() {
@@ -425,7 +434,7 @@ void jogAtualizar() {
       const float base = modoPrecisao ? velPrecisao : velNormal;
       float f = jogFracao[i];
       if (f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
-      const uint32_t hz = grausPorSegParaHz(j, base * f);
+      const uint32_t hz = grausPorSegParaHz(j, velDaJunta(j, base) * f);
       if (hz != jogHzAplicado[i]) {
         jogHzAplicado[i] = hz;
         programarVelocidade(j, i, hz);
@@ -487,7 +496,18 @@ void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
   const float gmax = (g1 > g2) ? g1 : g2;
   if (gmax <= 0.0f) return;
 
-  const float vel = (grausPorS > 0.01f) ? grausPorS : 1.0f;
+  // O fator de velocidade entra pela junta MAIS RESTRITA, e nao por
+  // junta. Aplicar um fator diferente em cada uma faria as duas
+  // chegarem em instantes diferentes, e o caminho deixaria de ser reto
+  // no espaco das juntas -- que e o que este movimento existe para
+  // garantir. Assim o movimento inteiro anda no que a mais lenta
+  // aguenta, e as duas continuam chegando junto.
+  const float f1 = (J1.fatorVel > 0.01f) ? J1.fatorVel : 1.0f;
+  const float f2 = (J2.fatorVel > 0.01f) ? J2.fatorVel : 1.0f;
+  const float fMin = (f1 < f2) ? f1 : f2;
+
+  const float pedida = (grausPorS > 0.01f) ? grausPorS : 1.0f;
+  const float vel = (pedida * fMin > 0.01f) ? pedida * fMin : 0.01f;
   const float segundos = gmax / vel;          // as duas chegam junto
 
   const uint32_t v1 = limitarFreq((uint32_t)(d1 / segundos) + 1);

@@ -770,6 +770,7 @@ static void teste_A10_json_status() {
     "\"mesaOn\":%s,\"mesaX0\":%.0f,\"mesaX1\":%.0f,\"mesaY0\":%.0f,\"mesaY1\":%.0f,"
     "\"sonReg\":%u,\"sonL\":%u,\"sonD\":%u,\"sonF16\":%s,\"sonEst\":%u,"
     "\"srv1\":%s,\"srv2\":%s,"
+    "\"fvel1\":%.2f,\"fvel2\":%.2f,\"cg1\":%.3f,\"cg2\":%.3f,"
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_VOLTA_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
@@ -790,6 +791,7 @@ static void teste_A10_json_status() {
     "false", -9999.0f, 9999.0f, -9999.0f, 9999.0f,
     65535u, 65535u, 65535u, "false", 255u,
     "false", "false",
+    9.99, 9.99, 99999.999, 99999.999,
     msg);
 
   checar(n < 1520, "A10a", "o JSON de status precisa caber no buffer de 1520 bytes");
@@ -4885,6 +4887,200 @@ static void teste_V12_leitura_absurda_nao_e_confiavel() {
          "e o status diz false, para a tela desenhar pelo comandado");
 }
 
+// ---------------------------------------------------------------------
+// V13: o angulo na tela tem de ser o do BRACO.
+//
+// A conversao antiga tira o angulo de dois numeros digitados -- contagens
+// por volta do motor e reducao da engrenagem. Errar qualquer um sai em
+// escala errada e nada denuncia: o braco em 90 graus mostra 47, ou 300.
+//
+// A escala ensinada e um numero so, medido na propria maquina: marque,
+// leve o braco ate um angulo que voce CONHECE, diga quantos graus foram.
+// ---------------------------------------------------------------------
+static void teste_V13_escala_do_encoder_ensinada() {
+  secao("V13  O angulo na tela e o do braco, nao o da conta");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  // Contagens por volta ERRADAS de proposito: 4x o valor real. E o que
+  // acontece quando alguem digita o numero do catalogo errado.
+  encoderPendente = configEncoder;
+  encoderPendente.contagensPorVolta[0] = 40000.0f;
+  enviarComando(CMD_APLICAR_ENCODER);
+  rodarComWeb(300);
+
+  // O braco vai andar 90 graus DE VERDADE. O encoder acompanha: a
+  // maquina de teste move 10000 contagens por volta do motor, com
+  // reducao 1 -- entao 90 graus da junta sao 2500 contagens.
+  g_uart.escravo[0].posicao = 500000;
+  rodarComWeb(300);
+  enviarComando(CMD_AFERIR_MARCAR, 1);
+  rodarComWeb(60);
+
+  const int32_t noventaGraus = 2500;
+  g_uart.escravo[0].posicao = 500000 + noventaGraus;
+  rodarComWeb(300);
+
+  const float antes = encoderLer(1).graus;
+  nota("com contagens por volta 4x erradas, 90 graus de braco viram %.1f na tela",
+       (double)antes);
+  checar(fabsf(antes - 90.0f) > 20.0f, "V13a",
+         "o cenario de fato produz a escala errada que o operador ve");
+
+  // Ensina: o braco andou 90 graus.
+  webPost("/api/encoder/escala?j=1&g=90");
+  rodarComWeb(300);
+
+  const float depois = encoderLer(1).graus - encoderLer(1).referencia * 0.0f;
+  nota("escala ensinada: %.2f contagens por grau; a tela agora diz %.2f graus",
+       (double)configEncoder.contagensPorGrau[0], (double)depois);
+  checar(fabsf(configEncoder.contagensPorGrau[0] - (float)noventaGraus / 90.0f) < 0.5f,
+         "V13b", "a escala sai da propria maquina: contagens medidas por grau andado");
+
+  // Agora o teste que importa: leva o braco a mais 90 graus e a tela tem
+  // de dizer 90 a mais. E o "0 no braco = 0 na tela, 90 = 90".
+  const float base = encoderLer(1).graus;
+  g_uart.escravo[0].posicao += noventaGraus;
+  rodarComWeb(300);
+  const float agora = encoderLer(1).graus;
+  nota("mais 90 graus de braco: tela foi de %.1f para %.1f (delta %.1f)",
+       (double)base, (double)agora, (double)(agora - base));
+  checar(fabsf((agora - base) - 90.0f) < 1.0f, "V13c",
+         "90 graus de braco viram 90 graus na tela");
+
+  // Encoder que conta PARA TRAS enquanto a junta avanca: a escala guarda
+  // o sinal, e o angulo sai certo sem chave de inversao.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  g_uart.escravo[0].posicao = 500000;
+  rodarComWeb(300);
+  enviarComando(CMD_AFERIR_MARCAR, 1);
+  rodarComWeb(60);
+  g_uart.escravo[0].posicao = 500000 - noventaGraus;   // conta para tras
+  rodarComWeb(300);
+  webPost("/api/encoder/escala?j=1&g=90");
+  rodarComWeb(300);
+  nota("encoder invertido: escala %.2f contagens por grau",
+       (double)configEncoder.contagensPorGrau[0]);
+  checar(configEncoder.contagensPorGrau[0] < 0.0f, "V13d",
+         "encoder que conta para tras da escala negativa -- o sinal vem junto");
+
+  const float b2 = encoderLer(1).graus;
+  g_uart.escravo[0].posicao -= noventaGraus;
+  rodarComWeb(300);
+  nota("mais 90 graus com encoder invertido: %.1f -> %.1f",
+       (double)b2, (double)encoderLer(1).graus);
+  checar(fabsf((encoderLer(1).graus - b2) - 90.0f) < 1.0f, "V13e",
+         "e o angulo continua crescendo junto com o braco");
+
+  // Movimento curto nao vira escala: mediria ruido de leitura.
+  const float guardada = configEncoder.contagensPorGrau[0];
+  enviarComando(CMD_AFERIR_MARCAR, 1);
+  rodarComWeb(60);
+  g_uart.escravo[0].posicao -= 20;
+  rodarComWeb(200);
+  webPost("/api/encoder/escala?j=1&g=1");
+  rodarComWeb(200);
+  nota("tentativa com 1 grau: \"%s\"", ultimaMensagem);
+  checar(configEncoder.contagensPorGrau[0] == guardada, "V13f",
+         "movimento curto e recusado: mediria ruido de leitura, nao engrenagem");
+}
+
+// ---------------------------------------------------------------------
+// V14: velocidade por motor.
+//
+// As duas juntas tem mecanica diferente -- reducao, massa, braco de
+// alavanca -- e a que carrega mais nem sempre aguenta a velocidade que
+// serve para a outra. Um fator por junta compoe com os tres presets em
+// vez de duplicar cada um deles.
+// ---------------------------------------------------------------------
+static void teste_V14_velocidade_por_motor() {
+  secao("V14  Cada motor na velocidade que ele aguenta");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+
+  // Junta 2 na metade da velocidade da junta 1.
+  const int cod = webPost("/api/config?fvel1=1&fvel2=0.5");
+  rodarComWeb(60);
+  nota("fatores gravados: J1=%.2f J2=%.2f (HTTP %d)",
+       (double)J1.fatorVel, (double)J2.fatorVel, cod);
+  checar(fabsf(J1.fatorVel - 1.0f) < 0.01f &&
+         fabsf(J2.fatorVel - 0.5f) < 0.01f, "V14a",
+         "o fator de cada junta e gravado em separado");
+
+  // Jog: no mesmo tempo, a junta 2 tem de andar perto da METADE.
+  const long a1 = posicaoJ1(), a2 = posicaoJ2();
+  for (int i = 0; i < 6; i++) {
+    enviarComando(CMD_JOG, 1, 1); enviarComando(CMD_JOG, 2, 1);
+    rodarComWeb(100);
+  }
+  enviarComando(CMD_JOG, 1, 0); enviarComando(CMD_JOG, 2, 0);
+  rodarComWeb(400);
+  const float g1 = fabsf(passosParaGraus(J1, posicaoJ1() - a1));
+  const float g2 = fabsf(passosParaGraus(J2, posicaoJ2() - a2));
+  nota("no mesmo tempo: junta 1 andou %.1f graus, junta 2 andou %.1f", (double)g1, (double)g2);
+  checar(g1 > 1.0f && g2 > 0.1f && g2 < g1 * 0.75f, "V14b",
+         "no jog, a junta com fator menor anda menos no mesmo tempo");
+
+  // Movimento coordenado NAO pode ganhar fator por junta: as duas
+  // deixariam de chegar junto e o caminho no espaco das juntas entortaria.
+  // Ele anda no que a MAIS LENTA aguenta, e as duas chegam junto.
+  webPost("/api/config?fvel1=1&fvel2=1");
+  rodarComWeb(60);
+  // Espera voltar ao MANUAL, nao so o eixo parar: CMD_MOVER_ANGULOS e
+  // descartado em silencio fora do modo manual, e o modo demora alguns
+  // ciclos a mais que o movimento.
+  enviarComando(CMD_IR_HOME);
+  rodarComWeb(120);            // deixa o comando PEGAR antes de esperar por ele
+  uint32_t t = 0;
+  while ((motoresEmMovimento() || modoAtual != MODO_MANUAL) && t < 20000)
+    { rodarComWeb(40); t += 40; }
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, 40.0f, 40.0f);
+  uint32_t tCheio = 0;
+  rodarComWeb(120);
+  while (motoresEmMovimento() && tCheio < 30000) { rodarComWeb(40); tCheio += 40; }
+  // Volta ao MANUAL antes de seguir: o IR_HOME de baixo e descartado em
+  // silencio enquanto o modo ainda for POSICIONANDO.
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 5000) { rodarComWeb(40); e += 40; } }
+  const long f1 = posicaoJ1(), f2 = posicaoJ2();
+  nota("fator 1: as duas chegaram em %lu ms, J1=%.1f J2=%.1f graus",
+       (unsigned long)tCheio,
+       (double)passosParaGraus(J1, f1), (double)passosParaGraus(J2, f2));
+  checar(fabsf(passosParaGraus(J1, f1) - 40.0f) < 1.5f &&
+         fabsf(passosParaGraus(J2, f2) - 40.0f) < 1.5f, "V14c",
+         "com fator igual as duas chegam ao destino");
+
+  // Agora com a junta 2 na metade: o movimento inteiro tem de demorar
+  // MAIS, e as duas continuam chegando ao destino.
+  enviarComando(CMD_IR_HOME);
+  rodarComWeb(120);
+  t = 0;
+  while ((motoresEmMovimento() || modoAtual != MODO_MANUAL) && t < 20000)
+    { rodarComWeb(40); t += 40; }
+  webPost("/api/config?fvel1=1&fvel2=0.5");
+  rodarComWeb(60);
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, 40.0f, 40.0f);
+  uint32_t tLento = 0;
+  rodarComWeb(120);
+  while (motoresEmMovimento() && tLento < 40000) { rodarComWeb(40); tLento += 40; }
+  nota("com a junta 2 na metade: %lu ms (contra %lu), J1=%.1f J2=%.1f graus",
+       (unsigned long)tLento, (unsigned long)tCheio,
+       (double)passosParaGraus(J1, posicaoJ1()),
+       (double)passosParaGraus(J2, posicaoJ2()));
+  checar(tLento > tCheio, "V14d",
+         "o movimento coordenado anda no que a junta mais lenta aguenta");
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 40.0f) < 1.5f &&
+         fabsf(passosParaGraus(J2, posicaoJ2()) - 40.0f) < 1.5f, "V14e",
+         "e as duas continuam chegando junto ao destino: o caminho nao entorta");
+
+  webPost("/api/config?fvel1=1&fvel2=1");
+  rodarComWeb(60);
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6498,6 +6694,8 @@ int main() {
   teste_V10_habilitar_so_a_junta_2();
   teste_V11_posicionar_respeita_precisao();
   teste_V12_leitura_absurda_nao_e_confiavel();
+  teste_V13_escala_do_encoder_ensinada();
+  teste_V14_velocidade_por_motor();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

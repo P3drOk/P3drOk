@@ -49,6 +49,17 @@ struct Junta {
   float grausHome     = 0.0f;
 
   float    aceleracao = ACEL_PADRAO;   // graus/s2
+  // Fator de velocidade DESTA junta, multiplicando a velocidade escolhida.
+  //
+  // Existe porque as duas juntas tem mecanica diferente -- reducao,
+  // massa, braco de alavanca -- e a que carrega mais nem sempre aguenta
+  // a velocidade que serve para a outra. Um fator por junta compoe com
+  // os tres presets (Lento, Normal, Rapido) em vez de duplicar cada um
+  // deles: escolhe-se o ritmo da maquina num lugar so, e cada motor
+  // segue no que ele aguenta.
+  //
+  // 1,0 = igual as duas, que e como a maquina nasce.
+  float    fatorVel   = 1.0f;
   bool     alarme     = false;
 
   // Sentido do eixo. Se a fiacao do DIR estiver invertida em relacao ao
@@ -202,6 +213,7 @@ struct ConfigPendente {
   float    acel1, acel2;                      // graus/s2
   uint32_t ppv1, ppv2;
   float    red1, red2;
+  float    fVel1, fVel2;   // fator de velocidade de cada junta
   bool     inv1, inv2;
   uint16_t escalaTraj;
   uint8_t  suavidade;
@@ -253,6 +265,24 @@ struct ConfigEncoder {
   uint8_t  id[2];           // endereco Modbus de cada junta
   uint16_t reg[2];          // registrador da posicao de cada junta
   float    contagensPorVolta[2];   // do ENCODER, por volta do MOTOR
+  // ESCALA DIRETA: contagens do encoder por GRAU DA JUNTA.
+  //
+  // O caminho antigo tira o angulo de dois numeros que alguem digitou --
+  // contagens por volta do motor e reducao da engrenagem. Errar qualquer
+  // um sai em angulo com escala errada, e nada na tela denuncia: o braco
+  // em 90 graus mostra 47, ou 300.
+  //
+  // Este numero e UM so, e nao se digita: se ensina movendo o braco
+  // entre dois angulos conhecidos e dizendo quantos graus foram. A conta
+  // sai da propria maquina.
+  //
+  // O SINAL importa e vem junto: encoder que conta para tras enquanto a
+  // junta avanca da escala negativa, e o angulo sai certo sem uma chave
+  // separada de inversao.
+  //
+  // 0 = nao ensinada. Nesse estado vale o caminho antigo, inteiro -- quem
+  // ja tinha a maquina andando continua andando.
+  float    contagensPorGrau[2];
 };
 extern ConfigEncoder configEncoder;      // vivo, so o core 1 escreve
 

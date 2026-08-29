@@ -33,7 +33,10 @@ ConfigEncoder configEncoder = {
   // que nao existe so gasta metade do barramento com tempo esgotado, e
   // enche a tela de falha que nao e falha.
   {1, 2}, {ENC_REG_PADRAO, 0},
-  {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO}
+  {ENC_CONTAGENS_PADRAO, ENC_CONTAGENS_PADRAO},
+  // Escala direta NAO ensinada de fabrica: enquanto for 0 vale o caminho
+  // antigo inteiro, e quem ja tinha a maquina andando continua andando.
+  {0.0f, 0.0f}
 };
 // Assentamento: ligado de fabrica, com numeros conservadores.
 //
@@ -192,6 +195,8 @@ void prepararConfigPendente() {
   configPendente.velNormal    = velNormal;
   configPendente.velPrecisao  = velPrecisao;
   configPendente.velAuto      = velAuto;
+  configPendente.fVel1        = J1.fatorVel;
+  configPendente.fVel2        = J2.fatorVel;
   configPendente.velCordaoMmS = velCordaoMmS;
   configPendente.acel1        = J1.aceleracao;
   configPendente.acel2        = J2.aceleracao;
@@ -234,6 +239,8 @@ void aplicarConfigPendente() {
   velNormal         = configPendente.velNormal;
   velPrecisao       = configPendente.velPrecisao;
   velAuto           = configPendente.velAuto;
+  J1.fatorVel       = configPendente.fVel1;
+  J2.fatorVel       = configPendente.fVel2;
   velCordaoMmS      = configPendente.velCordaoMmS;
   J1.aceleracao     = configPendente.acel1;
   J2.aceleracao     = configPendente.acel2;
@@ -375,6 +382,10 @@ void carregarConfiguracoes() {
   configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", 0);
   configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", ENC_CONTAGENS_PADRAO);
   configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", ENC_CONTAGENS_PADRAO);
+  J1.fatorVel = prefs.getFloat("fVel1", 1.0f);
+  J2.fatorVel = prefs.getFloat("fVel2", 1.0f);
+  configEncoder.contagensPorGrau[0] = prefs.getFloat("encCg1", 0.0f);
+  configEncoder.contagensPorGrau[1] = prefs.getFloat("encCg2", 0.0f);
   configSon.reg        = (uint16_t)prefs.getUInt("sonRg", SON_REG_PADRAO);
   configSon.valLiga    = (uint16_t)prefs.getUInt("sonVL", SON_VAL_LIGA_PADRAO);
   configSon.valDesliga = (uint16_t)prefs.getUInt("sonVD", SON_VAL_DESL_PADRAO);
@@ -554,6 +565,10 @@ void salvarConfiguracoes() {
   prefs.putUInt ("encRg2", configEncoder.reg[1]);
   prefs.putFloat("encCv1", configEncoder.contagensPorVolta[0]);
   prefs.putFloat("encCv2", configEncoder.contagensPorVolta[1]);
+  prefs.putFloat("fVel1", J1.fatorVel);
+  prefs.putFloat("fVel2", J2.fatorVel);
+  prefs.putFloat("encCg1", configEncoder.contagensPorGrau[0]);
+  prefs.putFloat("encCg2", configEncoder.contagensPorGrau[1]);
   prefs.putUInt ("sonRg",  configSon.reg);
   prefs.putUInt ("sonVL",  configSon.valLiga);
   prefs.putUInt ("sonVD",  configSon.valDesliga);
