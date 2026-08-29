@@ -1086,6 +1086,69 @@ defeito**.
 Falha de rede segue silenciosa; qualquer outra vai para o console. O
 banco de interface ganhou a guarda de console limpo justamente para isso.
 
+## R116 · O braço 2D virou uma máquina, não dois traços  ✅
+
+Cada elo era uma **linha com espessura**. De longe passava por braço; de
+perto era uma barra chapada, sem começo nem fim, e no cotovelo as duas se
+cruzavam sem dizer qual passa por cima.
+
+Agora cada elo é um **corpo**: cápsula afunilada — grossa no mancal, fina
+na ponta —, sombreada ao longo da espessura como um tubo iluminado de
+cima. O elo 2 é pintado depois, então encobre o 1: o cotovelo ganhou
+ordem, que é o que a máquina faz.
+
+As juntas deixaram de ser bolinha e viraram **mancal**: carcaça, aro,
+parafusos de flange e, no centro, o disco que diz se aquele eixo tem
+torque. "Onde fica o eixo" e "esse eixo está ligado" passaram a ter cada
+uma o seu sinal, no mesmo lugar, sem uma apagar a outra. A base ganhou
+flange com chumbadores — o braço deixou de flutuar — e a ponta ganhou o
+bico da tocha, apontado para onde o cordão vai.
+
+A vista 3D **não mudou**: as cores dela continuam nas mesmas chaves da
+paleta. O único código compartilhado que se mexeu foi a função de
+clarear/escurecer cor, que subiu de dentro da 3D para o nível do arquivo
+em vez de ser copiada.
+
+## R117 · A Configuração em colunas  ✅
+
+Em tela cheia com uma coluna só sobrava metade do monitor em branco e o
+resto ia parar embaixo da dobra: quem procurava um ajuste tinha de rolar
+para descobrir se ele existia.
+
+Os cartões entram em **colunas** e **nascem abertos**. A gaveta exclusiva
+— abrir uma fecha as outras — existe por causa da coluna estreita do
+celular, onde duas gavetas abertas já empurram a terceira para fora da
+tela; na largura de um computador ela só atrapalhava. Larga, a gaveta só
+alterna.
+
+O número de colunas vem da **contagem de cartões**, não da largura: o
+navegador cria quantas couberem e depois reparte o conteúdo, então três
+cartões viravam duas colunas cheias e um terço de tela vazio à direita.
+E o bloco tem teto de largura e fica centrado — sem ele a coluna se
+estica e a linha vira um nome perdido à esquerda com o campo lá na
+direita.
+
+## R118 · A lista do programa se lê como uma sequência  ✅
+
+Um programa é uma sequência de pontos ligados por trechos, e a lista
+mostrava isso como duas linhas soltas: a pergunta "esse trecho solda?"
+pedia leitura de texto em vez de um olhar.
+
+Cada trecho ganhou um **trilho** à esquerda — laranja onde há cordão,
+cinza onde só desloca — e a chave foi para a direita, onde estão os
+controles do resto da tela; a esquerda ficou com a leitura. No rodapé,
+as duas contas que se faz antes de mandar executar: **percurso** total e
+**quanto dele é cordão**.
+
+## R119 · Pré-requisito não é erro  ✅
+
+"Entre no modo aprendizado primeiro" saía na mesma cor de "deu errado".
+Com a máquina inteira em ordem a aba Programa virava uma coluna de
+avisos vermelhos, e o laranja parava de significar alguma coisa. O que a
+função de bloqueio escreve é sempre pré-requisito — nunca falha —, então
+ele saiu do vermelho e virou nota cinza com um ponto na frente. O
+laranja voltou a ser só o que deu errado de verdade.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -3264,7 +3327,7 @@ regra existir.
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **423 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **237 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **245 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

@@ -1018,6 +1018,47 @@ async function fecharGaveta(pag) {
            'lista de pontos: ' + nome + ' chama ' + rota);
   }
 
+  // O PROGRAMA E UMA SEQUENCIA, e a lista tem de se ler como uma: cada
+  // trecho carrega um trilho a esquerda, laranja onde ha cordao. Sem
+  // isso a pergunta "esse trecho solda?" so se responde lendo texto.
+  const trilho = await t.evaluate(() => {
+    const tr = [...document.querySelectorAll('#lista .tr')];
+    const cor = tr.map(x => getComputedStyle(x, '::before').backgroundColor);
+    return { n: tr.length, cores: cor,
+             comCordao: tr.filter(x => x.classList.contains('q')).length,
+             distintas: new Set(cor).size };
+  });
+  checar(trilho.n > 0 && trilho.cores.every(c => c && c !== 'rgba(0, 0, 0, 0)'),
+         'Programa: cada trecho tem o trilho desenhado ao lado',
+         trilho.n + ' trecho(s)');
+  checar(trilho.comCordao > 0,
+         'Programa: e o trecho com cordao esta marcado como tal',
+         trilho.comCordao + ' com cordao');
+
+  // As duas contas que se faz antes de mandar executar: quanto o braco
+  // anda ao todo e quanto disso sai com arco aberto.
+  const soma = await t.evaluate(() => {
+    const s = document.querySelector('#lista .somaProg');
+    return s ? s.textContent.replace(/\s+/g, ' ').trim() : '';
+  });
+  checar(/percurso/.test(soma) && /cordao/.test(soma) && /mm/.test(soma),
+         'Programa: o rodape soma o percurso e quanto dele e cordao', soma);
+
+  // Pre-requisito nao e erro. "Falta fazer isto antes" saia na mesma cor
+  // de "deu errado", e a coluna inteira parecia uma pilha de falhas com
+  // a maquina em ordem.
+  const preCor = await t.evaluate(() => {
+    const q = document.getElementById('qAprMarcar');
+    if (!q) return null;
+    return { pre: q.classList.contains('pre'),
+             cor: getComputedStyle(q).color,
+             erro: getComputedStyle(document.documentElement)
+                     .getPropertyValue('--quente').trim() };
+  });
+  checar(preCor && preCor.pre,
+         'Programa: o motivo de um passo estar bloqueado e marcado como pre-requisito',
+         preCor ? preCor.cor : 'sem elemento');
+
   // Mesa de tracado: clique comanda XY, zoom e tema respondem.
   await t.locator('#abas button[data-aba="mesa"]').click();
   await t.waitForTimeout(350);

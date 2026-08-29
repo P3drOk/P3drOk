@@ -355,6 +355,25 @@ h4:first-child{margin-top:0}
 .tr{display:flex;align-items:center;gap:9px;padding:8px 10px 8px 39px;background:var(--painel);
  border-bottom:1px solid var(--linha);font-family:var(--mono);font-size:9.5px;
  letter-spacing:.05em;color:var(--letra2)}
+/* O TRILHO do programa. Ele nasce embaixo do numero do ponto de cima e
+   morre embaixo do de baixo, entao a sequencia se le sem contar linha:
+   laranja = cordao, cinza = so deslocamento. */
+.lista.prog .tr{position:relative}
+.lista.prog .tr span{flex:1}
+.lista.prog .tr::before{content:"";position:absolute;left:18px;top:-1px;bottom:-1px;
+ width:4px;border-radius:2px;background:var(--linha2)}
+.lista.prog .tr.q::before{background:var(--quente)}
+.lista.prog .p .c{display:flex;align-items:baseline;gap:8px}
+.lista.prog .p .c .ang{color:var(--letra3);font-size:10px}
+.lista.prog .ch{width:34px;height:19px}
+.lista.prog .ch i{width:13px;height:13px}
+.lista.prog .ch.on i{left:18px}
+/* Rodape com as duas contas do ciclo. */
+.somaProg{display:flex;gap:14px;justify-content:flex-end;padding:7px 10px;
+ background:var(--face);font-family:var(--mono);font-size:10px;
+ color:var(--letra2);letter-spacing:.04em}
+.somaProg b{color:var(--letra);font-weight:600}
+.somaProg .q b{color:var(--quente)}
 .tr.q{color:var(--quente);font-weight:600}
 .tr.ruim{background:rgba(185,28,28,.10)}
 .avTr{background:rgba(185,28,28,.10);border-bottom:1px solid var(--linha);
@@ -425,6 +444,10 @@ body.semNotasCfg .cfgRol .nt{display:none}
 /* Motivo de um botao estar fora de acao. Nada de botao morto e mudo. */
 .pq2{display:none;font-size:11px;color:var(--quente);margin:-5px 0 10px;
  line-height:1.5;padding-left:2px}
+/* Pre-requisito: "falta fazer isto antes" nao e a mesma coisa que "deu
+   errado". Mesmo lugar, peso diferente. */
+.pq2.pre{color:var(--letra2)}
+.pq2.pre::before{content:"\2022\00a0\00a0";color:var(--letra3)}
 .b:disabled{opacity:.42;cursor:not-allowed}
 .nt b{color:var(--letra);font-weight:600}
 /* Zona de perigo: a borda avisa antes de o dedo chegar. Sem isto o
@@ -2913,23 +2936,41 @@ function pintarLista(){
   if(!pontos.length){
     cx.innerHTML='<div class="nulo">Nenhum ponto ainda.<br>Mova o braco ate onde o cordao comeca e grave.</div>';
     return;}
-  let h='<div class="lista">';
+  /* O programa E uma sequencia, e agora ele PARECE uma: os pontos ficam
+     presos num trilho, e o pedaco de trilho entre dois pontos e o
+     trecho -- laranja onde ha cordao, cinza onde so desloca. Antes eram
+     duas linhas soltas e a pergunta "esse trecho solda?" pedia leitura
+     de texto, em vez de um olhar.
+
+     A chave do cordao foi para a DIREITA, onde estao todos os controles
+     do resto da tela; a esquerda ficou com o trilho, que e leitura. */
+  let h='<div class="lista prog">';
+  let percurso=0, cordao=0;
   pontos.forEach(function(p,i){
     const ag=(D.modo==="EXECUTANDO"&&D.progIdx===i)?" agora":"";
     h+='<div class="p'+ag+'"><div class="n">'+(i+1)+'</div>'+
-       '<div class="c"><em>X'+p.x+' Y'+p.y+'</em> · '+p.t1.toFixed(0)+'°/'+p.t2.toFixed(0)+'°</div>'+
+       '<div class="c"><em>X'+p.x+' Y'+p.y+'</em>'+
+       '<span class="ang">'+p.t1.toFixed(0)+'° / '+p.t2.toFixed(0)+'°</span></div>'+
        '<button class="mb" data-ir="'+i+'">ir</button>'+
        '<button class="mb x" data-del="'+i+'">apagar</button></div>';
     if(i<pontos.length-1){
       const d=Math.round(Math.hypot(pontos[i+1].x-p.x,pontos[i+1].y-p.y));
+      percurso+=d; if(p.s)cordao+=d;
       h+='<div class="tr'+(p.s?" q":"")+(p.av?" ruim":"")+'">'+
-         '<div class="ch'+(p.s?" on":"")+'" data-sw="'+i+'"><i></i></div>'+
          '<span>'+(i+1)+'&rarr;'+(i+2)+' · '+d+' mm · '+
-         (p.s?"CORDAO EM RETA":"apenas desloca")+'</span></div>';
+         (p.s?tr("cordao"):tr("so desloca"))+'</span>'+
+         '<div class="ch'+(p.s?" on":"")+'" data-sw="'+i+'" '+
+         'title="ligar ou desligar o cordao neste trecho"><i></i></div></div>';
       /* O trecho e conferido enquanto o operador ensina: descobrir que o
          cordao nao passa so na hora de apertar Executar e tarde. */
       if(p.av)h+='<div class="avTr">'+p.av+'</div>';}
   });
+  /* Quanto o braco anda e quanto disso e cordao: sao as duas contas que
+     o operador faz de cabeca antes de mandar executar -- tempo de ciclo
+     e consumo de arame. */
+  if(pontos.length>1)
+    h+='<div class="somaProg"><span>'+tr("percurso")+' <b>'+percurso+' mm</b></span>'+
+       '<span class="q">'+tr("cordao")+' <b>'+cordao+' mm</b></span></div>';
   cx.innerHTML=h+'</div>';
   cx.querySelectorAll("[data-sw]").forEach(function(e){e.onclick=function(){
     const i=+e.dataset.sw;post("/api/ponto/solda?i="+i+"&v="+(pontos[i].s?0:1)).then(lerPontos);};});
@@ -5088,7 +5129,17 @@ let quedas=0,ultN=-1,ultCal="";
 function acao(id,motivo){
   const b=$("bt"+id), q=$("q"+id);
   if(b)b.disabled=!!motivo;
-  if(q){q.textContent=motivo||"";q.style.display=motivo?"block":"none";}
+  if(q){
+    q.textContent=motivo||"";
+    q.style.display=motivo?"block":"none";
+    /* O que esta funcao escreve nunca e ERRO: e pre-requisito -- "falta
+       fazer isto antes". Saia em laranja como o resto do .pq2 e a tela
+       de Programa vira uma coluna de avisos vermelhos com a maquina
+       inteira em ordem. Marcado como pre-requisito, fica cinza, com um
+       ponto na frente, e o laranja volta a significar so o que deu
+       errado de verdade. */
+    q.classList.add("pre");
+  }
 }
 /* Motivo comum a tudo que move o braco, na ordem em que o operador
    precisa resolver. */
@@ -5513,6 +5564,8 @@ const EN={
  /* abas */
  "Mesa":"Table","Mover":"Jog","Programa":"Program","Arquivos":"Files",
  "Ajustes":"Setup","Encoder":"Encoder","Maquina":"Machine",
+ /* lista do programa */
+ "cordao":"weld","so desloca":"travel only","percurso":"path",
  /* regua */
  "junta 1":"joint 1","junta 2":"joint 2","X mm":"X mm","Y mm":"Y mm",
  "ponta mm/s":"tip mm/s",
