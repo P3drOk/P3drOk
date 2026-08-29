@@ -2891,12 +2891,71 @@ Três coisas mudaram, e a primeira é a que resolve:
    travada de verdade, no motor. O painel do encoder cede a vez enquanto
    alguém está movendo.
 
+## R98 · Aba Mover: texto demais, e um botão para duas juntas  ✅
+
+As notas longas do *zerar aqui*, do joystick e do passo a passo repetiam
+o que o próprio botão já diz. Ficou só o que **não** está no botão — que
+o curso é contado a partir da referência, e onde trocar o sentido do
+eixo.
+
+E o *ir para um ângulo* tinha um botão só para as duas juntas. Agora são
+três: **junta 1**, **junta 2** e **as duas**. Levar uma só é mandar a
+outra para onde ela já está — o firmware recebe um destino completo, não
+precisa de rota nova, e a junta que não se quer mexer não anda um pulso.
+Com um motor no barramento dá para levar o eixo que tem torque sem que o
+outro entre na conta.
+
+## R99 · Aprendizado guiado, e a origem do desenho marcada com o braço  ✅
+
+O modo aprendizado existia, mas o botão de **gravar ponto** morava na aba
+*Mover*: ensinar um cordão obrigava a trocar de aba entre cada ponto, com
+a mão no braço. Os três passos passaram a viver no mesmo cartão, na ordem
+em que acontecem — soltar, marcar, encerrar — com a lista de passos
+dizendo qual está valendo e o que fazer agora, no mesmo formato da
+calibração guiada.
+
+E a origem do DXF. Arrastar o desenho na tela pede que o operador saiba
+onde a peça está **em milímetros**. Na bancada ele não sabe: ele sabe
+onde a peça *está*, porque está olhando para ela. Então o caminho é o
+contrário — **origem com o braço**: solta o braço, leva a ponta até onde
+o desenho começa, confirma, e o desenho vai para lá.
+
+Usa o modo aprendizado para soltar, e não um desabilita cru, porque é ele
+que mantém o encoder acompanhando o braço solto — sem isso a posição lida
+seria onde o firmware *acha* que a ponta está.
+
+Um defeito apareceu ao testar: a guarda que cancela a operação quando o
+aprendizado cai por fora (emergência, alarme, botão da ponteira)
+cancelava **sempre**. O status chega a cada 220 ms, e ela julgava pelo
+`apr` ainda falso no intervalo entre pedir e o robô responder. Agora só
+se pode dizer que o modo *caiu* depois de tê-lo visto ligado.
+
+## R100 · O 3D cortado nas articulações — diagnosticado, ainda não resolvido  ⚠️
+
+O defeito é real e está localizado: as peças do 3D são ordenadas pela
+profundidade do **ponto médio** (algoritmo do pintor), e cada elo é uma
+caixa longa com uma ponta na frente e outra atrás. Qualquer profundidade
+única está errada em metade do elo. Com o cotovelo dobrado, um elo é
+pintado inteiro por cima do outro e o antebraço aparece **cortado em
+dois** — confirmado por captura de tela, postura J1 = 45°, J2 = 160°.
+
+**A correção óbvia não serve.** Segmentar os elos e ordenar cada pedaço
+resolve a interseção, mas a face lateral de cada pedaço se projeta sobre
+o topo do pedaço anterior e o elo sai **serrilhado** — pior que o defeito
+original. Testado com sobreposição e sem, com contorno e sem; o serrilhado
+é da projeção isométrica, não do contorno. A tentativa foi revertida por
+inteiro em vez de trocar um defeito por outro.
+
+O que resolve de verdade é um z-buffer por pixel, que o canvas 2D não
+tem, ou recortar cada elo pela silhueta do outro. Fica registrado com o
+diagnóstico e a captura para quem pegar.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **397 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **223 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **233 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

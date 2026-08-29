@@ -985,6 +985,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <button class="b mini" id="pEsp">espelhar</button>
           <button class="b mini" id="pSolda">cordao: sim</button>
           <button class="b mini" id="pCentro">centralizar</button>
+          <button class="b mini" id="pOrigem">origem com o braco</button>
           <button class="b mini x" id="pCancel">Cancelar</button>
           <button class="b pri mini" id="pAplicar">Virar programa</button>
         </div>
@@ -1033,8 +1034,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <span>J2 <b id="joyB">0%</b></span>
             </div>
             <div class="joyMotivo" id="joyMotivo"></div>
-            <div class="nt">Quanto mais longe do centro, mais rapido. O circulo
-            tracejado e a zona morta. Soltando o dedo, o braco para.</div>
+            <div class="nt">Mais longe do centro, mais rapido. Soltou, parou.</div>
             <button class="b mini" id="btPrec">Precisao: desligada</button>
 
             <h4>Passo a passo</h4>
@@ -1048,17 +1048,17 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
               <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
-            <div class="nt">Junta e coisa que <b>gira</b>: &#8634; e anti-horario,
-            &#8635; e horario, olhando o eixo de cima. Seta para os lados nao
-            queria dizer nada aqui &mdash; para que lado a ponta anda depende de
-            onde o braco esta.<br><br>Se o braco girar ao contrario do botao, o
-            sinal daquele eixo esta trocado: <b>Ajustes &rarr; Sentido dos
-            eixos</b>.</div>
+            <div class="nt">Girou ao contrario do botao? <b>Ajustes &rarr;
+            Sentido dos eixos</b>.</div>
 
             <h4>Ir para um angulo</h4>
             <div class="cp"><label>Junta 1</label><input type="number" id="inMt1" step="0.5"><span class="un">°</span></div>
+            <button class="b mini" id="btMover1">Levar a junta 1</button>
+            <div class="pq2" id="qMover1"></div>
             <div class="cp"><label>Junta 2</label><input type="number" id="inMt2" step="0.5"><span class="un">°</span></div>
-            <button class="b mini" id="btMover">Ir para esses angulos</button>
+            <button class="b mini" id="btMover2">Levar a junta 2</button>
+            <div class="pq2" id="qMover2"></div>
+            <button class="b mini" id="btMover">Levar as duas</button>
             <div class="pq2" id="qMover"></div>
 
             <h4>Atalhos</h4>
@@ -1068,16 +1068,8 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="pq2" id="qHome"></div>
             <button class="b mini x" id="btRefer">Zerar a maquina aqui</button>
             <div class="pq2" id="qRefer"></div>
-            <div class="nt"><b>Zerar aqui</b> faz o que a maquina faz ao ligar:
-            declara que a posicao atual e a de referencia e zera a contagem de
-            pulsos. Use quando o braco perdeu passo e o desenho na tela ficou
-            deslocado do braco de verdade &mdash; leve o braco de volta a posicao
-            de referencia e zere.<br><br>Os limites de curso sao contados a
-            partir da referencia: zerar em outro lugar desloca a area util
-            inteira. Se nao souber se o braco esta na referencia, calibre em vez
-            de zerar.</div>
-            <div class="nt">Tocar na mesa de tracado tambem leva a ponta ate o
-            ponto tocado.</div>
+            <div class="nt">O curso e contado a partir da referencia: zerar
+            fora dela desloca a area util inteira.</div>
           </div>
         </div>
       </section>
@@ -1089,28 +1081,20 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="tx"><div class="tt">Ensinar o caminho</div>
             <span class="sb" id="sb2">nenhum ponto</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <div class="nt"><b>Cordao reto numa chapa:</b> leve a ponta ate o inicio do cordao e grave o ponto 1. Leve ate o fim e grave o ponto 2. Ligue a chave do trecho 1&rarr;2. Pronto.</div>
-
-            <h4>Modo aprendizado</h4>
-            <div class="perigo">Com o braco solto ele desce pelo proprio peso.
-            Apoie a ponta com a mao <b>antes</b> de entrar no modo, e nao entre
-            com a peca embaixo da ponteira.</div>
-            <button class="b pri" id="btApr">Entrar no modo aprendizado</button>
+            <h4>Aprendizado guiado</h4>
+            <div class="perigo">Solto, o braco desce pelo proprio peso. Apoie a
+            ponta <b>antes</b> de soltar, e nada embaixo da ponteira.</div>
+            <div class="guia" id="aprGuia"></div>
+            <button class="b pri" id="btApr">1 &middot; Soltar o braco</button>
             <div class="pq2" id="qApr"></div>
+            <button class="b ok" id="btAprMarcar">2 &middot; Marcar ponto aqui</button>
+            <div class="pq2" id="qAprMarcar"></div>
+            <button class="b mini" id="btAprFim">3 &middot; Encerrar</button>
+            <div class="pq2" id="qAprFim"></div>
             <div class="aprEst" id="aprEst">desligado</div>
-            <div class="nt">No aprendizado o braco fica <b>solto</b> e voce leva
-            a ponteira com a mao: encosta no inicio do cordao e grava, leva ate
-            o fim e grava. O encoder acompanha o braco solto, entao o ponto
-            gravado e onde a ponta esta <b>de verdade</b> &mdash; nao onde o
-            firmware acha que ela esta.<br><br>
-            <b>Botao da ponteira</b>, quando instalado: segure 1,5 s para entrar
-            ou sair, toque rapido para gravar o ponto onde a ponta esta.<br><br>
-            O braco so e solto quando as <b>duas</b> juntas tem zero absoluto
-            ensinado (painel <b>Encoder &rarr; Zero absoluto</b>). Sem isso o
-            modo funciona igual, mas com torque: voce posiciona pelas setas e
-            grava do mesmo jeito.<br><br>
-            Ao sair, o torque <b>nao</b> volta sozinho &mdash; habilitar servo e
-            sempre acao sua.</div>
+            <div class="nt">O braco so solta com <b>zero absoluto ensinado nas
+            duas juntas</b>. Sem isso o modo vale igual, com torque, pelas setas.
+            Ao encerrar, o torque <b>nao</b> volta sozinho.</div>
             <div id="lista"></div>
             <button class="b mini" id="btLimpar">Apagar programa</button>
             <button class="b mini" id="btDesf">Desfazer</button>
@@ -2114,7 +2098,51 @@ $("cOk").onclick=function(){
 };
 $("cNao").onclick    =function(){post("/api/calib/cancelar");};
 $("btGravar").onclick=function(){post("/api/ponto/gravar").then(lerPontos);};
-$("btApr").onclick=function(){post("/api/aprender?on="+(D.apr?0:1));};
+/* ---------- aprendizado guiado ----------
+   Os tres passos sao o mesmo caminho que ja existia -- entrar, gravar,
+   sair -- so que na ordem em que acontecem e no mesmo cartao. O botao
+   de gravar morava na aba Mover: ensinar um cordao obrigava a trocar de
+   aba entre cada ponto, com a mao no braco. */
+$("btApr").onclick=function(){post("/api/aprender?on="+(D.apr?0:1),"qApr");};
+$("btAprMarcar").onclick=function(){
+  post("/api/ponto/gravar","qAprMarcar").then(lerPontos);
+};
+$("btAprFim").onclick=function(){post("/api/aprender?on=0","qAprFim");};
+
+/* A lista de passos: qual esta valendo agora, em palavras. Mesmo formato
+   da calibracao guiada, porque e o mesmo tipo de conversa. */
+function aprGuiaPintar(d){
+  const el=$("aprGuia"); if(!el) return;
+  const solto=!!d.aprSolto, ativo=!!d.apr, n=d.aprN||0;
+  const passos=[
+    {t:tr("Soltar o braco"),
+     ok:ativo,
+     ag:!ativo,
+     q:ativo?(solto?tr("solto: leve a ponta com a mao")
+                   :tr("com torque: posicione pelas setas"))
+            :tr("toque em Soltar o braco")},
+    {t:tr("Marcar os pontos"),
+     ok:ativo&&n>=2,
+     ag:ativo&&n<2,
+     q:!ativo?tr("depois de soltar")
+        :n===0?tr("leve a ponta ao inicio do cordao e marque")
+        :n===1?tr("leve ao fim do cordao e marque")
+              :(n+" "+tr("pontos marcados"))},
+    {t:tr("Encerrar"),
+     ok:!ativo&&n>=2,
+     ag:ativo&&n>=2,
+     q:ativo?tr("o torque nao volta sozinho"):tr("--")}
+  ];
+  el.innerHTML=passos.map(function(p,i){
+    return '<div class="gp'+(p.ok?" ok":(p.ag?" agora":""))+'">'+
+           '<div class="n">'+(p.ok?"\u2713":(i+1))+'</div>'+
+           '<div class="tt2">'+p.t+'<small>'+p.q+'</small></div></div>';
+  }).join("");
+  /* Marcar so faz sentido dentro do modo. Botao apagado e mudo e a
+     reclamacao mais antiga deste painel, entao vai por acao(). */
+  acao("AprMarcar", ativo?"":tr("entre no modo aprendizado primeiro"));
+  acao("AprFim",    ativo?"":tr("o modo nao esta ligado"));
+}
 $("btLimpar").onclick=function(){
   if(confirm("Apagar todos os pontos do programa?"))post("/api/prog/limpar").then(lerPontos);};
 $("btEnsaio").onclick=function(){
@@ -4134,6 +4162,58 @@ $("btDxfPos").onclick=function(){posModo(true);};
 acao("DxfPos","escolha um arquivo DXF primeiro");
 $("pSolda").classList.add("quente");
 $("pCancel").onclick =function(){posModo(false);};
+
+/* ---------- origem do desenho marcada COM O BRACO ----------
+   Arrastar o desenho na tela pede que o operador saiba onde a peca esta
+   em milimetros. Na bancada ele nao sabe: sabe onde a peca ESTA, porque
+   esta olhando para ela. Entao o caminho e o contrario -- solta o braco,
+   leva a ponta ate onde o desenho comeca, confirma, e o desenho vai
+   para la.
+
+   Usa o modo aprendizado para soltar: e ele que mantem o encoder
+   acompanhando o braco solto, e sem isso a posicao lida seria onde o
+   firmware ACHA que a ponta esta, nao onde ela esta. */
+let origemEsperando=false, origemViuSolto=false;
+$("pOrigem").onclick=function(){
+  if(!origemEsperando){
+    origemEsperando=true;
+    origemViuSolto=false;
+    post("/api/aprender?on=1");
+    return;
+  }
+  /* Confirmar: o PRIMEIRO ponto do desenho vai para a ponta. E o
+     primeiro, e nao o centro, porque foi ali que o operador encostou --
+     "onde o desenho comeca" e uma frase sobre o comeco. */
+  origemEsperando=false;
+  post("/api/aprender?on=0");
+  const cs=posTransformado();
+  if(!cs.length||!cs[0].length)return;
+  const p0=cs[0][0];
+  T.tx += (D.x||0)-p0[0];
+  T.ty += (D.y||0)-p0[1];
+  posContar();pintar();
+};
+
+/* O botao conta o que fazer agora, e some quando nao ha desenho. */
+function origemPintar(d){
+  const b=$("pOrigem"); if(!b) return;
+  b.textContent = origemEsperando
+    ? tr("confirmar: o desenho comeca aqui")
+    : tr("origem com o braco");
+  b.classList.toggle("pri", origemEsperando);
+  if(!origemEsperando) return;
+  /* So se pode dizer que o modo CAIU depois de te-lo visto ligado. O
+     status chega a cada 220 ms: cancelar por "d.apr ainda false" logo
+     apos o pedido cancelaria sempre, no intervalo entre pedir e o robo
+     responder. */
+  if(d.apr){ origemViuSolto=true; return; }
+  if(!origemViuSolto) return;
+  /* Viu ligado e agora nao esta: caiu por fora -- emergencia, alarme, o
+     botao da ponteira. Cancelar em silencio deixaria o botao mentindo. */
+  origemEsperando=false;
+  b.textContent=tr("origem com o braco");
+  b.classList.remove("pri");
+}
 $("pGirarM").onclick =function(){T.ang-=Math.PI/12;posContar();};
 $("pGirarP").onclick =function(){T.ang+=Math.PI/12;posContar();};
 $("pMaior").onclick  =function(){T.esc*=1.1;posContar();};
@@ -4921,6 +5001,8 @@ function aplicar(d){
      aparecer sem o operador ter de procurar. */
   $("btApr").textContent=tr(d.apr?"Sair do modo aprendizado":"Entrar no modo aprendizado");
   $("btApr").className="b "+(d.apr?"rod":"pri");
+  aprGuiaPintar(d);
+  origemPintar(d);
   $("aprEst").className="aprEst"+(d.apr?" on":"");
   $("aprEst").textContent=d.apr
     ? ((d.aprSolto?"APRENDENDO · braco solto":"APRENDENDO · com torque, use as setas")
@@ -5745,8 +5827,22 @@ $("btArco").onclick=function(){
   if(confirm("O ARCO VAI ABRIR AGORA.\n\nMascara, aterramento na peca e area livre conferidos?"))
     post("/api/solda?v=1");
 };
+/* Levar UMA junta e mandar a outra para onde ela ja esta: o firmware
+   recebe um destino completo e nao precisa de rota nova, e a junta que
+   nao se quer mexer nao anda um pulso. Serve para o caso de um motor so
+   no barramento -- da para levar o eixo que tem torque sem que o outro
+   entre na conta. */
+function moverJuntas(t1,t2,onde){
+  post("/api/mover?t1="+t1+"&t2="+t2,onde);
+}
+$("btMover1").onclick=function(){
+  moverJuntas($("inMt1").value||0, (D.t2!==undefined?D.t2:0), "qMover1");
+};
+$("btMover2").onclick=function(){
+  moverJuntas((D.t1!==undefined?D.t1:0), $("inMt2").value||0, "qMover2");
+};
 $("btMover").onclick=function(){
-  post("/api/mover?t1="+($("inMt1").value||0)+"&t2="+($("inMt2").value||0));
+  moverJuntas($("inMt1").value||0, $("inMt2").value||0, "qMover");
 };
 /* A escala de reproducao ja existia no firmware (escalaVelocidadeTraj) e
    nao tinha campo: ficava presa em 100%. */

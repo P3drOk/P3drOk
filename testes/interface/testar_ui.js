@@ -1077,6 +1077,51 @@ async function fecharGaveta(pag) {
   const cnt1 = await t.locator('#pCnt').textContent();
   checar(/pontos/.test(cnt1), 'DXF: arrastar, girar, espelhar e centralizar respondem', cnt1);
 
+  // ---- origem marcada COM O BRACO ----
+  // Arrastar o desenho na tela pede que o operador saiba onde a peca
+  // esta em milimetros. Na bancada ele nao sabe: sabe onde a peca ESTA,
+  // porque esta olhando para ela. Entao o caminho e o contrario -- solta
+  // o braco, leva a ponta ate onde o desenho comeca, confirma.
+  await t.request.post(BASE + '/teste/estado', { data: { apr: false, x: 300, y: 120 } });
+  await t.waitForTimeout(500);
+  rotas = [];
+  await t.locator('#pOrigem').click();
+  await t.waitForTimeout(400);
+  const soltou = rotas.find(x => x.split('?')[0] === '/api/aprender');
+  checar(!!soltou && /on=1/.test(soltou),
+         'Origem: o botao solta o braco para o operador levar a ponta',
+         soltou || rotas.join(' '));
+  checar(/confirmar/i.test(await t.locator('#pOrigem').textContent()),
+         'Origem: e o proprio botao passa a pedir a confirmacao',
+         await t.locator('#pOrigem').textContent());
+
+  // Confirmado, o PRIMEIRO ponto do desenho tem de cair na ponta -- e o
+  // primeiro, e nao o centro, porque foi ali que o operador encostou.
+  await t.request.post(BASE + '/teste/estado', { data: { apr: true, x: 300, y: 120 } });
+  await t.waitForTimeout(500);
+  rotas = [];
+  await t.locator('#pOrigem').click();
+  await t.waitForTimeout(500);
+  const p0 = await t.evaluate(() => posTransformado()[0][0]);
+  checar(Math.abs(p0[0] - 300) < 0.6 && Math.abs(p0[1] - 120) < 0.6,
+         'Origem: confirmado, o desenho comeca onde a ponta parou',
+         'primeiro ponto em ' + p0.map(v => v.toFixed(1)).join(', ') + ' (ponta: 300, 120)');
+  const origemFechou = rotas.find(x => x.split('?')[0] === '/api/aprender');
+  checar(!!origemFechou && /on=0/.test(origemFechou),
+         'Origem: e o braco volta a ficar preso ao confirmar',
+         origemFechou || rotas.join(' '));
+
+  // O modo pode cair por fora -- emergencia, alarme, botao da ponteira.
+  // Cancelar em silencio deixaria o botao mentindo.
+  await t.locator('#pOrigem').click();
+  await t.request.post(BASE + '/teste/estado', { data: { apr: true } });
+  await t.waitForTimeout(700);
+  await t.request.post(BASE + '/teste/estado', { data: { apr: false } });
+  await t.waitForTimeout(700);
+  checar(!/confirmar/i.test(await t.locator('#pOrigem').textContent()),
+         'Origem: se o aprendizado cair por fora, o botao volta ao inicio',
+         await t.locator('#pOrigem').textContent());
+
   rotas = [];
   ultimoCorpo = '';
   const podeAplicar = !(await t.locator('#pAplicar').isDisabled());
@@ -1990,6 +2035,71 @@ async function fecharGaveta(pag) {
   checar(rotas.some(x => /\/api\/sd\/carregar/.test(x)),
          'Biblioteca: dali mesmo da para carregar a peca vista', rotas.join(' '));
 
+
+  // ------------------------------------------------------------------
+  // Aprendizado guiado. Os tres passos sao o mesmo caminho que ja
+  // existia -- entrar, gravar, sair -- so que na ordem em que acontecem
+  // e no mesmo cartao. O botao de gravar morava na aba Mover: ensinar um
+  // cordao obrigava a trocar de aba entre cada ponto, com a mao no braco.
+  // ------------------------------------------------------------------
+  await t.request.post(BASE + '/teste/estado', { data: { apr: false, aprSolto: false, aprN: 0 } });
+  await t.evaluate(() => irAba('prog'));
+  await t.waitForTimeout(700);
+  await t.evaluate(() => {
+    const a = document.getElementById('btApr');
+    if (a) a.closest('.et').classList.add('aberta');
+  });
+  await t.waitForTimeout(300);
+
+  const guiaFora = await t.evaluate(() => {
+    const g = document.getElementById('aprGuia');
+    return { passos: g ? g.querySelectorAll('.gp').length : 0,
+             agora: g ? g.querySelectorAll('.gp.agora').length : 0,
+             marcarTravado: document.getElementById('btAprMarcar').disabled };
+  });
+  checar(guiaFora.passos === 3 && guiaFora.agora === 1,
+         'Aprendizado: tres passos, e exatamente UM apontado como o de agora',
+         JSON.stringify(guiaFora));
+  checar(guiaFora.marcarTravado,
+         'Aprendizado: fora do modo, marcar ponto fica travado e diz por que',
+         String(guiaFora.marcarTravado));
+
+  rotas = [];
+  await t.locator('#btApr').click();
+  await t.waitForTimeout(500);
+  const entrou = rotas.find(x => x.split('?')[0] === '/api/aprender');
+  checar(!!entrou && /on=1/.test(entrou),
+         'Aprendizado: o passo 1 solta o braco', entrou || rotas.join(' '));
+
+  await t.request.post(BASE + '/teste/estado', { data: { apr: true, aprSolto: true, aprN: 1 } });
+  await t.waitForTimeout(800);
+  const dentro = await t.evaluate(() => {
+    const g = document.getElementById('aprGuia');
+    return { txt: g ? g.textContent : '',
+             marcarLivre: !document.getElementById('btAprMarcar').disabled };
+  });
+  checar(dentro.marcarLivre,
+         'Aprendizado: dentro do modo, marcar ponto libera');
+  checar(/fim do cordao/i.test(dentro.txt),
+         'Aprendizado: com um ponto marcado, o guia pede o proximo em palavras',
+         dentro.txt.replace(/\s+/g, ' ').slice(0, 90));
+
+  rotas = [];
+  await t.locator('#btAprMarcar').click();
+  await t.waitForTimeout(500);
+  const marcou = rotas.find(x => x.split('?')[0] === '/api/ponto/gravar');
+  checar(!!marcou, 'Aprendizado: marcar grava o ponto onde a ponta esta',
+         marcou || rotas.join(' '));
+
+  rotas = [];
+  await t.locator('#btAprFim').click();
+  await t.waitForTimeout(500);
+  const aprSaiu = rotas.find(x => x.split('?')[0] === '/api/aprender');
+  checar(!!aprSaiu && /on=0/.test(aprSaiu),
+         'Aprendizado: e o passo 3 encerra', aprSaiu || rotas.join(' '));
+
+  await t.request.post(BASE + '/teste/estado', { data: { apr: false, aprSolto: false, aprN: 0 } });
+  await t.waitForTimeout(600);
 
   // ------------------------------------------------------------------
   // Fluidez do desenho. O /api/status chega a cada 220 ms e o desenho
