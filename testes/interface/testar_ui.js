@@ -1791,6 +1791,52 @@ async function fecharGaveta(pag) {
   checar(jogs.length >= 2, 'as setas de jog mandam heartbeat e depois o zero',
          jogs.length + ' chamadas a /api/jog');
 
+  // VELOCIDADE EM MILIMETRO POR SEGUNDO.
+  // A maquina so entende grau por segundo, mas ninguem na bancada pensa
+  // em grau por segundo -- pensa na ponta andando, na mesma unidade do
+  // cordao. A conversao e a do braco esticado: R = elo1 + elo2.
+  rotas = [];
+  await t.evaluate(() => {
+    const c = document.getElementById('inVelMm');
+    c.value = '300';
+    c.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await t.waitForTimeout(400);
+  const posVel = rotas.find(x => x.split('?')[0] === '/api/config');
+  const grausEsperado = 300 * 180 / (Math.PI * (450 + 400));
+  const lidoN = posVel && +(/velN=([\d.]+)/.exec(posVel) || [])[1];
+  const lidoA = posVel && +(/velA=([\d.]+)/.exec(posVel) || [])[1];
+  checar(!!posVel && Math.abs(lidoN - grausEsperado) < 0.6,
+         'Velocidade: digitar em mm/s vira grau/s pelo alcance do braco',
+         posVel + ' (esperado ~' + grausEsperado.toFixed(1) + ')');
+  // Jog e "ir para um angulo" sao o mesmo gesto para quem opera. Ate aqui
+  // obedeciam a dois campos diferentes, e subir a barra do jog deixava o
+  // posicionamento lerdo do mesmo jeito.
+  checar(lidoA === lidoN,
+         'Velocidade: o mesmo ajuste vale para o jog e para o ir-para-angulo',
+         'velN=' + lidoN + ', velA=' + lidoA);
+
+  // E a linha de baixo diz a mesma velocidade na unidade da maquina --
+  // com o alcance usado na conta guardado no titulo, para explicar o
+  // numero sem quebrar a linha de quem so quer operar.
+  const eq = await t.evaluate(() => {
+    const b = document.getElementById('velMovTx');
+    return { txt: b.textContent, tit: b.title };
+  });
+  checar(/\u00b0\/s/.test(eq.txt) && /850/.test(eq.tit),
+         'Velocidade: a equivalencia em grau/s fica a vista, e o alcance usado no titulo',
+         eq.txt + ' | ' + eq.tit);
+
+  // Os tres degraus cobrem o dia inteiro sem ninguem digitar nada.
+  rotas = [];
+  await t.locator('[data-vel="0.8"]').click();
+  await t.waitForTimeout(400);
+  const rapido = rotas.find(x => x.split('?')[0] === '/api/config');
+  const gRapido = rapido && +(/velN=([\d.]+)/.exec(rapido) || [])[1];
+  checar(!!rapido && gRapido > lidoN,
+         'Velocidade: o atalho "rapido" sobe de verdade, sem digitar nada',
+         'velN=' + gRapido);
+
   // Maquina sem calibracao e sem servos: o que bloqueia tem que dizer.
   await t.request.post(BASE + '/teste/estado',
     { data: { cal1: false, cal2: false, servos: false, progN: 0, trajN: 0 } });

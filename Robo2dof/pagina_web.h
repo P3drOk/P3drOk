@@ -176,8 +176,19 @@ button,input{font:inherit;color:inherit}
 .velLinha{display:flex;align-items:center;gap:10px;margin:10px 0 8px}
 .velLinha label{font-size:12px;color:var(--letra2);flex:0 0 auto}
 .velLinha input[type=range]{flex:1;min-width:0;accent-color:var(--arco)}
-.velLinha b{font-family:var(--mono);font-size:12px;color:var(--letra);
- min-width:38px;text-align:right}
+.velLinha input[type=number]{width:74px;flex:0 0 auto;background:var(--fundo);
+ border:1px solid var(--linha);border-radius:2px;padding:6px 8px;text-align:right;
+ font-family:var(--mono);font-size:12px;color:var(--letra)}
+.velLinha input[type=number]:focus{outline:none;border-color:var(--arco)}
+.velLinha .un{font-family:var(--mono);font-size:9px;color:var(--letra3);
+ width:34px;flex:0 0 auto}
+/* A linha de baixo diz a mesma velocidade na outra unidade, e traz os
+   tres degraus que cobrem o dia inteiro. Digitar milimetro por segundo e
+   o que se pensa na bancada; grau por segundo e o que a maquina faz. */
+.velEq{display:flex;align-items:center;gap:8px;margin:-4px 0 8px;
+ font-family:var(--mono);font-size:10px;color:var(--letra3)}
+.velEq b{font-weight:600;color:var(--letra2);flex:1}
+.atalhosVel{display:flex;gap:5px}
 /* Botoes lado a lado quando sao do mesmo assunto: dois botoes largos
    empilhados ocupavam duas linhas para dizer duas palavras. */
 .linhaBt{display:flex;gap:7px;align-items:stretch;margin-bottom:6px}
@@ -1132,9 +1143,16 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="joyMotivo" id="joyMotivo"></div>
             <div class="velLinha">
               <label for="inVelMov">Velocidade</label>
-              <input type="range" id="inVelMov" min="10" max="100" step="5">
-              <b id="velMovTx">--</b>
+              <input type="range" id="inVelMov" min="1" max="120" step="1">
+              <input type="number" id="inVelMm" min="1" step="10">
+              <span class="un">mm/s</span>
             </div>
+            <div class="velEq"><b id="velMovTx">--</b>
+              <span class="atalhosVel">
+                <button class="mb" data-vel="0.08">lento</button>
+                <button class="mb" data-vel="0.25">normal</button>
+                <button class="mb" data-vel="0.8">rapido</button>
+              </span></div>
             <div class="linhaBt">
               <button class="b mini" id="btPrec">Precisao: desligada</button>
               <button class="b mini" id="btTesteMov">Testar rele</button>
@@ -1977,18 +1995,77 @@ $("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
 /* Velocidade do jog numa barra, em POR CENTO do que a maquina aceita.
    Antes so existia em Ajustes, em graus por segundo, longe do braco --
    e velocidade e coisa que se acerta olhando o braco andar. */
-const VEL_MAX_JOG = 60;      /* graus/s no topo da barra */
-let velEnviando = false;
-$("inVelMov").oninput=function(){
-  $("velMovTx").textContent=$("inVelMov").value+"%";
-};
-$("inVelMov").onchange=function(){
+/* ---------------------------------------------------------------------
+   VELOCIDADE, NA UNIDADE DE QUEM OPERA
+
+   A maquina pensa em GRAUS POR SEGUNDO -- e o que vira frequencia de
+   pulso, e nao ha outro jeito. Quem esta na bancada pensa em MILIMETRO
+   POR SEGUNDO: e a velocidade da ponta, a mesma unidade do cordao, e a
+   unica que da para comparar com a solda que se fez a mao.
+
+   A conversao e a do braco esticado: a ponta a R = elo1 + elo2 do eixo
+   anda R x omega. Usar o alcance CHEIO e a escolha conservadora -- em
+   qualquer outra postura a ponta anda mais devagar que o numero pedido,
+   nunca mais rapido. Um raio que mudasse com a postura faria o mesmo
+   ajuste significar coisas diferentes a cada movimento.
+
+   O ajuste vale para o jog E para "ir para um angulo": os dois sao a mao
+   do operador movendo o braco, e ate aqui cada um obedecia a um numero
+   diferente (velN e velA), guardados em telas diferentes. Era essa a
+   parte "complexa" -- subir a barra do jog e o posicionamento continuar
+   lerdo, porque quem mandava nele era outro campo.
+
+   O modo Precisao continua com o valor dele: e o proposito daquele
+   botao.
+   --------------------------------------------------------------------- */
+const VEL_GRAUS_MAX = 120;   /* teto da barra; o firmware aceita ate 720 */
+const VEL_GRAUS_MIN = 1;
+
+function alcanceMm(){ return (D.l1||200)+(D.l2||200); }
+function grausParaMm(g){ return g*Math.PI*alcanceMm()/180; }
+function mmParaGraus(v){ const R=alcanceMm(); return R>1 ? v*180/(Math.PI*R) : v; }
+
+function velMostrar(g){
+  const gg=Math.min(VEL_GRAUS_MAX,Math.max(VEL_GRAUS_MIN,g));
+  $("inVelMov").value=Math.round(gg);
+  $("inVelMm").value=Math.round(grausParaMm(gg));
+  $("velMovTx").textContent=gg.toFixed(0)+" \u00b0/s "+tr("na junta");
+  /* O alcance usado na conta fica no titulo: explica o numero para quem
+     for procurar, sem quebrar a linha para quem so quer operar. */
+  $("velMovTx").title=tr("medido na ponta com o braco esticado")+
+    " ("+Math.round(alcanceMm())+" mm)";
+}
+
+let velEnviando=false, velUltimoEnviado=-1;
+function velEnviar(g){
+  const gg=Math.min(VEL_GRAUS_MAX,Math.max(VEL_GRAUS_MIN,g));
+  velMostrar(gg);
   if(velEnviando) return;
   velEnviando=true;
-  const g=(VEL_MAX_JOG*(+$("inVelMov").value)/100).toFixed(1);
-  post("/api/config?velN="+g).then(function(){velEnviando=false;})
-                             .catch(function(){velEnviando=false;});
+  velUltimoEnviado=gg;
+  /* Os dois campos de uma vez: o jog e o posicionamento sao o mesmo
+     gesto para quem opera, e separa-los so fazia a barra parecer que
+     nao funcionava. */
+  const v=gg.toFixed(1);
+  post("/api/config?velN="+v+"&velA="+v)
+    .then(function(){velEnviando=false;})
+    .catch(function(){velEnviando=false;});
+}
+
+$("inVelMov").oninput=function(){ velMostrar(+$("inVelMov").value); };
+$("inVelMov").onchange=function(){ velEnviar(+$("inVelMov").value); };
+$("inVelMm").oninput=function(){
+  const v=parseFloat($("inVelMm").value);
+  if(!isNaN(v))$("velMovTx").textContent=mmParaGraus(v).toFixed(0)+" \u00b0/s";
 };
+$("inVelMm").onchange=function(){
+  const v=parseFloat($("inVelMm").value);
+  if(isNaN(v)){velMostrar(velUltimoEnviado>0?velUltimoEnviado:20);return;}
+  velEnviar(mmParaGraus(v));
+};
+document.querySelectorAll("[data-vel]").forEach(function(b){
+  b.onclick=function(){ velEnviar(VEL_GRAUS_MAX*(+b.dataset.vel)); };
+});
 $("btTesteMov").onclick=function(){post("/api/teste/rele","qMoverSel");};
 
 $("btMoverSel").onclick=function(){
@@ -5373,9 +5450,12 @@ function aplicar(d){
     $("inPv1").value=d.ppv1;$("inRd1").value=d.red1;
     $("inPv2").value=d.ppv2;$("inRd2").value=d.red2;
     if($("inFv1"))$("inFv1").value=(d.fvel1!==undefined?d.fvel1:1);
-    if($("inVelMov")&&d.velN!==undefined){
-      const pc=Math.round(Math.min(100,Math.max(10,d.velN/VEL_MAX_JOG*100)));
-      $("inVelMov").value=pc; $("velMovTx").textContent=pc+"%";
+    /* Nao reescrever o campo enquanto o dedo esta nele: a barra pulava de
+       volta para o valor da maquina no meio do arrasto. */
+    if($("inVelMov")&&d.velN!==undefined&&!velEnviando&&
+       document.activeElement!==$("inVelMm")&&
+       document.activeElement!==$("inVelMov")){
+      velMostrar(d.velN);
     }
     if($("inFv2"))$("inFv2").value=(d.fvel2!==undefined?d.fvel2:1);
     $("inL1").value=d.l1;$("inL2").value=d.l2;$("inDb").value=d.dobra;
@@ -5564,6 +5644,9 @@ const EN={
  /* abas */
  "Mesa":"Table","Mover":"Jog","Programa":"Program","Arquivos":"Files",
  "Ajustes":"Setup","Encoder":"Encoder","Maquina":"Machine",
+ /* velocidade */
+ "na junta":"at the joint",
+ "medido na ponta com o braco esticado":"measured at the tip, arm extended",
  /* lista do programa */
  "cordao":"weld","so desloca":"travel only","percurso":"path",
  /* regua */

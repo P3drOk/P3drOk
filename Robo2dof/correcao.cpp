@@ -443,8 +443,30 @@ static void avisarImplausivel(uint8_t k, float graus) {
 // acima do teto em que o assentamento ja desistiu. Abaixo dele nada
 // muda: divergencia pequena continua sendo perda de passo, e continua
 // sendo do assentamento.
+// A maquina esta REALMENTE parada, e nao apenas entre dois pulsos.
+//
+// isRunning() do gerador de pulso responde "esta saindo pulso agora?",
+// e entre mandar um destino e o primeiro pulso sair ela responde NAO.
+// Nessa fresta a contagem era reescrita, o destino que acabara de ser
+// calculado sobre a contagem antiga virava outro lugar, e o braco
+// arrancava e parava -- que e exatamente o que se via na tela: "comeca a
+// se mover, da uma atualizacao e para".
+//
+// Duas condicoes fecham a fresta: o modo tem de ser MANUAL (posicionar,
+// executar e reproduzir sao movimento em curso, com ou sem pulso neste
+// instante) e o gerador tem de estar quieto ha um tempo.
+static const uint32_t QUIETO_MS = 300;
+
+static bool bracoQuieto() {
+  static uint32_t ultimoMovimentoMs = 0;
+  if (motoresEmMovimento()) { ultimoMovimentoMs = millis(); return false; }
+  if (modoAtual != MODO_MANUAL) { ultimoMovimentoMs = millis(); return false; }
+  if (ultimoMovimentoMs == 0) return true;
+  return (uint32_t)(millis() - ultimoMovimentoMs) > QUIETO_MS;
+}
+
 static void reancorarSeAContagemSePerdeu() {
-  if (motoresEmMovimento()) return;
+  if (!bracoQuieto()) return;
   if (correcaoEmCurso()) return;
 
   for (uint8_t k = 1; k <= 2; k++) {
@@ -475,15 +497,23 @@ void seguirEixoSolto() {
   // caso em que ela deixou de significar qualquer coisa.
   reancorarSeAContagemSePerdeu();
 
-  // Regra unica e dura: servo ligado, nao segue. Com servo ligado uma
-  // divergencia e perda de passo, e quem cuida disso e o assentamento.
-  if (servosLigados) return;
-  if (motoresEmMovimento()) return;
+  if (!bracoQuieto()) return;
   if (correcaoEmCurso()) return;
 
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
     Junta& j = (k == 1) ? J1 : J2;
+
+    // A regra e POR JUNTA, e nao pela maquina inteira.
+    //
+    // Era "servosLigados" -- que so e verdade com AS DUAS juntas
+    // energizadas. Numa bancada com um driver so isso nunca acontece, e
+    // o seguimento de eixo solto ficava permanentemente ligado sobre uma
+    // junta COM torque: a contagem era reescrita pelo encoder a cada
+    // ciclo, inclusive logo depois de um destino ter sido calculado a
+    // partir dela. Com torque, divergencia e perda de passo, e quem
+    // cuida disso e o assentamento -- nao esta funcao.
+    if (j.habilitado) continue;
 
     // Sem zero ensinado a leitura nao tem do que ser medida.
     if (!configZero.ensinado[i]) continue;
@@ -524,8 +554,27 @@ void correcaoLimparTravamento() { trav.ativo = false; trav.junta = 0; }
 static float esperadoContagensPorSeg(uint8_t k) {
   const Junta& j = (k == 1) ? J1 : J2;
   const float hz = (k == 1) ? velocidadeJ1Hz() : velocidadeJ2Hz();
+
+  // A ESCALA MEDIDA vem primeiro.
+  //
+  // Este vigia PARA o braco. Ele nao pode decidir isso a partir de dois
+  // numeros de catalogo que ninguem conferiu: bastava o driver estar
+  // configurado com outro numero de pulsos por volta para o esperado sair
+  // varias vezes maior que o real, e ai um braco andando normalmente era
+  // declarado travado meio segundo depois de arrancar -- "comeca a se
+  // mover, aparece um aviso e para".
+  //
+  // Quando ha escala ensinada, ela e a regua certa: contagens por grau
+  // medidas na propria maquina, do mesmo lado de onde vem a leitura que
+  // vai ser comparada.
+  const float cpg = configEncoder.contagensPorGrau[k - 1];
+  if (j.passosPorGrau > 0.0f && (cpg > 0.0001f || cpg < -0.0001f))
+    return fabsf(hz) / j.passosPorGrau * fabsf(cpg);
+
+  // Sem escala ensinada, o caminho antigo: pulsos por volta do motor e
+  // contagens por volta do encoder.
   const float cv = configEncoder.contagensPorVolta[k - 1];
-  if (j.passosPorVolta == 0) return 0.0f;
+  if (j.passosPorVolta == 0 || cv <= 0.0f) return 0.0f;
   // passos/s -> voltas do motor/s -> contagens/s
   return fabsf(hz) / (float)j.passosPorVolta * cv;
 }

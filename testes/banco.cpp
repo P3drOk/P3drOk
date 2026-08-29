@@ -5164,6 +5164,168 @@ static void teste_V16_contagem_perdida_e_reancorada() {
          "quem cuida dela e o assentamento");
 }
 
+// ---------------------------------------------------------------------
+// V17: junta COM torque nao e seguida como se estivesse solta.
+//
+// O relato: "no campo mover, ir para angulo, quando eu coloco um angulo
+// pra se mover, ele comeca a se mover mas dai ele da tipo uma
+// atualizacao e dai para de se mover".
+//
+// A causa: o seguimento de eixo solto -- que existe para o operador
+// empurrar o braco DESENERGIZADO com a mao e a contagem acompanhar --
+// era travado por `servosLigados`, que so e verdade com AS DUAS juntas
+// energizadas. Numa bancada com um driver so isso nunca acontece.
+// Resultado: a contagem de uma junta COM torque era reescrita pelo
+// encoder a cada ciclo, inclusive logo depois de um destino ter sido
+// calculado a partir dela.
+// ---------------------------------------------------------------------
+static void teste_V17_junta_com_torque_nao_e_seguida() {
+  secao("V17  Junta com torque nao e seguida como eixo solto");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  // O encoder segue o eixo de verdade, como na maquina.
+  g_espelharEixo = true;
+
+  // Um driver so: a junta 1 recebe torque, a 2 nao. E a bancada do
+  // operador, e nela servosLigados (as duas) e falso.
+  enviarComando(CMD_SERVOS, 0, 0);
+  rodarComWeb(200);
+  enviarComando(CMD_SERVOS, 1, 1);
+  rodarComWeb(400);
+  nota("junta 1 habilitada=%d, junta 2 habilitada=%d, servosLigados=%d",
+       (int)J1.habilitado, (int)J2.habilitado, (int)servosLigados);
+  checar(J1.habilitado && !J2.habilitado && !servosLigados, "V17a",
+         "um driver so: a junta 1 tem torque, a maquina inteira nao");
+
+  // O eixo fisico fica 4 graus atras da contagem -- perda de passo
+  // comum, muito abaixo do teto de reancoragem, e o que qualquer braco
+  // real acumula.
+  perderPassos(4.0f);
+  rodarComWeb(600);
+  const float conta = passosParaGraus(J1, posicaoJ1());
+  nota("contagem %.2f graus, encoder %.2f graus",
+       (double)conta, (double)encoderLer(1).graus);
+  checar(fabsf(encoderLer(1).graus - conta) > 2.0f, "V17b",
+         "o eixo esta atras da contagem: e perda de passo, e quem cuida "
+         "dela e o assentamento -- nao o seguimento de eixo solto");
+
+  // E o movimento comandado chega onde foi mandado, em vez de arrancar e
+  // morrer no primeiro ciclo de leitura.
+  const uint32_t travAntes = correcaoTravamento().total;
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, conta + 25.0f, 0.0f);
+  rodarComWeb(120);
+  uint32_t t = 0;
+  while (motoresEmMovimento() && t < 30000) { rodarComWeb(40); t += 40; }
+  nota("pedido %.1f graus, chegou em %.2f, travamentos %u -- \"%s\"",
+       (double)(conta + 25.0f), (double)passosParaGraus(J1, posicaoJ1()),
+       (unsigned)(correcaoTravamento().total - travAntes), ultimaMensagem);
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - (conta + 25.0f)) < 1.5f, "V17c",
+         "e o angulo pedido e alcancado com um driver so no barramento");
+
+  // Sem torque o seguimento volta a valer: e para isso que ele existe.
+  enviarComando(CMD_SERVOS, 0, 1);
+  rodarComWeb(400);
+  const float agora = passosParaGraus(J1, posicaoJ1());
+  g_espelharEixo = false;
+  const float cv  = configEncoder.contagensPorVolta[0];
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao =
+      encoderLer(1).referencia +
+      (int32_t)lroundf((((agora - 6.0f) - J1.grausHome) * red / 360.0f) * cv);
+  rodarComWeb(600);
+  nota("sem torque, contagem foi para %.2f graus",
+       (double)passosParaGraus(J1, posicaoJ1()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - (agora - 6.0f)) < 1.5f, "V17d",
+         "desenergizada, a junta empurrada com a mao leva a contagem "
+         "junto -- o modo continua existindo, so deixou de valer com torque");
+  g_espelharEixo = false;
+}
+
+// ---------------------------------------------------------------------
+// V18: o vigia de travamento nao para o braco por causa de numero de
+// catalogo.
+//
+// Ele comparava a velocidade MEDIDA pelo encoder com uma esperada
+// calculada de `pulsos por volta` x `contagens por volta` -- dois
+// numeros digitados, nao medidos. Basta o driver estar configurado com
+// outro numero de pulsos por volta para o esperado sair varias vezes
+// maior que o real: meio segundo depois de arrancar, um braco andando
+// normalmente e declarado travado e o movimento e cortado. E o mesmo
+// desencontro faz o braco andar mais devagar do que o pedido -- foi
+// assim que o defeito chegou: "esta muito lerdo, e quando mando ir a um
+// angulo ele comeca a andar e para".
+// ---------------------------------------------------------------------
+static void teste_V18_vigia_usa_a_escala_medida() {
+  secao("V18  Travamento julgado pela escala medida, nao pelo catalogo");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  g_espelharEixo = true;
+
+  // A ESCALA MEDIDA e o que o encoder realmente ve por grau de junta --
+  // e o que a calibracao guiada ensina.
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cpgReal = configEncoder.contagensPorVolta[0] * red / 360.0f;
+  configEncoder.contagensPorGrau[0] = cpgReal;
+
+  // E o catalogo esta errado: o driver precisa de dez vezes mais pulsos
+  // por volta do que esta escrito aqui.
+  const uint32_t ppvVerdadeiro = J1.passosPorVolta;
+  J1.passosPorVolta = ppvVerdadeiro / 10;
+  rodarComWeb(100);
+
+  const float esperadoCatalogo =
+      1000.0f / (float)J1.passosPorVolta * configEncoder.contagensPorVolta[0];
+  const float esperadoMedido =
+      1000.0f / J1.passosPorGrau * fabsf(configEncoder.contagensPorGrau[0]);
+  nota("a 1000 Hz de pulso: catalogo espera %.0f c/s, escala medida espera %.0f c/s",
+       (double)esperadoCatalogo, (double)esperadoMedido);
+  checar(esperadoCatalogo > esperadoMedido * 5.0f, "V18a",
+         "o catalogo espera cinco vezes mais do que o eixo entrega -- "
+         "e e essa conta que mandava parar o braco");
+
+  const uint32_t travAntes = correcaoTravamento().total;
+  const float parte = passosParaGraus(J1, posicaoJ1());
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, parte + 30.0f,
+                passosParaGraus(J2, posicaoJ2()));
+  rodarComWeb(120);
+  uint32_t t = 0;
+  while (motoresEmMovimento() && t < 30000) { rodarComWeb(40); t += 40; }
+  nota("chegou em %.2f graus, travamentos %u -- \"%s\"",
+       (double)passosParaGraus(J1, posicaoJ1()),
+       (unsigned)(correcaoTravamento().total - travAntes), ultimaMensagem);
+  checar(correcaoTravamento().total == travAntes, "V18b",
+         "braco andando de verdade nao e declarado travado por causa de "
+         "um pulsos-por-volta que ninguem conferiu");
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - (parte + 30.0f)) < 1.5f, "V18c",
+         "e o movimento chega ao fim, em vez de morrer no caminho");
+
+  // E o travamento DE VERDADE continua sendo pego, pela mesma regua: o
+  // comando anda, o eixo nao.
+  g_espelharEixo = false;
+  const float preso = passosParaGraus(J1, posicaoJ1());
+  const int32_t travado = g_uart.escravo[0].posicao;
+  moverCoordenado(grausParaPassos(J1, preso + 20.0f), posicaoJ2(), 20.0f);
+  for (int k = 0; k < 400 && motoresEmMovimento(); k++) {
+    g_uart.escravo[0].parar();
+    g_uart.escravo[0].posicao = travado;   // eixo preso
+    rodarComWeb(10);
+  }
+  rodarComWeb(200);
+  nota("eixo preso com o comando andando: travamentos=%u -- \"%s\"",
+       (unsigned)(correcaoTravamento().total - travAntes), ultimaMensagem);
+  checar(correcaoTravamento().total > travAntes, "V18d",
+         "eixo que nao responde ao pulso continua sendo acusado e parado");
+
+  J1.passosPorVolta = ppvVerdadeiro;
+  configEncoder.contagensPorGrau[0] = 0.0f;
+  g_espelharEixo = false;
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6781,6 +6943,8 @@ int main() {
   teste_V14_velocidade_por_motor();
   teste_V15_ir_a_um_angulo_sem_calibracao();
   teste_V16_contagem_perdida_e_reancorada();
+  teste_V17_junta_com_torque_nao_e_seguida();
+  teste_V18_vigia_usa_a_escala_medida();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

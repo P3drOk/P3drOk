@@ -1149,6 +1149,63 @@ função de bloqueio escreve é sempre pré-requisito — nunca falha —, entã
 ele saiu do vermelho e virou nota cinza com um ponto na frente. O
 laranja voltou a ser só o que deu errado de verdade.
 
+## R120 · O braço arrancava e parava: duas causas, uma cena  ✅
+
+> "no campo mover, ir para ângulo, quando eu coloco um ângulo pra se
+> mover, ele começa a se mover mas daí ele dá tipo uma atualização e daí
+> para de se mover"
+
+Eram **duas** coisas, e as duas nasceram de decidir sobre a máquina
+inteira o que só se pode decidir por junta ou por medida.
+
+**1. O seguimento de eixo solto valia sobre uma junta com torque.**
+Ele existe para o operador empurrar o braço **desenergizado** com a mão e
+a contagem acompanhar. Estava travado por `servosLigados`, que só é
+verdade com **as duas** juntas energizadas — numa bancada com um driver
+só isso nunca acontece. Resultado: a contagem de uma junta *com torque*
+era reescrita pelo encoder a cada ciclo, inclusive logo depois de um
+destino ter sido calculado a partir dela. A regra passou a ser por junta:
+`j.habilitado`. Com torque, divergência é perda de passo, e quem cuida
+dela é o assentamento.
+
+**2. O vigia de travamento julgava por número de catálogo.**
+Ele comparava a velocidade medida pelo encoder com uma esperada tirada de
+`pulsos por volta` × `contagens por volta` — dois números **digitados**,
+não medidos. Basta o driver estar configurado com outro número de pulsos
+por volta para o esperado sair várias vezes maior que o real: meio
+segundo depois de arrancar, um braço andando normalmente é declarado
+travado, e o vigia **para o eixo** e escreve na tela — a "atualização" do
+relato. Agora, quando há escala ensinada, é ela que serve de régua:
+contagens por grau medidas na própria máquina, do mesmo lado de onde vem
+a leitura que vai ser comparada. Sem escala ensinada, o caminho antigo
+segue valendo; e o travamento de verdade continua sendo pego.
+
+Um terceiro detalhe fechava a fresta: `isRunning()` responde "está saindo
+pulso agora?", e entre mandar um destino e o primeiro pulso sair ela
+responde **não**. A contagem só é reescrita com a máquina em modo manual
+e com o gerador quieto há 300 ms.
+
+## R121 · Velocidade em milímetro por segundo  ✅
+
+A máquina pensa em **graus por segundo** — é o que vira frequência de
+pulso, e não há outro jeito. Quem está na bancada pensa em **milímetro
+por segundo**: é a velocidade da ponta, a mesma unidade do cordão, a
+única que dá para comparar com a solda feita à mão.
+
+A barra da aba Mover passou a ter o número em mm/s, digitável, com a
+equivalência em °/s ao lado e três degraus (lento / normal / rápido) para
+o dia inteiro. A conversão é a do braço esticado — a ponta a
+`R = elo1 + elo2` anda `R × ω` —, e usar o alcance cheio é a escolha
+conservadora: em qualquer outra postura a ponta anda mais devagar que o
+número pedido, nunca mais rápido.
+
+E o ajuste passou a valer para o jog **e** para "ir para um ângulo". Era
+esta a parte "complexa" do relato: os dois são a mão do operador movendo
+o braço, mas obedeciam a campos diferentes (`velN` e `velA`), guardados
+em telas diferentes — subir a barra do jog e o posicionamento continuar
+lerdo. O modo Precisão continua com o valor dele, que é o propósito
+daquele botão.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -3326,8 +3383,8 @@ regra existir.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **423 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **245 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **431 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **249 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).
