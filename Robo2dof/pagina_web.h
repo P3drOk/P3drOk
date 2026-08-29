@@ -555,10 +555,26 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
  height:calc(100vh - var(--altCab, 82px) - var(--altAbas, 0px));
  display:flex;flex-direction:column;padding:0;overflow:hidden}
 /* As linhas de configuracao acompanham a largura nova em vez de
-   esticarem um campo so por toda a tela. */
+   esticarem um campo so por toda a tela.
+
+   E, acima de 1000 px, os CARTOES entram em COLUNAS. Em tela cheia com
+   uma coluna so sobrava metade do monitor em branco e o resto ia parar
+   embaixo da dobra: quem procurava um ajuste tinha de rolar para
+   descobrir se ele existia. Cada cartao e fechado em si -- titulo,
+   linhas, botoes --, entao ele flui para a coluna seguinte sem se
+   partir. O `inline-block` e o que segura isso nos motores webkit, onde
+   `break-inside` sozinho ainda deixa o cartao rachar no meio. */
 @media(min-width:900px){
-  .cfgRol{padding:16px 28px 24px}
-  .cfgRol .dentro{max-width:1100px}
+  .cfgRol{padding:14px 22px 20px}
+  .cfgRol .dentro{max-width:none}
+}
+@media(min-width:1000px){
+  .cfgRol .pane{column-width:410px;column-gap:20px}
+  .cfgRol .pane>.et{break-inside:avoid;-webkit-column-break-inside:avoid;
+   display:inline-block;width:100%;margin:0 0 14px}
+}
+@media(min-width:1500px){
+  .cfgRol .pane{column-width:440px}
 }
 
 /* AS CONFIGURACOES EM LINHAS, COMO A SAUDE DA MAQUINA.
@@ -567,7 +583,7 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
    pergunta com uma diferenca: o valor da direita se EDITA. Mesma
    gramatica visual, entao quem sabe ler uma sabe ler a outra. */
 .cfgRol .cp{display:flex;align-items:center;gap:10px;margin:0;
- padding:9px 12px;border-bottom:1px solid var(--linha);
+ padding:7px 12px;border-bottom:1px solid var(--linha);
  background:var(--face)}
 .cfgRol .cp:nth-child(even){background:var(--painel)}
 .cfgRol .cp label{flex:1;font-size:12.5px;color:var(--letra)}
@@ -576,13 +592,13 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 /* A chave tambem vira linha: um interruptor e uma configuracao como
    qualquer outra, e sair da grade fazia parecer outra coisa. */
 .cfgRol .tr{display:flex;align-items:center;gap:10px;margin:0;
- padding:9px 12px;border-bottom:1px solid var(--linha);
+ padding:7px 12px;border-bottom:1px solid var(--linha);
  background:var(--face);flex-direction:row-reverse;justify-content:flex-end}
 .cfgRol .tr span{flex:1;font-size:12.5px;color:var(--letra)}
 .cfgRol .tr:nth-child(even){background:var(--painel)}
 /* Titulo de grupo separa as linhas em assuntos, como as faixas da
    Saude. */
-.cfgRol h4{margin:18px 0 0;padding:8px 12px;font-size:10px;
+.cfgRol h4{margin:13px 0 0;padding:6px 12px;font-size:10px;
  letter-spacing:.14em;text-transform:uppercase;color:var(--letra3);
  font-family:var(--mono);border-bottom:1px solid var(--linha2);
  background:none}
@@ -1983,10 +1999,21 @@ addEventListener("blur",function(){jogOff("1",null);jogOff("2",null);});
    la o joystick, "Gravar ponto" e "Ir para o zero" tinham sumido, o que
    parecia botao que nao faz nada. A secao do joystick e a do cartao nao
    tem seta e nao recolhem: sao a superficie principal de cada aba. */
+/* A gaveta exclusiva -- abrir uma fecha as outras -- existe por causa do
+   CELULAR: numa coluna estreita duas gavetas abertas ja empurram a
+   terceira para fora da tela. Na Configuracao em tela de computador o
+   efeito e o contrario: os cartoes entram em colunas, e manter so um
+   aberto deixava dois tercos da tela em branco com o resto escondido
+   atras de um clique. Larga, la a gaveta so ALTERNA. */
+function cfgEmColunas(){
+  try{ return matchMedia("(min-width:1000px)").matches; }catch(e){ return false; }
+}
 document.querySelectorAll(".cab").forEach(function(c){
   if(!c.querySelector(".chv"))return;
   c.addEventListener("click",function(){
     const et=c.parentElement,ja=et.classList.contains("aberta");
+    if(et.closest("#veuCfg")&&cfgEmColunas()){
+      et.classList.toggle("aberta",!ja);return;}
     const painel=et.closest(".pane")||document;
     painel.querySelectorAll(".et").forEach(function(x){
       if(x.querySelector(".cab .chv"))x.classList.remove("aberta");});
@@ -2963,6 +2990,25 @@ function cor(n){
   return getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 }
 let PAL={}, palQuando="";
+/* Clareia (f>0) ou escurece (f<0) uma cor. Aceita #rrggbb e rgb().
+   Nasceu dentro da vista 3D, para sombrear as faces do cilindro; a
+   vista de cima passou a precisar dela pelo mesmo motivo -- dar VOLUME
+   a uma figura chapada -- entao subiu para o nivel do arquivo em vez de
+   ser copiada. */
+function tom(hex,f){
+  let r,g,b;
+  if(hex[0]==="#"){
+    const n=parseInt(hex.slice(1),16);
+    r=(n>>16)&255; g=(n>>8)&255; b=n&255;
+  }else{
+    const m=hex.match(/(\d+)\D+(\d+)\D+(\d+)/);
+    r=m?+m[1]:128; g=m?+m[2]:128; b=m?+m[3]:128;
+  }
+  const alvo=f>0?255:0, k=Math.abs(f);
+  r=Math.round(r+(alvo-r)*k); g=Math.round(g+(alvo-g)*k); b=Math.round(b+(alvo-b)*k);
+  return "rgb("+r+","+g+","+b+")";
+}
+
 function paleta(){
   const t=document.documentElement.getAttribute("data-tema")||"claro";
   if(t===palQuando)return PAL;
@@ -2973,6 +3019,10 @@ function paleta(){
        elo1:t==="escuro"?"#8b98a9":"#5a6675",
        elo2:t==="escuro"?"#b7c2d1":"#8794a5",
        juntaF:t==="escuro"?"#2a333e":"#ffffff",
+       /* carcaca do mancal e a base parafusada: cinza de aluminio, mais
+          claro que o elo para o eixo se destacar do braco */
+       mancal:t==="escuro"?"#9fadbd":"#c4ccd6",
+       base:t==="escuro"?"#3a434f":"#9aa4b0",
        ponto:t==="escuro"?"#141920":"#ffffff"};
   return PAL;
 }
@@ -3228,20 +3278,7 @@ function pintar3D(){
   sombra(cx,cy,Math.max(12,26*esc));
   sombra(px,py,Math.max(9,18*esc));
 
-  const mistura=function(hex,f){
-    /* clareia (f>0) ou escurece (f<0) uma cor. Aceita #rrggbb e rgb(). */
-    let r,g,b;
-    if(hex[0]==="#"){
-      const n=parseInt(hex.slice(1),16);
-      r=(n>>16)&255; g=(n>>8)&255; b=n&255;
-    }else{
-      const m=hex.match(/(\d+)\D+(\d+)\D+(\d+)/);
-      r=m?+m[1]:128; g=m?+m[2]:128; b=m?+m[3]:128;
-    }
-    const alvo=f>0?255:0, k=Math.abs(f);
-    r=Math.round(r+(alvo-r)*k); g=Math.round(g+(alvo-g)*k); b=Math.round(b+(alvo-b)*k);
-    return "rgb("+r+","+g+","+b+")";
-  };
+  const mistura=tom;
 
   /* Profundidade na isometrica: quanto MAIOR x+y, mais perto do
      observador. Toda peca e desenhada em ordem crescente disso, e e o
@@ -3584,7 +3621,26 @@ function pintar(){
     ct.setLineDash([]);ct.globalAlpha=1;
   }
 
-  /* braco: espessura proporcional ao comprimento de cada elo */
+  /* ---------------------------------------------------------------
+     O BRACO
+
+     Ate aqui cada elo era um TRACO: uma linha com lineWidth grande. De
+     longe passava por braco; de perto era uma barra chapada, sem comeco
+     nem fim, e no cotovelo as duas se cruzavam sem que desse para dizer
+     qual passa por cima da outra.
+
+     Agora cada elo e um CORPO. Uma capsula -- pontas arredondadas no
+     raio do proprio mancal -- sombreada ao longo da ESPESSURA, como um
+     tubo redondo iluminado de cima. E o cotovelo ganhou ordem: o elo 2
+     e pintado depois, entao encobre o 1, que e o que acontece na
+     maquina.
+
+     As juntas deixaram de ser bolinha soltas e viraram MANCAL: carcaca
+     com aro e parafusos de flange, e no centro o disco que diz se
+     aquele eixo tem torque. Assim a pergunta "onde fica o eixo" e a
+     pergunta "esse eixo esta ligado" tem cada uma o seu sinal, no mesmo
+     lugar, sem uma apagar a outra.
+     --------------------------------------------------------------- */
   const PZ=postura();
   const t1=PZ.t1*Math.PI/180,t2=(PZ.t1+PZ.t2)*Math.PI/180;
   const c=P(L1*Math.cos(t1),L1*Math.sin(t1));
@@ -3595,49 +3651,107 @@ function pintar(){
      so para mostrar o DESVIO entre o que o firmware comanda e o que o
      encoder mede, e essa medicao nao faz parte da operacao. Um tracejado
      em volta do braco tambem se confundia com a trajetoria de solda, que
-     e outra coisa inteiramente. A vista 3D continua com o dele. */
+     e outra coisa inteiramente. A vista 3D continua com o dela. */
 
-  /* A COR DE CADA ELO DIZ SE AQUELA JUNTA TEM TORQUE.
-     Verde tem, vermelho nao. E a mesma informacao dos botoes do
-     cabecalho, no lugar onde o operador esta olhando: no braco.
-     Enquanto o barramento nao confirma, fica cinza -- "mandei" e "tem
-     torque" nao sao a mesma coisa desde que o habilita virou Modbus. */
+  /* Um elo: capsula com sombreado cilindrico no sentido da espessura.
+     A luz vem de cima-esquerda, entao a faixa clara nao fica no meio --
+     fica a um terco da borda, que e o que a vista faz parecer redondo. */
+  const capsula=function(a,b,espA,espB,base){
+    const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+    const rA=espA/2, rB=(espB||espA)/2, r=Math.max(rA,rB);
+    const px=-Math.sin(ang), py=Math.cos(ang);
+    const g=ct.createLinearGradient(a[0]-px*r,a[1]-py*r,a[0]+px*r,a[1]+py*r);
+    g.addColorStop(0.00,tom(base,-0.30));
+    g.addColorStop(0.28,tom(base, 0.32));
+    g.addColorStop(0.55,base);
+    g.addColorStop(1.00,tom(base,-0.42));
+    /* Os dois arcos sao meias-luas nas pontas; o canvas fecha os lados
+       com reta, e e essa reta que da o AFUNILAMENTO quando as duas
+       espessuras sao diferentes -- elo grosso no mancal, fino na ponta,
+       como um braco de verdade. */
+    ct.beginPath();
+    ct.arc(a[0],a[1],rA,ang+Math.PI/2,ang-Math.PI/2);
+    ct.arc(b[0],b[1],rB,ang-Math.PI/2,ang+Math.PI/2);
+    ct.closePath();
+    ct.fillStyle=g;ct.fill();
+    ct.strokeStyle=tom(base,-0.55);ct.lineWidth=1;ct.stroke();
+  };
+
+  /* A COR DO DISCO CENTRAL DIZ SE AQUELA JUNTA TEM TORQUE.
+     Verde tem, vermelho nao, cinza enquanto o barramento nao confirma --
+     "mandei" e "tem torque" deixaram de ser a mesma coisa quando o
+     habilita virou Modbus. */
   const corDoEixo=function(k){
     if(D.sonEst===1) return C.letra3;
     return ((k===1)?D.srv1:D.srv2) ? C.pronto : C.brasa;
   };
-  /* O ELO fica na cor dele. Pintar o braco inteiro de verde ou vermelho
-     tirava a leitura da POSTURA -- que e o assunto do desenho -- e punha
-     um estado de energia no lugar dela. Quem carrega essa informacao e a
-     BOLINHA da junta, logo abaixo: pequena, no ponto exato do eixo, e
-     sem apagar o resto. */
-  ct.save();ct.shadowColor=cor("--sombra");ct.shadowBlur=8;ct.shadowOffsetY=3;
-  ct.strokeStyle=C.elo1;ct.lineWidth=e1;
-  ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(c[0],c[1]);ct.stroke();
-  ct.strokeStyle=C.elo2;ct.lineWidth=e2;
-  ct.beginPath();ct.moveTo(c[0],c[1]);ct.lineTo(p[0],p[1]);ct.stroke();
+
+  /* Um mancal. O anel de foco (junta selecionada) vem por fora de tudo:
+     cor diz torque, anel diz foco -- duas perguntas, dois sinais. */
+  const mancal=function(x,y,raio,corTorque,focada){
+    const g=ct.createRadialGradient(x-raio*0.4,y-raio*0.45,raio*0.08,x,y,raio);
+    g.addColorStop(0.00,tom(C.mancal, 0.40));
+    g.addColorStop(0.62,C.mancal);
+    g.addColorStop(1.00,tom(C.mancal,-0.36));
+    ct.beginPath();ct.arc(x,y,raio,0,TAU);
+    ct.fillStyle=g;ct.fill();
+    ct.strokeStyle=tom(C.mancal,-0.52);ct.lineWidth=1.2;ct.stroke();
+    /* Parafusos do flange: so quando ha pixel para eles. Abaixo disso
+       viram sujeira e o mancal fica pior do que sem. */
+    if(raio>=11){
+      ct.fillStyle=tom(C.mancal,-0.30);
+      for(let k=0;k<6;k++){
+        const a=k*TAU/6+0.45;
+        ct.beginPath();
+        ct.arc(x+Math.cos(a)*raio*0.72,y+Math.sin(a)*raio*0.72,
+               Math.max(1,raio*0.10),0,TAU);
+        ct.fill();
+      }
+    }
+    ct.beginPath();ct.arc(x,y,raio*0.46,0,TAU);
+    ct.fillStyle=corTorque;ct.fill();
+    ct.strokeStyle=C.juntaF;ct.lineWidth=1.5;ct.stroke();
+    if(focada){
+      ct.save();
+      ct.strokeStyle=C.arco;ct.lineWidth=2.5;ct.globalAlpha=.95;
+      ct.beginPath();ct.arc(x,y,raio+4.5,0,TAU);ct.stroke();
+      ct.restore();
+    }
+  };
+
+  /* Base parafusada no chao: o braco deixa de flutuar. Nao e enfeite --
+     e ela que diz de onde a maquina nasce, e por isso o eixo 1 nunca
+     esta "no meio do nada". */
+  {
+    const rb=Math.max(14,e1*1.55);
+    const g=ct.createLinearGradient(ox-rb,oy-rb,ox+rb,oy+rb);
+    g.addColorStop(0,tom(C.base, 0.26));
+    g.addColorStop(1,tom(C.base,-0.32));
+    ct.beginPath();ct.arc(ox,oy,rb,0,TAU);
+    ct.fillStyle=g;ct.fill();
+    ct.strokeStyle=tom(C.base,-0.50);ct.lineWidth=1;ct.stroke();
+    /* Quatro furos de chumbador, nas diagonais: e o que faz a figura
+       parecer PARAFUSADA e nao pousada. */
+    ct.fillStyle=tom(C.base,-0.42);
+    for(let k=0;k<4;k++){
+      const a=Math.PI/4+k*Math.PI/2;
+      ct.beginPath();
+      ct.arc(ox+Math.cos(a)*rb*0.76,oy+Math.sin(a)*rb*0.76,
+             Math.max(1.2,rb*0.10),0,TAU);
+      ct.fill();
+    }
+  }
+
+  ct.save();
+  ct.shadowColor=cor("--sombra");ct.shadowBlur=9;ct.shadowOffsetY=3;
+  capsula([ox,oy],c,e1,e1*0.80,C.elo1);
+  capsula(c,p,e2,e2*0.70,C.elo2);
   ct.restore();
 
-  /* A junta SELECIONADA ganha um anel. Cor diz torque, anel diz foco --
-     duas perguntas diferentes, dois sinais diferentes. */
-  {
-    const alvo = (juntaSel===2) ? c : [ox,oy];
-    const raio = (juntaSel===2) ? e2*1.5 : e1*1.5;
-    ct.save();
-    ct.strokeStyle=C.arco;ct.lineWidth=2.5;ct.globalAlpha=.9;
-    ct.beginPath();ct.arc(alvo[0],alvo[1],raio,0,TAU);ct.stroke();
-    ct.restore();
-  }
-  /* nervura clara ao longo dos elos */
-  ct.strokeStyle="rgba(255,255,255,.22)";ct.lineWidth=Math.max(1,e1*.18);
-  ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(c[0],c[1]);ct.stroke();
-
-  /* A BOLINHA de cada junta e que diz se aquele eixo tem torque: verde
-     tem, vermelho nao, cinza enquanto o barramento nao confirma. */
-  ct.fillStyle=corDoEixo(1);ct.beginPath();ct.arc(ox,oy,e1*.72,0,TAU);ct.fill();
-  ct.strokeStyle=C.juntaF;ct.lineWidth=2;ct.stroke();
-  ct.fillStyle=corDoEixo(2);ct.beginPath();ct.arc(c[0],c[1],e2*.72,0,TAU);ct.fill();
-  ct.strokeStyle=C.juntaF;ct.lineWidth=1.5;ct.stroke();
+  /* O mancal do cotovelo nao pode encolher junto com o elo 2: ele
+     carrega o disco de torque, que precisa ser visto. Piso no elo 1. */
+  mancal(ox,oy,e1*0.86,corDoEixo(1),juntaSel===1);
+  mancal(c[0],c[1],Math.max(e2*0.95,e1*0.55),corDoEixo(2),juntaSel===2);
 
   /* rastro proporcional a velocidade da ponta */
   const vv=D.vPonta||0;
@@ -3649,14 +3763,28 @@ function pintar(){
     ct.moveTo(p[0],p[1]);
     ct.lineTo(p[0]-Math.cos(dir)*cauda,p[1]-Math.sin(dir)*cauda);ct.stroke();ct.globalAlpha=1;}
 
-  ct.save();
-  if(D.solda){
-    ct.shadowColor=C.quente;
-    ct.shadowBlur=16+7*Math.sin(Date.now()/90);
-    ct.fillStyle=C.quente;
-  }else{ct.fillStyle=C.arco;}
-  ct.beginPath();ct.arc(p[0],p[1],Math.max(4,e2*.6),0,TAU);ct.fill();
-  ct.restore();
+  /* A FERRAMENTA na ponta. Um circulo solto nao dizia de que lado o
+     bico aponta; agora ha um flange preso ao elo 2 e um bico saindo na
+     direcao do elo, que e para onde o cordao vai. Quando a solda esta
+     ligada o bico brilha -- e o unico ponto da figura que pulsa, para
+     nao competir com nada. */
+  {
+    const ang=Math.atan2(p[1]-c[1],p[0]-c[0]);
+    const rb=Math.max(3.5,e2*0.62);
+    ct.save();
+    /* flange: continua o elo por um pedaco curto, em metal */
+    capsula(p,[p[0]+Math.cos(ang)*rb*1.1,p[1]+Math.sin(ang)*rb*1.1],
+            rb*1.35,rb*1.05,C.mancal);
+    if(D.solda){
+      ct.shadowColor=C.quente;
+      ct.shadowBlur=16+7*Math.sin(Date.now()/90);
+      ct.fillStyle=C.quente;
+    }else{ct.fillStyle=C.arco;}
+    ct.beginPath();
+    ct.arc(p[0]+Math.cos(ang)*rb*1.1,p[1]+Math.sin(ang)*rb*1.1,rb*0.72,0,TAU);
+    ct.fill();
+    ct.restore();
+  }
 
   ct.fillStyle=C.letra3;ct.globalAlpha=.8;
   ct.font="10px ui-monospace,Menlo,monospace";ct.textAlign="left";
@@ -5546,7 +5674,49 @@ function irCfg(qual){
      duas requisicoes que nao fazem falta enquanto ninguem olha. */
   if(qual === "sistema"){ saudeAtualizar(); pintarQR(); }
   if(qual === "calib"){ calibAtualizar(); }
+  /* Em coluna larga a aba abre com TUDO a vista: sao poucos cartoes por
+     assunto, eles cabem lado a lado, e assim ninguem precisa clicar para
+     descobrir se o ajuste que procura existe. Fechar continua sendo um
+     clique, para quem quer so um assunto na frente. */
+  if(cfgEmColunas())
+    $(validas[qual]).querySelectorAll(".et").forEach(function(x){
+      if(x.querySelector(".cab .chv")) x.classList.add("aberta");});
+  cfgColunas();
   try{localStorage.setItem("cfg", qual);}catch(e){}
+}
+
+/* Quantas colunas a aba aberta usa.
+
+   Deixar so o `column-width` do CSS decidir dava uma coluna VAZIA: o
+   navegador cria quantas couberem na largura e depois reparte o
+   conteudo entre elas, entao tres cartoes numa tela larga viravam duas
+   colunas cheias e um terco de tela em branco a direita. Contando os
+   cartoes a gente pede exatamente as colunas que ha conteudo para
+   encher, e o que sobra vira margem dos dois lados em vez de um buraco
+   de um lado so. */
+function cfgColunas(){
+  const alvo={maquina:"cfgMaquina",calib:"cfgCalib",
+              encoder:"cfgEncoder",sistema:"cfgSistema"}[cfgAtual];
+  const pane=alvo&&$(alvo);
+  if(!pane)return;
+  if(!cfgEmColunas()){
+    pane.style.columnCount="";pane.style.maxWidth="";pane.style.margin="";
+    return;}
+  let n=0;
+  pane.childNodes.forEach(function(x){
+    if(x.classList&&x.classList.contains("et"))n++;});
+  /* Largura util = a do rolo menos o respiro lateral dele. Medir o
+     proprio painel nao serve: ele ja carrega o teto que esta funcao
+     acabou de por, e a conta se morderia. */
+  const larg=pane.parentElement.clientWidth-44;
+  const cabem=Math.max(1,Math.floor((larg+20)/430));
+  const col=Math.max(1,Math.min(n||1,cabem));
+  pane.style.columnCount=String(col);
+  /* Sem o teto a coluna se estica para encher a tela e a linha vira um
+     nome perdido na esquerda com o campo la na direita. Com ele o bloco
+     fica centrado e cada linha continua legivel de ponta a ponta. */
+  pane.style.maxWidth=(col*430)+"px";
+  pane.style.margin="0 auto";
 }
 
 /* Mede o cabecalho e guarda a altura numa variavel de CSS. Sem isto a
@@ -5561,7 +5731,7 @@ function medirCabecalho(){
   document.documentElement.style.setProperty("--altAbas",
     (a ? a.offsetHeight : 0) + "px");
 }
-addEventListener("resize", medirCabecalho);
+addEventListener("resize", function(){ medirCabecalho(); cfgColunas(); });
 medirCabecalho();
 
 function abrirCfg(){
@@ -5569,6 +5739,9 @@ function abrirCfg(){
   irCfg(cfgAtual);
   $("veuCfg").classList.add("on");
   $("btCfg").classList.add("on");
+  /* So agora a tela tem largura: enquanto o veu estava escondido toda
+     medida dava zero, e a conta das colunas caia sempre em uma. */
+  cfgColunas();
 }
 function fecharCfg(){
   $("veuCfg").classList.remove("on");

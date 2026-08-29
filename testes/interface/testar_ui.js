@@ -417,6 +417,47 @@ async function fecharGaveta(pag) {
   const encComGaveta = await q.locator('#eM1').isVisible();
   checar(encComGaveta,
          'Encoder: a coluna continua visivel com a gaveta de configuracao aberta');
+
+  // CONFIGURACAO EM TELA LARGA: os cartoes entram em colunas e nascem
+  // abertos. A gaveta exclusiva -- abrir uma fecha as outras -- existe
+  // por causa da coluna estreita do celular; aqui ela deixava dois
+  // tercos da tela em branco com o resto escondido atras de um clique.
+  const cfgCol = await q.evaluate(() => {
+    const pane = document.querySelector('#cfgMaquina');
+    const cartoes = [...pane.children].filter(x => x.classList.contains('et'));
+    return {
+      colunas: parseInt(getComputedStyle(pane).columnCount, 10) || 1,
+      cartoes: cartoes.length,
+      abertos: cartoes.filter(x => x.classList.contains('aberta')).length,
+      largura: pane.getBoundingClientRect().width,
+      rolo: pane.parentElement.getBoundingClientRect().width,
+    };
+  });
+  checar(cfgCol.colunas > 1 && cfgCol.colunas <= cfgCol.cartoes,
+         'Configuracao: em tela larga os cartoes entram em colunas, sem sobrar coluna vazia',
+         cfgCol.colunas + ' coluna(s) para ' + cfgCol.cartoes + ' cartao(oes)');
+  checar(cfgCol.abertos === cfgCol.cartoes,
+         'Configuracao: e nascem todos abertos -- nada escondido atras de um clique',
+         cfgCol.abertos + ' de ' + cfgCol.cartoes + ' abertos');
+  // Sem teto de largura a coluna se estica e a linha vira um nome na
+  // esquerda com o campo la longe, na direita.
+  checar(cfgCol.largura < cfgCol.rolo,
+         'Configuracao: o bloco tem teto de largura e fica centrado, em vez de esticar',
+         Math.round(cfgCol.largura) + ' px de ' + Math.round(cfgCol.rolo));
+  // E fechar continua sendo um clique: a alternancia nao pode ter virado
+  // exclusividade ao contrario.
+  await q.locator('#cfgMaquina .et .cab .chv').first().click();
+  await q.waitForTimeout(200);
+  const cfgFecha = await q.evaluate(() => {
+    const cartoes = [...document.querySelector('#cfgMaquina').children]
+      .filter(x => x.classList.contains('et'));
+    return { primeiro: cartoes[0].classList.contains('aberta'),
+             resto: cartoes.slice(1).filter(x => x.classList.contains('aberta')).length };
+  });
+  checar(!cfgFecha.primeiro && cfgFecha.resto > 0,
+         'Configuracao: fechar um cartao nao fecha os outros junto',
+         'restaram ' + cfgFecha.resto + ' aberto(s)');
+
   await fecharGaveta(q);
   const botaoEnc = await q.evaluate(() => {
     const b = document.querySelector('#abasTopo button[data-aba="enc"]');
