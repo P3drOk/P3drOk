@@ -4735,6 +4735,103 @@ static void teste_V09_desabilitar_junta_ausente() {
          "continua derrubando a maquina em FALHA");
 }
 
+// ---------------------------------------------------------------------
+// V10: habilitar SO a junta 2. O espelho do V07, e nao e redundante:
+// a junta 2 e a que anda por um caminho diferente na maquina de estados
+// (comeca no indice 1 em vez de 0), entao um erro ali passaria batido
+// num banco que so exercita a junta 1.
+// ---------------------------------------------------------------------
+static void teste_V10_habilitar_so_a_junta_2() {
+  secao("V10  Habilitar so a junta 2");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  enviarComando(CMD_SERVOS, 0);
+  rodarComWeb(120);
+
+  enviarComando(CMD_SERVOS, 1, 2);
+  rodarComWeb(150);
+  nota("habilitando so a junta 2: J1=%d J2=%d -- \"%s\"",
+       (int)J1.habilitado, (int)J2.habilitado, ultimaMensagem);
+  checar(J2.habilitado && !J1.habilitado, "V10a",
+         "a junta 2 habilita sozinha, sem depender da 1");
+
+  const long antes2 = posicaoJ2();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 2, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 2, 0); rodarComWeb(300);
+  nota("jog da junta 2: %ld -> %ld passos", antes2, posicaoJ2());
+  checar(posicaoJ2() != antes2, "V10b", "e o jog dela anda");
+
+  const long antes1 = posicaoJ1();
+  for (int i = 0; i < 5; i++) { enviarComando(CMD_JOG, 1, 1); rodarComWeb(80); }
+  enviarComando(CMD_JOG, 1, 0); rodarComWeb(300);
+  checar(posicaoJ1() == antes1, "V10c",
+         "e a junta 1, sem torque, continua parada");
+
+  enviarComando(CMD_SERVOS, 0, 2);
+  rodarComWeb(150);
+  nota("desabilitando so a junta 2: J1=%d J2=%d", (int)J1.habilitado, (int)J2.habilitado);
+  checar(!J2.habilitado, "V10d", "e desabilitar so ela tambem funciona");
+
+  // As duas, uma de cada vez, tem de dar o mesmo que pedir as duas juntas.
+  enviarComando(CMD_SERVOS, 1, 1); rodarComWeb(150);
+  enviarComando(CMD_SERVOS, 1, 2); rodarComWeb(150);
+  nota("uma de cada vez: J1=%d J2=%d, servosLigados=%d",
+       (int)J1.habilitado, (int)J2.habilitado, (int)servosLigados);
+  checar(J1.habilitado && J2.habilitado && servosLigados, "V10e",
+         "habilitadas uma de cada vez, a maquina se declara pronta");
+}
+
+// ---------------------------------------------------------------------
+// V11: a velocidade do posicionamento manual.
+//
+// Digitar um angulo e apertar o botao mandava o braco no deslocamento
+// cheio, com o operador olhando de perto e sem jeito de pedir mais
+// devagar. O botao Precisao ja existe e fica na mesma aba, logo acima
+// dos campos -- ele so nao valia aqui.
+// ---------------------------------------------------------------------
+static void teste_V11_posicionar_respeita_precisao() {
+  secao("V11  Ir para um angulo respeita o modo Precisao");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 500000);
+  g_espelharEixo = false;
+  rodarComWeb(200);
+
+  // Mede quanto o eixo anda num tempo fixo, com e sem precisao. O que
+  // importa nao e o numero e sim que um seja MUITO menor que o outro.
+  const float alvo = 30.0f;
+  auto percorrido = [&](bool precisao) -> long {
+    enviarComando(CMD_IR_HOME);
+    uint32_t t = 0;
+    while (motoresEmMovimento() && t < 30000) { rodarComWeb(40); t += 40; }
+    rodarComWeb(200);
+    enviarComando(CMD_PRECISAO, precisao ? 1 : 0);
+    rodarComWeb(40);
+    const long de = posicaoJ1();
+    webPost("/api/mover?t1=30&t2=0");
+    rodarComWeb(600);                  // sempre o MESMO tempo de relogio
+    const long quanto = labs(posicaoJ1() - de);
+    enviarComando(CMD_PARAR);
+    rodarComWeb(200);
+    return quanto;
+  };
+
+  const long rapido = percorrido(false);
+  const long lento  = percorrido(true);
+  nota("em 600 ms: deslocamento %ld passos, precisao %ld passos (alvo %.0f graus)",
+       rapido, lento, (double)alvo);
+  checar(lento > 0 && rapido > lento * 2, "V11a",
+         "com Precisao ligada o posicionamento anda bem mais devagar: "
+         "o mesmo gesto que afina o jog afina o ir-para-angulo");
+
+  // Deixa a maquina como a encontrou. reiniciarSistema() nao zera o modo
+  // precisao, e um cenario que o deixasse ligado faria os seguintes
+  // andarem a 2 graus/s -- eles esgotariam o tempo de espera e
+  // reprovariam por um motivo que nao tem nada a ver com o que testam.
+  enviarComando(CMD_PRECISAO, 0);
+  rodarComWeb(40);
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -6345,6 +6442,8 @@ int main() {
   teste_V07_um_driver_no_barramento();
   teste_V08_zero_sem_calibracao();
   teste_V09_desabilitar_junta_ausente();
+  teste_V10_habilitar_so_a_junta_2();
+  teste_V11_posicionar_respeita_precisao();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

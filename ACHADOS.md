@@ -2950,11 +2950,50 @@ O que resolve de verdade é um z-buffer por pixel, que o canvas 2D não
 tem, ou recortar cada elo pela silhueta do outro. Fica registrado com o
 diagnóstico e a captura para quem pegar.
 
+## R101 · Posicionar por ângulo ignorava o botão Precisão  ✅
+
+Reportado como "o movimento dos ângulos está muito rápido".
+
+Digitar um ângulo e apertar o botão mandava o braço sempre em `velAuto`
+(deslocamento, 12 °/s de fábrica) — com o operador olhando de perto e sem
+jeito de pedir mais devagar.
+
+O botão **Precisão** já existe e fica **na mesma aba, logo acima desses
+campos**. Ele só não valia ali. Agora vale: o mesmo gesto que deixa o jog
+fino deixa o posicionamento fino. Cenário **V11** mede os dois e exige
+que o preciso ande bem menos no mesmo tempo de relógio.
+
+Um detalhe do próprio banco apareceu junto: `reiniciarSistema()` não zera
+o modo precisão, então o cenário novo o deixava ligado e os seguintes
+andavam a 2 °/s — esgotavam a espera e reprovavam por um motivo que nada
+tinha a ver com o que testam. O cenário passou a devolver a máquina como
+a encontrou.
+
+## R102 · Habilitar só a junta 2, e o que dizer quando ela não responde  ✅
+
+Relato: "não estou conseguindo travar o eixo 2, apenas um deles".
+
+O caminho da junta 2 é diferente do da junta 1 na máquina de estados do
+habilita — ela começa no índice 1 em vez de 0 — e o banco só exercitava a
+junta 1. O cenário **V10** fechou esse buraco: habilita sozinha, o jog
+dela anda, o da outra não, desabilita sozinha, e habilitadas uma de cada
+vez a máquina se declara pronta. **Passou de primeira**, então o firmware
+não é o problema.
+
+O que sobra é o driver não responder naquele endereço Modbus — segundo
+driver ainda fora do barramento, ou com o endereço de fábrica igual ao do
+primeiro. A varredura da bancada (`teste_rs485`, modo 3) achou **um só
+escravo, no endereço 1**, o que é consistente.
+
+Dizer só "não consegui habilitar" mandava o operador adivinhar. As duas
+mensagens passaram a apontar o lugar: o endereço do driver, e onde
+mudá-lo (**Ajustes → Encoder → Endereço do driver**).
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **397 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **403 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **233 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

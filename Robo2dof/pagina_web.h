@@ -1060,6 +1060,10 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="pq2" id="qMover2"></div>
             <button class="b mini" id="btMover">Levar as duas</button>
             <div class="pq2" id="qMover"></div>
+            <div class="nt">Vai na velocidade de <b>deslocamento</b>. Com
+            <b>Precisao</b> ligada (botao acima) ele anda fino, para chegar
+            perto da peca sem susto. A velocidade se muda em <b>Ajustes &rarr;
+            Velocidades</b>.</div>
 
             <h4>Atalhos</h4>
             <button class="b ok" id="btGravar">Gravar ponto na posicao atual</button>

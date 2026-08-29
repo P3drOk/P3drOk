@@ -198,7 +198,12 @@ bool servosSupervisionar(bool& habilitouAgora) {
     if (pedidoEraLigar) {
       // Habilitar que falhou e so um comando que nao pegou: a junta
       // continua sem torque, que e o estado seguro. Diz e segue.
-      definirMensagem("Nao consegui habilitar: %s", motivo);
+      // Dizer so "nao consegui" manda o operador adivinhar. O caso
+      // comum e o driver nao estar respondendo NAQUELE endereco Modbus
+      // -- segundo driver ainda na caixa, ou com o endereco de fabrica
+      // igual ao do primeiro. E isso que a frase tem de apontar.
+      definirMensagem("Nao consegui habilitar: %s. Confira se esse driver "
+                      "responde nesse endereco (Ajustes, Encoder)", motivo);
       return false;
     }
     // Desabilitar que falhou tem duas leituras, e so uma e grave.
@@ -208,9 +213,9 @@ bool servosSupervisionar(bool& habilitouAgora) {
     // de um motor ausente -- e em FALHA todo comando e recusado,
     // inclusive levar o braco ao zero com o eixo que existe.
     if (!cortePerdidoComTorque) {
-      definirMensagem("Sem resposta ao desabilitar: %s. "
-                      "Esse driver nunca foi energizado -- confira se ele "
-                      "esta no barramento", motivo);
+      definirMensagem("Sem resposta ao desabilitar: %s. Esse driver nunca foi "
+                      "energizado -- confira o endereco dele em Ajustes, "
+                      "Encoder, Endereco do driver", motivo);
       return false;
     }
     // A junta TINHA torque e nao respondeu ao corte. Agora sim: o eixo

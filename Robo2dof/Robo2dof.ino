@@ -92,7 +92,15 @@ static bool irParaPassos(long p1, long p2, bool exigeCalibracao = true) {
     return false;
   }
 
-  moverCoordenado(p1, p2, velAuto);
+  // A velocidade do posicionamento manual respeita o modo PRECISAO.
+  //
+  // Antes ia sempre em velAuto: digitar um angulo e apertar o botao
+  // mandava o braco no deslocamento cheio, com o operador olhando de
+  // perto e sem jeito de pedir mais devagar. O botao Precisao ja existe
+  // e fica logo acima destes campos, na mesma aba -- ele so nao valia
+  // aqui. Agora vale: o mesmo gesto que deixa o jog fino deixa o
+  // posicionamento fino.
+  moverCoordenado(p1, p2, modoPrecisao ? velPrecisao : velAuto);
   // Movimento novo, assentamento novo: sem isto o "ja terminei" do
   // movimento anterior valeria para este, e a correcao rodaria uma vez
   // so na vida da maquina.
