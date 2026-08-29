@@ -3158,12 +3158,57 @@ Três guardas do banco pegaram defeitos meus nesta rodada — id duplicado
 (`btRefer` em dois lugares), botão sem ação, e o botão de levar saindo
 calado quando o alvo estava vazio.
 
+## R108 · O erro do encoder saiu da tela  ✅
+
+O painel mostrava três números por junta: **comandado**, **medido** e
+**erro**. Numa máquina em montagem a contagem de pulsos do firmware anda
+sozinha, e o painel chegou a mostrar:
+
+```
+JUNTA 1 COMANDADO   1986,79°
+JUNTA 1 MEDIDO      −230,05°
+JUNTA 1 ERRO      +2216,85°
+```
+
+Nenhum dos três ajudava a operar, e **o do meio — o único que descreve o
+braço de verdade — ficava perdido entre dois que não descrevem nada**.
+O gráfico do erro, a linha "Avisos de desvio" na Saúde e a legenda do
+desvio saíram junto.
+
+Ficou o **medido**: onde a junta está. O firmware continua calculando o
+erro internamente — é dele que vivem o assentamento e o vigia de
+travamento —, ele só deixou de disputar espaço na tela.
+
+## R109 · A cor sai do braço e vai para a bolinha da junta  ✅
+
+Pintar o braço inteiro de verde ou vermelho tirava a leitura da
+**postura** — que é o assunto do desenho — e punha um estado de energia
+no lugar dela. O elo voltou à cor dele; quem carrega o torque agora é a
+**bolinha** de cada junta: pequena, no ponto exato do eixo, e sem apagar
+o resto. O anel da junta selecionada continua marcando o foco.
+
+## R110 · A configuração ganhou a gramática da Saúde da Máquina  ✅
+
+Ela já ocupava a tela; faltava o conteúdo. Cada ajuste virou uma
+**linha**: nome à esquerda, valor à direita, alternadas para o olho não
+se perder — exatamente como a Saúde da Máquina. A diferença é que aqui o
+valor da direita **se edita**. Mesma gramática visual, então quem sabe
+ler uma sabe ler a outra.
+
+Títulos de grupo separam as linhas em assuntos; botões e notas continuam
+soltos, porque não são valores, são ações.
+
+Um defeito de ordem de CSS apareceu: a regra que esconde o joystick no
+computador estava **antes** da que o abre. Mesma especificidade, ganha a
+última — e a última era a errada. O joystick continuava na tela apesar da
+regra existir.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **418 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **239 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **240 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

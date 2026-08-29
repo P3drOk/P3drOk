@@ -182,7 +182,7 @@ async function fecharGaveta(pag) {
   for (const [aba, alvo, nome] of [
     ['prog',   '#e2',      'Programa'],
     ['arq',    '#sdBar',   'Arquivos'],
-    ['enc',    '#cvEnc',   'Encoder'],
+    ['enc',    '#eM1',     'Encoder'],
     ['mesa',   '#cv',      'Mesa'],
   ]) {
     await p.locator('#abas button[data-aba="' + aba + '"]').click();
@@ -407,14 +407,14 @@ async function fecharGaveta(pag) {
   for (const aba of ['mover', 'prog', 'arq']) {
     await q.locator('#abasTopo button[data-aba="' + aba + '"]').click();
     await q.waitForTimeout(220);
-    const vis = await q.locator('#cvEnc').isVisible();
+    const vis = await q.locator('#eM1').isVisible();
     checar(vis, 'Encoder: a coluna continua aberta com a aba ' + aba + ' escolhida');
   }
   // E continua aberta tambem com a gaveta de configuracao na tela: quem
   // esta mexendo no registrador Modbus e exatamente quem precisa ver a
   // leitura reagir.
   await abrirGaveta(q);
-  const encComGaveta = await q.locator('#cvEnc').isVisible();
+  const encComGaveta = await q.locator('#eM1').isVisible();
   checar(encComGaveta,
          'Encoder: a coluna continua visivel com a gaveta de configuracao aberta');
   await fecharGaveta(q);
@@ -517,14 +517,19 @@ async function fecharGaveta(pag) {
          'Painel: sem "?" no cabecalho, e as notas da tela de trabalho a mostra',
          JSON.stringify(semAjudaNoTopo));
 
-  // Os controles continuam todos la.
+  // Os controles continuam todos la -- menos o joystick, que sai DE
+  // PROPOSITO no computador: as setas de passo fazem o mesmo com mais
+  // precisao e ele so ocupava o espaco dos controles que importam.
   const controles = await q.evaluate(() => ({
     joy: !!document.getElementById('joy').offsetParent,
     prec: !!document.getElementById('btPrec').offsetParent,
     jb: document.querySelectorAll('#pnMover .jb').length,
+    passo: document.querySelectorAll('#segPasso button').length,
+    modo: document.querySelectorAll('#segModo button').length,
   }));
-  checar(controles.joy && controles.prec && controles.jb === 4,
-         'Painel: e os controles continuam todos la',
+  checar(!controles.joy && controles.prec && controles.jb === 4 &&
+         controles.passo === 4 && controles.modo === 2,
+         'Painel: os controles continuam la, e o joystick sai no computador',
          controles.jb + ' botoes de passo, joystick e precisao visiveis');
 
   // A tira de estado e UMA peca. Antes eram cinco pares soltos, e no
@@ -1148,20 +1153,27 @@ async function fecharGaveta(pag) {
     { data: { j1min: -95, j1max: 95, j2min: -120, j2max: 30 } });
   await t.waitForTimeout(400);
 
-  // Encoder: leitura ao vivo, grafico do erro e configuracao do registrador.
+  // Encoder: leitura ao vivo e configuracao do registrador.
+  //
+  // O comandado e o erro sairam da tela. O comandado e a contagem de
+  // pulsos do firmware, que numa maquina em montagem anda sozinha: o
+  // painel chegou a mostrar "comandado 1986,79 / medido -230,05 / erro
+  // +2216,85". Nenhum dos tres ajudava a operar, e o do meio -- o unico
+  // que descreve o braco -- ficava perdido entre dois que nao descrevem
+  // nada. Ficou o MEDIDO, que e onde a junta esta.
   await t.locator('#abas button[data-aba="enc"]').click();
   await t.waitForTimeout(900);
   const enc = await t.evaluate(() => ({
-    cmd:  document.getElementById('eC1').textContent.trim(),
     med:  document.getElementById('eM1').textContent.trim(),
-    err:  document.getElementById('eE1').textContent.trim(),
     med2: document.getElementById('eM2').textContent.trim(),
     sb:   document.getElementById('sbEnc').textContent.trim(),
-    w:    document.getElementById('cvEnc').width,
+    temErro: !!(document.getElementById('eE1') || document.getElementById('eC1')),
   }));
-  checar(/°$/.test(enc.cmd) && /°$/.test(enc.med) && /°$/.test(enc.err),
-         'Encoder: mostra comandado, medido e erro em graus da junta',
-         enc.cmd + ' | ' + enc.med + ' | ' + enc.err);
+  checar(/°$/.test(enc.med),
+         'Encoder: mostra o angulo MEDIDO da junta, em graus', enc.med);
+  checar(!enc.temErro,
+         'Encoder: o comandado e o erro sairam -- so o angulo que descreve o braco fica',
+         enc.temErro ? 'ainda ha celula de erro/comandado' : 'so o medido');
   // Um driver so ligado e o caso normal de bancada: a junta 2 nao esta
   // "com defeito", ela nao esta ligada. Contar isso como falha manda o
   // operador cacar problema que nao existe.
@@ -1188,8 +1200,15 @@ async function fecharGaveta(pag) {
   await t.request.post(BASE + '/teste/encoder', { data: { reg2: 0, motivo2: 1 } });
   await t.waitForTimeout(700);
   checar(enc.sb === 'lendo', 'Encoder: o cabecalho da aba mostra o estado', enc.sb);
-  checar(enc.w > 100, 'Encoder: o grafico e dimensionado ao abrir a aba',
-         enc.w + ' px');
+  /* O grafico do erro saiu junto com o erro. O grafico da ANALISE
+     DETALHADA continua, e e ele que precisa ser dimensionado ao abrir a
+     aba -- canvas com largura zero desenha no vazio. */
+  const larguraPos = await t.evaluate(() => {
+    const c = document.getElementById('cvPos');
+    return c ? c.width : 0;
+  });
+  checar(larguraPos > 100, 'Encoder: o grafico da analise e dimensionado ao abrir a aba',
+         larguraPos + ' px');
 
   // ---- a gaveta abre enxuta ----
   // A queixa era de proporcao: entre um campo e o proximo cabia uma

@@ -165,11 +165,6 @@ button,input{font:inherit;color:inherit}
    estado -- verde tem torque, cinza nao, ambar esperando o barramento
    responder. Nao e o PARAR e nao pode ser confundido com ele. */
 .ch.indo{opacity:.55;animation:pi .7s infinite}
-/* O joystick sai no COMPUTADOR: as setas de passo fazem o mesmo com
-   mais precisao, e ele so ocupava o espaco dos controles que importam.
-   No celular ele fica -- ali nao ha setas confortaveis, e arrastar o
-   polegar continua sendo o jeito natural de levar o braco. */
-@media(min-width:761px){ .joyCx,.joyLe{display:none} }
 /* Posicao atual, grande o bastante para se ler de longe: e o numero que
    o operador confere antes de mandar o proximo comando. */
 .agora{font-family:var(--mono);font-size:15px;letter-spacing:.02em;
@@ -180,7 +175,7 @@ button,input{font:inherit;color:inherit}
 .irAng #irDe{font-family:var(--mono);font-size:12px;color:var(--letra2);
  min-width:58px;text-align:right}
 .irAng .seta{color:var(--letra3)}
-.irAng input{flex:1;min-width:0}
+.irAng input{flex:1;min-width:70px;max-width:none;width:auto;text-align:right}
 .motores{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
 .motor{flex:0 0 auto;border:none;font-family:var(--mono);font-size:12px;font-weight:700;
  letter-spacing:.08em;padding:12px 14px;border-radius:4px;cursor:pointer;color:#fff;
@@ -542,8 +537,37 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 @media(min-width:900px){
   .cfgRol{padding:16px 28px 24px}
   .cfgRol .dentro{max-width:1100px}
-  .cfgRol .cp{max-width:560px}
 }
+
+/* AS CONFIGURACOES EM LINHAS, COMO A SAUDE DA MAQUINA.
+   La cada linha responde uma pergunta -- nome a esquerda, valor a
+   direita, alternadas para o olho nao se perder. Aqui e a mesma
+   pergunta com uma diferenca: o valor da direita se EDITA. Mesma
+   gramatica visual, entao quem sabe ler uma sabe ler a outra. */
+.cfgRol .cp{display:flex;align-items:center;gap:10px;margin:0;
+ padding:9px 12px;border-bottom:1px solid var(--linha);
+ background:var(--face)}
+.cfgRol .cp:nth-child(even){background:var(--painel)}
+.cfgRol .cp label{flex:1;font-size:12.5px;color:var(--letra)}
+.cfgRol .cp input{width:110px;max-width:34%}
+.cfgRol .cp .un{width:38px}
+/* A chave tambem vira linha: um interruptor e uma configuracao como
+   qualquer outra, e sair da grade fazia parecer outra coisa. */
+.cfgRol .tr{display:flex;align-items:center;gap:10px;margin:0;
+ padding:9px 12px;border-bottom:1px solid var(--linha);
+ background:var(--face);flex-direction:row-reverse;justify-content:flex-end}
+.cfgRol .tr span{flex:1;font-size:12.5px;color:var(--letra)}
+.cfgRol .tr:nth-child(even){background:var(--painel)}
+/* Titulo de grupo separa as linhas em assuntos, como as faixas da
+   Saude. */
+.cfgRol h4{margin:18px 0 0;padding:8px 12px;font-size:10px;
+ letter-spacing:.14em;text-transform:uppercase;color:var(--letra3);
+ font-family:var(--mono);border-bottom:1px solid var(--linha2);
+ background:none}
+.cfgRol h4:first-child{margin-top:0}
+/* Botoes e notas continuam soltos: nao sao valores, sao acoes. */
+.cfgRol .b{margin-top:10px}
+.cfgRol .nt{padding:8px 12px 0}
 .cfgTopo{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;
  border-bottom:1px solid var(--linha)}
 .cfgTopo h2{flex:1;margin:0}
@@ -571,6 +595,13 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 
 /* ---- JOYSTICK ---- */
 .joyCx{display:grid;place-items:center;padding:6px 0 12px}
+/* O joystick sai no COMPUTADOR: as setas de passo fazem o mesmo com
+   mais precisao, e ele so ocupava o espaco dos controles que importam.
+   No celular ele fica -- ali nao ha setas confortaveis, e arrastar o
+   polegar continua sendo o jeito natural de levar o braco.
+   Esta regra vem DEPOIS da que abre o joystick: com a mesma
+   especificidade, quem ganha e a ultima -- e antes ela nao ganhava. */
+
 .joy{position:relative;width:min(74vw,300px);aspect-ratio:1;touch-action:none;
  user-select:none;-webkit-user-select:none}
 .joyBase{position:absolute;inset:0;border-radius:50%;background:var(--mesa);
@@ -612,6 +643,13 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
  font-family:var(--mono);font-size:11px;color:var(--letra2);
  font-variant-numeric:tabular-nums}
 .joyLe b{color:var(--letra);font-weight:600}
+/* O joystick sai no COMPUTADOR: as setas de passo fazem o mesmo com
+   mais precisao, e ele so ocupava o espaco dos controles que importam.
+   No celular ele fica -- ali nao ha setas confortaveis, e arrastar o
+   polegar continua sendo o jeito natural de levar o braco.
+   Esta regra vem DEPOIS das que abrem o joystick: com a mesma
+   especificidade quem ganha e a ultima, e antes ela nao ganhava. */
+@media(min-width:761px){ .joyCx,.joyLe{display:none} }
 
 /* ---- CARTAO SD ---- */
 .sdBar{display:flex;align-items:center;gap:9px;background:var(--painel);
@@ -848,19 +886,19 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
                 <span class="rot">junta 2</span></div>
             </div>
             
+            <!-- O ERRO SAIU DA TELA.
+                 Ele era a diferenca entre o angulo COMANDADO (a contagem
+                 de pulsos do firmware) e o MEDIDO pelo encoder. Numa
+                 maquina em montagem essa contagem anda sozinha: o painel
+                 chegou a mostrar "comandado 1986,79 graus, medido
+                 -230,05, erro +2216,85". Nenhum desses tres numeros
+                 ajudava a operar, e o do meio -- o unico que descreve o
+                 braco de verdade -- ficava perdido entre dois que nao
+                 descrevem nada.
+                 O que sobra e o que importa: onde a junta ESTA. -->
             <div class="encGrade">
-              <div class="encCel"><span class="rot">junta 1 comandado</span><b id="eC1">--</b></div>
-              <div class="encCel"><span class="rot">junta 1 medido</span><b id="eM1">--</b></div>
-              <div class="encCel err"><span class="rot">junta 1 erro</span><b id="eE1">--</b></div>
-              <div class="encCel"><span class="rot">junta 2 comandado</span><b id="eC2">--</b></div>
-              <div class="encCel"><span class="rot">junta 2 medido</span><b id="eM2">--</b></div>
-              <div class="encCel err"><span class="rot">junta 2 erro</span><b id="eE2">--</b></div>
-            </div>
-            <div class="grafico"><canvas id="cvEnc"></canvas>
-              <div class="legenda">
-                <div class="lg g1"><i></i>erro junta 1</div>
-                <div class="lg g2"><i></i>erro junta 2</div>
-              </div>
+              <div class="encCel"><span class="rot">junta 1</span><b id="eM1">--</b></div>
+              <div class="encCel"><span class="rot">junta 2</span><b id="eM2">--</b></div>
             </div>
             
           </div>
@@ -1011,7 +1049,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
         <div class="et aberta">
           <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cruz"/></svg></div>
             <div class="tx"><div class="tt">Comando manual</div>
-            <span class="sb" id="sbMover">joystick das duas juntas</span></div></div>
+            <span class="sb" id="sbMover">passo, angulo e referencia</span></div></div>
           <div class="dentro">
             <div class="joyCx">
               <div class="joy" id="joy">
@@ -2763,7 +2801,6 @@ function saudeAtualizar(){
       ["Encoder junta 1",        enc(j.enc1)],
       ["Encoder junta 2",        enc(j.enc2)],
       ["Travamentos",            String(j.trav)],
-      ["Avisos de desvio",       String(j.alerta)],
       ["Alarme dos drivers",     (j.alarme1||j.alarme2)?"SIM":"nenhum"],
       ["Botao de emergencia",    j.estop?"instalado":"nao instalado"],
       ["Botao da ponteira",      j.aprBotao?"instalado":"nao instalado"],
@@ -3578,10 +3615,15 @@ function pintar(){
     if(D.sonEst===1) return C.letra3;
     return ((k===1)?D.srv1:D.srv2) ? C.pronto : C.brasa;
   };
+  /* O ELO fica na cor dele. Pintar o braco inteiro de verde ou vermelho
+     tirava a leitura da POSTURA -- que e o assunto do desenho -- e punha
+     um estado de energia no lugar dela. Quem carrega essa informacao e a
+     BOLINHA da junta, logo abaixo: pequena, no ponto exato do eixo, e
+     sem apagar o resto. */
   ct.save();ct.shadowColor=cor("--sombra");ct.shadowBlur=8;ct.shadowOffsetY=3;
-  ct.strokeStyle=corDoEixo(1);ct.lineWidth=e1;
+  ct.strokeStyle=C.elo1;ct.lineWidth=e1;
   ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(c[0],c[1]);ct.stroke();
-  ct.strokeStyle=corDoEixo(2);ct.lineWidth=e2;
+  ct.strokeStyle=C.elo2;ct.lineWidth=e2;
   ct.beginPath();ct.moveTo(c[0],c[1]);ct.lineTo(p[0],p[1]);ct.stroke();
   ct.restore();
 
@@ -3599,10 +3641,12 @@ function pintar(){
   ct.strokeStyle="rgba(255,255,255,.22)";ct.lineWidth=Math.max(1,e1*.18);
   ct.beginPath();ct.moveTo(ox,oy);ct.lineTo(c[0],c[1]);ct.stroke();
 
-  ct.fillStyle=C.juntaF;ct.beginPath();ct.arc(ox,oy,e1*.72,0,TAU);ct.fill();
-  ct.strokeStyle=C.arco;ct.lineWidth=2;ct.stroke();
-  ct.fillStyle=C.juntaF;ct.beginPath();ct.arc(c[0],c[1],e2*.72,0,TAU);ct.fill();
-  ct.strokeStyle=C.elo1;ct.lineWidth=1.5;ct.stroke();
+  /* A BOLINHA de cada junta e que diz se aquele eixo tem torque: verde
+     tem, vermelho nao, cinza enquanto o barramento nao confirma. */
+  ct.fillStyle=corDoEixo(1);ct.beginPath();ct.arc(ox,oy,e1*.72,0,TAU);ct.fill();
+  ct.strokeStyle=C.juntaF;ct.lineWidth=2;ct.stroke();
+  ct.fillStyle=corDoEixo(2);ct.beginPath();ct.arc(c[0],c[1],e2*.72,0,TAU);ct.fill();
+  ct.strokeStyle=C.juntaF;ct.lineWidth=1.5;ct.stroke();
 
   /* rastro proporcional a velocidade da ponta */
   const vv=D.vPonta||0;
@@ -4700,14 +4744,8 @@ function encAplicar(d){
   const j=d.j||[];
   [0,1].forEach(function(i){
     const L=j[i]||{};
-    const cmd=(i===0)?d.t1:d.t2;
-    encCelula("eC"+(i+1),cmd.toFixed(2)+"°");
     if(L.ok){
       encCelula("eM"+(i+1),L.graus.toFixed(2)+"°");
-      /* Meio grau ja e mais do que qualquer folga sadia num braco de
-         solda: acima disso a celula fica vermelha. */
-      encCelula("eE"+(i+1),(L.erro>=0?"+":"")+L.erro.toFixed(2)+"°",
-                Math.abs(L.erro)>0.5);
       encHist[i].push(L.erro);
     }else{
       /* Registrador 0 quer dizer "esta junta nao foi ligada ainda".
@@ -4717,7 +4755,6 @@ function encAplicar(d){
       encCelula("eM"+(i+1), !d.ativo?"desligado"
                           : !reg?"nao ligada"
                           : MOTIVO[L.motivo||1]);
-      encCelula("eE"+(i+1),"--",false);
       /* Sem leitura o historico continua andando com zero, senao o
          grafico mente dizendo que estava tudo bem no buraco. */
       if(encHist[i].length)encHist[i].push(0);
@@ -4775,7 +4812,7 @@ function encAplicar(d){
     $("encId1").value=d.id1;$("encReg1").value=d.reg1;$("encCv1").value=d.cv1;
     $("encId2").value=d.id2;$("encReg2").value=d.reg2;$("encCv2").value=d.cv2;
   }
-  encMedir();encPintar();posPintar();analisar(d);corrAplicar(d);zeroAplicar(d);
+  encMedir();posPintar();analisar(d);corrAplicar(d);zeroAplicar(d);
   rodaPintar(0,d);rodaPintar(1,d);
 }
 
@@ -5248,7 +5285,7 @@ function aplicar(d){
   joy.classList.toggle("bloq",!!bloqJog);
   $("joyMotivo").textContent=bloqJog;
   $("sbMover").textContent=bloqJog||(instalacao?"modo de instalacao · jog livre":
-    (d.precisao?"precisao · joystick":"joystick das duas juntas"));
+    (d.precisao?"precisao ligada":"passo, angulo e referencia"));
   if(!bloqJog&&instalacao){
     $("joyMotivo").textContent=
       "Modo de instalacao: sem calibracao nao ha limite de curso. "+
@@ -5369,7 +5406,7 @@ const EN={
  "Interrompidas no meio":"Interrupted midway","Arco aberto, no total":"Total arc time",
  "Desde a manutencao":"Since last maintenance",
  "Encoder junta 1":"Joint 1 encoder","Encoder junta 2":"Joint 2 encoder",
- "Travamentos":"Stalls","Avisos de desvio":"Deviation warnings",
+ "Travamentos":"Stalls",
  "Alarme dos drivers":"Drive alarms","Botao de emergencia":"Emergency stop",
  "Botao da ponteira":"Torch button","Cartao":"Card","Memoria livre":"Free memory",
  "Programa na particao":"Program in partition",
