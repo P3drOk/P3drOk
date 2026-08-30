@@ -27,6 +27,16 @@ BANCO = RAIZ / "testes" / "banco.cpp"
 # Rotas que o navegador pede sozinho, sem aparecer em nenhum fetch().
 IMPLICITAS = {"/", "/manifest.webmanifest", "/icone.svg"}
 
+# Rotas que o firmware serve DE PROPOSITO sem nenhum botao no painel.
+# Sem esta lista elas viram um aviso solto na compilacao, e aviso que
+# ninguem sabe explicar acaba ignorado -- inclusive quando for de verdade.
+# O banco de firmware continua exercitando cada uma delas.
+SEM_PAGINA = {
+    "/api/mover_xy":
+        "o botao IR saiu do painel a pedido de quem opera (tocar na mesa "
+        "nao move mais o braco); a rota fica para uso externo",
+}
+
 
 def rotas_registradas(texto):
     return {m.group(1) for m in re.finditer(r'server\.on\(\s*"([^"]+)"', texto)}
@@ -88,12 +98,23 @@ def main():
         return 1
 
     mudas = sorted(chamadas - registradas)
-    ociosas = sorted(registradas - chamadas - IMPLICITAS)
+    ociosas = sorted(registradas - chamadas - IMPLICITAS - set(SEM_PAGINA))
 
     for r in mudas:
         print("ERRO  a pagina chama %s, que o firmware nao registra" % r)
     for r in ociosas:
         print("aviso rota %s registrada e nunca chamada pela pagina" % r)
+    # Uma lista que envelhece calada nao serve: se a pagina voltar a
+    # chamar a rota, o motivo aqui deixou de valer e tem de sair.
+    for r in sorted(set(SEM_PAGINA) & chamadas):
+        print("ERRO  %s esta em SEM_PAGINA mas a pagina chama: tire da lista"
+              % r)
+        mudas.append(r)
+    for r in sorted(set(SEM_PAGINA) - registradas):
+        print("ERRO  %s esta em SEM_PAGINA mas o firmware nao registra" % r)
+        mudas.append(r)
+    for r, porque in sorted(SEM_PAGINA.items()):
+        print("sem botao no painel, de proposito: %s -- %s" % (r, porque))
 
     ruim = 1 if mudas else 0
     if BANCO.exists():

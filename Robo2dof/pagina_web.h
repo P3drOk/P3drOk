@@ -272,11 +272,9 @@ button,input{font:inherit;color:inherit}
 .zb:hover{color:var(--letra);border-color:var(--linha2)}
 .zb.pq{font-family:var(--mono);font-size:8.5px;letter-spacing:.04em}
 .zb.on{background:var(--arco);border-color:var(--arco);color:#fff}
-.tela canvas.des{cursor:crosshair;touch-action:none}
 .barraDes{position:absolute;left:12px;right:12px;bottom:12px;display:none;
  align-items:center;gap:8px;flex-wrap:wrap;background:var(--painel);opacity:.97;
  border:1px solid var(--linha);border-radius:5px;padding:8px 10px}
-body[data-des="1"] #barraDes{display:flex}
 .barraDes .cnt{flex:1;min-width:120px;font-family:var(--mono);font-size:9.5px;
  letter-spacing:.06em;color:var(--letra2);text-transform:uppercase}
 .barraDes .b{margin:0;width:auto;flex:0 0 auto;white-space:nowrap}
@@ -1169,16 +1167,8 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <button class="zb" id="zMais" title="Aproximar">+</button>
           <button class="zb" id="zMenos" title="Afastar">&minus;</button>
           <button class="zb pq" id="zAuto" title="Enquadrar o braco">FIT</button>
-          <button class="zb pq" id="zIr" title="Tocar na mesa leva a PONTA ate la">IR</button>
-          <button class="zb pq" id="zDes" title="Desenhar o caminho com o dedo">DES</button>
           <button class="zb pq" id="zTema" title="Alternar tema">TEMA</button>
           <button class="zb pq" id="z3D" title="Alternar vista 2D / 3D">3D</button>
-        </div>
-        <div class="barraDes" id="barraDes">
-          <span class="cnt" id="dCnt">risque com o dedo sobre a mesa</span>
-          <button class="b mini" id="dSolda">cordao: nao</button>
-          <button class="b mini" id="dLimpar">Refazer</button>
-          <button class="b pri mini" id="dEnviar">Virar programa</button>
         </div>
         <div class="barraDes" id="barraPos">
           <span class="cnt" id="pCnt">arraste o desenho para posicionar</span>
@@ -1399,9 +1389,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <span class="sb" id="sbTraj">nenhuma gravada</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
             
-            <div class="nt"><b>Sem mover o braco:</b> na mesa de tracado, o botao
-            <b>DES</b> deixa riscar o caminho com o dedo em cima do desenho. O
-            traco vira programa de pontos na hora.</div>
             <div class="gravBox" id="gravBox">
               <div class="pt"></div>
               <div class="tx"><b id="gravTit">--</b><br><span id="gravMsg">--</span></div>
@@ -3135,10 +3122,6 @@ $("z3D").onclick =function(){
   vista3D=!vista3D;
   $("z3D").textContent = vista3D?"2D":"3D";
   $("z3D").classList.toggle("on",vista3D);
-  /* Desenhar com o dedo so existe na vista de cima: um traco desenhado
-     em perspectiva nao tem onde cair na mesa. Sair da 2D desliga o modo
-     em vez de deixar o operador riscando no vazio. */
-  if(vista3D&&desOn)$("zDes").onclick();
   try{localStorage.setItem("vista3d",vista3D?"1":"0");}catch(e){}
 };
 
@@ -3998,18 +3981,6 @@ function pintar(){
     ct.restore();
   }
 
-  /* traco a mao livre em andamento e os pontos que ele vai virar */
-  if(desOn&&tracado.length>1){
-    ct.strokeStyle=C.arco;ct.lineWidth=2;ct.globalAlpha=.8;
-    ct.beginPath();
-    tracado.forEach(function(q,i){const a=P(q[0],q[1]);
-      if(i)ct.lineTo(a[0],a[1]);else ct.moveTo(a[0],a[1]);});
-    ct.stroke();ct.globalAlpha=1;
-    ct.fillStyle=desSolda?C.quente:C.arco;
-    resumo.forEach(function(q){const a=P(q[0],q[1]);
-      ct.beginPath();ct.arc(a[0],a[1],3.5,0,TAU);ct.fill();});
-  }
-
   /* barra de escala: a prova visual de que o desenho esta em mm reais */
   const larg=passo*esc;
   const bx=w-larg-18, by=h-18;
@@ -4053,51 +4024,30 @@ function juntaNoPonto(q){
   return (d2<=d1) ? 2 : 1;      /* empate vai para o antebraco, que fica por cima */
 }
 
-/* LEVAR A PONTA COM UM TOQUE PRECISA SER PEDIDO.
-   Era o comportamento padrao da mesa: tocar em qualquer lugar vazio
-   mandava o robo para la. Quem esta olhando o desenho toca nele o tempo
-   todo -- para conferir uma cota, para escolher o eixo, para dar zoom --
-   e cada toque desses virava um movimento que ninguem pediu. Agora ha o
-   botao IR: ligado, o toque comanda; desligado, o desenho e so desenho. */
-let irOn=false;
-$("zIr").onclick=function(){
-  irOn=!irOn;
-  $("zIr").classList.toggle("on",irOn);
-  if(irOn&&desOn)desModo(false);
-};
-
+/* A MESA E SO DESENHO.
+   Tocar nela nunca manda o braco andar. Existiu aqui um botao IR que,
+   ligado, mandava a ponta ate o ponto tocado -- e um botao DES, que
+   deixava riscar o caminho com o dedo. Os dois sairam a pedido de quem
+   opera: o toque na mesa agora tem um proposito so, escolher o eixo, e
+   o caminho se ensina pelos pontos gravados ou importando um DXF.
+   Levar o braco a um lugar se faz pelas setas e por "ir para um angulo",
+   que dizem para onde vao antes de ir. */
 cv.addEventListener("click",function(e){
-  /* No modo desenho o toque e traco; no modo posicionar e arraste.
-     Nem um nem outro manda o braco para o ponto tocado. */
-  if(desOn||posOn)return;
-  const q=mmDe(e);
-
-  /* Tocar SOBRE o braco seleciona aquela junta -- sempre, com IR ligado
-     ou nao: escolher o eixo nunca deve mandar o robo andar. */
-  const j=juntaNoPonto(q);
-  if(j){
-    juntaSel=j;
-    const sel=$("selJunta"); if(sel) sel.value=String(j);
-    pintar();
-    return;
-  }
-  if(!irOn)return;
-  post("/api/mover_xy?x="+q[0].toFixed(1)+"&y="+q[1].toFixed(1));
+  /* No modo posicionar o toque e arraste do desenho importado. */
+  if(posOn)return;
+  /* Tocar SOBRE o braco seleciona aquela junta. E a unica coisa que um
+     toque na mesa faz -- e escolher o eixo nunca move o robo. */
+  const j=juntaNoPonto(mmDe(e));
+  if(!j)return;
+  juntaSel=j;
+  const sel=$("selJunta"); if(sel) sel.value=String(j);
+  pintar();
 });
 
-/* =====================================================================
-   Desenhar sobre a mesa.
-   O dedo risca o caminho em cima do desenho do braco; o traco e
-   simplificado aqui (Douglas-Peucker) e vira o programa de pontos no
-   firmware. Dali em diante e um programa como qualquer outro: da para
-   ensaiar, repetir, editar ponto a ponto e salvar no cartao.
-   ===================================================================== */
 /* MAX_PONTOS do firmware. Chega no /api/status: deixar o numero fixo
    aqui fazia a pagina simplificar para um limite que o robo nao tem
    mais. Ate a primeira resposta vale o valor conservador. */
 let MAX_PTS=40;
-const AMOSTRA_MM=2;            /* o dedo gera eventos demais para guardar todos */
-let desOn=false,desenhando=false,tracado=[],resumo=[],desSolda=false;
 
 function distReta(p,a,b){
   const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
@@ -4118,74 +4068,26 @@ function simplificar(p,tol){
   dp(p,0,p.length-1,tol,marca);
   return p.filter(function(_,i){return marca[i];});
 }
-/* Aperta a tolerancia ate o traco caber nos 40 pontos do programa. Cortar
-   pelo fim perderia o resto do desenho sem avisar. */
-function enxugar(p){
-  let tol=1.5,r=simplificar(p,tol);
-  for(let k=0;k<30&&r.length>MAX_PTS;k++){tol*=1.5;r=simplificar(p,tol);}
-  return r.length>MAX_PTS?r.slice(0,MAX_PTS):r;
-}
-function desContar(){
-  resumo=tracado.length>1?enxugar(tracado):tracado.slice();
-  $("dCnt").textContent = tracado.length<2
-    ? "risque com o dedo sobre a mesa"
-    : tracado.length+" amostras \u2192 "+resumo.length+" pontos";
-  $("dEnviar").disabled = resumo.length<2;
-  $("dLimpar").disabled = !tracado.length;
-}
-function desModo(v){
-  desOn=v;desenhando=false;
-  /* Os dois modos disputam o mesmo toque: ligar um desliga o outro. */
-  if(v&&irOn){irOn=false;$("zIr").classList.remove("on");}
-  document.body.dataset.des=v?"1":"0";
-  cv.classList.toggle("des",v);
-  $("zDes").classList.toggle("on",v);
-  if(!v){tracado=[];resumo=[];}
-  desContar();
-}
-$("zDes").onclick=function(){desModo(!desOn);};
-$("dLimpar").onclick=function(){tracado=[];desContar();};
-$("dSolda").onclick=function(){
-  desSolda=!desSolda;
-  $("dSolda").textContent="cordao: "+(desSolda?"sim":"nao");
-  $("dSolda").classList.toggle("quente",desSolda);
-};
+/* Arrastar o desenho IMPORTADO para posiciona-lo na mesa. E o unico
+   gesto de arraste que sobrou no canvas: riscar o caminho com o dedo
+   saiu junto com o botao DES. */
 let arrastando=false,arrasteDe=null;
 cv.addEventListener("pointerdown",function(e){
-  if(!desOn&&!posOn)return;
+  if(!posOn)return;
   e.preventDefault();
   try{cv.setPointerCapture(e.pointerId);}catch(x){}
-  if(posOn){arrastando=true;arrasteDe=mmDe(e);return;}
-  desenhando=true;tracado=[mmDe(e)];desContar();
+  arrastando=true;arrasteDe=mmDe(e);
 });
 cv.addEventListener("pointermove",function(e){
-  if(posOn){
-    if(!arrastando)return;
-    const q=mmDe(e);
-    T.tx+=q[0]-arrasteDe[0];T.ty+=q[1]-arrasteDe[1];
-    arrasteDe=q;posContar();return;
-  }
-  if(!desOn||!desenhando)return;
-  const q=mmDe(e),u=tracado[tracado.length-1];
-  if(u&&Math.hypot(q[0]-u[0],q[1]-u[1])<AMOSTRA_MM)return;
-  tracado.push(q);desContar();
+  if(!posOn||!arrastando)return;
+  const q=mmDe(e);
+  T.tx+=q[0]-arrasteDe[0];T.ty+=q[1]-arrasteDe[1];
+  arrasteDe=q;posContar();
 });
-/* Sem pointerleave: sair do disco arrastando nao pode cortar o traco. */
+/* Sem pointerleave: sair da area arrastando nao pode largar o desenho. */
 ["pointerup","pointercancel","lostpointercapture"].forEach(function(v){
-  cv.addEventListener(v,function(){desenhando=false;arrastando=false;});
+  cv.addEventListener(v,function(){arrastando=false;});
 });
-$("dEnviar").onclick=function(){
-  if(resumo.length<2){erro="risque um traco maior";return;}
-  const corpo=resumo.map(function(q){
-    return q[0].toFixed(1)+","+q[1].toFixed(1);}).join(";");
-  fetch("/api/prog/desenho?solda="+(desSolda?1:0),
-        {method:"POST",headers:{"Content-Type":"text/plain"},body:corpo})
-   .then(function(r){
-     if(!r.ok)return r.text().then(function(t){throw new Error(t);});
-     erro="";desModo(false);return lerPontos();})
-   .catch(function(e){erro=e.message||"o robo nao respondeu";});
-};
-desModo(false);
 
 /* =====================================================================
    Importar DXF.
@@ -4465,7 +4367,7 @@ function posCentralizar(){
 function posModo(v){
   posOn=v&&!!dxfCaminhos;
   document.body.dataset.pos=posOn?"1":"0";
-  if(posOn){desModo(false);irAba("mesa");}
+  if(posOn)irAba("mesa");
   posContar();
 }
 
@@ -6182,8 +6084,8 @@ function irAba(nome){
    e sem mandar ler outra tela. */
 const AJUDA={
  mesa:["A mesa vista de cima",
-   "O desenho mostra onde o braco esta. Arraste para girar a vista; ligue "+
-   "IR para mandar a ponta ate onde voce tocar."],
+   "O desenho mostra onde o braco esta. Arraste para girar a vista e toque "+
+   "num elo para escolher aquele eixo. Tocar na mesa nao move o braco."],
  mover:["Mover o braco na mao",
    "Use o joystick ou as setas de cada junta. A velocidade em mm/s e a da "+
    "PONTA. Se nada andar, a barra cinza acima diz o porque."],
@@ -6582,7 +6484,7 @@ tick();
 lerPontos();
 sdAtualizar(true);
 /* A vista escolhida sobrevive ao recarregar. Fica AQUI, no fim: mais
-   acima, 'desOn' e o proprio botao de desenho ainda nao existem, e
+   acima, metade do que a troca de vista mexe ainda nao existe, e
    restaurar cedo demais quebraria a pagina inteira. */
 try{ if(localStorage.getItem("vista3d")==="1")$("z3D").onclick(); }catch(e){}
 

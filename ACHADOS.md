@@ -3940,12 +3940,49 @@ graus (a contagem estava 6,98 graus fora e foi acertada pelo encoder)"*.
 > correção. O eixo agora anda o mesmo que a contagem andou, **guardando**
 > a diferença que já existia, que é o que o ferro faz.
 
+## R148 · IR e DES saíram da mesa de traçado  ✅
+
+Pedido: "remova o DES/desenho, no caso trajetória a mão livre; remova
+também o IR".
+
+Dois botões na barra da mesa disputavam o mesmo toque:
+
+| | o que fazia |
+|---|---|
+| **IR** | ligado, tocar na mesa mandava a **ponta** até o ponto tocado |
+| **DES** | riscar o caminho com o dedo; o traço virava programa de pontos |
+
+Saíram os dois. O toque na mesa passou a ter **um propósito só**:
+escolher o eixo, tocando num elo. Levar o braço a um lugar se faz pelas
+setas e por "ir para um ângulo", que dizem para onde vão **antes** de ir;
+o caminho se ensina por pontos gravados ou importando um DXF.
+
+Saiu com eles a barra `#barraDes`, o modo de desenho inteiro
+(`desOn`, o traço, o simplificador `enxugar()`, o cursor de mira) e a
+regra de exclusão mútua entre os dois modos — que só existia porque os
+dois consumiam o mesmo toque.
+
+**O que ficou, de propósito:**
+
+- A **gravação da trajetória a mão livre** (mover o braço com a mão e
+  reproduzir) — é outra coisa, mora na aba Programa e não foi pedida.
+  O cartão dela perdeu só a nota que mandava usar o DES.
+- `POST /api/prog/desenho` — quem a usa agora é o **DXF importado**.
+- `POST /api/mover_xy` — ficou sem chamador no painel.
+
+Essa última virou um aviso solto na compilação (*"rota registrada e nunca
+chamada pela página"*), e aviso que ninguém sabe explicar acaba ignorado
+— inclusive quando for de verdade. Então `conferir_rotas.py` ganhou um
+`SEM_PAGINA` com o **motivo escrito**, e duas guardas para a lista não
+envelhecer calada: se a página voltar a chamar a rota, ou se o firmware
+deixar de registrá-la, a compilação reprova dizendo qual das duas.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **456 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **284 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **278 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

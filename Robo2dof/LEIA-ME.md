@@ -123,18 +123,15 @@ Robo de solda industrial ensina por pontos justamente por isso. A
 gravacao continua continua existindo no firmware (`trajetoria.cpp`) para
 percursos organicos, mas nao e o caminho principal da interface.
 
-### Desenhar o caminho com o dedo
+### Desenhar o caminho com o dedo — saiu
 
-Na mesa de traçado, o botão **DES** liga o modo de desenho: você risca o
-caminho com o dedo em cima do desenho do braço e o traço vira **programa
-de pontos**. Dali em diante ele é um programa como qualquer outro — dá
-para ensaiar, executar com arco, corrigir ponto a ponto e salvar no
-cartão.
+O botão **DES** ligava um modo de desenho na mesa de traçado: riscar o
+caminho com o dedo, e o traço virava programa de pontos. Saiu a pedido
+de quem opera, junto com o botão **IR** (tocar na mesa levava a ponta até
+lá). Hoje o toque na mesa faz uma coisa só: **escolher o eixo**.
 
-O traço bruto tem centenas de amostras; o navegador o simplifica com
-**Douglas-Peucker** antes de mandar, apertando a tolerância até caber nos
-40 pontos do programa. A barra mostra as duas contas em tempo real
-(`41 amostras → 9 pontos`), então dá para ver o que vai ser enviado.
+A rota `POST /api/prog/desenho` continua — quem a usa agora é o **DXF
+importado**, que manda a lista de pontos já posicionada na chapa.
 
 O corpo do `POST /api/prog/desenho` é uma lista `x,y;x,y;…` em
 **milímetros de chapa**, e o firmware roda cinemática inversa em cada

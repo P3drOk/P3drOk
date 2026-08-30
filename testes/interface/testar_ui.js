@@ -1219,11 +1219,12 @@ async function fecharGaveta(pag) {
   // Mesa de tracado: clique comanda XY, zoom e tema respondem.
   await t.locator('#abas button[data-aba="mesa"]').click();
   await t.waitForTimeout(350);
-  // LEVAR A PONTA COM UM TOQUE PRECISA SER PEDIDO.
-  // Era o padrao: tocar em qualquer lugar vazio mandava o robo para la.
-  // Quem esta olhando o desenho toca nele o tempo todo -- para conferir
-  // uma cota, para escolher o eixo -- e cada toque virava um movimento
-  // que ninguem pediu.
+  // A MESA E SO DESENHO.
+  // Existiu aqui um botao IR que, ligado, mandava a ponta ate o ponto
+  // tocado -- e um DES, que deixava riscar o caminho com o dedo. Os dois
+  // sairam a pedido de quem opera: o toque na mesa tem um proposito so,
+  // escolher o eixo, e levar o braco a um lugar se faz pelas setas e por
+  // "ir para um angulo", que dizem para onde vao antes de ir.
   rotas = [];
   const cvb = await t.locator('#cv').boundingBox();
   await t.mouse.click(cvb.x + cvb.width * 0.62, cvb.y + cvb.height * 0.4);
@@ -1232,74 +1233,32 @@ async function fecharGaveta(pag) {
          'tocar na mesa NAO manda o braco andar: o desenho e so desenho',
          rotas.join(' ') || 'nenhuma rota');
 
-  rotas = [];
-  await t.locator('#zIr').click();
-  await t.waitForTimeout(150);
-  await t.mouse.click(cvb.x + cvb.width * 0.62, cvb.y + cvb.height * 0.4);
-  await t.waitForTimeout(250);
-  checar(rotas.some(x => x.split('?')[0] === '/api/mover_xy'),
-         'com o botao IR ligado, o toque comanda a ponta', rotas.join(' '));
-
-  // IR e DES disputam o mesmo toque: ligar um desliga o outro.
-  await t.locator('#zDes').click();
-  await t.waitForTimeout(200);
-  const modos = await t.evaluate(() => ({
-    ir: document.getElementById('zIr').classList.contains('on'),
-    des: document.getElementById('zDes').classList.contains('on'),
+  const sumiram = await t.evaluate(() => ({
+    ir: !!document.getElementById('zIr'),
+    des: !!document.getElementById('zDes'),
+    barra: !!document.getElementById('barraDes'),
   }));
-  checar(modos.des && !modos.ir,
-         'IR e DES nao ficam ligados juntos: os dois consomem o mesmo toque',
-         JSON.stringify(modos));
-  await t.locator('#zDes').click();
-  await t.waitForTimeout(150);
+  checar(!sumiram.ir && !sumiram.des && !sumiram.barra,
+         'Mesa: os botoes IR e DES sairam, e a barra de desenho com eles',
+         JSON.stringify(sumiram));
+
+  // E arrastar na mesa continua sendo so girar a vista: sem o modo
+  // desenho, nenhum gesto no canvas manda o robo para lugar nenhum.
+  rotas = [];
+  await t.mouse.move(cvb.x + cvb.width * 0.4, cvb.y + cvb.height * 0.5);
+  await t.mouse.down();
+  await t.mouse.move(cvb.x + cvb.width * 0.6, cvb.y + cvb.height * 0.6);
+  await t.mouse.up();
+  await t.waitForTimeout(250);
+  checar(!rotas.some(x => /mover_xy|prog\/desenho/.test(x)),
+         'Mesa: arrastar o dedo nao vira traco nem movimento',
+         rotas.join(' ') || 'nenhuma rota');
+
   const v1 = await t.evaluate(() => window.__vista);
   await t.locator('#zMais').click(); await t.waitForTimeout(150);
   await t.locator('#zAuto').click(); await t.waitForTimeout(150);
   checar(true, 'botoes de zoom e enquadramento respondem sem erro');
   void v1;
-
-  // Desenhar o caminho com o dedo sobre a mesa.
-  rotas = [];
-  await t.locator('#zDes').click();
-  await t.waitForTimeout(200);
-  const barraVis = await t.locator('#barraDes').isVisible();
-  checar(barraVis, 'o botao DES abre o modo de desenho sobre a mesa');
-
-  // Risca um arco com o dedo, bem no meio da area util. Curva de proposito:
-  // numa reta o simplificador devolveria dois pontos e o teste nao provaria
-  // que ele preserva a forma.
-  const cvd = await t.locator('#cv').boundingBox();
-  const dcx = cvd.x + cvd.width * 0.5, dcy = cvd.y + cvd.height * 0.56;
-  const dR = Math.min(cvd.width, cvd.height) * 0.22;
-  await t.mouse.move(dcx + dR, dcy);
-  await t.mouse.down();
-  for (let i = 1; i <= 40; i++) {
-    const a = (-Math.PI / 3) * (i / 40);
-    await t.mouse.move(dcx + dR * Math.cos(a), dcy + dR * Math.sin(a));
-  }
-  await t.mouse.up();
-  await t.waitForTimeout(200);
-  const contagem = await t.locator('#dCnt').textContent();
-  const nPts = parseInt((contagem.match(/(\d+) pontos/) || [0, 0])[1], 10);
-  checar(/\d+ amostras/.test(contagem) && nPts >= 3 && nPts <= 40,
-         'o traco a mao livre e simplificado, sem virar uma reta nem estourar os 40 pontos',
-         contagem);
-
-  // No modo desenho o toque nao pode comandar a ponta.
-  checar(!rotas.some(x => x.split('?')[0] === '/api/mover_xy'),
-         'desenhando, o toque na mesa nao manda o braco para la');
-
-  rotas = [];
-  await t.locator('#dEnviar').click();
-  await t.waitForTimeout(350);
-  const des = rotas.find(x => x.split('?')[0] === '/api/prog/desenho');
-  checar(!!des, 'o traco e enviado para virar programa', des || 'nada enviado');
-  const corpoDes = ultimoCorpo;
-  checar(/^-?[\d.]+,-?[\d.]+(;-?[\d.]+,-?[\d.]+)+$/.test(corpoDes),
-         'o corpo vai em milimetros de chapa, "x,y;x,y"',
-         corpoDes.slice(0, 60) + (corpoDes.length > 60 ? '...' : ''));
-  const saiu = await t.locator('#barraDes').isVisible();
-  checar(!saiu, 'enviado o desenho, a mesa volta ao modo normal');
 
   // Importar DXF: ler o arquivo, posicionar na mesa e virar programa.
   // Curso folgado para o caso de aplicar ser exercitado de verdade; o

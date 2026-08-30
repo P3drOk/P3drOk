@@ -573,8 +573,15 @@ ganharam tampa nas pontas e as laterais também são ordenadas.
 ### 5.3 Mesa de traçado
 
 Vista de cima, em milímetros de verdade. Mostra o braço, o alcance, o
-curso calibrado, o programa e a trajetória gravada. Dá para **desenhar o
-caminho com o dedo** e transformar o traço em programa.
+curso calibrado, o programa e a trajetória gravada.
+
+> **Tocar na mesa não move o braço.** O único efeito de um toque é
+> **escolher o eixo**: tocando num elo, aquela junta passa a ser a
+> selecionada. Existiram aqui um botão `IR` (ligado, o toque mandava a
+> ponta até o ponto tocado) e um `DES` (riscar o caminho com o dedo);
+> os dois saíram a pedido de quem opera. Levar o braço a um lugar se faz
+> pelas setas e por "ir para um ângulo", que dizem para onde vão **antes**
+> de ir; o caminho se ensina por pontos gravados ou importando um DXF.
 
 **Explicações ocultáveis** (botão `?` no cabeçalho): as notas em cinza
 ensinam quem está começando e atrapalham quem opera todo dia — elas
@@ -583,7 +590,7 @@ controles ficam, e a escolha é gravada.
 
 **Vista 3D** (botão `3D`): a mesma máquina de outro ângulo, com a altura
 dos elos e a ferramenta descendo até a peça. Serve para enxergar a
-máquina; **desenhar e escolher pontos continua na vista de cima**, porque
+máquina; **escolher pontos continua na vista de cima**, porque
 um traço em perspectiva não tem onde cair na mesa.
 
 ### 5.4 Programa de pontos
