@@ -248,9 +248,22 @@ Duas coisas ajudam quem chega:
   já abertos. Ela varre o texto inteiro do cartão e ignora acento.
 
 > O **cabeçalho e a barra de abas ficam acima da gaveta**, e continuam
-> clicáveis com ela aberta. O botão PARAR mora no cabeçalho — parada de
-> emergência que exige fechar uma janela antes não é parada de
-> emergência.
+> clicáveis com ela aberta.
+
+> **Onde fica o PARAR.** Ele morava no cabeçalho, visível de toda tela.
+> A pedido de quem opera, mudou para a **linha de comando da aba Mover**,
+> junto do torque de cada eixo — os três botões que mexem na máquina,
+> lado a lado, no alto do painel que a mão já está usando.
+>
+> O que isso custa, dito claramente: **o PARAR não aparece na aba
+> Programa nem com a gaveta de Configuração aberta.** O que para a
+> máquina de qualquer lugar passou a ser a **tecla de espaço**, que vale
+> em qualquer aba e com a gaveta aberta.
+>
+> Nada disso é a parada de emergência. A parada de emergência sempre foi
+> o **contator no fio**, comandado pelo botão físico NC do GPIO 27: é o
+> único corte que funciona com o ESP32 travado, e é ele que a norma
+> cobra. O botão da tela é conveniência.
 
 A gaveta fecha pelo X, pelo **Esc**, tocando fora dela, ou escolhendo uma
 aba de trabalho. Ela tem o **próprio** botão `?` de explicações, que nasce

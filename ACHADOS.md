@@ -4035,12 +4035,79 @@ mínimo da máquina. O último décimo é um encosto, não um tranco.
 Os três portões foram verificados um a um: reintroduzido cada um
 sozinho, `M06` reprova; restaurados, passa.
 
+## R150 · A aba de comando virou um painel de comando  ✅
+
+Seis pedidos numa tacada, todos na mesma direção: **a aba de jog é para
+comandar, e só**.
+
+**Os comandos desceram para o painel.** `EIXO 1`, `EIXO 2` e `PARAR`
+moravam no cabeçalho; foram para uma linha no alto da aba Mover, junto
+das setas que a mão já está usando. No lugar deles, no cabeçalho, entrou
+o atalho **Arquivos** — a aba que se abre de qualquer lugar.
+
+> **O que isso custa, dito na cara.** O PARAR deixou de estar em toda
+> tela: não aparece na aba Programa nem com a gaveta aberta. O que para a
+> máquina de qualquer lugar passou a ser a **tecla de espaço** — e é ela
+> que o banco agora prende, no lugar do teste antigo de "PARAR clicável
+> com a gaveta aberta". Nada disso é a parada de emergência: essa sempre
+> foi o **contator no fio**, o único corte que funciona com o ESP32
+> travado.
+
+**Saiu a tarja de estado de Mover e Programa.** "PRONTA / UM EIXO COM
+TORQUE" era um cartaz que mudava sozinho em cima dos controles. Nas duas
+abas de comando ela some: os próprios botões dizem o que dá e o que não
+dá (cada um com o seu motivo embaixo), as lâmpadas do cabeçalho dizem o
+estado, e o botão de torque — que era o que a tarja mandava apertar —
+agora está ali dentro. Nas outras abas ela fica, porque ali não há botão
+de torque à mão.
+
+**Saíram o seletor "Junta" e a linha "Eixo 1: −65,92° (medido)".** Os
+dois repetiam o que já está em outro lugar: o eixo se escolhe tocando no
+elo do desenho ou na própria seta, e o ângulo está na régua do rodapé em
+corpo 28, comandado e medido lado a lado.
+
+**A velocidade virou cinco degraus.** Era uma barra contínua — mira fina
+para acertar um número que ninguém sabe de cor. Os cinco degraus
+repartem a faixa configurada da máquina, e o 1 e o 5 são exatamente o
+mínimo e o máximo dela: nenhum degrau é inalcançável. **Lento, normal e
+rápido viraram apelidos dos degraus 1, 3 e 5** — os mesmos degraus, não
+uma segunda escala, e o degrau aceso é o mesmo tanto faz por onde se
+escolha. O mm/s continua na tela, pequeno e ao lado: deixou de ser o que
+se escolhe para ser o que se confere.
+
+**Precisão virou o quarto atalho**, ao lado de lento/normal/rápido — é um
+jeito de andar, como eles. Perdeu o texto "Precisao: desligada" dentro do
+botão: o estado é o botão aceso.
+
+## R151 · Programa: quadro fixo por dentro, não por corte  ✅
+
+Mover coube enxugando (R146). Programa não cabia de jeito nenhum: a
+**lista de pontos é o programa** e cresce com a peça — cortar seria
+esconder ponto, e esconder ponto é pior que rolar. Medido a 1280×800, o
+painel passava **652 px** do quadro, e o cartão aberto sozinho ocupava
+1005 px.
+
+A saída foi mudar o que rola. O painel virou um acordeão em flex: os
+**cabeçalhos** dos cartões e as bordas ficam parados, e quem rola é o
+**miolo do cartão aberto**, e só ele. O dedo procura "Ensaiar sem arco"
+sempre no mesmo lugar, com um programa de três pontos ou de quarenta.
+
+O `.rol` continua com `overflow-y:auto` de reserva: se a tela for tão
+baixa que nem o miolo mínimo caiba, é melhor rolar do que cortar um
+botão.
+
+| | Mover | Programa |
+|---|---|---|
+| 1440×900 | fixo | fixo |
+| 1366×768 | fixo | fixo |
+| 1280×800 | fixo | fixo |
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **464 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **278 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **286 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

@@ -181,10 +181,12 @@ button,input{font:inherit;color:inherit}
  box-shadow:0 3px 0 rgba(0,0,0,.35);margin-left:8px}
 .estop:active{box-shadow:0 1px 0 rgba(0,0,0,.35);transform:translateY(2px)}
 
-/* O motor tem botao proprio no cabecalho, ao lado do PARAR e visivel de
-   toda aba: ligar e desligar torque e a coisa que mais se aperta na
-   maquina, e estava enterrada numa gaveta de Ajustes. A cor diz o
-   estado -- verde tem torque, cinza nao, ambar esperando o barramento
+/* O motor tem botao proprio por eixo, hoje na linha de comando do
+   painel de jog, ao lado do PARAR: ligar e desligar torque e a coisa que
+   mais se aperta na maquina, e estava enterrada numa gaveta de Ajustes.
+   Passou pelo cabecalho e desceu para o painel a pedido de quem opera --
+   perto das setas que a mao ja esta usando. A cor diz o estado --
+   vermelho sem torque, cinza com, ambar esperando o barramento
    responder. Nao e o PARAR e nao pode ser confundido com ele. */
 .ch.indo{opacity:.55;animation:pi .7s infinite}
 /* Posicao atual, grande o bastante para se ler de longe: e o numero que
@@ -230,7 +232,13 @@ button,input{font:inherit;color:inherit}
  min-width:58px;text-align:right}
 .irAng .seta{color:var(--letra3)}
 .irAng input{flex:1;min-width:70px;max-width:none;width:auto;text-align:right}
-.motores{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
+/* A LINHA DE COMANDO DO PAINEL DE JOG.
+   Os tres botoes que mexem na maquina -- torque de cada eixo e PARAR --
+   ficam juntos no alto do painel, do tamanho da mao. PARAR ocupa a
+   largura que sobra: e o unico deles que se aperta sem olhar. */
+.comandos{display:flex;gap:6px;margin-bottom:8px}
+.comandos .motor{flex:1 1 0;min-width:0;padding:12px 6px;text-align:center}
+.comandos .estop{flex:1 1 0;min-width:0;margin-left:0;padding:12px 6px}
 /* SEM TORQUE E VERMELHO; COM TORQUE E CINZA.
    Cinza dizia "nao sei" -- e a maquina sabe: ela releu o registrador do
    driver antes de responder. O que mudou e o outro lado: eixo energizado
@@ -246,9 +254,26 @@ button,input{font:inherit;color:inherit}
 .motor.ruim{background:var(--brasa)}
 .motor:active{box-shadow:0 1px 0 rgba(0,0,0,.25);transform:translateY(2px)}
 @media(max-width:760px){
-  .motores{gap:4px}
-  .motor{padding:9px 8px;font-size:10px;letter-spacing:.02em}
+  .comandos{gap:4px}
+  .comandos .motor,.comandos .estop{padding:10px 4px;font-size:10px;
+   letter-spacing:.02em}
 }
+
+/* CINCO DEGRAUS DE VELOCIDADE.
+   Alvos do tamanho do dedo, com o escolhido preenchido. A barra continua
+   que estava aqui pedia mira fina para acertar um numero que ninguem
+   sabe de cor. */
+.velNiveis{display:flex;gap:4px;flex:1 1 auto;min-width:0}
+.velNiveis button{flex:1 1 0;min-width:0;background:var(--painel);
+ border:1px solid var(--linha);color:var(--letra2);border-radius:3px;
+ font-family:var(--mono);font-size:13px;font-weight:600;padding:8px 0;
+ cursor:pointer}
+.velNiveis button:hover{border-color:var(--arco2);color:var(--letra)}
+.velNiveis button.on{background:var(--arco);border-color:var(--arco);
+ color:#fff}
+/* O mm/s deixou de ser o que se escolhe e passou a ser o que se confere:
+   entra pequeno, do lado, sem disputar com os degraus. */
+.velLinha #inVelMm{flex:0 0 62px;width:62px;font-size:11px;padding:5px 6px}
 
 /* ---------- mesa de tracado ---------- */
 .quadro{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;
@@ -296,6 +321,25 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
 .regua b.mv{color:var(--arco)}
 .regua b.hot{color:var(--quente)}
 
+/* A ABA PROGRAMA TAMBEM E UM QUADRO FIXO -- por dentro, nao por corte.
+   Aqui nao dava para fazer como no jog e enxugar ate caber: a lista de
+   pontos E o programa, e ela cresce com a peca. Cortar seria esconder
+   ponto, e esconder ponto e pior que rolar.
+   Entao quem rola e o MIOLO do cartao aberto, e so ele. Os cabecalhos
+   dos cartoes, a barra de abas e as bordas do painel ficam parados: o
+   dedo procura "Ensaiar sem arco" sempre no mesmo lugar, com um
+   programa de tres pontos ou de quarenta.
+   O .rol segue com overflow auto de reserva: se a tela for tao baixa que
+   nem o miolo minimo caiba, e melhor rolar do que cortar um botao. */
+body[data-aba="prog"] .coluna .rol{display:flex;flex-direction:column}
+body[data-aba="prog"] #pnProg{display:flex;flex-direction:column;
+ flex:1 1 auto;min-height:0}
+body[data-aba="prog"] #pnProg > .et{flex:0 0 auto}
+body[data-aba="prog"] #pnProg > .et.aberta{flex:1 1 auto;min-height:0;
+ display:flex;flex-direction:column}
+body[data-aba="prog"] #pnProg > .et.aberta > .dentro{flex:1 1 auto;
+ min-height:170px;overflow-y:auto;overscroll-behavior:contain}
+
 /* O PAINEL DE JOG E UM QUADRO FIXO.
    Aqui o dedo procura o mesmo botao no mesmo lugar, toda vez. Rolar
    significa que a seta que estava sob o dedo saiu dali -- entao o
@@ -320,6 +364,14 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
  overscroll-behavior:contain}
 /* Grudada no topo da coluna: a resposta de cada acao ("Ponto 3 gravado",
    "Movimento recusado: ...") tem que estar visivel sem rolar de volta. */
+/* A TARJA DE ESTADO SAI DAS ABAS DE COMANDO.
+   Em Mover e Programa o painel e so comando: os proprios botoes dizem o
+   que da e o que nao da (cada um com o seu motivo embaixo), as lampadas
+   do cabecalho dizem o estado, e os botoes de torque agora estao ali
+   dentro -- que era o que a tarja mandava fazer. Nas outras abas ela
+   fica, porque ali nao ha botao de torque a mao. */
+body[data-aba="mover"] #tira,
+body[data-aba="prog"]  #tira{display:none}
 .tira{position:sticky;top:0;z-index:6;
  padding:10px 12px;background:var(--painel);border:1px solid var(--linha);
  border-left:4px solid var(--linha2);border-radius:3px;margin-bottom:9px;
@@ -1029,6 +1081,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
     <div class="nome">ROBO<b>2DOF</b></div>
     <span class="divisor">|</span>
     <button class="cfgLink" id="btCfg">Configuracao</button>
+    <button class="cfgLink" id="btArq" title="Abrir a aba de arquivos do cartao">Arquivos</button>
     <button class="cfgLink" id="btEnc" title="Mostrar ou esconder a coluna de diagnostico do encoder">Diagnostico</button>
     <button class="ajd" id="btAjuda" title="O que faco nesta aba?">?</button>
     <div class="lamps">
@@ -1038,11 +1091,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
       <div class="lp" id="lRede"><i class="olho"></i><span>rede</span></div>
       <div class="lp" id="lSd"><i class="olho"></i><span>cartao</span></div>
     </div>
-    <div class="motores">
-      <button class="motor" id="btMotor1"><span id="btMotor1T">EIXO 1</span></button>
-      <button class="motor" id="btMotor2"><span id="btMotor2T">EIXO 2</span></button>
-    </div>
-    <button class="estop" id="btParar">PARAR</button>
   </header>
 
   <div class="corpo">
@@ -1246,9 +1294,19 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <span>J2 <b id="joyB">0%</b></span>
             </div>
 
-            <div class="cp"><label>Junta</label>
-              <select id="selJunta"><option value="1">Eixo 1</option><option value="2">Eixo 2</option></select></div>
-            <div class="agora" id="movAgora">--</div>
+            <!-- OS COMANDOS DE MAQUINA MORAM AQUI, no painel de jog.
+                 Ligar torque e parar sao o que mais se aperta, e estavam
+                 no cabecalho, longe das setas que a mao ja esta usando.
+                 Agora estao no alto do proprio painel de comando.
+                 O seletor "Junta" e a linha "Eixo 1: x graus (medido)"
+                 sairam: o eixo se escolhe tocando no elo do desenho ou
+                 na propria seta, e o angulo ja esta na regua do rodape,
+                 em corpo 28, comandado e medido lado a lado. -->
+            <div class="comandos">
+              <button class="motor" id="btMotor1"><span id="btMotor1T">EIXO 1</span></button>
+              <button class="motor" id="btMotor2"><span id="btMotor2T">EIXO 2</span></button>
+              <button class="estop" id="btParar">PARAR</button>
+            </div>
 
             <div class="eixo">
               <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;<small>ANTI-HOR</small></button>
@@ -1260,20 +1318,34 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
               <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
+            <!-- VELOCIDADE EM CINCO DEGRAUS.
+                 Era uma barra continua: mira fina para escolher um numero
+                 que ninguem sabe de cor. Cinco degraus repartem a faixa
+                 configurada da maquina, e o de baixo e o de cima sao
+                 exatamente o minimo e o maximo dela.
+                 O mm/s continua na tela -- e a unidade em que se pensa o
+                 cordao -- mas pequeno, e ao lado: deixou de ser o que se
+                 escolhe para ser o que se confere. -->
             <div class="velLinha">
-              <label for="inVelMov">Velocidade</label>
-              <input type="range" id="inVelMov" min="1" max="120" step="1">
+              <label>Velocidade</label>
+              <div class="velNiveis" id="velNiveis">
+                <button data-niv="1">1</button>
+                <button data-niv="2">2</button>
+                <button data-niv="3">3</button>
+                <button data-niv="4">4</button>
+                <button data-niv="5">5</button>
+              </div>
               <input type="number" id="inVelMm" min="1" step="10">
               <span class="un">mm/s</span>
             </div>
             <div class="velEq"><b id="velMovTx">--</b>
               <span class="atalhosVel">
-                <button class="mb" data-vel="0.1">lento</button>
-                <button class="mb" data-vel="0.45">normal</button>
-                <button class="mb" data-vel="1">rapido</button>
+                <button class="mb" data-vel="1">lento</button>
+                <button class="mb" data-vel="3">normal</button>
+                <button class="mb" data-vel="5">rapido</button>
+                <button class="mb" id="btPrec">precisao</button>
               </span></div>
             <div class="linhaBt">
-              <button class="b mini" id="btPrec">Precisao: desligada</button>
               <button class="b mini" id="btTesteMov">Testar rele</button>
             </div>
             <h4>Ir para um angulo</h4>
@@ -2094,7 +2166,6 @@ document.querySelectorAll(".jb").forEach(function(b){
     try{b.setPointerCapture(e.pointerId);}catch(x){}
     const j=+b.dataset.j;
     juntaSel=j;
-    const sel=$("selJunta"); if(sel) sel.value=String(j);
     jogOn(b.dataset.j,b.dataset.d,b);
   });
   ["pointerup","pointercancel","lostpointercapture"].forEach(function(v){
@@ -2105,7 +2176,7 @@ document.querySelectorAll(".jb").forEach(function(b){
     });});
 });
 
-$("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
+
 /* Velocidade do jog numa barra, em POR CENTO do que a maquina aceita.
    Antes so existia em Ajustes, em graus por segundo, longe do braco --
    e velocidade e coisa que se acerta olhando o braco andar. */
@@ -2149,19 +2220,34 @@ function velFaixa(){
   const mn=(typeof D.velMn==="number"&&D.velMn>0)?D.velMn:VEL_GRAUS_MIN;
   const mx=(typeof D.velMx==="number"&&D.velMx>mn)?D.velMx:VEL_GRAUS_MAX;
   VEL_GRAUS_MIN=mn; VEL_GRAUS_MAX=mx;
-  const b=$("inVelMov");
-  if(b&&(+b.min!==mn||+b.max!==mx)){
-    b.min=String(mn); b.max=String(mx);
-    b.step=String(Math.max(0.1,(mx-mn)/120));
-  }
   return [mn,mx];
+}
+
+/* Os cinco degraus repartem a FAIXA configurada da maquina, nao o teto
+   absoluto: numa maquina cujo maximo util e vinte graus por segundo, o
+   degrau 5 tem de ser vinte, e nao um numero que ela nunca alcanca. O 1
+   e o minimo e o 5 e o maximo, entao nenhum degrau e inalcancavel. */
+const VEL_NIVEIS=5;
+function velDoNivel(n){
+  const f=velFaixa();
+  const k=Math.min(VEL_NIVEIS,Math.max(1,n));
+  return f[0]+(f[1]-f[0])*((k-1)/(VEL_NIVEIS-1));
+}
+function nivelDaVel(g){
+  const f=velFaixa();
+  if(f[1]<=f[0])return 1;
+  const bruto=1+(g-f[0])/(f[1]-f[0])*(VEL_NIVEIS-1);
+  return Math.min(VEL_NIVEIS,Math.max(1,Math.round(bruto)));
 }
 
 function velMostrar(g){
   velFaixa();
   const gg=Math.min(VEL_GRAUS_MAX,Math.max(VEL_GRAUS_MIN,g));
-  $("inVelMov").value=Math.round(gg);
-  $("inVelMm").value=Math.round(grausParaMm(gg));
+  const niv=nivelDaVel(gg);
+  $("velNiveis").querySelectorAll("[data-niv]").forEach(function(b){
+    b.classList.toggle("on",+b.dataset.niv===niv);});
+  if(document.activeElement!==$("inVelMm"))
+    $("inVelMm").value=Math.round(grausParaMm(gg));
   $("velMovTx").textContent=gg.toFixed(0)+" \u00b0/s "+tr("na junta");
   /* O alcance usado na conta fica no titulo: explica o numero para quem
      for procurar, sem quebrar a linha para quem so quer operar. */
@@ -2195,8 +2281,9 @@ function velEnviar(g){
     .catch(function(){velEnviando=false;});
 }
 
-$("inVelMov").oninput=function(){ velMostrar(+$("inVelMov").value); };
-$("inVelMov").onchange=function(){ velEnviar(+$("inVelMov").value); };
+$("velNiveis").querySelectorAll("[data-niv]").forEach(function(b){
+  b.onclick=function(){ velEnviar(velDoNivel(+b.dataset.niv)); };
+});
 $("inVelMm").oninput=function(){
   const v=parseFloat($("inVelMm").value);
   if(!isNaN(v))$("velMovTx").textContent=mmParaGraus(v).toFixed(0)+" \u00b0/s";
@@ -2206,14 +2293,12 @@ $("inVelMm").onchange=function(){
   if(isNaN(v)){velMostrar(velUltimoEnviado>0?velUltimoEnviado:20);return;}
   velEnviar(mmParaGraus(v));
 };
-/* Os tres degraus repartem a FAIXA configurada, nao o teto absoluto:
-   numa maquina cujo maximo util e vinte graus por segundo, "rapido" tem
-   de ser vinte, e nao um numero que ela nunca alcanca. */
+/* Lento, normal e rapido sao apelidos dos degraus 1, 3 e 5 -- os mesmos
+   degraus dos numeros, nao uma segunda escala. Quem prefere a palavra
+   aperta a palavra, quem prefere o numero aperta o numero, e o degrau
+   aceso e o mesmo nos dois. */
 document.querySelectorAll("[data-vel]").forEach(function(b){
-  b.onclick=function(){
-    const f=velFaixa();
-    velEnviar(f[0]+(f[1]-f[0])*(+b.dataset.vel));
-  };
+  b.onclick=function(){ velEnviar(velDoNivel(+b.dataset.vel)); };
 });
 $("btTesteMov").onclick=function(){post("/api/teste/rele","qMoverSel");};
 
@@ -4040,7 +4125,6 @@ cv.addEventListener("click",function(e){
   const j=juntaNoPonto(mmDe(e));
   if(!j)return;
   juntaSel=j;
-  const sel=$("selJunta"); if(sel) sel.value=String(j);
   pintar();
 });
 
@@ -5288,13 +5372,6 @@ function aplicar(d){
      confere antes de mandar o proximo comando. Diz tambem DE ONDE veio:
      medido pelo encoder ou comandado pelo firmware. */
   {
-    const ag=$("movAgora");
-    if(ag){
-      const med=(juntaSel===1)?d.m1ok:d.m2ok;
-      const v=(juntaSel===1)?(d.m1ok?d.m1:d.t1):(d.m2ok?d.m2:d.t2);
-      ag.textContent=tr("Eixo")+" "+juntaSel+": "+(v||0).toFixed(2)+"\u00b0  "+
-        (med?tr("(medido)"):tr("(comandado)"));
-    }
     const de=$("irDe");
     if(de){
       /* AQUI E A CONTA DO FIRMWARE, de proposito -- a mesma que
@@ -5368,7 +5445,11 @@ function aplicar(d){
        : d.modo!=="MANUAL" ? "so a partir do modo manual: "+(RM[d.modo]||d.modo)
        : (!d.cal1||!d.cal2) ? "calibre as juntas antes de ensinar pontos"
        : d.movendo ? "espere o braco parar" : "");
-  $("btPrec").textContent="Precisao: "+(d.precisao?"ligada":"desligada");
+  /* Virou um atalho ao lado de lento/normal/rapido: e um jeito de
+     andar, como eles. Aceso quando ligado -- o estado esta no botao, nao
+     numa palavra dentro dele. */
+  $("btPrec").classList.toggle("on",!!d.precisao);
+  $("btPrec").title=d.precisao?tr("precisao ligada"):tr("precisao desligada");
 
   /* Leitura de angulo: comandado em cima, medido pelo encoder embaixo.
      Divergencia acima de meio grau fica vermelha -- abaixo disso e o
@@ -5482,9 +5563,8 @@ function aplicar(d){
     if($("inFv1"))$("inFv1").value=(d.fvel1!==undefined?d.fvel1:1);
     /* Nao reescrever o campo enquanto o dedo esta nele: a barra pulava de
        volta para o valor da maquina no meio do arrasto. */
-    if($("inVelMov")&&d.velN!==undefined&&!velEnviando&&
-       document.activeElement!==$("inVelMm")&&
-       document.activeElement!==$("inVelMov")){
+    if($("velNiveis")&&d.velN!==undefined&&!velEnviando&&
+       document.activeElement!==$("inVelMm")){
       velMostrar(d.velN);
     }
     if($("inFv2"))$("inFv2").value=(d.fvel2!==undefined?d.fvel2:1);
@@ -5676,6 +5756,9 @@ const EN={
  "Ajustes":"Setup","Encoder":"Encoder","Maquina":"Machine",
  /* velocidade */
  "na junta":"at the joint",
+ "precisao":"fine","lento":"slow","normal":"normal","rapido":"fast",
+ "precisao ligada":"fine mode on","precisao desligada":"fine mode off",
+ "Velocidade":"Speed",
  "medido na ponta com o braco esticado":"measured at the tip, arm extended",
  /* lista do programa */
  "cordao":"weld","so desloca":"travel only","percurso":"path",
@@ -6039,6 +6122,12 @@ $("btEnc").onclick=function(){
 };
 try{ if(localStorage.getItem("enc")==="1") mostrarEnc(true); }catch(e){}
 
+/* Arquivos no cabecalho, no lugar que era dos comandos de maquina.
+   E a aba que se abre de qualquer lugar -- guardar o trabalho e abrir
+   outro nao e coisa de uma aba so. Fica aceso quando ela esta na frente,
+   como o link da Configuracao. */
+$("btArq").onclick = function(){ fecharCfg(); irAba("arq"); };
+
 $("btCfg").onclick = function(){
   if($("veuCfg").classList.contains("on")) fecharCfg(); else abrirCfg();
 };
@@ -6075,6 +6164,7 @@ function irAba(nome){
     b.classList.toggle("on",b.dataset.aba===nome);});
   if(nome==="mesa")medir();
   if(nome==="arq")sdAtualizar(true);
+  $("btArq").classList.toggle("on",nome==="arq");
   ajudaPintar();
   try{localStorage.setItem("aba",nome);}catch(e){}
 }

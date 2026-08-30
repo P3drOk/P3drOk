@@ -223,19 +223,26 @@ async function fecharGaveta(pag) {
     !document.getElementById('veuCfg').classList.contains('on'));
   checar(fechou, 'e o Esc fecha a gaveta');
 
-  // O botao de PARAR fica FORA da gaveta e continua alcancavel com ela
-  // aberta: emergencia que depende de fechar uma janela nao e emergencia.
+  // PARAR MUDOU DE LUGAR: foi para a linha de comando do painel de jog,
+  // junto do torque de cada eixo, a pedido de quem opera.
+  //
+  // Com isso ele deixou de estar em TODA tela -- nao aparece na aba
+  // Programa nem com a gaveta aberta. O que garante a parada de qualquer
+  // lugar passou a ser a tecla de espaco, e e ela que este teste prende.
+  // (A parada de emergencia de verdade nunca foi este botao: e o
+  // contator no fio, que funciona com o ESP32 travado. Ver MANUAL 2.)
+  const pararNoCabecalho = await p.evaluate(() =>
+    !document.querySelector('.placa #btParar'));
+  checar(pararNoCabecalho,
+         'PARAR saiu do cabecalho: agora mora na linha de comando do jog');
+
   await abrirGaveta(p);
-  // "Visivel" nao basta: um veu por cima deixa o botao visivel e morto.
-  // A pergunta certa e QUEM esta no ponto onde o dedo vai encostar.
-  const pararClicavel = await p.evaluate(() => {
-    const b = document.getElementById('btParar');
-    const r = b.getBoundingClientRect();
-    const alvo = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return !!alvo && (alvo === b || b.contains(alvo));
-  });
-  checar(pararClicavel,
-         'o botao PARAR continua CLICAVEL com a gaveta aberta, nao so visivel');
+  chamadas.length = 0;
+  await p.keyboard.press('Space');
+  await p.waitForTimeout(250);
+  checar(chamadas.some(x => x.split('?')[0] === '/api/parar'),
+         'e a tecla de espaco para a maquina de qualquer lugar, gaveta aberta inclusive',
+         chamadas.join(' ') || 'nenhuma rota');
   await fecharGaveta(p);
 
   // A mesa de tracado desenha depois de trocar de aba
@@ -425,10 +432,19 @@ async function fecharGaveta(pag) {
   await p.request.post(BASE + '/teste/estado', { data: { trajN: 24, trajMs: 4200 } });
   await p.waitForTimeout(500);
 
-  // PARAR alcancavel de qualquer aba
-  const parar = await p.locator('#btParar').boundingBox();
-  checar(parar && parar.y < 120, 'o botao PARAR fica sempre visivel no topo',
-         'y=' + Math.round(parar.y) + 'px');
+  // PARAR fica no alto do painel de jog, acima das setas: e o botao que
+  // se aperta sem olhar, entao nao pode estar depois delas.
+  await p.locator('#abas button[data-aba="mover"]').click();
+  await p.waitForTimeout(300);
+  const ordemComando = await p.evaluate(() => {
+    const parar = document.getElementById('btParar').getBoundingClientRect();
+    const seta  = document.querySelector('#pnMover .jb').getBoundingClientRect();
+    return { parar: Math.round(parar.y), seta: Math.round(seta.y),
+             noJog: !!document.querySelector('#pnMover #btParar') };
+  });
+  checar(ordemComando.noJog && ordemComando.parar < ordemComando.seta,
+         'PARAR e o torque ficam no alto do painel de jog, acima das setas',
+         JSON.stringify(ordemComando));
 
   checar(erros.length === 0, 'nenhum erro de JavaScript depois de toda a navegacao',
          erros.length ? erros.slice(0, 3).join(' | ') : 'console limpo');
@@ -700,6 +716,39 @@ async function fecharGaveta(pag) {
   checar(ajudaFechada,
          'Mover: a ajuda por aba nasce fechada, atras do "?"');
 
+  // PROGRAMA TAMBEM E QUADRO FIXO -- por dentro, nao por corte. A lista
+  // de pontos E o programa e cresce com a peca; esconder ponto seria
+  // pior que rolar. Entao quem rola e o miolo do cartao aberto, e so
+  // ele: cabecalhos, abas e bordas ficam parados.
+  await q.evaluate(() => irAba('prog'));
+  await q.waitForTimeout(600);
+  const quadroProg = await q.evaluate(() => {
+    const rol = document.querySelector('.coluna .rol');
+    const dentro = document.querySelector('#pnProg > .et.aberta > .dentro');
+    return { sobra: rol.scrollHeight - rol.clientHeight,
+             mioloRola: !!dentro && dentro.scrollHeight > dentro.clientHeight,
+             cabecalhos: document.querySelectorAll('#pnProg > .et > .cab').length };
+  });
+  checar(quadroProg.sobra <= 1 && quadroProg.cabecalhos >= 4,
+         'Programa: o painel nao rola -- quem rola e o miolo do cartao aberto',
+         JSON.stringify(quadroProg));
+
+  // E a tarja de estado saiu das duas abas de comando: ali o painel e so
+  // comando, e os botoes de torque estao dentro dele.
+  const semTarja = await q.evaluate(() => {
+    const t = document.getElementById('tira');
+    const vis = () => getComputedStyle(t).display !== 'none';
+    irAba('prog');   const prog = vis();
+    irAba('mover');  const mover = vis();
+    irAba('mesa');   const mesa = vis();
+    return { prog, mover, mesa };
+  });
+  checar(!semTarja.prog && !semTarja.mover && semTarja.mesa,
+         'A tarja de estado sai de Mover e Programa, e fica nas outras abas',
+         JSON.stringify(semTarja));
+  await q.evaluate(() => irAba('mover'));
+  await q.waitForTimeout(400);
+
   // Os controles continuam todos la -- menos o joystick, que sai DE
   // PROPOSITO no computador: as setas de passo fazem o mesmo com mais
   // precisao e ele so ocupava o espaco dos controles que importam.
@@ -707,13 +756,21 @@ async function fecharGaveta(pag) {
     joy: !!document.getElementById('joy').offsetParent,
     prec: !!document.getElementById('btPrec').offsetParent,
     jb: document.querySelectorAll('#pnMover .jb').length,
-    vel: !!document.getElementById('inVelMov'),
+    niveis: document.querySelectorAll('#velNiveis [data-niv]').length,
+    barra: !!document.getElementById('inVelMov'),
     rele: !!document.getElementById('btTesteMov'),
+    seletor: !!document.getElementById('selJunta'),
+    leitura: !!document.getElementById('movAgora'),
   }));
   checar(!controles.joy && controles.prec && controles.jb === 4 &&
-         controles.vel && controles.rele,
-         'Painel: setas, velocidade e teste de rele na aba Mover; joystick fora no computador',
+         controles.niveis === 5 && !controles.barra && controles.rele,
+         'Painel: setas, cinco degraus de velocidade e teste de rele na aba Mover',
          JSON.stringify(controles));
+  // O seletor "Junta" e a linha "Eixo 1: x graus" sairam: o eixo se
+  // escolhe no desenho ou na propria seta, e o angulo esta na regua do
+  // rodape, em corpo 28, comandado e medido lado a lado.
+  checar(!controles.seletor && !controles.leitura,
+         'Painel: o seletor de junta e a leitura repetida sairam do jog');
 
   // A tira de estado e UMA peca. Antes eram cinco pares soltos, e no
   // celular a fila encostava no PARAR e a primeira lampada saia da tela.
@@ -726,12 +783,11 @@ async function fecharGaveta(pag) {
                pontoELado: e.querySelector('.olho').getBoundingClientRect().left <
                            e.querySelector('span').getBoundingClientRect().left };
     });
-    const parar = document.getElementById('btParar').getBoundingClientRect();
     return { n: campos.length, todosDentro: campos.every(c => c.dentro),
              emLinha: campos.every(c => c.pontoELado),
-             naoEncosta: r.right <= parar.left + 1 };
+             cabe: r.right <= document.querySelector('.placa').getBoundingClientRect().right + 1 };
   });
-  checar(tira.n === 5 && tira.todosDentro && tira.emLinha && tira.naoEncosta,
+  checar(tira.n === 5 && tira.todosDentro && tira.emLinha && tira.cabe,
          'Painel: as cinco lampadas formam uma tira so, e nenhuma sai dela',
          JSON.stringify(tira));
 
@@ -2036,9 +2092,9 @@ async function fecharGaveta(pag) {
          'Robo 2D: tocar no braco escolhe o eixo, nao manda a ponta para la',
          andou.length + ' chamadas a /api/mover_xy');
 
-  // O seletor da aba Mover segue a escolha feita no desenho: um
-  // conceito, dois lugares de tocar. Escolhe o eixo 2 por ultimo, que e
-  // o que se vai conferir la.
+  // O eixo escolhido no desenho vale para "Levar": um conceito, e nao
+  // mais um seletor repetindo o que o desenho ja diz. Escolhe o eixo 2
+  // por ultimo, que e o que se vai conferir la.
   await t.evaluate(() => {
     const r = cv.getBoundingClientRect();
     cv.dispatchEvent(new MouseEvent('click', { bubbles: true,
@@ -2048,9 +2104,9 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(300);
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(300);
-  const casou = await t.evaluate(() => document.getElementById('selJunta').value);
-  checar(casou === '2', 'Robo 2D: o seletor da aba Mover segue o eixo escolhido no desenho',
-         'selJunta = ' + casou);
+  const casou = await t.evaluate(() => juntaSel);
+  checar(casou === 2, 'Robo 2D: tocar no elo 2 escolhe a junta 2 para o "Levar"',
+         'juntaSel = ' + casou);
 
   // ---- JOG: segurar anda, soltar para ----
   // Foi ensaiado aqui um modo "passo" com incrementos fixos de 1, 5, 10
@@ -2135,8 +2191,7 @@ async function fecharGaveta(pag) {
   await t.request.post(BASE + '/teste/estado',
     { data: { t1: 20, t2: 5, m1: 20, m1ok: true, m2: 33, m2ok: true } });
   await t.waitForTimeout(700);
-  await t.evaluate(() => { juntaSel = 1;
-    document.getElementById('selJunta').value = '1'; });
+  await t.evaluate(() => { juntaSel = 1; });
   await t.locator('#inMtSel').fill('0');
   rotas = [];
   await t.locator('#btMoverSel').click();
@@ -2203,7 +2258,7 @@ async function fecharGaveta(pag) {
   // cravado no codigo: numa maquina cujo maximo util e 20 graus/s,
   // "rapido" tem de ser 20, e nao um numero que ela nunca alcanca.
   rotas = [];
-  await t.locator('[data-vel="1"]').click();
+  await t.locator('[data-vel="5"]').click();
   await t.waitForTimeout(400);
   const rapido = rotas.find(x => x.split('?')[0] === '/api/config');
   const gRapido = rapido && +(/velN=([\d.]+)/.exec(rapido) || [])[1];
@@ -2211,14 +2266,48 @@ async function fecharGaveta(pag) {
          'Velocidade: o atalho "rapido" leva ao maximo da faixa configurada',
          'velN=' + gRapido + ' (faixa 2..60)');
 
-  // E a barra percorre exatamente essa faixa.
-  const faixaVel = await t.evaluate(() => {
-    const b = document.getElementById('inVelMov');
-    return { min: b.min, max: b.max };
+  // CINCO DEGRAUS, e o 1 e o 5 sao exatamente as pontas da faixa que a
+  // maquina publica -- nenhum degrau e inalcancavel.
+  rotas = [];
+  await t.locator('#velNiveis [data-niv="1"]').click();
+  await t.waitForTimeout(400);
+  const d1 = rotas.find(x => x.split('?')[0] === '/api/config');
+  const g1 = d1 && +(/velN=([\d.]+)/.exec(d1) || [])[1];
+  rotas = [];
+  await t.locator('#velNiveis [data-niv="3"]').click();
+  await t.waitForTimeout(400);
+  const d3 = rotas.find(x => x.split('?')[0] === '/api/config');
+  const g3 = d3 && +(/velN=([\d.]+)/.exec(d3) || [])[1];
+  checar(Math.abs(g1 - 2) < 0.6 && Math.abs(g3 - 31) < 1.0,
+         'Velocidade: os cinco degraus repartem a faixa publicada (1=min, 5=max)',
+         'degrau 1 = ' + g1 + ' °/s, degrau 3 = ' + g3 + ' °/s (faixa 2..60)');
+
+  // O degrau escolhido fica aceso, e "normal" acende o mesmo que o 3:
+  // sao os mesmos degraus, nao duas escalas.
+  const aceso = await t.evaluate(() =>
+    [...document.querySelectorAll('#velNiveis [data-niv]')]
+      .filter(b => b.classList.contains('on')).map(b => b.dataset.niv));
+  checar(aceso.length === 1 && aceso[0] === '3',
+         'Velocidade: so o degrau escolhido fica aceso', aceso.join(',') || 'nenhum');
+  await t.locator('[data-vel="1"]').click();
+  await t.waitForTimeout(400);
+  const acesoLento = await t.evaluate(() =>
+    [...document.querySelectorAll('#velNiveis [data-niv]')]
+      .filter(b => b.classList.contains('on')).map(b => b.dataset.niv));
+  checar(acesoLento.length === 1 && acesoLento[0] === '1',
+         'Velocidade: "lento" e o degrau 1 -- as palavras sao apelidos dos numeros',
+         acesoLento.join(',') || 'nenhum');
+
+  // E o mm/s continua na tela, so que pequeno e ao lado: deixou de ser o
+  // que se escolhe para ser o que se confere.
+  const mm = await t.evaluate(() => {
+    const e = document.getElementById('inVelMm');
+    return { existe: !!e, largura: Math.round(e.getBoundingClientRect().width),
+             valor: e.value };
   });
-  checar(+faixaVel.min === 2 && +faixaVel.max === 60,
-         'Velocidade: a barra percorre a faixa que a maquina publica',
-         faixaVel.min + ' a ' + faixaVel.max + ' °/s');
+  checar(mm.existe && mm.largura <= 80 && +mm.valor > 0,
+         'Velocidade: o mm/s continua na tela, pequeno e ao lado',
+         JSON.stringify(mm));
 
   // Maquina sem calibracao e sem servos: o que bloqueia tem que dizer.
   await t.request.post(BASE + '/teste/estado',
@@ -2739,21 +2828,29 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(700);
 
   // ------------------------------------------------------------------
-  // Os botoes do motor no cabecalho. Ligar e desligar torque e a coisa
-  // que mais se aperta na maquina, e estava enterrada numa gaveta de
-  // Ajustes. Sao DOIS porque cada driver e um escravo Modbus proprio:
-  // com um driver so na bancada, exigir os dois nao habilitava nada.
+  // Os botoes do motor, agora na linha de comando do painel de jog.
+  // Ligar e desligar torque e a coisa que mais se aperta na maquina, e
+  // moravam no cabecalho, longe das setas que a mao ja esta usando. Sao
+  // DOIS porque cada driver e um escravo Modbus proprio: com um driver
+  // so na bancada, exigir os dois nao habilitava nada.
   // ------------------------------------------------------------------
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(300);
   await t.request.post(BASE + '/teste/estado', { data: { srv1: true, srv2: true, servos: true, sonReg: 98, sonEst: 2 } });
   await t.waitForTimeout(900);
   const dois = await t.evaluate(() => {
     const a = document.getElementById('btMotor1'), b = document.getElementById('btMotor2');
     return a && b ? { a: a.className, b: b.className, txt: a.textContent.trim(),
-                      visivel: a.offsetParent !== null } : null;
+                      visivel: a.offsetParent !== null,
+                      noJog: !!document.querySelector('#pnMover #btMotor1'),
+                      noCabecalho: !!document.querySelector('.placa #btMotor1') } : null;
   });
   checar(!!dois && dois.visivel && / on\b/.test(dois.a) && / on\b/.test(dois.b),
-         'Motor: ha um botao por eixo no cabecalho, verdes com torque',
+         'Motor: ha um botao por eixo, cinzas com torque',
          dois ? dois.a + ' | ' + dois.b : 'sem botoes');
+  checar(!!dois && dois.noJog && !dois.noCabecalho,
+         'Motor: os botoes moram no painel de jog, nao mais no cabecalho',
+         dois ? JSON.stringify({ jog: dois.noJog, cab: dois.noCabecalho }) : 'sem botoes');
 
   rotas = [];
   await t.locator('#btMotor1').click();
