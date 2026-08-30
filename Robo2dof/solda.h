@@ -18,7 +18,7 @@ void soldaDesligar();
 bool soldaLigada();
 
 // Bloqueia a solda enquanto a condicao de seguranca nao for satisfeita
-// (drivers desabilitados, alarme, emergencia, sem conexao...).
+// (drivers desabilitados, emergencia, sem conexao...).
 void soldaPermitir(bool permitido);
 
 // Chamado todo ciclo do loop: corta o arco se passar do tempo maximo

@@ -21,8 +21,15 @@
 
 // Alarme dos drivers (ALM). GPIO 34/35 sao SOMENTE ENTRADA e nao possuem
 // pull-up interno: use pull-up externo de 10k para 3V3.
-#define PIN_ALARME_J1     34
-#define PIN_ALARME_J2     35
+// O ALM DOS DRIVERS SAIU DO FIRMWARE.
+//
+// Ele lia dois pinos que ninguem nunca ligou, e o codigo carregava um
+// caminho de falha inteiro -- entrar em FALHA, recusar comando, exigir
+// rearme -- disparado por uma leitura que na pratica era ruido de pino
+// solto. Enquanto nao houver um jeito conferido de ler o alarme deste
+// driver, esse caminho nao existe: quem corta de verdade continua sendo
+// o CONTATOR da emergencia, que e hardware e nao depende de software
+// nenhum. GPIO 34 e 35 voltaram a ficar livres.
 
 // Rele da solda. Ativo em nivel ALTO, com pull-down fisico de 10k para GND
 // (o GPIO flutua durante o boot do ESP32).
@@ -325,22 +332,11 @@ static const uint32_t SD_FREQ_HZ = 20000000;
 // usando o GPIO 2, senao os dois brigam pelo mesmo pino).
 #define PIN_LED_STATUS    255
 
-// Nivel logico do sinal ALM quando existe falha no driver
-#define ALARME_ATIVO_EM   LOW
 // Mude para true depois de instalar o botao fisico de emergencia.
 // (o #ifndef permite o banco de testes compilar com o botao "instalado"
 // para exercitar esse ramo sem mexer no valor de producao)
 #ifndef ESTOP_FISICO_INSTALADO
 #define ESTOP_FISICO_INSTALADO  false
-#endif
-
-// Mude para true SOMENTE depois de ligar os fios ALM dos drivers e os
-// pull-ups de 10k. Com false o firmware ignora esses pinos.
-// ATENCAO: com um pino de entrada solto, o ESP32 le ruido. Se este flag
-// ficar true sem a fiacao, o sistema entra em falha e recusa todo
-// comando - foi exatamente esse o travamento da v2.1.
-#ifndef ALARME_FISICO_INSTALADO
-#define ALARME_FISICO_INSTALADO false
 #endif
 
 // ---------------------------------------------------------------------
@@ -445,14 +441,22 @@ static const float CURSO_MINIMO_GRAUS = 5.0f;
 // nesse espaco: o interior do caminho precisa ser verificado.
 static const float PASSO_VALIDACAO_GRAUS = 2.0f;
 
-// Protecoes ligadas por padrao.
-// A de curso vem da SUA calibracao, entao e confiavel: nasce ligada.
-// A de envelope depende de voce ter informado o comprimento real dos
-// elos. Com valores errados ela bloqueia o braco inteiro sem motivo
-// aparente, entao nasce DESLIGADA e voce liga depois de conferir a
-// geometria na tela.
-static const bool PROT_CURSO_PADRAO    = true;
-static const bool PROT_DOBRA_PADRAO    = true;
+// TODAS AS PROTECOES NASCEM DESLIGADAS.
+//
+// O braco se move livre pela mesa; limite e coisa que o operador LIGA,
+// depois de conferir que os numeros descrevem a maquina dele.
+//
+// A regra vale para as tres pelo mesmo motivo: cada uma depende de um
+// numero que pode estar errado -- o curso depende da calibracao, a dobra
+// e o envelope dependem do comprimento dos elos. Protecao ligada sobre
+// numero errado nao protege nada: ela recusa movimento legitimo e o
+// operador fica olhando um braco que nao anda, sem saber por que. Pior
+// ainda numa maquina em montagem, que e onde os numeros ainda nao
+// existem.
+//
+// Ligadas, elas sao boas e valem: quem liga sabe o que esta protegendo.
+static const bool PROT_CURSO_PADRAO    = false;
+static const bool PROT_DOBRA_PADRAO    = false;
 static const bool PROT_ENVELOPE_PADRAO = false;
 
 // ---------------------------------------------------------------------
@@ -523,23 +527,30 @@ enum Modo : uint8_t {
   MODO_FALHA
 };
 
-// CALIBRAR SAO QUATRO MARCAS, E NADA MAIS.
+// CALIBRAR SAO DOIS GESTOS, E A MAQUINA FAZ O RESTO.
 //
-// Levar o eixo 1 ao limite positivo e marcar; ao negativo e marcar; o
-// mesmo no eixo 2. Acabou. Dali sai tudo: o curso de cada junta, o zero
-// (o meio do curso) e -- quando o encoder esta lendo -- a escala dele em
-// contagens por grau, sem ninguem digitar nada.
+//   1. O operador toca em Calibrar. A maquina leva os dois eixos ao ZERO
+//      e SOLTA os motores.
+//   2. Ele empurra o braco com a mao ate o extremo de UM lado -- os dois
+//      eixos de uma vez, que e o que da para fazer com o braco solto --
+//      e toca de novo.
+//   3. A maquina liga os motores, volta os dois ao zero e solta outra vez.
+//   4. Ele empurra para o outro extremo e toca. Acabou.
 //
-// O que existia antes: declarar o angulo real na referencia, ir ao
-// limite, VOLTAR ao zero sozinho, ir ao outro limite, voltar de novo, e
-// no fim medir o curso com transferidor para informar a resolucao. Onze
-// estados e dois numeros medidos a mao, para chegar no mesmo lugar.
+// Dali sai: o CURSO de cada junta (as duas marcas), a ESCALA DO ENCODER
+// em contagens por grau, e os PULSOS POR VOLTA de cada driver -- este
+// ultimo medido de graca durante as voltas ao zero, que sao movimentos
+// com pulso contado e encoder olhando.
+//
+// O ZERO nao se move. Ele e o ponto ao qual o operador voltou duas vezes
+// e viu o braco parar; deslocar isso no fim seria trocar debaixo dele o
+// unico ponto que ele conhece da maquina.
 enum EstadoCalib : uint8_t {
   CAL_INATIVO,
-  CAL_J1_POS,
-  CAL_J1_NEG,
-  CAL_J2_POS,
-  CAL_J2_NEG,
+  CAL_INDO_A,     // maquina levando os dois eixos ao zero, antes do lado A
+  CAL_LADO_A,     // motores soltos: o operador leva os dois a um extremo
+  CAL_VOLTANDO,   // maquina trazendo os dois de volta ao zero
+  CAL_LADO_B,     // motores soltos de novo: o outro extremo
   CAL_CONCLUIDO
 };
 

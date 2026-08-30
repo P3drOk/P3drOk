@@ -844,7 +844,7 @@ Aba **Máquina**.
 
 Uma tela só com tudo que se pergunta quando algo está estranho: há quanto
 tempo está ligada, peças prontas e interrompidas, tempo de arco,
-memória, ocupação da partição, cartão, alarmes, travamentos, e — o mais
+memória, ocupação da partição, cartão, travamentos, e — o mais
 útil — a **taxa de acerto** de cada encoder. 100% é barramento saudável;
 60% não é "meio quebrado", é cabo, terminação ou aterramento, e vai
 piorar.

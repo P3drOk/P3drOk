@@ -138,7 +138,7 @@ static_assert(sizeof(NOME_CMD) / sizeof(NOME_CMD[0]) == CMD_APAGAR_TUDO + 1,
 
 // ---------------------------------------------------------------------
 // Encerramento unico. Todo caminho de parada passa por aqui: a parada do
-// operador, o alarme de driver, a emergencia e a perda de conexao.
+// operador, a emergencia e a perda de conexao.
 //
 // A versao anterior parava trajetoria e gravacao mas nunca o programa de
 // solda: a fase ficava congelada em FASE_SOLDANDO com o modo de volta em
@@ -166,7 +166,7 @@ static void pararTudo(const char* motivo) {
   aplicarAceleracao();
   aplicarVelocidadeManual();
 
-  // FALHA so sai por rearme explicito, depois de o alarme sumir.
+  // FALHA so sai por rearme explicito do operador.
   if (modoAtual != MODO_FALHA) modoAtual = MODO_MANUAL;
 
   if (motivo) definirMensagem("%s", motivo);
@@ -235,7 +235,7 @@ static void processarComando(const Comando& c) {
         break;
       }
       servosHabilitar(c.a != 0, (uint8_t)c.b);
-      if (c.a != 0 && modoAtual == MODO_FALHA && !motoresLerAlarmes()) {
+      if (c.a != 0 && modoAtual == MODO_FALHA) {
         modoAtual = MODO_MANUAL;
         definirMensagem("Falha reconhecida, sistema liberado");
       }
@@ -725,8 +725,6 @@ static void supervisionar() {
     logEvento("SON: desabilitar nao confirmou no barramento");
   }
 
-  const bool alarme = motoresLerAlarmes();
-
   bool estop = false;
   if (ESTOP_FISICO_INSTALADO) {
     // HIGH = emergencia: botao apertado (contato NC abre) OU fio
@@ -738,16 +736,6 @@ static void supervisionar() {
   const bool semConexao =
       (ultimoContatoOperadorMs != 0) &&
       (millis() - ultimoContatoOperadorMs > TIMEOUT_CONEXAO_MS);
-
-  if (alarme && modoAtual != MODO_FALHA) {
-    pararTudo(nullptr);
-    modoAtual = MODO_FALHA;
-    definirMensagem("ALARME do driver (J1:%d J2:%d). Verifique e rearme",
-                    (int)J1.alarme, (int)J2.alarme);
-    logEvento("ALARME driver J1=%d J2=%d em t1=%.1f t2=%.1f",
-              (int)J1.alarme, (int)J2.alarme,
-              passosParaGraus(J1, posicaoJ1()), passosParaGraus(J2, posicaoJ2()));
-  }
 
   // Emergencia por NIVEL. A borda dispara a parada completa; enquanto o
   // botao continuar acionado, o torque e mantido desligado a cada ciclo.
@@ -781,7 +769,7 @@ static void supervisionar() {
   // jogAtualizar() e por todo caminho que possa mover um motor.
   // A parte que nao depende de torque, para o jog de um eixo poder
   // consultar sem depender do torque do outro.
-  movimentoSeguro = !alarme && !estop && !emergenciaAtiva && !semConexao &&
+  movimentoSeguro = !estop && !emergenciaAtiva && !semConexao &&
                     modoAtual != MODO_FALHA;
   // O portao coordenado: exige AS DUAS juntas. Programa, trajetoria e ir
   // ao zero movem os dois eixos -- com um sem torque sai desenho torto,
@@ -844,8 +832,6 @@ static void publicar() {
   s.precisao      = modoPrecisao;
   s.solda         = soldaLigada();
   s.servosLigados = servosLigados;
-  s.alarme1       = J1.alarme;
-  s.alarme2       = J2.alarme;
   s.calibrada1    = J1.calibrada;
   s.calibrada2    = J2.calibrada;
   s.emMovimento   = motoresEmMovimento();

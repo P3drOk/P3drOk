@@ -62,8 +62,6 @@ esquecer e o robô servir uma interface diferente da do repositório.
 | 17 | saída | Driver J1 · DIR+ | via buffer 5 V |
 | 18 | saída | Driver J2 · PUL+ | via buffer 5 V |
 | 19 | saída | Driver J2 · DIR+ | via buffer 5 V |
-| 34 | **entrada** | Driver J1 · ALM | pull-up externo 10 k obrigatório |
-| 35 | **entrada** | Driver J2 · ALM | pull-up externo 10 k obrigatório |
 | **2** → 26 | saída | Relé de solda | vem de fábrica no **2** (LED, bancada). Troque para **26** na máquina real · **§5** |
 | 27 | entrada | Botão de emergência | `INPUT_PULLUP`, contato NC |
 | 32 | entrada | Botão de aprendizado | `INPUT_PULLUP`, botão entre o pino e o GND |
@@ -162,23 +160,18 @@ publicado.
 | desabilita | **0** |
 | função | **06** |
 
-### 3.4 Alarme (ALM)
+### 3.4 Alarme (ALM) — fora do firmware, por enquanto
 
-```
-3V3 ──[10 kΩ]──┬── ESP32 GPIO34 ──► ALM do driver J1
-               │
-3V3 ──[10 kΩ]──┴── ESP32 GPIO35 ──► ALM do driver J2
-```
+O firmware **não lê o ALM dos drivers**. Ele lia dois pinos que nunca
+foram ligados, e carregava um caminho de falha inteiro — entrar em
+`FALHA`, recusar comando, exigir rearme — disparado por uma leitura que
+na prática era ruído de pino solto.
 
-Os GPIO 34 e 35 são **somente entrada e não têm pull-up interno**. Sem os
-resistores externos eles ficam flutuando e leem ruído.
+Enquanto não houver um jeito conferido de ler o alarme deste driver, esse
+caminho não existe. **GPIO 34 e 35 estão livres.**
 
-O firmware nasce com `ALARME_FISICO_INSTALADO false` em `config.h`, e
-nesse estado ignora os dois pinos. **Só mude para `true` depois de ligar
-os fios e os pull-ups** — com o flag ligado e o pino solto, o ESP32 lê
-ruído, o sistema entra em `FALHA` e recusa todo comando.
-
-Ajuste `ALARME_ATIVO_EM` conforme a saída do seu driver (padrão `LOW`).
+Quem corta de verdade continua sendo o **contator** da emergência
+(§ 6): é hardware, e não depende de software nenhum.
 
 ---
 
@@ -412,7 +405,6 @@ que ser o **mesmo ponto**, ligados em estrela — não em corrente.
 |---------|------------|
 | Placa não dá boot depois de ligar o cartão | MISO no GPIO 12. Mova para o 25. |
 | Eixo anda torto, perde passo | Falta buffer 5 V, ou é 74HC em vez de 74HCT. |
-| Sistema entra em FALHA e recusa tudo | `ALARME_FISICO_INSTALADO true` sem os fios e pull-ups de ALM. |
 | Arco abre sozinho ao energizar | Relé no GPIO 2, ou falta o pull-down de 10 k. |
 | Servos não habilitam, tela diz "não consegui habilitar" | Registrador do habilita errado ou barramento mudo. `Ajustes → Habilita (SON)`, e confira com `ferramentas/teste_rs485` modo `s`. |
 | Só um driver ligado e nada habilita | Não é mais assim: há **um botão por eixo** no cabeçalho. Habilite o eixo que existe e trabalhe nele. |

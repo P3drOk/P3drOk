@@ -51,8 +51,9 @@ O resumo:
 2. **Relé de solda.** Pull-down de 10 kΩ do GPIO 26 para GND. O GPIO
    flutua durante o boot; sem o resistor o arco pode abrir sozinho ao
    ligar. Acionamento por optoacoplador, nunca direto.
-3. **ALM.** Pull-up de 10 kΩ para 3V3 nos GPIO 34 e 35 (não têm pull-up
-   interno). Ajuste `ALARME_ATIVO_EM` conforme a configuração do driver.
+3. **ALM.** O firmware **não lê o alarme dos drivers** — ver
+   [`LIGACOES.md`](../LIGACOES.md) §3.4. Quem corta de verdade é o
+   contator da emergência.
 4. **Aterramento.** O retorno da solda vai direto para a peça, nunca
    passando pelo chassi da eletrônica.
 5. **Cartão microSD.** O módulo pequeno de 6 pinos (o azul com quatro
@@ -805,9 +806,9 @@ Nesta ordem:
    Sem o `74HCT14`/`74HCT245` o driver simplesmente perde pulso. Veja
    [`LIGACOES.md`](../LIGACOES.md) §3.1 — e note que tem de ser da família
    **HCT**, não HC.
-3. **Fios ALM.** Ligue-os e mude `ALARME_FISICO_INSTALADO` para `true`:
-   um servo drive que perde referência **avisa**, e o firmware leva o
-   sistema para FALHA em vez de continuar soldando torto.
+3. **Alarme dos drivers.** Fora do firmware por enquanto: não há um jeito
+   conferido de ler o ALM deste driver. Enquanto isso, o corte é o
+   contator da emergência.
 
 ## Modo de instalação
 
@@ -1054,7 +1055,6 @@ posicoes validas. Ligue depois de conferir as medidas.
 - Jog antecipa a distância de frenagem e para antes de violar o limite.
 - Heartbeat de jog: sem confirmação da interface em 350 ms, o eixo para.
 - Sem contato HTTP por 2,5 s: movimento e arco cortados.
-- Alarme de driver leva o sistema para `FALHA` e corta o arco.
 - Tempo máximo de arco contínuo.
 - Relé desligado no boot, no e-stop, na perda de conexão, no fim da
   trajetória e em qualquer falha.

@@ -458,7 +458,7 @@ bool progRetomar(const char** motivo) {
     return false;
   }
   if (!movimentoLiberado) {
-    if (motivo) *motivo = "habilite os servos e limpe os alarmes antes de retomar";
+    if (motivo) *motivo = "habilite os servos antes de retomar";
     return false;
   }
 

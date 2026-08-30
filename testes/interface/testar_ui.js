@@ -939,43 +939,53 @@ async function fecharGaveta(pag) {
   // referencia e o curso medido com transferidor. Os dois sairam -- o
   // zero e o meio do curso, e a escala do encoder sai das proprias
   // marcas.
-  for (const [calib, passo, eixo] of [
-    ['J1_POS', 1, 1], ['J1_NEG', 2, 1], ['J2_POS', 3, 2], ['J2_NEG', 4, 2],
+  for (const [calib, passo, espera] of [
+    ['INDO_A', 1, true], ['LADO_A', 1, false],
+    ['VOLTANDO', 2, true], ['LADO_B', 2, false],
   ]) {
-    await t.request.post(BASE + '/teste/estado', { data: { calib, calibEixo: eixo } });
+    await t.request.post(BASE + '/teste/estado', { data: { calib, calibEixo: 3 } });
     await t.waitForTimeout(500);
     const est = await t.evaluate(() => ({
       veu: document.getElementById('veu').classList.contains('on'),
       passo: document.getElementById('cPasso').textContent,
       instr: document.getElementById('cInstr').textContent,
       onde: document.getElementById('cOnde').textContent,
+      trancado: document.getElementById('cOk').disabled,
       campos: document.querySelectorAll('#veu input[type=number]').length,
     }));
-    checar(est.veu && new RegExp('PASSO ' + passo + ' DE 4').test(est.passo) &&
+    checar(est.veu && new RegExp('EXTREMO ' + passo + ' DE 2').test(est.passo) &&
            est.campos === 0,
-           'Calibracao: etapa ' + calib + ' e o passo ' + passo + ' de 4, sem campo a digitar',
+           'Calibracao: ' + calib + ' e o extremo ' + passo + ' de 2, sem campo a digitar',
            est.passo + ' | ' + est.instr);
-    checar(/junta \d+: -?[\d.]+/.test(est.onde),
-           'Calibracao: a tela diz onde a junta da vez esta agora', est.onde);
+    // Enquanto a MAQUINA anda, o botao nao tem o que guardar. Botao que
+    // existe sem fazer nada e pior que botao ausente.
+    checar(est.trancado === espera,
+           'Calibracao: em ' + calib + ' o botao ' +
+           (espera ? 'espera a maquina' : 'guarda o extremo'),
+           'desabilitado=' + est.trancado);
+    // Os DOIS eixos aparecem: com o braco solto, os dois se calibram na
+    // mesma ida.
+    checar(/junta 1:/.test(est.onde) && /junta 2:/.test(est.onde),
+           'Calibracao: a tela diz onde as DUAS juntas estao agora', est.onde);
   }
 
   // O sentido do eixo se descobre errado APERTANDO a seta. Tem de dar
   // para consertar ali, sem cancelar tudo.
   await t.request.post(BASE + '/teste/estado',
-    { data: { calib: 'J1_POS', calibEixo: 1 } });
+    { data: { calib: 'LADO_A', calibEixo: 3 } });
   await t.waitForTimeout(500);
-  const setas = await t.evaluate(() => {
-    const b = [...document.querySelectorAll('#cJ1 .jb')];
-    return { n: b.length, txt: b.map(x => x.textContent.trim()).join(' '),
-             dir: b.map(x => x.dataset.d).join(' '),
-             sent: document.getElementById('cSent').style.display !== 'none' };
-  });
-  // Junta e coisa que gira: seta para os lados nao quer dizer nada aqui.
-  checar(/↺/.test(setas.txt) && /↻/.test(setas.txt),
-         'Calibracao: os botoes de jog falam em sentido de rotacao, nao em lados',
-         setas.txt + '  (data-d: ' + setas.dir + ')');
-  checar(setas.sent,
-         'Calibracao: na primeira etapa aparece a conferencia de sentido');
+  // As setas de jog sairam da calibracao: o batente se alcanca com a MAO,
+  // com o motor solto -- que e como se sente o fim do curso. Com torque o
+  // operador empurra o eixo contra o ferro e so descobre pelo barulho.
+  const semSetas = await t.evaluate(() => ({
+    jog: document.querySelectorAll('#veu .jb').length,
+    sent: document.getElementById('cSent').style.display !== 'none',
+  }));
+  checar(semSetas.jog === 0,
+         'Calibracao: sem setas de jog -- o extremo se alcanca com a mao',
+         semSetas.jog + ' setas');
+  checar(semSetas.sent,
+         'Calibracao: na primeira parada aparece a conferencia de sentido');
 
   rotas = [];
   await t.locator('#cInv1').click();
@@ -987,7 +997,7 @@ async function fecharGaveta(pag) {
 
   // Depois da primeira marca o sentido some: ja ha medida que seria
   // invertida junto.
-  await t.request.post(BASE + '/teste/estado', { data: { calib: 'J1_NEG' } });
+  await t.request.post(BASE + '/teste/estado', { data: { calib: 'LADO_B' } });
   await t.waitForTimeout(500);
   checar(!(await t.evaluate(() =>
              document.getElementById('cSent').style.display !== 'none')),
@@ -1228,7 +1238,7 @@ async function fecharGaveta(pag) {
          'Origem: e o braco volta a ficar preso ao confirmar',
          origemFechou || rotas.join(' '));
 
-  // O modo pode cair por fora -- emergencia, alarme, botao da ponteira.
+  // O modo pode cair por fora -- emergencia, botao da ponteira.
   // Cancelar em silencio deixaria o botao mentindo.
   await t.locator('#pOrigem').click();
   await t.request.post(BASE + '/teste/estado', { data: { apr: true } });

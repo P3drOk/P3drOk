@@ -20,7 +20,6 @@ struct Junta {
   FastAccelStepper* motor = nullptr;
   uint8_t  pinoPulso  = 0;
   uint8_t  pinoDir    = 0;
-  uint8_t  pinoAlarme = 0;
 
   bool  calibrada     = false;
   // Torque desta junta. Por junta, e nao um interruptor so, porque cada
@@ -60,7 +59,6 @@ struct Junta {
   //
   // 1,0 = igual as duas, que e como a maquina nasce.
   float    fatorVel   = 1.0f;
-  bool     alarme     = false;
 
   // Sentido do eixo. Se a fiacao do DIR estiver invertida em relacao ao
   // que a cinematica espera, o braco vai para um lado e o desenho para o
@@ -114,7 +112,7 @@ extern bool         modoPrecisao;
 // consulta J1.habilitado / J2.habilitado direto.
 extern bool         servosLigados;
 
-// A parte do portao de movimento que NAO depende de torque: alarme,
+// A parte do portao de movimento que NAO depende de torque:
 // emergencia, conexao, falha. Existe separada porque o jog de um eixo
 // precisa dela sem precisar do torque do outro.
 extern bool         movimentoSeguro;
@@ -152,7 +150,7 @@ void limparFilaComandos();
 //
 // Escrito por supervisionar() (core 1) todo ciclo, consultado por todo
 // caminho que possa mover um motor. Falso quando faltam servos, ha
-// alarme de driver, emergencia acionada, conexao perdida ou o sistema
+// emergencia acionada, conexao perdida ou o sistema
 // esta em falha.
 //
 // Sem isso o firmware gera pulsos para um driver desabilitado: o eixo
@@ -186,7 +184,6 @@ struct Snapshot {
   bool     precisao;
   bool     solda;
   bool     servosLigados;
-  bool     alarme1, alarme2;
   bool     calibrada1, calibrada2;
   bool     emMovimento;
   uint16_t trajPontos;

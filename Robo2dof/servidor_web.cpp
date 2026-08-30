@@ -20,7 +20,7 @@ static const char* const NOMES_MODO[] = {
   "POSICIONANDO", "CALIBRANDO", "FALHA"
 };
 static const char* const NOMES_CALIB[] = {
-  "INATIVO", "J1_POS", "J1_NEG", "J2_POS", "J2_NEG", "CONCLUIDO"
+  "INATIVO", "INDO_A", "LADO_A", "VOLTANDO", "LADO_B", "CONCLUIDO"
 };
 
 // ---------------------------------------------------------------------
@@ -167,9 +167,8 @@ static void handleStatus() {
   const char* modo  = (s.modo  < 7)  ? NOMES_MODO[s.modo]   : "?";
   const char* calib = (s.calib < 6) ? NOMES_CALIB[s.calib] : "?";
 
-  uint8_t eixoCalib = 0;
-  if (s.calib == CAL_J1_POS || s.calib == CAL_J1_NEG) eixoCalib = 1;
-  if (s.calib == CAL_J2_POS || s.calib == CAL_J2_NEG) eixoCalib = 2;
+  // Os dois eixos andam juntos na calibracao: 3 quer dizer "os dois".
+  const uint8_t eixoCalib = (s.calib == CAL_INATIVO) ? 0 : 3;
 
   // Estado do aprendizado vai no status, e nao numa rota propria: a
   // tela precisa saber que o braco esta solto TODO ciclo, e nao so
@@ -187,7 +186,7 @@ static void handleStatus() {
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
     "\"p1\":%ld,\"p2\":%ld,\"t1\":%.2f,\"t2\":%.2f,\"x\":%.1f,\"y\":%.1f,"
     "\"precisao\":%s,\"solda\":%s,\"servos\":%s,\"movendo\":%s,"
-    "\"alarme1\":%s,\"alarme2\":%s,\"cal1\":%s,\"cal2\":%s,"
+    "\"cal1\":%s,\"cal2\":%s,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,"
     "\"trajN\":%u,\"trajMs\":%lu,\"trajPct\":%u,\"escala\":%u,"
     "\"progN\":%u,\"progIdx\":%u,\"progPct\":%u,\"ensaio\":%s,\"velCordao\":%.1f,"
@@ -213,8 +212,6 @@ static void handleStatus() {
     s.solda ? "true" : "false",
     s.servosLigados ? "true" : "false",
     s.emMovimento ? "true" : "false",
-    s.alarme1 ? "true" : "false",
-    s.alarme2 ? "true" : "false",
     s.calibrada1 ? "true" : "false",
     s.calibrada2 ? "true" : "false",
     J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax,
@@ -495,7 +492,7 @@ static void handleSentido() {
   Snapshot s;
   lerSnapshot(s);
   if (s.modo != MODO_MANUAL &&
-      !(s.modo == MODO_CALIBRANDO && s.calib == CAL_J1_POS)) {
+      !(s.modo == MODO_CALIBRANDO && s.calib == CAL_LADO_A)) {
     erro("troque o sentido com o robo em manual, ou na primeira etapa da calibracao");
     return;
   }
@@ -897,7 +894,7 @@ static void handleOtaFim() {
 // Uma tela so com tudo que se pergunta quando algo esta estranho: ha
 // quanto tempo esta ligada, quanta memoria sobrou, quantas pecas fez,
 // quanto arco ja abriu, se o encoder esta respondendo e a que taxa, se o
-// cartao esta la, quantos alarmes e travamentos houve.
+// cartao esta la, quantos travamentos houve.
 //
 // Antes disso a resposta a "esta tudo bem?" era abrir o monitor serial
 // com um cabo -- que so existe na bancada, nunca na fabrica.
@@ -925,7 +922,7 @@ static void handleSaude() {
     "\"arcoS\":%lu,\"manut\":%lu,"
     "\"enc1\":{\"ok\":%lu,\"falha\":%lu,\"taxa\":%u,\"idade\":%lu,\"graus\":%.2f,\"vale\":%s},"
     "\"enc2\":{\"ok\":%lu,\"falha\":%lu,\"taxa\":%u,\"idade\":%lu,\"graus\":%.2f,\"vale\":%s},"
-    "\"trav\":%lu,\"alerta\":%lu,\"alarme1\":%s,\"alarme2\":%s,"
+    "\"trav\":%lu,\"alerta\":%lu,"
     "\"cartao\":%s,\"cartaoLivre\":%lu,\"cartaoTotal\":%lu,"
     "\"apr\":%s,\"aprBotao\":%s,\"estop\":%s,\"ota\":%s}",
     (unsigned long)up,
@@ -942,7 +939,6 @@ static void handleSaude() {
     (unsigned)(tent2 ? e2.leituras * 100 / tent2 : 0),
     (unsigned long)e2.idadeMs, e2.graus, leituraConfiavel(2) ? "true" : "false",
     (unsigned long)tv.total, (unsigned long)correcaoAlertas(),
-    J1.alarme ? "true" : "false", J2.alarme ? "true" : "false",
     armBytesTotais() > 0 ? "true" : "false",
     (unsigned long)(armBytesLivres() / 1024), (unsigned long)(armBytesTotais() / 1024),
     ra.ativo ? "true" : "false", ra.instalado ? "true" : "false",

@@ -22,7 +22,6 @@ void servosHabilitar(bool ligar, uint8_t junta = 0);
 bool servosSupervisionar(bool& habilitouAgora);
 
 // Le os pinos ALM dos drivers. Retorna true se houver alguma falha.
-bool motoresLerAlarmes();
 
 void aplicarVelocidadeManual();
 void aplicarAceleracao();

@@ -49,8 +49,8 @@ static uint32_t limitarFreq(uint32_t v) {
 static uint32_t velProgramada[2] = {0, 0};
 
 bool motoresIniciar() {
-  J1.pinoPulso = PIN_J1_PULSO; J1.pinoDir = PIN_J1_DIR; J1.pinoAlarme = PIN_ALARME_J1;
-  J2.pinoPulso = PIN_J2_PULSO; J2.pinoDir = PIN_J2_DIR; J2.pinoAlarme = PIN_ALARME_J2;
+  J1.pinoPulso = PIN_J1_PULSO; J1.pinoDir = PIN_J1_DIR;
+  J2.pinoPulso = PIN_J2_PULSO; J2.pinoDir = PIN_J2_DIR;
 
   sonPedidoEraLigar = false;
   sonAguardando     = false;
@@ -63,11 +63,6 @@ bool motoresIniciar() {
   // nao habilitou -- nao que o driver esteja desabilitado. Sao coisas
   // diferentes, e a segunda so se descobre escrevendo.
   servosLigados = false;
-
-  if (ALARME_FISICO_INSTALADO) {
-    pinMode(J1.pinoAlarme, INPUT);
-    pinMode(J2.pinoAlarme, INPUT);
-  }
 
   engine.init();
   J1.motor = engine.stepperConnectToPin(J1.pinoPulso);
@@ -228,20 +223,6 @@ bool servosSupervisionar(bool& habilitouAgora) {
   return false;
 }
 
-bool motoresLerAlarmes() {
-  // Sem a fiacao de ALM os pinos flutuam e leem ruido. Ler pino solto e
-  // tratar como alarme trava o sistema inteiro, entao so lemos de fato
-  // quando o hardware existe.
-  if (!ALARME_FISICO_INSTALADO) {
-    J1.alarme = false;
-    J2.alarme = false;
-    return false;
-  }
-  J1.alarme = (digitalRead(J1.pinoAlarme) == ALARME_ATIVO_EM);
-  J2.alarme = (digitalRead(J2.pinoAlarme) == ALARME_ATIVO_EM);
-  return J1.alarme || J2.alarme;
-}
-
 // ---------------------------------------------------------------------
 uint32_t grausPorSegParaHz(const Junta& j, float grausPorS) {
   if (grausPorS <= 0.0f || j.passosPorGrau <= 0.0f) return 1;
@@ -382,7 +363,7 @@ static long distanciaFreada(const Junta& j) {
 void jogAtualizar() {
   const uint32_t agora = millis();
 
-  // Portao de seguranca (ver estado.h): alarme, emergencia, conexao,
+  // Portao de seguranca (ver estado.h): emergencia, conexao,
   // falha. O TORQUE e conferido por eixo logo abaixo -- jog e movimento
   // de um eixo so, e travar a junta 1 porque a 2 esta sem torque impedia
   // de trabalhar numa bancada com um driver ligado.
@@ -549,8 +530,7 @@ void pararEmergencia() {
   pararSuave();
   aplicarAceleracao();
   aplicarVelocidadeManual();
-  // FALHA nao se limpa com uma parada: quem rearma e CMD_SERVOS, depois
-  // de confirmar que o alarme do driver sumiu.
+  // FALHA nao se limpa com uma parada: quem rearma e CMD_SERVOS.
   if (modoAtual != MODO_FALHA) modoAtual = MODO_MANUAL;
   definirMensagem("PARADA: movimento interrompido e solda desligada");
 }

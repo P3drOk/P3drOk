@@ -132,7 +132,7 @@ button,input{font:inherit;color:inherit}
    controles pela atencao -- e controle do robo tem de ganhar de
    diagnostico. Aqui viraram texto apagado com um ponto pequeno: legivel
    quando se procura, invisivel quando nao se procura.
-   O que continua chamando e o que PRECISA chamar: alarme e emergencia,
+   O que continua chamando e o que PRECISA chamar: emergencia,
    que piscam em vermelho. */
 .lamps{display:flex;margin-left:auto;min-width:0;opacity:.55}
 .lp{display:flex;flex-direction:row;align-items:center;gap:5px;min-width:0;
@@ -1531,19 +1531,21 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="tx"><div class="tt">Calibrar o braco</div>
           <span class="sb" id="sbCurso">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt">Quatro marcas: <b>junta 1 no limite positivo</b>,
-          <b>junta 1 no negativo</b>, e o mesmo na <b>junta 2</b>. Nada a
-          digitar. Dali sai o curso de cada junta, o zero (o meio do curso) e
-          a escala do encoder.</div>
-          <div class="nt">Chegue no batente com as setas, ou <b>solte o motor
-          daquele eixo</b> e empurre o braco com a mao.</div>
+          <div class="nt"><b>Dois gestos.</b> Toque em Calibrar: a maquina
+          leva o braco ao zero e solta os motores. Empurre com a mao ate o
+          extremo de um lado &mdash; os dois eixos de uma vez &mdash; e
+          toque de novo. Ela volta ao zero sozinha e solta outra vez; voce
+          vai ao outro extremo e toca. Acabou.</div>
+          <div class="nt">Dali sai o curso de cada junta, a escala do encoder
+          e os pulsos por volta de cada driver. Nada a digitar.</div>
           <button class="b pri" id="btCalIni2">Calibrar agora</button>
           <div class="pq2" id="qCalIni2"></div>
           <div class="res" id="calVivo">--</div>
           <button class="b mini x" id="btCalApagar2">Apagar os limites</button>
           <div class="pq2" id="qCalApagar2"></div>
-          <div class="nt">Calibrar e <b>opcional</b>: sem limites a maquina
-          opera igual, so fica sem protecao de curso.</div>
+          <div class="nt">Calibrar e <b>opcional</b>: sem curso medido a
+          maquina opera igual. E medir o curso nao liga o limite &mdash; quem
+          liga e voce, em Ajustes.</div>
         </div>
       </div>
 
@@ -1847,24 +1849,13 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
   <div class="pgr"><i id="cBarra"></i></div>
   <div class="ins" id="cInstr"></div>
 
-  <!-- Onde a junta da vez esta AGORA. E o unico numero da tela, e ele nao
-       se digita: se le. -->
+  <!-- Onde as DUAS juntas estao agora. Sao os unicos numeros da tela, e
+       nenhum se digita: se le. -->
   <div class="res" id="cOnde">--</div>
 
-  <div class="nt">Chegue no batente do jeito que preferir: com as setas
-  abaixo, ou <b>soltando o motor daquele eixo</b> e empurrando o braco
-  com a mao &mdash; nos dois casos o que se grava e onde a junta esta.</div>
-
-  <div class="eixo" id="cJ1">
-    <button class="jb" data-j="1" data-d="1" title="anti-horario">&#8634;</button>
-    <div class="id"><span class="rot">junta 1</span></div>
-    <button class="jb" data-j="1" data-d="-1" title="horario">&#8635;</button>
-  </div>
-  <div class="eixo" id="cJ2">
-    <button class="jb" data-j="2" data-d="1" title="anti-horario">&#8634;</button>
-    <div class="id"><span class="rot">junta 2</span></div>
-    <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;</button>
-  </div>
+  <div class="nt">Com os motores soltos voce empurra o braco com a mao e
+  <b>sente</b> o batente. Os dois eixos de uma vez &mdash; com o braco
+  solto, os dois estao soltos.</div>
 
   <!-- So na PRIMEIRA etapa: e aqui que o operador descobre que o braco
        gira ao contrario, e mandar cancelar para consertar era pedir para
@@ -1879,7 +1870,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
     <div class="tr"><div class="ch" id="cInv2"><i></i></div>
       <span>inverter a junta 2</span></div>
   </div>
-  <button class="b pri" id="cOk">Marcar este limite</button>
+  <button class="b pri" id="cOk">Guardar este extremo</button>
   <button class="b mini" id="cNao">Cancelar</button>
 </div></div>
 
@@ -2768,7 +2759,6 @@ function saudeAtualizar(){
       ["Encoder junta 1",        enc(j.enc1)],
       ["Encoder junta 2",        enc(j.enc2)],
       ["Travamentos",            String(j.trav)],
-      ["Alarme dos drivers",     (j.alarme1||j.alarme2)?"SIM":"nenhum"],
       ["Botao de emergencia",    j.estop?"instalado":"nao instalado"],
       ["Botao da ponteira",      j.aprBotao?"instalado":"nao instalado"],
       ["Cartao",                 j.cartao?(Math.round(j.cartaoLivre/1024)+" MB livres de "+
@@ -2782,7 +2772,7 @@ function saudeAtualizar(){
       return '<div class="sl"><span>'+tr(l[0])+'</span><b>'+tr(l[1])+'</b></div>';}).join("");
 
     const encRuim=(j.enc1.ok+j.enc1.falha>50&&j.enc1.taxa<90);
-    const ruim=j.alarme1||j.alarme2||j.trav>0||encRuim;
+    const ruim=j.trav>0||encRuim;
     $("sbSaude").textContent = ruim ? "atencao: veja os itens abaixo"
       : (j.ciclos+" pecas · ligada ha "+dur(j.up));
     $("sbSaude").className="sb"+(ruim?" alerta":"");
@@ -4347,7 +4337,7 @@ function origemPintar(d){
      responder. */
   if(d.apr){ origemViuSolto=true; return; }
   if(!origemViuSolto) return;
-  /* Viu ligado e agora nao esta: caiu por fora -- emergencia, alarme, o
+  /* Viu ligado e agora nao esta: caiu por fora -- emergencia, o
      botao da ponteira. Cancelar em silencio deixaria o botao mentindo. */
   origemEsperando=false;
   b.textContent=tr("origem com o braco");
@@ -5022,11 +5012,18 @@ const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
 /* Quatro marcas, e acabou. Nao ha etapa de volta ao zero, nem numero a
    digitar: o curso, o zero (o meio do curso) e a escala do encoder saem
    todos das proprias marcas. */
-const PC={J1_POS:[1,"Leve a junta 1 ate o limite POSITIVO -- o batente -- e marque."],
- J1_NEG:[2,"Agora a junta 1 ate o limite NEGATIVO."],
- J2_POS:[3,"Junta 1 medida. Leve a junta 2 ate o limite POSITIVO."],
- J2_NEG:[4,"E a junta 2 ate o limite NEGATIVO. Esta e a ultima."],
- CONCLUIDO:[4,"Calculando..."]};
+/* Dois gestos do operador; o resto e da maquina. Os estados de viagem
+   nao pedem nada: eles so contam o que esta acontecendo, para ninguem
+   achar que a tela travou enquanto o braco anda. */
+const PC={
+ INDO_A:   [1,"A maquina esta levando o braco ao zero. Espere."],
+ LADO_A:   [1,"Motores soltos. Empurre o braco ate o extremo de UM lado -- os "+
+              "dois eixos de uma vez -- e toque em Guardar."],
+ VOLTANDO: [2,"Extremo guardado. A maquina esta voltando ao zero."],
+ LADO_B:   [2,"Motores soltos de novo. Agora o extremo do OUTRO lado."],
+ CONCLUIDO:[2,"Medido. A maquina esta voltando ao zero para terminar."]};
+/* Nas viagens quem anda e a maquina: o botao nao tem o que guardar. */
+const PC_ESPERA={INDO_A:1,VOLTANDO:1,CONCLUIDO:1};
 
 let quedas=0,ultN=-1,ultCal="";
 /* Um botao fora de acao tem que dizer por que. Desabilitar em silencio e
@@ -5301,21 +5298,25 @@ function aplicar(d){
   }else{
     veu.classList.add("on");
     const p=PC[d.calib]||[0,""];
-    $("cPasso").textContent="PASSO "+p[0]+" DE 4";
+    $("cPasso").textContent="EXTREMO "+p[0]+" DE 2";
     $("cInstr").textContent=p[1];
-    $("cBarra").style.width=(p[0]/4*100)+"%";
-    $("cJ1").style.display=(d.calibEixo===1||d.calibEixo===0)?"grid":"none";
-    $("cJ2").style.display=(d.calibEixo===2||d.calibEixo===0)?"grid":"none";
-    /* Onde a junta da vez esta agora -- medida, quando o encoder le. */
-    const jj=d.calibEixo||1;
-    const med=(jj===1)?d.m1:d.m2, temMed=(jj===1)?d.m1ok:d.m2ok;
-    const cont=(jj===1)?d.t1:d.t2;
-    $("cOnde").textContent="junta "+jj+": "+
-      (temMed?med.toFixed(2)+"\u00b0 (medido)":cont.toFixed(2)+"\u00b0");
-    /* A conferencia de sentido so na PRIMEIRA etapa: da segunda em
-       diante ja ha marca feita, e trocar o sinal do eixo inverteria o
-       significado dela. */
-    $("cSent").style.display=(d.calib==="J1_POS")?"block":"none";
+    $("cBarra").style.width=(p[0]/2*100)+"%";
+    /* Nas viagens quem anda e a maquina: o botao nao tem o que guardar,
+       e um botao que existe sem fazer nada e pior que um ausente. */
+    const espera=!!PC_ESPERA[d.calib];
+    $("cOk").disabled=espera;
+    $("cOk").textContent=espera?"a maquina esta andando…":"Guardar este extremo";
+    /* Onde as DUAS juntas estao agora -- medidas, quando o encoder le. */
+    const ondeJ=function(n){
+      const med=(n===1)?d.m1:d.m2, tem=(n===1)?d.m1ok:d.m2ok;
+      const cont=(n===1)?d.t1:d.t2;
+      return "junta "+n+": "+(tem?med.toFixed(1):cont.toFixed(1))+"\u00b0";
+    };
+    $("cOnde").textContent=ondeJ(1)+"    "+ondeJ(2);
+    /* A conferencia de sentido so na PRIMEIRA parada: da segunda em
+       diante ja ha extremo guardado, e trocar o sinal do eixo inverteria
+       o significado dele. */
+    $("cSent").style.display=(d.calib==="LADO_A")?"block":"none";
   }
   ultCal=d.calib;
 

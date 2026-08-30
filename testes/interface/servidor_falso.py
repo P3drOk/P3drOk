@@ -44,7 +44,7 @@ estado = {
     "modo": "MANUAL", "calib": "INATIVO", "calibEixo": 0,
     "p1": 250, "p2": -400, "t1": 9.0, "t2": -14.4, "x": 388.0, "y": -17.0,
     "precisao": False, "solda": False, "servos": True, "movendo": False,
-    "alarme1": False, "alarme2": False, "cal1": True, "cal2": True,
+    "cal1": True, "cal2": True,
     "j1min": -95.0, "j1max": 95.0, "j2min": -120.0, "j2max": 30.0,
     "trajN": 24, "trajMs": 590, "trajPct": 0, "escala": 100,
     "progN": 3, "progIdx": 0, "progPct": 0, "ensaio": False,
@@ -98,7 +98,7 @@ SAUDE = {
              "graus": 9.02, "vale": True},
     "enc2": {"ok": 0, "falha": 0, "taxa": 0, "idade": 0,
              "graus": 0.0, "vale": False},
-    "trav": 0, "alerta": 2, "alarme1": False, "alarme2": False,
+    "trav": 0, "alerta": 2,
     "cartao": True, "cartaoLivre": 7412992, "cartaoTotal": 15204352,
     "apr": False, "aprBotao": False, "estop": False, "ota": False,
 }
