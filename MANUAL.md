@@ -793,7 +793,7 @@ Duas coisas fazem isso funcionar de verdade:
    desvio não some — ele só muda de lugar, e o próximo movimento absoluto
    nasce errado pelo mesmo tanto.
 
-**Sete regras, todas com cenário no banco de testes:**
+**Oito regras, todas com cenário no banco de testes:**
 
 | | |
 |---|---|
@@ -804,6 +804,7 @@ Duas coisas fazem isso funcionar de verdade:
 | 5 | erro grande se fecha **em passos**, nunca de uma vez |
 | 6 | insiste enquanto **aproxima** |
 | 7 | a chegada é **suave** |
+| 8 | o retoque **aprende a escala** da própria máquina |
 
 As regras 5 e 6 já foram outra coisa, e a troca vale explicar. Elas
 diziam "erro acima do teto não se corrige, se denuncia" e "no máximo
@@ -820,9 +821,25 @@ acoplamento solto deixou de ser um número de tentativas: é o retoque
 **não diminuir o erro**. Enquanto cada passo aproxima pelo menos 15%,
 continua; parou de aproximar, desiste e diz.
 
+A regra 8 é a que resolve "chega perto, passa do ponto e não volta". O
+retoque anda em **pulsos** (graus ÷ `passosPorGrau`, do catálogo), mas o
+erro é medido em graus do **encoder**. Quando as duas réguas discordam —
+e discordar é o normal antes de calibrar — pedir "ande 2 graus" faz o
+eixo andar 4: passa, volta passando, e o assentamento desiste. Não há por
+que adivinhar essa razão: **o retoque anterior a mede**. Pediu tanto, o
+encoder andou tanto; o seguinte já sai dividido por ela e cai no ponto. O
+ganho é propriedade da máquina, então o segundo posicionamento já nasce
+certo.
+
 Se o eixo simplesmente não seguir, o assentamento nem chega a rodar: o
 **vigia de travamento** pega antes (comando andando, medido parado) e
-para o eixo dizendo qual junta.
+para o eixo dizendo qual junta. Esse vigia exige **duas coisas** para
+acusar: o pulso claramente correndo **e** o encoder claramente parado.
+A conta proporcional (que compara o esperado com o medido) só *refina* —
+ela pega escorregão parcial, mas nunca inventa um travamento sozinha.
+Fazia: dividindo pelo catálogo e comparando com o medido, uma régua
+discordante transformava braço andando em braço travado meio segundo
+depois de arrancar. Ver `ACHADOS.md`, R156, e o cenário **M09**.
 
 Ajustes: tolerância (0,10° de fábrica), tamanho do passo do retoque
 (3°), aviso de desvio (1°), tentativas sem progresso (3). Tudo

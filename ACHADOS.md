@@ -4221,11 +4221,66 @@ Duas coisas que só apareceram ao mexer:
   sendo botão mudo, e deixá-lo fora da varredura seria perder a cobertura
   em silêncio.
 
+## R156 · Trava no meio e passa do ponto: uma régua, dois sintomas  `M08` `M09`  ✅
+
+Relato: "começa bem, mas no meio do caminho dá alguns travamentos e nunca
+chega; e quando o caminho é curto ele passa e não tem ajuste que o faça
+ir para o ponto certo".
+
+Parecem dois defeitos. São **a mesma condição**: `passosPorGrau` (do
+catálogo — pulsos por volta × redução) discordando de
+`contagensPorGrau` (medido na máquina). Discordar é o normal antes de
+calibrar, e a máquina do relato discordava muito.
+
+**1 — a trava no meio do caminho.** O vigia de travamento tinha dois
+critérios, e escolhia entre eles:
+
+```c
+if (reguaMedida) { /* proporcional */ } else { /* sem escala */ }
+```
+
+O ramo proporcional divide por `passosPorGrau` e compara com o encoder.
+Com as duas réguas discordando, o **esperado** sai várias vezes maior que
+o real, o eixo entrega menos de um quinto do previsto — e um braço
+andando perfeitamente é declarado travado meio segundo depois de
+arrancar. O banco reproduz o número: pedindo 60°, o eixo andava **1,9°** e
+parava com *"Junta 1 travada: o comando anda e o eixo não."*
+
+O próprio comentário do código já dizia qual dos dois não pode mentir:
+*"eixo que gira produz contagem, seja qual for a escala"*. Então o teste
+sem escala virou **condição necessária** — pulso correndo **e** encoder
+parado. O proporcional continua, mas só para **refinar** (pega
+escorregão parcial): ele estreita o critério, nunca inventa um
+travamento sozinho.
+
+**2 — passa do ponto e não volta.** O retoque anda em **pulsos**: graus
+de erro viram passos por `passosPorGrau`. O erro, porém, é medido em
+graus do **encoder**. Com as réguas discordando, pedir "ande 2 graus" faz
+o eixo andar 4 — passa, volta passando de novo, e o assentamento desiste
+dizendo que não aproxima. Reproduzido: pedindo 20°, parava em **18,14°**;
+caminho curto de 2°, parava a meio caminho.
+
+**Não há por que adivinhar essa razão — o retoque anterior a mede.** Foi
+comandado tanto, o encoder andou tanto: a divisão é o ganho real da
+máquina, do jeito que ela está agora. O retoque seguinte já sai dividido
+por ele e cai no ponto.
+
+- Enquanto o ganho não foi medido, o retoque sai **amortecido** (70%):
+  passar do ponto custa outra viagem.
+- Ganho fora de `[0,15 … 6]` não vira régua — ali a medida veio de ruído.
+- O ganho é propriedade da **máquina**, não de um movimento: sobrevive de
+  um posicionamento para o outro, então o segundo já nasce certo. `M08d`
+  prende isso.
+
+Os dois lados foram verificados desligando cada correção sozinha: sem o
+critério sem escala, `M09` acusa a trava a 1,9°; sem o ganho aprendido,
+`M08` acusa a parada em 18,14° e o caminho curto errando o alvo.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **470 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **477 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **290 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

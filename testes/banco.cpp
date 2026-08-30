@@ -3826,6 +3826,135 @@ static void teste_M07_desiste_quando_nao_aproxima() {
          "e o robo nao fica preso em POSICIONANDO");
 }
 
+// ---------------------------------------------------------------------
+// M08: REGUA DISCORDANTE -- a maquina do relato.
+//
+// "Peco para ir a tal angulo: comeca bem, no meio do caminho da uns
+// travamentos e nunca chega; e quando o caminho e curto ele passa do
+// ponto e nao tem ajuste que o traga de volta."
+//
+// Os dois sintomas sao a mesma condicao: passosPorGrau (catalogo:
+// pulsos por volta x reducao) discordando de contagensPorGrau (medido).
+// Aqui o eixo entrega DOIS graus de encoder para cada grau comandado.
+//
+//   1. o vigia de travamento dividia pelo catalogo e comparava com o
+//      medido: o esperado saia varias vezes maior que o real e um eixo
+//      andando perfeitamente virava "travado" meio segundo depois de
+//      arrancar;
+//   2. o retoque pedia o erro cru em graus, andava o dobro, passava do
+//      ponto, voltava passando de novo -- e o assentamento desistia
+//      dizendo que nao aproximava.
+// ---------------------------------------------------------------------
+static void teste_M08_regua_discordante_chega_mesmo_assim() {
+  secao("M08  Regua discordante: sem travamento falso, e chega ao ponto");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  // A regua MEDIDA diz metade das contagens por grau que a fisica do
+  // espelho entrega. Efeito: cada grau comandado vira dois graus lidos.
+  const float red    = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cpgFis = configEncoder.contagensPorVolta[0] * red / 360.0f;
+  configEncoder.contagensPorGrau[0] = cpgFis / 2.0f;
+  rodarComWeb(200);
+  nota("regua fisica %.1f c/grau, regua medida %.1f -- o eixo entrega o "
+       "dobro do que se pede", (double)cpgFis,
+       (double)configEncoder.contagensPorGrau[0]);
+
+  const uint32_t travAntes = correcaoTravamento().total;
+  irComPerda(20, 0, 0.0f);
+
+  nota("pedi 20 graus: encoder le %.2f, %u retoque(s), travamentos %lu, "
+       "estado %u -- \"%s\"",
+       (double)encoderLer(1).graus, (unsigned)correcaoResumo().tentativas,
+       (unsigned long)(correcaoTravamento().total - travAntes),
+       (unsigned)correcaoResumo().estado, correcaoResumo().motivo);
+
+  checar(correcaoTravamento().total == travAntes, "M08a",
+         "regua discordante NAO vira travamento: eixo que gira produz "
+         "contagem, e era isso que travava no meio do caminho");
+  checar(fabsf(encoderLer(1).graus - 20.0f) < 0.3f, "M08b",
+         "e o braco chega ao angulo pedido, medido pelo encoder");
+
+  // O ganho ficou aprendido: o proximo posicionamento ja nasce certo, e
+  // fecha com menos retoque que o primeiro.
+  const uint8_t retoquesPrimeiro = correcaoResumo().tentativas;
+  irComPerda(35, 0, 0.0f);
+  nota("segundo movimento: encoder le %.2f com %u retoque(s) "
+       "(o primeiro precisou de %u)",
+       (double)encoderLer(1).graus, (unsigned)correcaoResumo().tentativas,
+       (unsigned)retoquesPrimeiro);
+  checar(fabsf(encoderLer(1).graus - 35.0f) < 0.3f, "M08c",
+         "o segundo movimento tambem chega");
+  checar(correcaoResumo().tentativas <= retoquesPrimeiro, "M08d",
+         "e com o ganho ja medido ele nao precisa de mais retoques que o "
+         "primeiro -- a maquina aprendeu a propria escala");
+
+  // CAMINHO CURTO, que era o caso do "passa e nao volta".
+  irComPerda(37, 0, 0.0f);
+  nota("caminho curto (2 graus): encoder le %.2f -- \"%s\"",
+       (double)encoderLer(1).graus, correcaoResumo().motivo);
+  checar(fabsf(encoderLer(1).graus - 37.0f) < 0.3f, "M08e",
+         "caminho curto tambem cai no ponto, em vez de passar e ficar la");
+}
+
+// ---------------------------------------------------------------------
+// M09: o vigia de travamento nao pode ser enganado pela propria regua.
+//
+// A conta proporcional divide por passosPorGrau (catalogo) e compara com
+// contagensPorGrau (medido). Quando o medido e varias vezes maior que a
+// fisica, o ESPERADO sai varias vezes maior que o real -- e um eixo
+// andando perfeitamente e declarado travado meio segundo depois de
+// arrancar. Era o "comeca bem e no meio do caminho trava".
+//
+// Eixo que gira produz contagem, seja qual for a escala. O teste sem
+// escala -- pulso correndo, encoder PARADO -- e o unico que nao mente
+// por numero errado, e virou condicao necessaria.
+// ---------------------------------------------------------------------
+static void teste_M09_regua_errada_nao_inventa_travamento() {
+  secao("M09  Regua errada nao inventa travamento no meio do caminho");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  // A regua medida diz SEIS vezes mais contagens por grau do que a
+  // fisica entrega: o esperado fica seis vezes acima do real, bem abaixo
+  // do quinto que a conta proporcional exige.
+  const float red    = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cpgFis = configEncoder.contagensPorVolta[0] * red / 360.0f;
+  configEncoder.contagensPorGrau[0] = cpgFis * 6.0f;
+  rodarComWeb(200);
+
+  const uint32_t travAntes = correcaoTravamento().total;
+  const long passosAntes = posicaoJ1();
+
+  webPost("/api/mover?t1=60&t2=0");
+  rodarComWeb(60);
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < 12000) { rodarComWeb(20); t += 20; }
+
+  const float andouGraus =
+      fabsf((float)(posicaoJ1() - passosAntes)) / J1.passosPorGrau;
+  nota("regua medida 6x a fisica: travamentos %lu, eixo andou %.1f graus "
+       "de contagem -- \"%s\"",
+       (unsigned long)(correcaoTravamento().total - travAntes),
+       (double)andouGraus, ultimaMensagem);
+
+  checar(correcaoTravamento().total == travAntes, "M09a",
+         "eixo andando com a regua errada NAO e travamento: ele produz "
+         "contagem, e contagem e o que separa preso de solto");
+  checar(andouGraus > 30.0f, "M09b",
+         "e o movimento vai ate o fim, em vez de morrer no meio");
+}
+
 static void teste_M03_desligado_e_parada() {
   secao("M03  Desligar o assentamento, e a parada de emergencia");
   reiniciarSistema();
@@ -7540,6 +7669,8 @@ int main() {
   teste_M02_nao_retoca_quando_nao_deve();
   teste_M06_chega_sem_curso_e_com_erro_grande();
   teste_M07_desiste_quando_nao_aproxima();
+  teste_M08_regua_discordante_chega_mesmo_assim();
+  teste_M09_regua_errada_nao_inventa_travamento();
   teste_M03_desligado_e_parada();
   teste_M04_travamento_nao_dispara_a_toa();
   teste_M05_seguir_o_eixo_solto();

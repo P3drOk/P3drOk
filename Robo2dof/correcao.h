@@ -50,6 +50,13 @@
 //   7. A chegada e SUAVE. A velocidade do retoque acompanha o que
 //      falta: meia velocidade longe, afinando ate o minimo da maquina.
 //      O ultimo decimo de grau e um encosto, nao um tranco.
+//   8. O retoque APRENDE A ESCALA da propria maquina. Ele anda em
+//      pulsos (graus / passosPorGrau, do catalogo) mas o erro e medido
+//      em graus do ENCODER; quando as duas reguas discordam, pedir dois
+//      graus faz o eixo andar quatro, e o assentamento passa do ponto
+//      sem nunca fechar. Nao ha por que adivinhar essa razao: o retoque
+//      anterior a mede -- pediu tanto, o encoder andou tanto. O
+//      seguinte ja sai dividido por ela. Ver R156.
 // =====================================================================
 
 // Em que pe esta o assentamento. Vai para a tela.

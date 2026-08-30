@@ -63,6 +63,48 @@ static const float GRAUS_VEL_CHEIA = 3.0f;
 static float   erroAnterior = 0.0f;
 static uint8_t semProgresso = 0;
 
+// =====================================================================
+//  O RETOQUE APRENDE A ESCALA DA PROPRIA MAQUINA
+//
+//  O retoque anda em PULSOS: graus de erro viram passos por
+//  passosPorGrau, que sai do catalogo (pulsos por volta x reducao). O
+//  erro, porem, e medido em graus do ENCODER. Quando as duas reguas
+//  discordam -- e discordar e o normal antes de calibrar --, pedir "ande
+//  2 graus" faz o eixo andar 4, ou 1. Ai o retoque passa do ponto,
+//  volta passando do ponto de novo, e o assentamento desiste dizendo que
+//  nao aproxima. Era o "chega perto, passa, e nao tem ajuste que
+//  conserte".
+//
+//  Nao ha por que adivinhar essa razao: o retoque anterior a mede. Foi
+//  comandado tanto, o encoder andou tanto -- a divisao e o ganho real da
+//  maquina, do jeito que ela esta agora. O proximo retoque ja sai
+//  dividido por ele e cai no ponto.
+//
+//  O ganho e propriedade da MAQUINA, nao de um movimento: sobrevive de
+//  um posicionamento para o outro, entao o segundo ja nasce certo.
+// =====================================================================
+static float ganhoRetoque[2]   = {1.0f, 1.0f};
+static bool  ganhoAprendido[2] = {false, false};
+static float retoquePedido[2]  = {0.0f, 0.0f};   // graus comandados
+static float medidoAntes[2]    = {0.0f, 0.0f};   // encoder antes do retoque
+static bool  temMedidoAntes[2] = {false, false};
+
+// Enquanto o ganho nao foi medido, o retoque sai amortecido: passar do
+// ponto custa outra viagem, e chegar em dois passos curtos e melhor que
+// bater e voltar.
+static const float AMORTECIMENTO_SEM_GANHO = 0.7f;
+// Faixa em que um ganho medido e crivel. Fora dela a medida veio de
+// ruido -- retoque curto demais, leitura tremida -- e nao vira regua.
+static const float GANHO_MIN = 0.15f;
+static const float GANHO_MAX = 6.0f;
+
+static void esquecerGanho() {
+  ganhoRetoque[0] = ganhoRetoque[1] = 1.0f;
+  ganhoAprendido[0] = ganhoAprendido[1] = false;
+  retoquePedido[0] = retoquePedido[1] = 0.0f;
+  temMedidoAntes[0] = temMedidoAntes[1] = false;
+}
+
 // Limita a MAGNITUDE de um retoque, guardando o sinal.
 static float comTeto(float v, float teto) {
   if (v >  teto) return  teto;
@@ -135,6 +177,25 @@ void correcaoAtualizar() {
     r.estado = CORR_RECUSADA;
     dizer("sem leitura do encoder: nada foi retocado");
     return;
+  }
+
+  // O RETOQUE ANTERIOR MEDIU A ESCALA: aproveita antes de calcular o
+  // proximo. 'andou' e quanto o encoder se moveu de fato; 'pedido' e
+  // quanto foi comandado. A divisao e o ganho real desta maquina.
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    if (retoquePedido[i] == 0.0f || !temMedidoAntes[i]) continue;
+    if (!leituraConfiavel(k)) { retoquePedido[i] = 0.0f; continue; }
+    const float andou = encoderLer(k).graus - medidoAntes[i];
+    const float g = andou / retoquePedido[i];
+    if (g > GANHO_MIN && g < GANHO_MAX) {
+      ganhoRetoque[i] = g;
+      ganhoAprendido[i] = true;
+      logEvento("junta %u: retoque pediu %.3f grau e o eixo andou %.3f "
+                "(ganho %.2f)", (unsigned)k, (double)retoquePedido[i],
+                (double)andou, (double)g);
+    }
+    retoquePedido[i] = 0.0f;
   }
 
   if (r.tentativas == 0) { r.erroInicial1 = e1; r.erroInicial2 = e2; }
@@ -213,10 +274,25 @@ void correcaoAtualizar() {
   // usa grausParaPassos() aqui: aquela funcao converte um ANGULO
   // ABSOLUTO (descontando o zero da maquina), e o que se tem aqui e uma
   // DIFERENCA -- passar diferenca por ela somaria o zero duas vezes.
+  // Quanto PEDIR para andar tantos graus de erro: divide pelo ganho
+  // medido. Sem ganho medido ainda, sai amortecido -- passar do ponto
+  // custa outra viagem.
+  const auto passoDe = [](float erro, uint8_t i) {
+    return ganhoAprendido[i] ? (erro / ganhoRetoque[i])
+                             : (erro * AMORTECIMENTO_SEM_GANHO);
+  };
+
   long alvo1 = posicaoJ1();
   long alvo2 = posicaoJ2();
-  if (t1 && m1 > tol) alvo1 += lroundf(comTeto(e1, teto) * J1.passosPorGrau);
-  if (t2 && m2 > tol) alvo2 += lroundf(comTeto(e2, teto) * J2.passosPorGrau);
+  float pedido1 = 0.0f, pedido2 = 0.0f;
+  if (t1 && m1 > tol) {
+    pedido1 = comTeto(passoDe(e1, 0), teto);
+    alvo1 += lroundf(pedido1 * J1.passosPorGrau);
+  }
+  if (t2 && m2 > tol) {
+    pedido2 = comTeto(passoDe(e2, 1), teto);
+    alvo2 += lroundf(pedido2 * J2.passosPorGrau);
+  }
 
   // Regra 3: nunca para fora do curso, QUANDO o curso esta valendo.
   // Com o limite desligado o braco anda livre pela mesa (ver R143), e
@@ -261,10 +337,25 @@ void correcaoAtualizar() {
   // meia velocidade e vai afinando ate o minimo da maquina, entao o
   // ultimo decimo e um encosto e nao um tranco.
   const float cheia = velNormal * 0.5f;
+  const float andarMaior = (fabsf(pedido1) > fabsf(pedido2))
+                         ? fabsf(pedido1) : fabsf(pedido2);
   float vel = (GRAUS_VEL_CHEIA > 0.001f)
-            ? cheia * (faltaMaior / GRAUS_VEL_CHEIA) : cheia;
+            ? cheia * (andarMaior / GRAUS_VEL_CHEIA) : cheia;
   if (vel > cheia)     vel = cheia;
   if (vel < velMinima) vel = velMinima;
+  // Guarda o que foi pedido e de onde partiu: e com esse par que o
+  // ciclo seguinte mede o ganho.
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    const float ped = (k == 1) ? pedido1 : pedido2;
+    retoquePedido[i]  = ped;
+    temMedidoAntes[i] = false;
+    if (ped != 0.0f && leituraConfiavel(k)) {
+      medidoAntes[i]    = encoderLer(k).graus;
+      temMedidoAntes[i] = true;
+    }
+  }
+
   moverCoordenado(alvo1, alvo2, vel);
   r.tentativas++;
   r.estado = CORR_RETOCANDO;
@@ -704,15 +795,34 @@ static void vigiarTravamento() {
     const bool reguaMedida = (cpg > 0.0001f || cpg < -0.0001f);
     const float hz = (k == 1) ? velocidadeJ1Hz() : velocidadeJ2Hz();
 
+    // O CRITERIO SEM ESCALA MANDA, SEMPRE.
+    //
+    // A conta proporcional parece a melhor das duas, e e -- quando as
+    // duas reguas conversam. So que ela divide por passosPorGrau, que
+    // vem do CATALOGO (pulsos por volta x reducao), e compara com
+    // contagensPorGrau, que foi MEDIDO. Numa maquina em que os dois
+    // discordam -- e discordar e o normal antes de calibrar --, o
+    // esperado sai varias vezes maior que o real e um eixo andando
+    // perfeitamente e declarado travado meio segundo depois de arrancar.
+    // Era o "vai bem e no meio do caminho trava".
+    //
+    // Eixo que gira produz contagem, seja qual for a escala. Entao o
+    // teste sem escala -- pulso claramente correndo, encoder claramente
+    // PARADO -- e o unico que nao pode mentir por numero errado, e ele
+    // passou a ser condicao NECESSARIA. Travamento de verdade passa nos
+    // dois: eixo preso nao produz contagem nenhuma.
+    if (hz < TRAV_HZ_MINIMO) { desde[i] = 0; continue; }
+    if (fabsf(L.velocidade) > TRAV_CONTAGENS_QUIETO) { desde[i] = 0; continue; }
+
+    // Com escala medida a conta proporcional ainda serve para REFINAR:
+    // ela pega escorregao parcial que o teste acima deixaria passar. Mas
+    // so estreita o criterio -- nunca inventa um travamento sozinha.
     if (reguaMedida) {
       const float esperado = esperadoContagensPorSeg(k);
       // Perto de zero a conta nao distingue eixo parado de eixo travado,
       // e nao precisa: eixo parado nao esta forcando contra nada.
       if (esperado < 200.0f) { desde[i] = 0; continue; }
       if (fabsf(L.velocidade) > esperado * 0.2f) { desde[i] = 0; continue; }
-    } else {
-      if (hz < TRAV_HZ_MINIMO) { desde[i] = 0; continue; }
-      if (fabsf(L.velocidade) > TRAV_CONTAGENS_QUIETO) { desde[i] = 0; continue; }
     }
 
     if (!desde[i]) { desde[i] = agora; continue; }
@@ -833,6 +943,7 @@ void correcaoReiniciarTeste() {
   alvo1Original = alvo2Original = 0;
   erroAnterior = 0.0f;
   semProgresso = 0;
+  esquecerGanho();
   alertas = 0;
   trav.ativo = false; trav.junta = 0; trav.total = 0;
   memset(&z, 0, sizeof(z));
