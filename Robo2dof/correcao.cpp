@@ -687,6 +687,40 @@ static uint32_t alertas = 0;
 
 uint32_t correcaoAlertas() { return alertas; }
 
+// ---------------------------------------------------------------------
+// Zona morta do ancoramento. O encoder de 17 bits treme; reescrever a
+// contagem por centesimos nao muda nada e so gasta ciclo. Cinco
+// centesimos de grau esta abaixo de qualquer coisa que o operador veja e
+// bem acima do tremor.
+static const float ANCORA_MORTA_GRAUS = 0.05f;
+
+float ancorarNoEncoder() {
+  // Nunca sobre eixo andando: reescrever a contagem no meio da rampa
+  // muda o destino que o gerador de pulso ja esta perseguindo.
+  if (motoresEmMovimento()) return 0.0f;
+  if (correcaoEmCurso()) return 0.0f;
+
+  float maior = 0.0f;
+  for (uint8_t k = 1; k <= 2; k++) {
+    Junta& j = (k == 1) ? J1 : J2;
+    if (configEncoder.reg[k - 1] == 0) continue;
+    if (j.passosPorGrau <= 0.0f) continue;
+    // leituraConfiavel() ja cobre validade, idade e possibilidade fisica.
+    if (!leituraConfiavel(k)) continue;
+
+    const LeituraEncoder L = encoderLer(k);
+    const float conta = passosParaGraus(j, (k == 1) ? posicaoJ1() : posicaoJ2());
+    const float dif   = L.graus - conta;
+    if (fabsf(dif) < ANCORA_MORTA_GRAUS) continue;
+
+    ajustarContagem(j, grausParaPassos(j, L.graus));
+    if (fabsf(dif) > maior) maior = fabsf(dif);
+    logEvento("contagem ancorada no encoder na junta %u: %.2f -> %.2f graus",
+              (unsigned)k, (double)conta, (double)L.graus);
+  }
+  return maior;
+}
+
 void correcaoVigiar() {
   if (!configCorrecao.vigiar) return;
   vigiarTravamento();

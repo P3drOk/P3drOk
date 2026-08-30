@@ -106,9 +106,25 @@ static bool irParaPassos(long p1, long p2) {
 
 // Nomear um angulo: "ir para o zero" e "ir para um angulo" sao a mesma
 // frase do operador, so muda o numero.
+//
+// O DESTINO SE CALCULA SOBRE A CONTAGEM, entao a contagem tem de
+// descrever o braco ANTES da conta. Sem ancorar, mover a contagem ate o
+// alvo deixava o braco parado no tanto do erro: na tela, o fantasma
+// tracejado chegava ao angulo pedido e o braco desenhado nao. Ver
+// ancorarNoEncoder() em correcao.h.
 static void irParaAngulos(float t1, float t2) {
+  const float ajuste = ancorarNoEncoder();
   if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) {
-    definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
+    // Reescrever a posicao da maquina em silencio seria a tela mudando de
+    // numero sem ninguem entender por que. So avisa quando a correcao foi
+    // grande o bastante para o operador ter visto o fantasma na tela.
+    if (ajuste > 0.5f) {
+      definirMensagem("Indo para %.1f / %.1f graus (a contagem estava %.2f "
+                      "graus fora e foi acertada pelo encoder)",
+                      t1, t2, (double)ajuste);
+    } else {
+      definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
+    }
   }
 }
 

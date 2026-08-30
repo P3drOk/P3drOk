@@ -4967,6 +4967,120 @@ static void teste_V24_curso_medido_nao_cala_o_encoder() {
 }
 
 // ---------------------------------------------------------------------
+// V25: ir a um angulo tem de partir de onde o BRACO esta.
+//
+// Relato: "quando clico para ir ao ponto zero ou a um angulo ele esta se
+// baseando no erro para a chegada; o braco nao chega ao angulo, so o
+// erro".
+//
+// O destino de "ir para o zero" e absoluto EM PULSOS, calculado sobre a
+// contagem do firmware. Com a contagem adiantada do braco -- perda de
+// passo, folga, escala recem-medida -- mover a contagem ate o alvo deixa
+// o braco parado no tanto do erro. Na tela isso e literal: o fantasma
+// tracejado (que E a contagem) chega ao angulo pedido, e o braco
+// desenhado nao.
+// ---------------------------------------------------------------------
+// O eixo segue os PULSOS: ele anda o mesmo que a contagem andou, e a
+// diferenca que ja existia entre os dois continua existindo. Colar o
+// encoder na contagem, como faz colarEncoderNaContagem(), apagaria de
+// graca justamente o erro que este cenario mede -- e o cenario passaria
+// com ou sem a correcao.
+static float g_v25Erro = 0.0f;
+static void v25EixoSegueOsPulsos(float cpg) {
+  const float conta = passosParaGraus(J1, posicaoJ1());
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao = (int32_t)(500000 + (conta + g_v25Erro) * cpg);
+}
+
+static void teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta() {
+  secao("V25  Ir a um angulo parte de onde o BRACO esta, nao da contagem");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  // A escala medida do encoder -- contagens por grau DA JUNTA, que e o
+  // que a calibracao guiada ensina.
+  const float redJ1 = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cpg   = configEncoder.contagensPorVolta[0] * redJ1 / 360.0f;
+  configEncoder.contagensPorGrau[0] = cpg;
+  rodarComWeb(50);
+
+  // A contagem diz 5 graus...
+  ajustarContagem(J1, grausParaPassos(J1, 5.0f));
+  // ...e o braco esta de verdade em 12. Sete graus de erro: e o que o
+  // fantasma tracejado desenha na tela.
+  const float REAL = 12.0f;
+  g_uart.escravo[0].posicao = (int32_t)(500000 + REAL * cpg);
+  rodarComWeb(400);
+
+  const float contaAntes = passosParaGraus(J1, posicaoJ1());
+  const float bracoAntes = encoderLer(1).graus;
+  nota("antes: contagem %.2f graus, braco %.2f graus, erro %.2f",
+       (double)contaAntes, (double)bracoAntes,
+       (double)(bracoAntes - contaAntes));
+  checar(fabsf(contaAntes - 5.0f) < 0.3f && fabsf(bracoAntes - REAL) < 0.3f,
+         "V25a", "o cenario monta o erro: contagem em 5, braco em 12");
+
+  // "Ir para o zero da maquina".
+  enviarComando(CMD_IR_HOME);
+  rodarComWeb(30);
+
+  // A contagem foi ancorada ANTES de o destino ser calculado: ela agora
+  // descreve o braco. Sem isto ela sairia de 5, o eixo andaria 5 graus e
+  // o braco pararia em 7 -- exatamente o tanto do erro.
+  const float contaPartida = passosParaGraus(J1, posicaoJ1());
+  // O erro que sobrou depois do ancoramento. Ancorada, a contagem
+  // descreve o braco e nao sobra nada; sem ancorar, sobram os sete graus
+  // -- e e com eles que o eixo vai andar.
+  g_v25Erro = encoderLer(1).graus - contaPartida;
+  nota("ao mandar ir ao zero, a contagem partiu de %.2f graus (erro que "
+       "sobrou: %.2f) -- \"%s\"",
+       (double)contaPartida, (double)g_v25Erro, ultimaMensagem);
+  checar(fabsf(contaPartida - REAL) < 0.3f, "V25b",
+         "a contagem foi ancorada no encoder antes de calcular o destino");
+
+  // E a maquina diz, em vez de reescrever a posicao em silencio.
+  checar(strstr(ultimaMensagem, "acertada pelo encoder") != nullptr, "V25c",
+         "e avisa que acertou a contagem, em vez de mudar o numero calado");
+
+  // Dali em diante o eixo anda junto com a contagem, guardando o erro
+  // que sobrou. Sem mexer no encoder, ele ficaria parado enquanto o eixo
+  // anda e o vigia de travamento cortaria o movimento -- com razao.
+  uint32_t t = 0;
+  while (motoresEmMovimento() && t < 20000) {
+    v25EixoSegueOsPulsos(cpg);
+    rodarComWeb(40);
+    t += 40;
+  }
+  v25EixoSegueOsPulsos(cpg);
+  rodarComWeb(200);
+
+  const float contaFim = passosParaGraus(J1, posicaoJ1());
+  const float bracoFim = encoderLer(1).graus;
+  nota("chegou: contagem %.2f, braco %.2f (andou %.2f graus desde %.2f)",
+       (double)contaFim, (double)bracoFim,
+       (double)(contaFim - contaPartida), (double)contaPartida);
+  checar(fabsf(contaFim) < 0.5f, "V25d",
+         "a contagem chega no zero pedido");
+  checar(fabsf(bracoFim) < 0.5f, "V25e",
+         "e o BRACO chega junto -- antes ele parava no tanto do erro");
+
+  // Sem erro nenhum, ancorar nao pode mexer em nada nem encher a tela.
+  g_v25Erro = 0.0f;
+  g_uart.escravo[0].posicao = (int32_t)(500000 + 0.0f * cpg);
+  rodarComWeb(400);
+  ajustarContagem(J1, grausParaPassos(J1, 0.0f));
+  rodarComWeb(50);
+  definirMensagem("nada");
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, 10.0f, 0.0f);
+  rodarComWeb(30);
+  nota("sem erro: \"%s\"", ultimaMensagem);
+  checar(strstr(ultimaMensagem, "acertada pelo encoder") == nullptr, "V25f",
+         "com a contagem ja certa, o aviso nao aparece");
+}
+
+// ---------------------------------------------------------------------
 // V13: o angulo na tela tem de ser o do BRACO.
 //
 // A conversao antiga tira o angulo de dois numeros digitados -- contagens
@@ -7229,6 +7343,7 @@ int main() {
   teste_V11_posicionar_respeita_precisao();
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V24_curso_medido_nao_cala_o_encoder();
+  teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta();
   teste_V14_velocidade_por_motor();
   teste_V15_ir_a_um_angulo_sem_calibracao();
   teste_V16_contagem_perdida_e_reancorada();

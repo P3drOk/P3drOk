@@ -537,6 +537,15 @@ discordam de mais de meio grau, o comandado aparece por trás como um
 **fantasma tracejado**: dá para *ver* o desvio, em vez de só ler um
 número. A legenda do rodapé diz qual das duas está sendo desenhada.
 
+> **E o fantasma não decide para onde o braço vai.** "Ir para o zero" e
+> "ir para um ângulo" mandam um destino absoluto **em pulsos**, calculado
+> sobre a contagem — que é justamente o que o fantasma desenha. Com a
+> contagem adiantada do braço, mover a contagem até o alvo deixava o
+> braço parado no tanto do erro: quem chegava ao ângulo era o fantasma.
+> Por isso a contagem é **ancorada no encoder antes** de o destino ser
+> calculado, e a máquina avisa quando a correção passa de meio grau. Ver
+> `ACHADOS.md`, R147, e o cenário **V25**.
+
 Sem leitura confiável (encoder desligado, cabo solto, leitura fora do
 curso) o boneco **congela** na última postura que de fato foi medida —
 nunca volta a seguir o comandado. Passo perdido, folga do redutor ou uma

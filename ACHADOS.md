@@ -3891,11 +3891,60 @@ o que a tela precisa mostrar é **como destravar**. No celular ela
 continua rolando: joystick, setas, velocidade, ir-para-ângulo e atalhos
 não cabem em 844 px, e rolar é melhor que esconder um botão.
 
+## R147 · Quem chegava ao ângulo era o fantasma, não o braço  `V25`  ✅
+
+Relato: "quando clico para ir ao ponto zero ou a um ângulo ele está se
+baseando no erro para a chegada; o braço não chega ao ângulo, só o erro".
+
+O destino de "ir para o zero" é **absoluto em pulsos**, calculado sobre a
+contagem que o firmware mantém:
+
+```c
+irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2));
+```
+
+Com a contagem adiantada do braço — perda de passo, folga, escala
+recém-medida — mover a **contagem** até o alvo deixa o **braço** parado no
+tanto do erro. Na tela isso é literal, e é o que o relato descreve: o
+fantasma tracejado vermelho *é* a contagem, e era ele que chegava ao
+ângulo pedido.
+
+O banco reproduz o número exato. Contagem em 5°, braço em 12°, "ir ao
+zero":
+
+| | contagem | braço |
+|---|---|---|
+| antes | 0,00 | **6,98** |
+| depois | 0,00 | **0,00** |
+
+**Correção:** `ancorarNoEncoder()`, chamada em `irParaAngulos()` **antes**
+de converter o ângulo em pulsos. Ela reescreve a contagem pelo que o
+encoder mede, em cada junta com leitura confiável e com o braço parado.
+Dali em diante a contagem descreve o braço, e o destino calculado sobre
+ela leva o **braço** ao lugar.
+
+Não é o assentamento: aquele conserta *depois* de chegar, e só se estiver
+ligado. Este arruma o **ponto de partida**, que é de onde o erro vinha.
+Também não é o reancoramento de 45°, que existe para a contagem que
+perdeu o sentido — este vale para qualquer diferença acima de 0,05°,
+porque na hora de calcular um destino cada décimo importa.
+
+Reescrever a posição da máquina em silêncio seria a tela mudando de
+número sem ninguém entender por quê, então acima de meio grau — o mesmo
+limite em que o fantasma aparece — a mensagem diz: *"Indo para 0,0 / 0,0
+graus (a contagem estava 6,98 graus fora e foi acertada pelo encoder)"*.
+
+> Escrever o cenário achou um segundo defeito, no próprio banco: a
+> primeira versão colava o encoder na contagem durante o movimento, o que
+> apagava de graça o erro que ela media — e passava com ou sem a
+> correção. O eixo agora anda o mesmo que a contagem andou, **guardando**
+> a diferença que já existia, que é o que o ferro faz.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **450 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **456 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **284 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

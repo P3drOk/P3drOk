@@ -80,6 +80,30 @@ void correcaoVigiar();
 uint32_t correcaoAlertas();
 
 // =====================================================================
+//  ANCORAR A CONTAGEM ANTES DE CALCULAR UM DESTINO
+//
+//  "Ir para zero" e "ir para um angulo" mandam um destino ABSOLUTO em
+//  pulsos, calculado sobre a contagem que o firmware mantem. Se essa
+//  contagem estiver adiantada do braco -- perda de passo, folga, escala
+//  recem-medida --, mover a contagem ate o alvo deixa o BRACO parado no
+//  tanto do erro. Na tela isso e literal: o fantasma tracejado (que e a
+//  contagem) chega ao angulo pedido, e o braco desenhado nao.
+//
+//  Por isso, antes de converter o angulo em pulsos, a contagem e
+//  reescrita pelo que o encoder mede. Dali em diante ela descreve o
+//  braco, e o destino calculado sobre ela leva o BRACO ao lugar.
+//
+//  Nao e o assentamento: aquele conserta DEPOIS de chegar, e so se
+//  estiver ligado. Este arruma o ponto de PARTIDA, que e de onde o erro
+//  vinha.
+//
+//  Devolve a maior correcao aplicada, em graus da junta -- zero quando
+//  nao havia o que corrigir, quando nao ha leitura confiavel ou quando
+//  o braco nao esta parado.
+// =====================================================================
+float ancorarNoEncoder();
+
+// =====================================================================
 //  TRAVAMENTO: o eixo foi mandado andar e nao andou
 //
 //  Antes do encoder, encostar no batente era invisivel para o firmware:
