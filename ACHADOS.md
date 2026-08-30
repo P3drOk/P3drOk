@@ -4157,12 +4157,43 @@ movimento **não é recusado** quando falta leitura — recusar deixaria o
 operador sem tirar o braço do lugar. Ele acontece, e a tela diz que
 aquele não foi pelo encoder.
 
+## R154 · O fantasma tracejado saiu  ✅
+
+Pedido: "remova ele do sistema, pois só está atrapalhando".
+
+Ele desenhava o braço onde a **contagem de pulsos** achava que ele
+estava, em vermelho tracejado, sempre que contagem e encoder discordavam
+de mais de meio grau. A ideia era boa — dar a *ver* o desvio em vez de
+obrigar a ler um número — e foi ele que tornou o defeito de R147 visível
+na foto do relato.
+
+Mas o critério de aparecer estava errado por construção: **durante todo
+movimento a contagem vai à frente do braço por causa da rampa**. O
+firmware já sabe disso e ignora esse período no seu próprio alerta de
+fora-de-posição; o desenho não ignorava. Resultado: o tracejado piscava a
+cada viagem, em condição perfeitamente normal. Alarme que toca em
+condição normal ensina a ignorar alarme — e aí ele não serve nem quando
+o desvio é de verdade.
+
+Saiu junto tudo que só existia para ele: `DESVIO_VISIVEL`, e os campos
+`c1`, `c2` e `desvio` de `postura()`. A postura agora carrega **só** o
+que se desenha, e o que se desenha vem só do encoder.
+
+**Quem compara comandado com medido continua existindo, em dois lugares
+melhores:** a **régua do rodapé**, que mostra os dois números lado a lado
+em corpo 28, e o **aviso de desvio** da saúde da máquina, que conta e
+denuncia sem depender de alguém estar olhando o desenho na hora certa.
+
+O cenário novo prende a ausência com uma divergência enorme — comandado
+0°, medido 60° — e confirma que o desenho continua mostrando **um braço
+só**, o medido.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **470 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **286 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **288 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

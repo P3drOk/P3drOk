@@ -3292,20 +3292,22 @@ const ALT_ELO1=110, ALT_ELO2=64;
    sai torta.
 
    Agora o boneco e a posicao MEDIDA pelo encoder, que e onde o braco
-   esta de verdade. Quando as duas discordam de mais de meio grau, o
-   comandado aparece por tras como um fantasma: da para VER o desvio, em
-   vez de so ler um numero.
+   esta de verdade -- e SO ela. O comandado chegou a ser desenhado por
+   tras, tracejado, para dar a ver a diferenca; saiu porque durante todo
+   movimento a conta vai a frente do braco pela rampa e o tracejado
+   piscava a cada viagem. Alarme que toca em condicao normal ensina a
+   ignorar alarme.
 
    Sem leitura confiavel (encoder desligado, cabo solto, leitura
-   impossivel) volta a valer o comandado -- e a legenda diz isso, porque
-   um boneco que muda de significado sem avisar e pior que nenhum.
+   impossivel) o boneco CONGELA na ultima postura medida -- e a legenda
+   diz isso, porque um boneco que muda de significado sem avisar e pior
+   que nenhum.
    ===================================================================== */
-const DESVIO_VISIVEL = 0.5;   /* graus */
 
 function legendaPostura(z){
-  /* A frase do desvio saiu junto com o tracejado da vista de cima: ela
-     so descrevia aquele tracejado. O que sobra e de onde vem a posicao
-     desenhada, que continua importando. */
+  /* A frase do desvio saiu junto com o tracejado: ela so descrevia
+     aquele tracejado. O que sobra e de onde vem a posicao desenhada,
+     que continua importando. */
   if(z.medido) return z.completo ? "posicao medida pelo encoder"
                                  : "posicao medida (uma junta sem leitura)";
   if(z.travado) return "ultima posicao medida (sem leitura agora)";
@@ -3372,16 +3374,14 @@ function postura(){
   if(tem1){ ultimoMedido.t1 = D.m1 || 0; ultimoMedido.tem1 = true; }
   if(tem2){ ultimoMedido.t2 = D.m2 || 0; ultimoMedido.tem2 = true; }
   const sv = suavizar(ultimoMedido.t1, ultimoMedido.t2);
-  const r1 = sv.t1, r2 = sv.t2;
-  const c1 = D.t1 || 0, c2 = D.t2 || 0;
+  /* Nao ha mais c1/c2 nem desvio aqui: eram do fantasma tracejado, e ele
+     saiu. O desenho depende SO do encoder, e quem compara comandado com
+     medido e a regua do rodape, que mostra os dois numeros. */
   return {
-    t1: r1, t2: r2,               /* o que se desenha */
-    c1: c1, c2: c2,               /* o comandado, so para o fantasma */
+    t1: sv.t1, t2: sv.t2,         /* o que se desenha */
     medido: tem1 || tem2,
     completo: tem1 && tem2,
-    travado: ultimoMedido.tem1 || ultimoMedido.tem2,
-    desvio: Math.max(tem1 ? Math.abs(r1 - c1) : 0,
-                     tem2 ? Math.abs(r2 - c2) : 0)
+    travado: ultimoMedido.tem1 || ultimoMedido.tem2
   };
 }
 
@@ -3663,24 +3663,15 @@ function pintar3D(){
   ct.beginPath();ct.ellipse(pMesa[0],pMesa[1],D.solda?5:4,D.solda?3.5:2.8,0,0,TAU);ct.fill();
   ct.lineCap="butt";
 
-  /* Fantasma do comandado, POR CIMA de tudo -- ele so serve se der para
-     ve-lo. Desenhado por baixo do braco, ficava escondido justamente nas
-     posturas em que o desvio importa. */
-  if(PZ.medido && PZ.desvio > DESVIO_VISIVEL){
-    const f1=PZ.c1*Math.PI/180, f2=(PZ.c1+PZ.c2)*Math.PI/180;
-    const fcx=L1*Math.cos(f1), fcy=L1*Math.sin(f1);
-    const fpx=fcx+L2*Math.cos(f2), fpy=fcy+L2*Math.sin(f2);
-    const a=Q(0,0,ALT_ELO1), b=Q(fcx,fcy,ALT_ELO1), c2q=Q(fpx,fpy,ALT_ELO2);
-    ct.save();
-    ct.strokeStyle=C.brasa;
-    ct.setLineDash([7,5]); ct.lineWidth=Math.max(2,3.5*esc); ct.lineCap="round";
-    ct.globalAlpha=.85;
-    ct.beginPath();ct.moveTo(a[0],a[1]);ct.lineTo(b[0],b[1]);ct.lineTo(c2q[0],c2q[1]);
-    ct.stroke();
-    ct.fillStyle=C.brasa;
-    ct.beginPath();ct.ellipse(c2q[0],c2q[1],4,2.8,0,0,TAU);ct.fill();
-    ct.setLineDash([]); ct.globalAlpha=1; ct.restore();
-  }
+  /* O FANTASMA TRACEJADO DO COMANDADO SAIU TAMBEM DA VISTA 3D.
+     Ele desenhava o braco onde a contagem de pulsos achava que ele
+     estava, para dar a VER a diferenca entre a conta e o ferro. So que
+     durante todo movimento a conta vai a frente do braco pela rampa, e
+     o tracejado piscava a cada viagem -- alarme que toca em condicao
+     normal ensina a ignorar alarme. E depois que o braco para, quem
+     fecha essa diferenca e o assentamento, sem ninguem precisar olhar.
+     Quem quiser o numero tem os dois angulos na regua do rodape,
+     comandado e medido lado a lado, e o aviso de desvio na saude. */
 
   /* Uma linha so, embaixo. Os angulos e a ponta ja estao na regua do
      rodape -- repetir aqui em cima so cobriria a legenda. */
@@ -3898,12 +3889,6 @@ function pintar(){
   const c=P(L1*Math.cos(t1),L1*Math.sin(t1));
   const p=P(L1*Math.cos(t1)+L2*Math.cos(t2),L1*Math.sin(t1)+L2*Math.sin(t2));
   const e1=Math.max(4,L1*esc*0.085), e2=Math.max(3,L2*esc*0.068);
-
-  /* O fantasma tracejado do comandado saiu da vista de cima: ele existia
-     so para mostrar o DESVIO entre o que o firmware comanda e o que o
-     encoder mede, e essa medicao nao faz parte da operacao. Um tracejado
-     em volta do braco tambem se confundia com a trajetoria de solda, que
-     e outra coisa inteiramente. A vista 3D continua com o dela. */
 
   /* Um elo: capsula com sombreado cilindrico no sentido da espessura.
      A luz vem de cima-esquerda, entao a faixa clara nao fica no meio --

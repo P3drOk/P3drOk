@@ -545,19 +545,28 @@ pulsos do firmware. Isso desenha a intenção, não o braço: se o eixo
 escorregou, a tela continua mostrando tudo no lugar enquanto a peça sai
 torta.
 
-Agora o boneco é a posição **medida pelo encoder**. Quando as duas
-discordam de mais de meio grau, o comandado aparece por trás como um
-**fantasma tracejado**: dá para *ver* o desvio, em vez de só ler um
-número. A legenda do rodapé diz qual das duas está sendo desenhada.
+Agora o boneco é a posição **medida pelo encoder**, e **só ela**. A
+legenda do rodapé diz de onde vem a postura desenhada.
 
-> **E o fantasma não decide para onde o braço vai.** "Ir para o zero" e
+> **O fantasma tracejado saiu.** O comandado chegou a ser desenhado por
+> trás, em vermelho tracejado, quando os dois discordavam de mais de meio
+> grau — a ideia era dar a *ver* o desvio em vez de obrigar a ler um
+> número. Saiu a pedido de quem opera, e o motivo é bom: durante **todo**
+> movimento a contagem vai à frente do braço por causa da rampa, então o
+> tracejado piscava a cada viagem. Alarme que toca em condição normal
+> ensina a ignorar alarme.
+>
+> Quem compara comandado com medido agora é a **régua do rodapé**, que
+> mostra os dois números lado a lado, e o **aviso de desvio** da saúde da
+> máquina, que conta e denuncia sem precisar de ninguém olhando.
+
+> **E o comandado não decide para onde o braço vai.** "Ir para o zero" e
 > "ir para um ângulo" mandam um destino absoluto **em pulsos**, calculado
-> sobre a contagem — que é justamente o que o fantasma desenha. Com a
-> contagem adiantada do braço, mover a contagem até o alvo deixava o
-> braço parado no tanto do erro: quem chegava ao ângulo era o fantasma.
-> Por isso a contagem é **ancorada no encoder antes** de o destino ser
-> calculado, e a máquina avisa quando a correção passa de meio grau. Ver
-> `ACHADOS.md`, R147, e o cenário **V25**.
+> sobre a contagem. Com a contagem adiantada do braço, mover a contagem
+> até o alvo deixava o braço parado no tanto do erro. Por isso a contagem
+> é **ancorada no encoder antes** de o destino ser calculado, e a máquina
+> diz em que conta o movimento saiu. Ver `ACHADOS.md`, R147 e R153, e os
+> cenários **V25** e **V26**.
 
 Sem leitura confiável (encoder desligado, cabo solto, leitura fora do
 curso) o boneco **congela** na última postura que de fato foi medida —

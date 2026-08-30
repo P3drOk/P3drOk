@@ -99,8 +99,11 @@ uint32_t correcaoAlertas();
 //  pulsos, calculado sobre a contagem que o firmware mantem. Se essa
 //  contagem estiver adiantada do braco -- perda de passo, folga, escala
 //  recem-medida --, mover a contagem ate o alvo deixa o BRACO parado no
-//  tanto do erro. Na tela isso e literal: o fantasma tracejado (que e a
-//  contagem) chega ao angulo pedido, e o braco desenhado nao.
+//  tanto do erro -- o braco desenhado, que segue o encoder, nao chega ao
+//  angulo pedido. (Houve um fantasma tracejado que desenhava a contagem
+//  ao lado do braco e tornava isso literal na tela; ele saiu, porque
+//  durante todo movimento a contagem vai a frente pela rampa e o
+//  tracejado piscava a cada viagem.)
 //
 //  Por isso, antes de converter o angulo em pulsos, a contagem e
 //  reescrita pelo que o encoder mede. Dali em diante ela descreve o

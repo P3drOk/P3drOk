@@ -816,6 +816,34 @@ async function fecharGaveta(pag) {
          'Mesa: o botao 3D alterna e passa a oferecer a volta para 2D', v3d.texto);
   checar(v3d.mesa && v3d.pintou,
          'Mesa: a vista 3D desenha de verdade, nao fica em branco');
+
+  // O FANTASMA TRACEJADO DO COMANDADO SAIU -- das duas vistas.
+  //
+  // Ele desenhava o braco onde a contagem achava que ele estava, para
+  // dar a ver a diferenca. So que durante todo movimento a conta vai a
+  // frente do braco pela rampa, e o tracejado piscava a cada viagem:
+  // alarme que toca em condicao normal ensina a ignorar alarme.
+  //
+  // Com uma divergencia enorme -- comandado 0, medido 60 -- o desenho
+  // tem de continuar mostrando UM braco so, o medido, e sem erro de JS.
+  await q.request.post(BASE + '/teste/estado',
+    { data: { t1: 0, t2: 0, m1: 60, m2: 0, m1ok: true, m2ok: true } });
+  await q.waitForTimeout(800);
+  const semFantasma = await q.evaluate(() => {
+    const z = postura();
+    return { campos: Object.keys(z).sort().join(','),
+             desenhado: Math.round(z.t1) };
+  });
+  checar(!/desvio|c1|c2/.test(semFantasma.campos),
+         'Mesa: a postura nao carrega mais o comandado nem o desvio -- '
+         + 'eram do fantasma tracejado', semFantasma.campos);
+  checar(Math.abs(semFantasma.desenhado - 60) < 2,
+         'Mesa: e o desenho segue so o encoder, com o comandado 60 graus fora',
+         'desenhado=' + semFantasma.desenhado);
+  await q.request.post(BASE + '/teste/estado',
+    { data: { t1: 0, t2: 0, m1: 0, m2: 0 } });
+  await q.waitForTimeout(600);
+
   await q.screenshot({ path: SAIDA + '/computador-5-vista3d.png' });
 
   await q.locator('#z3D').click();
