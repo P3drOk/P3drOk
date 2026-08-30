@@ -401,14 +401,29 @@ async function fecharGaveta(pag) {
   checar(mesaAinda, 'trocar de aba no computador nao esconde a mesa de tracado');
   await q.screenshot({ path: SAIDA + '/computador-2-programa.png' });
 
-  // A coluna do Encoder fica ABERTA enquanto se usa o resto: e para isso
-  // que ela saiu da barra de abas. Trocar de aba para olhar o erro seria
-  // perder justamente o momento em que ele acontece.
+  // A COLUNA DE DIAGNOSTICO NASCE FECHADA.
+  // Ela e nivel 3 -- rodinhas, grafico e quinze numeros de manutencao --
+  // e ocupava um terco da tela de operacao, na frente de quem nunca viu
+  // a maquina. Quem precisa dela abre num toque.
+  const encFechada = await q.evaluate(() => ({
+    corpo: document.body.classList.contains('comEnc'),
+    vis: !!document.getElementById('eM1').offsetParent,
+    botao: !!document.getElementById('btEnc').offsetParent,
+  }));
+  checar(!encFechada.corpo && !encFechada.vis && encFechada.botao,
+         'Encoder: a coluna de diagnostico nasce fechada, com um botao para abrir',
+         JSON.stringify(encFechada));
+
+  await q.locator('#btEnc').click();
+  await q.waitForTimeout(400);
+  // Aberta, ela fica aberta enquanto se usa o resto: e para isso que ela
+  // saiu da barra de abas. Trocar de aba para olhar o erro seria perder
+  // justamente o momento em que ele acontece.
   for (const aba of ['mover', 'prog', 'arq']) {
     await q.locator('#abasTopo button[data-aba="' + aba + '"]').click();
     await q.waitForTimeout(220);
     const vis = await q.locator('#eM1').isVisible();
-    checar(vis, 'Encoder: a coluna continua aberta com a aba ' + aba + ' escolhida');
+    checar(vis, 'Encoder: aberta, a coluna continua na tela com a aba ' + aba);
   }
   // E continua aberta tambem com a gaveta de configuracao na tela: quem
   // esta mexendo no registrador Modbus e exatamente quem precisa ver a
@@ -464,7 +479,7 @@ async function fecharGaveta(pag) {
     return b ? getComputedStyle(b).display !== 'none' : false;
   });
   checar(!botaoEnc,
-         'Encoder: sem botao de aba no computador -- a coluna ja esta na tela');
+         'Encoder: com a coluna aberta, o botao de aba some -- ela ja esta na tela');
   await q.screenshot({ path: SAIDA + '/computador-4-encoder-fixo.png' });
   await q.locator('#abasTopo button[data-aba="mover"]').click();
   await q.waitForTimeout(200);
@@ -546,17 +561,48 @@ async function fecharGaveta(pag) {
   // trabalho, e o veu dela intercepta os cliques.
   await fecharGaveta(q);
 
-  // O "?" saiu do cabecalho: na tela de trabalho as notas sao poucas e
-  // curtas e ficam sempre visiveis. Quem tinha manual demais era a
-  // gaveta, e la o interruptor e proprio.
-  const semAjudaNoTopo = await q.evaluate(() => ({
+  // O "?" do cabecalho nao esconde nada: ele ACRESCENTA uma frase sobre
+  // a aba em que a pessoa esta -- o que ela e, e o primeiro passo. As
+  // notas curtas de cada painel continuam sempre visiveis, com ele
+  // ligado ou desligado.
+  await q.evaluate(() => irAba('mover'));
+  await q.waitForTimeout(250);
+  const ajudaTopo = await q.evaluate(() => ({
     botao: !!document.getElementById('btAjuda'),
-    notas: [...document.querySelectorAll('#pnMover .nt')]
+    ligado: document.getElementById('btAjuda').classList.contains('on'),
+    faixa: (document.getElementById('ajudaAba').textContent || '').trim(),
+  }));
+  checar(ajudaTopo.botao && ajudaTopo.ligado && /joystick/i.test(ajudaTopo.faixa),
+         'Painel: o "?" explica a aba atual',
+         JSON.stringify(ajudaTopo));
+
+  await q.evaluate(() => irAba('arq'));
+  await q.waitForTimeout(250);
+  const ajudaTroca = await q.evaluate(() =>
+    (document.getElementById('ajudaAba').textContent || '').trim());
+  checar(/cart/i.test(ajudaTroca),
+         'Painel: a ajuda troca junto com a aba', ajudaTroca);
+
+  // Desligar o "?" tira a faixa e SO ela: as notas curtas de cada
+  // painel nao dependem dele. Comparar antes e depois e o unico jeito
+  // honesto de provar isso.
+  const notasAntes = await q.evaluate(() =>
+    [...document.querySelectorAll('#pnArq .nt')]
+      .filter(n => n.getBoundingClientRect().height > 0).length);
+  await q.locator('#btAjuda').click();
+  await q.waitForTimeout(200);
+  const ajudaFora = await q.evaluate(() => ({
+    escondida: document.getElementById('ajudaAba').hidden,
+    notas: [...document.querySelectorAll('#pnArq .nt')]
              .filter(n => n.getBoundingClientRect().height > 0).length,
   }));
-  checar(!semAjudaNoTopo.botao && semAjudaNoTopo.notas > 0,
-         'Painel: sem "?" no cabecalho, e as notas da tela de trabalho a mostra',
-         JSON.stringify(semAjudaNoTopo));
+  checar(ajudaFora.escondida && ajudaFora.notas === notasAntes,
+         'Painel: quem ja sabe desliga a ajuda, e as notas ficam',
+         JSON.stringify(ajudaFora) + ' antes=' + notasAntes);
+  await q.locator('#btAjuda').click();
+  await q.waitForTimeout(150);
+  await q.evaluate(() => irAba('mover'));
+  await q.waitForTimeout(250);
 
   // Os controles continuam todos la -- menos o joystick, que sai DE
   // PROPOSITO no computador: as setas de passo fazem o mesmo com mais
@@ -789,8 +835,10 @@ async function fecharGaveta(pag) {
         //   btZesquecer  idem
         //   btZsalvar    idem
         //   btOta       so aparece com particao de OTA no firmware
+        //   btRefer     muda a ORIGEM: nasce atras do cadeado da aba Mover
         const ESCONDIDO_DE_PROPOSITO =
-          ['btTravOk', 'btZensinar', 'btZesquecer', 'btZsalvar', 'btOta'];
+          ['btTravOk', 'btZensinar', 'btZesquecer', 'btZsalvar', 'btOta',
+           'btRefer'];
         if (ESCONDIDO_DE_PROPOSITO.includes(a.id)) continue;
         // btIdioma recarrega a pagina inteira: clicar nele no meio da
         // varredura invalida todo o resto. Tem cenario proprio.
@@ -1626,14 +1674,23 @@ async function fecharGaveta(pag) {
   checar(semConfig,
          'Rede: nao sobrou nenhum controle do modo estacao na tela');
 
-  // Zerar a maquina na posicao e aferir a reducao (as tres etapas).
+  // Declarar a referencia: fica atras de um cadeado, porque muda a
+  // ORIGEM -- e o botao vizinho, "Ir para o zero da maquina", so ANDA
+  // ate ela. Nomes parecidos, consequencias opostas.
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(250);
+  const origemTrancada = await t.evaluate(() =>
+    document.getElementById('movOrig').classList.contains('trancado') &&
+    !document.getElementById('btRefer').offsetParent);
+  checar(origemTrancada,
+         'Mover: mudar a origem nasce atras do cadeado');
+  await t.locator('#movCadeado').click();
+  await t.waitForTimeout(200);
   rotas = [];   /* o aceite do confirm() ja esta armado la em cima */
   await t.locator('#btRefer').click();
   await t.waitForTimeout(300);
   checar(rotas.some(x => x.split('?')[0] === '/api/referenciar'),
-         '"Zerar a maquina aqui" pede confirmacao e chama /api/referenciar');
+         '"Declarar esta posicao como referencia" confirma e chama /api/referenciar');
 
   // ------------------------------------------------------------------
   // Aba Calibracao: as duas medidas, e a area da mesa.

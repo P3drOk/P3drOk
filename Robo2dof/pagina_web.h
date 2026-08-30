@@ -65,23 +65,37 @@ button,input{font:inherit;color:inherit}
  min-height:0;overflow:hidden}
 
 /* ---------- coluna do Encoder ----------
-   Em tela larga ela e uma TERCEIRA coluna, sempre aberta: a leitura do
-   encoder existe para ser acompanhada enquanto se mexe no resto, e
-   trocar de aba para olhar o erro e perder o momento em que ele
-   acontece. Abaixo de 1300px nao ha largura honesta para tres colunas,
-   e ela volta a ser uma aba como as outras. */
+   Em tela larga ela pode ser uma TERCEIRA coluna, ao lado do resto: a
+   leitura do encoder existe para ser acompanhada enquanto se mexe no
+   resto, e trocar de aba para olhar o erro e perder o momento em que ele
+   acontece.
+
+   MAS ELA NASCE FECHADA. Aquilo e diagnostico -- duas rodinhas, um
+   grafico e quinze numeros que ninguem opera -- e estava ocupando um
+   terco da tela mais nobre da maquina, na frente de quem nunca a viu. Em
+   HMI industrial isso e nivel 3 no lugar do nivel 1. Quem precisa dela
+   abre num toque, e a escolha fica gravada no navegador.
+
+   Abaixo de 1300px nao ha largura honesta para tres colunas, e ela volta
+   a ser uma aba como as outras. */
 .dockEnc{display:none}
+/* O interruptor da coluna so existe onde ela cabe -- e a regra base vem
+   ANTES da media query: mesma especificidade, ganha a ultima, e ja
+   houve um caso neste arquivo em que a ultima era a errada. */
+#btEnc{display:none;align-items:center;gap:6px}
 @media(min-width:1301px){
-  .corpo{grid-template-columns:380px minmax(0,1fr) 400px}
-  .dockEnc{display:block;overflow-y:auto;overscroll-behavior:contain;
+  #btEnc{display:inline-flex}
+  body.comEnc .corpo{grid-template-columns:380px minmax(0,1fr) 400px}
+  body.comEnc .dockEnc{display:block;overflow-y:auto;overscroll-behavior:contain;
    min-width:0;padding-right:2px}
-  .dockEnc #pnEnc{display:block}
+  body.comEnc .dockEnc #pnEnc{display:block}
   /* Fica aberta em qualquer aba, inclusive na "mesa". */
   .dockEnc .et{margin-bottom:9px}
-  /* Sem o botao de aba: a coluna ja esta na tela. */
-  .abas button[data-aba="enc"],
-  .abasTopo button[data-aba="enc"]{display:none}
+  /* Com a coluna na tela o botao de aba nao faz falta. */
+  body.comEnc .abas button[data-aba="enc"],
+  body.comEnc .abasTopo button[data-aba="enc"]{display:none}
 }
+#btEnc.on{background:var(--face);color:var(--letra);border-color:var(--letra2)}
 /* Itens de grid nao encolhem abaixo do conteudo sem min-width:0.
    Sem isso o painel empurra a pagina e vaza na horizontal no celular. */
 .corpo>*{min-width:0}
@@ -99,7 +113,7 @@ button,input{font:inherit;color:inherit}
   .regua{grid-template-columns:repeat(3,1fr)}
   .regua div:nth-child(4),.regua div:nth-child(5){border-top:1px solid var(--linha)}
   .regua div:nth-child(3){border-right:none}
-  .regua b{font-size:14px}
+  .regua b{font-size:20px}
   .placa{height:52px;padding:0 9px;gap:9px}
   .lamps{gap:5px;flex:1 1 auto;justify-content:flex-end}
   .lp{min-width:0;flex:0 1 auto;gap:4px;max-width:40px}
@@ -127,7 +141,15 @@ button,input{font:inherit;color:inherit}
    rotulo lado a lado -- que se le da esquerda para a direita como o
    painel de uma maquina, e que encolhe inteira em vez de perder um
    campo. */
-/* OS STATUS SAO SECUNDARIOS.
+/* ORCAMENTO DE COR: CINZA E O NORMAL, COR E A EXCECAO.
+   A tela gastava cor no que esta em ordem -- eixo energizado verde,
+   lampada acesa verde, aba escolhida azul saturado -- e quando algo dava
+   errado nao sobrava contraste para chamar. Aqui o normal e cinza; verde,
+   azul, laranja e vermelho ficam reservados para o que pede atencao.
+   Um ponto vermelho entre cinco cinzas se le em duzentos milissegundos;
+   entre cinco verdes, nao.
+
+   OS STATUS SAO SECUNDARIOS.
    Eles estavam com caixa, borda e halo aceso, competindo com os
    controles pela atencao -- e controle do robo tem de ganhar de
    diagnostico. Aqui viraram texto apagado com um ponto pequeno: legivel
@@ -138,7 +160,7 @@ button,input{font:inherit;color:inherit}
 .lp{display:flex;flex-direction:row;align-items:center;gap:5px;min-width:0;
  padding:5px 8px}
 .olho{flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:var(--linha2)}
-.lp.on .olho{background:var(--pronto)}
+.lp.on .olho{background:var(--letra3)}   /* normal = cinza */
 .lp.at .olho{background:var(--arco)}
 .lp.hot .olho{background:var(--quente)}
 /* A falha e a excecao: ela TEM de furar a discricao. */
@@ -206,14 +228,17 @@ button,input{font:inherit;color:inherit}
 .irAng .seta{color:var(--letra3)}
 .irAng input{flex:1;min-width:70px;max-width:none;width:auto;text-align:right}
 .motores{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
-/* SEM TORQUE E VERMELHO, nao cinza.
+/* SEM TORQUE E VERMELHO; COM TORQUE E CINZA.
    Cinza dizia "nao sei" -- e a maquina sabe: ela releu o registrador do
-   driver antes de responder. O unico estado em que ela de fato nao sabe
-   e enquanto o barramento nao confirmou, e esse e o ambar. */
-.motor{flex:0 0 auto;border:none;font-family:var(--mono);font-size:12px;font-weight:700;
+   driver antes de responder. O que mudou e o outro lado: eixo energizado
+   e o estado NORMAL, e normal nao gasta cor. Verde ali competia com o
+   vermelho do eixo que falta ligar, que e o que precisa ser visto. O
+   ambar continua sendo "o barramento ainda nao confirmou". */
+.motor{flex:0 0 auto;border:1px solid var(--linha2);font-family:var(--mono);
+ font-size:12px;font-weight:700;
  letter-spacing:.08em;padding:12px 14px;border-radius:4px;cursor:pointer;color:#fff;
  background:var(--brasa);box-shadow:0 3px 0 rgba(0,0,0,.25)}
-.motor.on{background:var(--pronto)}
+.motor.on{background:var(--face);color:var(--letra);border-color:var(--linha)}
 .motor.indo{background:var(--quente)}
 .motor.ruim{background:var(--brasa)}
 .motor:active{box-shadow:0 1px 0 rgba(0,0,0,.25);transform:translateY(2px)}
@@ -259,10 +284,14 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
 
 .regua{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--linha);
  background:var(--painel)}
-.regua div{padding:8px 4px;text-align:center;border-right:1px solid var(--linha)}
+.regua div{padding:7px 4px 8px;text-align:center;border-right:1px solid var(--linha)}
 .regua div:last-child{border:none}
-.regua b{display:block;font-family:var(--mono);font-size:16px;font-weight:500;margin-top:3px;
- font-variant-numeric:tabular-nums}
+/* Corpo 28: e o numero que o operador le de pe, a um metro da bancada, sem
+   se abaixar. Tudo o mais nesta faixa (rotulo em cima, medido embaixo) e
+   apoio e fica pequeno de proposito -- a hierarquia tem que ser obvia de
+   relance, senao a faixa vira um bloco cinza uniforme que ninguem le. */
+.regua b{display:block;font-family:var(--mono);font-size:28px;font-weight:500;
+ line-height:1.05;margin-top:2px;font-variant-numeric:tabular-nums}
 .regua b.mv{color:var(--arco)}
 .regua b.hot{color:var(--quente)}
 
@@ -275,10 +304,25 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
    "Movimento recusado: ...") tem que estar visivel sem rolar de volta. */
 .tira{position:sticky;top:0;z-index:6;
  padding:10px 12px;background:var(--painel);border:1px solid var(--linha);
- border-left:3px solid var(--linha2);border-radius:3px;margin-bottom:9px;font-size:12px;
- color:var(--letra2);min-height:40px;line-height:1.45}
-.tira.er{border-left-color:var(--brasa);color:#ffc6bc}
-.tira.ok{border-left-color:var(--pronto)}
+ border-left:4px solid var(--linha2);border-radius:3px;margin-bottom:9px;
+ min-height:40px}
+.teTopo{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+/* O ESTADO em uma palavra, do tamanho de quem le de pe, a um metro. */
+.teEst{font-family:var(--mono);font-size:17px;letter-spacing:.09em;
+ color:var(--letra);font-weight:700}
+.teSub{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+ color:var(--letra3);text-transform:uppercase}
+.teMsg{font-size:12.5px;color:var(--letra2);line-height:1.45;margin-top:3px}
+/* O PROXIMO PASSO, quando ha um obvio. Botao, nao frase: quem esta
+   comecando nao devia ter de procurar onde se faz o que a tela pediu. */
+.teAcao{margin:8px 0 0;width:100%}
+/* Cor so no anormal. Em ordem normal a barra e cinza como o resto. */
+.tira.er{border-left-color:var(--brasa)}
+.tira.er .teEst{color:var(--brasa)}
+.tira.at{border-left-color:var(--arco)}
+.tira.at .teEst{color:var(--arco)}
+.tira.hot{border-left-color:var(--quente)}
+.tira.hot .teEst{color:var(--quente)}
 
 .et{border:1px solid var(--linha);border-radius:4px;margin-bottom:8px;
  background:var(--painel);overflow:hidden}
@@ -408,6 +452,10 @@ h4:first-child{margin-top:0}
  border-radius:2px;padding:8px 9px;font-family:var(--mono);font-size:12px;color:var(--letra)}
 .cp .un{font-family:var(--mono);font-size:9px;color:var(--letra3);width:34px}
 .nt{font-size:11.5px;color:var(--letra2);margin:0 0 10px;line-height:1.55}
+.ajudaAba{margin:0 0 8px;padding:9px 11px;border:1px solid var(--linha);
+ border-left:3px solid var(--arco2);border-radius:4px;background:var(--face);
+ font-size:12px;line-height:1.55;color:var(--letra2)}
+.ajudaAba b{display:block;color:var(--letra);font-size:12.5px;margin-bottom:2px}
 /* Aviso: mesma nota, mas com a tarja. Nao e decoracao -- e o que
    separa "leia se quiser" de "leia antes de apertar". */
 .nt.av{border-left:3px solid var(--quente);padding-left:8px;color:var(--letra)}
@@ -875,7 +923,11 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
    padding:9px 4px;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
    text-transform:uppercase;color:var(--letra2);cursor:pointer}
   .abasTopo button:last-child{border-right:none}
-  .abasTopo button.on{background:var(--arco);color:#fff}
+  /* Aba escolhida marcada por CONTRASTE, nao por cor: um bloco azul
+     saturado no topo competia com a barra de estado, que e quem precisa
+     ser vista. */
+  .abasTopo button.on{background:var(--face);color:var(--letra);
+   font-weight:700;box-shadow:inset 0 -3px 0 var(--letra2)}
   .abasTopo button[data-aba="mesa"]{display:none}
 }
 @media(max-width:1020px){ .abasTopo{display:none} }
@@ -922,6 +974,8 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
     <div class="nome">ROBO<b>2DOF</b></div>
     <span class="divisor">|</span>
     <button class="cfgLink" id="btCfg">Configuracao</button>
+    <button class="cfgLink" id="btEnc" title="Mostrar ou esconder a coluna de diagnostico do encoder">Diagnostico</button>
+    <button class="ajd" id="btAjuda" title="O que faco nesta aba?">?</button>
     <div class="lamps">
       <div class="lp" id="lModo"><i class="olho"></i><span id="lModoT">--</span></div>
       <div class="lp" id="lServo"><i class="olho"></i><span>servo</span></div>
@@ -1101,7 +1155,25 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 
     <aside class="coluna"><div class="rol">
       <div class="abasTopo" id="abasTopo"></div>
-      <div class="tira" id="tira">Iniciando</div>
+      <!-- A BARRA DE ESTADO.
+           Ela responde as tres perguntas que quem chega faz, nesta ordem:
+           em que pe a maquina esta, por que ela nao anda, e o que fazer
+           agora. Antes so a segunda existia, em cinza claro, corpo 12 --
+           a informacao mais valiosa da tela era a menos visivel dela. -->
+      <div class="tira" id="tira">
+        <div class="teTopo">
+          <b class="teEst" id="teEst">INICIANDO</b>
+          <span class="teSub" id="teSub"></span>
+        </div>
+        <div class="teMsg" id="teMsg">Falando com a maquina…</div>
+        <button class="b teAcao" id="teAcao" style="display:none"></button>
+      </div>
+
+      <!-- Ajuda no lugar da duvida. Nao e um manual em outra tela: e uma
+           frase sobre a aba em que a pessoa ESTA, com o primeiro passo,
+           que abre e fecha no "?" do cabecalho e lembra a escolha. Quem
+           ja sabe operar desliga uma vez e nunca mais ve. -->
+      <div class="ajudaAba" id="ajudaAba" hidden></div>
 
       <!-- ============================ MOVER ============================ -->
       <section class="pane" id="pnMover">
@@ -1158,11 +1230,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <button class="b mini" id="btPrec">Precisao: desligada</button>
               <button class="b mini" id="btTesteMov">Testar rele</button>
             </div>
-            <button class="b mini x" id="btRefer">Zerar a maquina aqui</button>
-            <div class="pq2" id="qRefer"></div>
-            <div class="nt">O curso e contado a partir da referencia: zerar
-            fora dela desloca a area util inteira.</div>
-
             <h4>Ir para um angulo</h4>
             <div class="irAng">
               <span id="irDe">--</span>
@@ -1181,6 +1248,25 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             </div>
             <div class="pq2" id="qGravar"></div>
             <div class="pq2" id="qHome"></div>
+
+            <!-- "Zerar a maquina aqui" ficava a um botao de distancia de
+                 "Ir para o zero da maquina". Um ANDA ate a referencia, o
+                 outro MUDA onde ela fica -- e o segundo desloca a area util
+                 inteira. Nomes parecidos, consequencias opostas: agora o
+                 que muda a origem tem nome inteiro e um cadeado na frente. -->
+            <div class="trancado" id="movOrig">
+              <div class="cadeado" id="movCadeado">
+                <div class="ic">&#128274;</div>
+                <div><b>Mudar a origem</b>
+                <span>desloca a area util inteira &mdash; toque para abrir</span></div>
+              </div>
+              <div class="trancavel">
+                <button class="b mini x" id="btRefer">Declarar esta posicao como referencia</button>
+                <div class="pq2" id="qRefer"></div>
+                <div class="nt">O curso e contado a partir da referencia:
+                declara-la fora do lugar desloca a area util inteira.</div>
+              </div>
+            </div>
 
           </div>
         </div>
@@ -2431,6 +2517,11 @@ $("btMesaLimpar").onclick=function(){
   post("/api/mesa/limpar").then(calibAtualizar);};
 
 $("btCalIni2").onclick=function(){ post("/api/calib/iniciar","qCalIni2"); };
+
+/* O botao da barra de estado faz o que o passo diz. Ele nao tem acao
+   propria: e um atalho para a acao que ja existe em algum lugar da tela,
+   posto onde o operador esta olhando. */
+$("teAcao").onclick=function(){ if(proximoAtual)proximoAtual.faz(); };
 $("btCalApagar2").onclick=function(){
   if(confirm(tr("Apagar os limites gravados?")+"\n\n"+
              tr("A maquina continua operando -- ela so fica sem protecao de curso.")))
@@ -3485,9 +3576,14 @@ function pintar(){
       }
       ct.restore();
 
-      /* Contorno: as duas bordas de t1 (raios) e as duas de t2 (arcos). */
+      /* Contorno: as duas bordas de t1 (raios) e as duas de t2 (arcos).
+         Em azul cheio ele era a coisa mais forte da tela -- e o alcance
+         nao muda nunca: e cenario, nao informacao. Passou a ser um risco
+         cinza fino, do mesmo peso da grade. O azul volta a significar
+         uma coisa so: o braco e a ponta que ele carrega. */
       ct.save();
-      ct.strokeStyle=C.arco;ct.lineWidth=1.5;ct.globalAlpha=.8;
+      ct.strokeStyle="rgba("+C.grade+",.55)";
+      ct.lineWidth=1;ct.globalAlpha=1;
       const borda=function(t1fixo){
         ct.beginPath();
         for(let k=0;k<=N;k++){
@@ -4706,6 +4802,12 @@ function corrAplicar(d){
 const ZERO=["esperando o encoder","localizado","indo para o zero",
             "pronto","sem encoder"];
 let zCarregou=false;
+$("movCadeado").onclick=function(){
+  $("movOrig").classList.toggle("trancado");
+  $("movCadeado").querySelector(".ic").textContent=
+    $("movOrig").classList.contains("trancado")?"\u{1F512}":"\u{1F513}";
+};
+
 $("etZero").classList.add("trancado");
 $("zCadeado").onclick=function(){
   $("etZero").classList.toggle("trancado");
@@ -5079,6 +5181,74 @@ function lamp(el,cls,txt){
   el.className="lp"+(cls?" "+cls:"");
   if(txt!==undefined)$("lModoT").textContent=txt;}
 
+/* =====================================================================
+   A BARRA DE ESTADO
+
+   Tres perguntas, nesta ordem, e todas respondidas sem rolar:
+
+     1. Em que pe a maquina esta?  -> uma palavra, grande.
+     2. Por que ela nao anda?      -> a razao, em frase.
+     3. O que eu faco agora?       -> um botao, quando ha um passo obvio.
+
+   Antes so a (2) existia, em cinza claro, corpo 12: a informacao mais
+   valiosa da tela era a menos visivel dela. E a (3) nao existia em lugar
+   nenhum -- quem chegava tinha de adivinhar por onde comecar.
+   ===================================================================== */
+const PROXIMO=[
+  /* Ordem de precedencia: o primeiro que casar e o que aparece. Um passo
+     de cada vez -- duas coisas a fazer ao mesmo tempo e nenhuma. */
+  {quando:function(d){return d.modo==="FALHA";},
+   rotulo:"Rearmar a maquina", faz:function(){post("/api/servos?v=1");}},
+  {quando:function(d){return !d.srv1&&!d.srv2;},
+   rotulo:"Habilitar os dois eixos", faz:function(){post("/api/servos?v=1");}},
+  {quando:function(d){return !d.srv1||!d.srv2;},
+   rotulo:"Habilitar o outro eixo", faz:function(){post("/api/servos?v=1");}},
+  {quando:function(d){return !d.cal1&&!d.cal2;},
+   rotulo:"Medir o curso do braco", faz:function(){post("/api/calib/iniciar");}},
+  {quando:function(d){return (d.progN||0)<2;},
+   rotulo:"Ensinar o caminho", faz:function(){irAba("prog");abrir(2);}}
+];
+let proximoAtual=null;
+
+function pintarEstado(d,motivoErro,movendo){
+  const falha  = (d.modo==="FALHA");
+  const soldando = !!d.solda;
+  const calib  = (d.calib!=="INATIVO");
+
+  /* (1) O estado em UMA palavra. */
+  let est="PARADA", classe="";
+  if(falha)              { est="FALHA";     classe="er";  }
+  else if(motivoErro)    { est="RECUSADO";  classe="er";  }
+  else if(soldando)      { est="SOLDANDO";  classe="hot"; }
+  else if(calib)         { est="MEDINDO";   classe="at";  }
+  else if(d.modo==="EXECUTANDO")    { est="EXECUTANDO";  classe="at"; }
+  else if(d.modo==="REPRODUZINDO")  { est="REPRODUZINDO";classe="at"; }
+  else if(d.modo==="GRAVANDO")      { est="GRAVANDO";    classe="at"; }
+  else if(movendo)       { est="MOVENDO";   classe="at";  }
+  else if(d.srv1||d.srv2){ est="PRONTA";    classe="";    }
+  $("teEst").textContent=tr(est);
+
+  /* (2) O contexto curto, e a razao por extenso. */
+  const eixos=(d.srv1&&d.srv2)?tr("os dois eixos com torque")
+             :(d.srv1||d.srv2)?tr("um eixo com torque")
+             :tr("sem torque");
+  $("teSub").textContent=eixos;
+  $("teMsg").textContent=motivoErro?(tr("Recusado")+": "+motivoErro):d.msg;
+  $("tira").className="tira"+(classe?" "+classe:"");
+
+  /* (3) O proximo passo. Some quando nao ha nenhum obvio -- botao que
+     aparece sem ter o que fazer ensina a ignorar a barra. */
+  const bt=$("teAcao");
+  let achou=null;
+  for(let i=0;i<PROXIMO.length&&!achou;i++)
+    if(PROXIMO[i].quando(d))achou=PROXIMO[i];
+  /* Enquanto a maquina anda sozinha, nao ha proximo passo do operador. */
+  if(calib||movendo||soldando||d.modo==="EXECUTANDO")achou=null;
+  proximoAtual=achou;
+  if(achou){ bt.style.display="block"; bt.textContent=tr(achou.rotulo); }
+  else bt.style.display="none";
+}
+
 function aplicar(d){
   Object.assign(D,d);
   if(!jaEnquadrou){jaEnquadrou=true;autoEnquadrar();}
@@ -5134,9 +5304,7 @@ function aplicar(d){
   faixaJunta($("fx1"),d.cal1,d.t1,d.j1min,d.j1max);
   faixaJunta($("fx2"),d.cal2,d.t2,d.j2min,d.j2max);
 
-  const t=$("tira");
-  t.textContent=erro?("Recusado: "+erro):d.msg;
-  t.className="tira"+(erro||d.modo==="FALHA"?" er":(pronto?" ok":""));
+  pintarEstado(d,erro,movendo);
 
   $("e1").classList.toggle("feita",pronto);
   $("sb1").textContent=pronto?("elos "+d.l1.toFixed(0)+"+"+d.l2.toFixed(0)+" mm · calibrado")
@@ -5445,7 +5613,11 @@ function tick(){
     quedas++;
     if(quedas>=2){
       lamp($("lRede"),"er");
-      $("tira").textContent="Sem comunicacao com o robo. Movimento e arco foram cortados por seguranca.";
+      $("teEst").textContent="SEM REDE";
+      $("teSub").textContent="";
+      $("teMsg").textContent="Sem comunicacao com o robo. Movimento e arco "+
+        "foram cortados por seguranca.";
+      $("teAcao").style.display="none";
       $("tira").className="tira er";}
   });
 }
@@ -5493,7 +5665,8 @@ const EN={
  "Desfazer":"Undo","Apagar programa":"Clear program",
  "Gravar ponto na posicao atual":"Teach point at current position",
  "Ir para o zero da maquina":"Go to machine zero",
- "Zerar a maquina aqui":"Set machine zero here",
+ "Declarar esta posicao como referencia":"Declare this position as reference",
+ "Mudar a origem":"Change the origin",
  "Ir para esses angulos":"Go to these angles",
  "Entrar no modo aprendizado":"Enter teach mode",
  "Sair do modo aprendizado":"Leave teach mode",
@@ -5712,6 +5885,24 @@ function fecharCfg(){
   $("btCfg").classList.remove("on");
 }
 
+/* A COLUNA DE DIAGNOSTICO NASCE FECHADA.
+   Ela e nivel 3 -- rodinhas, grafico e quinze numeros de manutencao --
+   e estava ocupando um terco da tela de operacao, na frente de quem
+   nunca viu a maquina. Quem precisa dela abre num toque; a escolha fica
+   gravada no navegador, entao quem usa todo dia abre uma vez so. */
+function mostrarEnc(v){
+  document.body.classList.toggle("comEnc",v);
+  $("btEnc").classList.toggle("on",v);
+  try{localStorage.setItem("enc",v?"1":"0");}catch(e){}
+  /* A coluna aparecendo muda a largura do desenho: remedir na hora evita
+     um quadro esticado ate o proximo redimensionamento. */
+  setTimeout(function(){medir();encMedir();},60);
+}
+$("btEnc").onclick=function(){
+  mostrarEnc(!document.body.classList.contains("comEnc"));
+};
+try{ if(localStorage.getItem("enc")==="1") mostrarEnc(true); }catch(e){}
+
 $("btCfg").onclick = function(){
   if($("veuCfg").classList.contains("on")) fecharCfg(); else abrirCfg();
 };
@@ -5748,8 +5939,53 @@ function irAba(nome){
     b.classList.toggle("on",b.dataset.aba===nome);});
   if(nome==="mesa")medir();
   if(nome==="arq")sdAtualizar(true);
+  ajudaPintar();
   try{localStorage.setItem("aba",nome);}catch(e){}
 }
+
+/* Uma frase por aba: o que ela e, e o primeiro passo. Escrita para quem
+   nunca viu a maquina -- sem jargao de firmware, sem nome de registrador
+   e sem mandar ler outra tela. */
+const AJUDA={
+ mesa:["A mesa vista de cima",
+   "O desenho mostra onde o braco esta. Arraste para girar a vista; ligue "+
+   "IR para mandar a ponta ate onde voce tocar."],
+ mover:["Mover o braco na mao",
+   "Use o joystick ou as setas de cada junta. A velocidade em mm/s e a da "+
+   "PONTA. Se nada andar, a barra cinza acima diz o porque."],
+ prog:["Ensinar o caminho",
+   "Leve o braco ate um lugar bom e grave o ponto. A lista vira o programa; "+
+   "so depois de gravada e que ela roda."],
+ arq:["Trabalhos no cartao",
+   "Guarde o programa da lista com um nome, ou abra um que ja esteja no "+
+   "cartao. Abrir troca a lista atual."],
+ enc:["Conferencia do encoder",
+   "Compara o angulo que a maquina COMANDOU com o que o encoder MEDIU. "+
+   "Serve para diagnostico; nao e preciso mexer aqui para operar."]
+};
+function ajudaPintar(){
+  const c=$("ajudaAba"); if(!c)return;
+  const on=$("btAjuda")&&$("btAjuda").classList.contains("on");
+  const a=AJUDA[abaAtual];
+  c.hidden=!(on&&a);
+  if(on&&a){c.innerHTML="<b></b><span></span>";
+    c.querySelector("b").textContent=a[0];
+    c.querySelector("span").textContent=a[1];
+    if(typeof traduzirDom==="function")traduzirDom(c);}
+}
+(function(){
+  const b=$("btAjuda"); if(!b)return;
+  const por=function(v){
+    b.classList.toggle("on",v);
+    b.title=v?"Esconder a ajuda desta aba":"O que faco nesta aba?";
+    try{localStorage.setItem("ajudaAba",v?"1":"0");}catch(e){}
+    ajudaPintar();
+  };
+  b.onclick=function(){por(!b.classList.contains("on"));};
+  let g="1";
+  try{g=localStorage.getItem("ajudaAba")||"1";}catch(e){}
+  por(g==="1");
+})();
 
 /* =====================================================================
    JOYSTICK
