@@ -2063,6 +2063,96 @@ async function fecharGaveta(pag) {
   checar(jogs.length >= 2, 'as setas de jog mandam heartbeat e depois o zero',
          jogs.length + ' chamadas a /api/jog');
 
+  // O GESTO TEM DE SOBREVIVER A COLUNA MEXER.
+  //
+  // A coluna da direita muda de altura sozinha -- a barra de estado
+  // ganha uma linha, o botao de proximo passo aparece. Isso tira a seta
+  // de baixo do dedo, e sem setPointerCapture disparava "pointerleave":
+  // o jog morria no meio e o eixo parava sozinho. Era o "faco um ajuste
+  // na aba e depois as setas nao movem o motor direito".
+  rotas = [];
+  await seta.dispatchEvent('pointerdown', { pointerId: 7 });
+  await t.waitForTimeout(160);
+  // Encena o empurrao: a coluna cresce embaixo do dedo.
+  await t.evaluate(() => {
+    document.getElementById('teMsg').textContent =
+      'uma mensagem bem comprida, das que ocupam tres linhas na coluna e '+
+      'empurram tudo o que vem depois dela para baixo sem aviso nenhum';
+  });
+  await t.locator('#pnMover .jb').first().dispatchEvent('pointerleave', { pointerId: 7 });
+  await t.waitForTimeout(260);
+  const aindaAnda = rotas.filter(x => /\/api\/jog/.test(x) && !/d=0/.test(x)).length;
+  const parouCedo = rotas.some(x => /\/api\/jog/.test(x) && /d=0/.test(x));
+  checar(aindaAnda >= 2 && !parouCedo,
+         'Jog: a coluna mexer nao corta o movimento -- o gesto fica preso a seta',
+         aindaAnda + ' heartbeats, parada precoce: ' + parouCedo);
+
+  rotas = [];
+  await seta.dispatchEvent('pointerup', { pointerId: 7 });
+  await t.waitForTimeout(200);
+  const zerosSoltar = rotas.filter(x => /\/api\/jog/.test(x) && /d=0/.test(x));
+  checar(zerosSoltar.length === 1,
+         'Jog: soltar manda o zero UMA vez, nao uma por evento de captura',
+         zerosSoltar.length + ' zeros');
+
+  // E a coluna nao pode pular a cada estado: as duas alturas que mais
+  // oscilavam ficaram reservadas.
+  const paradas = await t.evaluate(async () => {
+    const alvo = document.querySelector('#pnMover .jb');
+    const antes = alvo.getBoundingClientRect().top;
+    document.getElementById('teMsg').textContent = 'curto';
+    await new Promise(r => requestAnimationFrame(r));
+    const umaLinha = alvo.getBoundingClientRect().top;
+    document.getElementById('teMsg').textContent =
+      'uma mensagem de duas linhas, dessas que a maquina escreve o tempo todo aqui';
+    await new Promise(r => requestAnimationFrame(r));
+    const duasLinhas = alvo.getBoundingClientRect().top;
+    return { umaLinha, duasLinhas };
+  });
+  checar(Math.abs(paradas.umaLinha - paradas.duasLinhas) < 1,
+         'Jog: a mensagem de estado indo de uma para duas linhas nao move as setas',
+         JSON.stringify(paradas));
+
+  // ---- LEVAR A UM ANGULO: o outro eixo tem de ficar parado ----
+  //
+  // /api/mover recebe um destino ABSOLUTO para as DUAS juntas e o
+  // converte em pulsos pela contagem que o firmware mantem. A tela
+  // mandava, para o eixo nao selecionado, o angulo MEDIDO pelo encoder.
+  // Onde as duas contas divergem -- perda de passo, folga, escala
+  // recem-medida -- o firmware via um destino diferente da posicao e
+  // mexia num eixo que ninguem pediu: levar a junta 1 a zero sacudia a
+  // junta 2 junto.
+  await t.request.post(BASE + '/teste/estado',
+    { data: { t1: 20, t2: 5, m1: 20, m1ok: true, m2: 33, m2ok: true } });
+  await t.waitForTimeout(700);
+  await t.evaluate(() => { juntaSel = 1;
+    document.getElementById('selJunta').value = '1'; });
+  await t.locator('#inMtSel').fill('0');
+  rotas = [];
+  await t.locator('#btMoverSel').click();
+  await t.waitForTimeout(300);
+  const levou = rotas.find(x => x.split('?')[0] === '/api/mover');
+  const par = new URLSearchParams((levou || '').split('?')[1] || '');
+  checar(!!levou && parseFloat(par.get('t1')) === 0,
+         'Levar: o eixo escolhido recebe o angulo digitado', levou || 'nada');
+  checar(!!levou && Math.abs(parseFloat(par.get('t2')) - 5) < 0.01,
+         'Levar: o outro eixo recebe a contagem do firmware, nao o encoder',
+         't2=' + par.get('t2'));
+
+  // Sem alvo o botao tem de DIZER que falta o alvo, em vez de sair calado.
+  await t.locator('#inMtSel').fill('');
+  rotas = [];
+  await t.locator('#btMoverSel').click();
+  await t.waitForTimeout(250);
+  const mudo = await t.evaluate(() =>
+    document.getElementById('qMoverSel').textContent.trim());
+  checar(mudo.length > 0 && !rotas.some(x => x.split('?')[0] === '/api/mover'),
+         'Levar: sem angulo digitado ele explica, e nao manda a maquina andar',
+         mudo || '(calado)');
+  await t.request.post(BASE + '/teste/estado',
+    { data: { m1ok: false, m2ok: false } });
+  await t.waitForTimeout(400);
+
   // VELOCIDADE EM MILIMETRO POR SEGUNDO.
   // A maquina so entende grau por segundo, mas ninguem na bancada pensa
   // em grau por segundo -- pensa na ponta andando, na mesma unidade do

@@ -247,8 +247,24 @@ static void dizerZero(const char* m) {
 // depois do limite (o batente fica um pouco alem, e da para empurrar o
 // braco a mao ate ele). Alem disso nao e posicao, e defeito.
 //
-// Junta sem curso medido nao tem contra o que conferir -- e ali nada
-// anda mesmo, porque todo posicionamento exige calibracao.
+// SO QUE ISSO SO VALE SE O CURSO MEDIDO FOR UMA AFIRMACAO SOBRE A
+// MAQUINA -- e desde que o limite virou OPCAO, ele nao e.
+//
+// O operador mede o curso e decide, em separado, se quer que a maquina o
+// respeite (protCurso). Com o limite desligado o braco anda livre pela
+// mesa, e a leitura do encoder fora daquela faixa e leitura BOA de um
+// lugar onde o braco legitimamente esta. Conferir assim mesmo virava o
+// pior defeito possivel: um curso medido pela metade -- uma calibracao
+// abortada, dois graus de faixa -- calava o encoder na maquina inteira.
+// E como calava, calava TUDO: nao havia mais reancoragem, nem
+// seguimento de eixo solto, nem assentamento, e o desenho na tela (que
+// so obedece ao encoder) congelava. O sintoma era "movo o motor e o
+// braco nao acompanha", e a causa era esta linha ignorando o encoder de
+// proposito.
+//
+// Entao: a conferencia contra o curso vale quando o limite esta LIGADO.
+// O que separa leitura de lixo em qualquer caso e o teto absoluto
+// abaixo, e ele vale sempre.
 // ---------------------------------------------------------------------
 static const float FOLGA_PLAUSIVEL_GRAUS = 10.0f;
 
@@ -274,6 +290,10 @@ static bool leituraPlausivel(uint8_t k, float graus) {
   // existe durante a montagem, que e justamente quando o encoder esta
   // mal configurado.
   if (graus < -LIMITE_ABSURDO_GRAUS || graus > LIMITE_ABSURDO_GRAUS) return false;
+  // Curso medido so e fronteira quando o operador ligou o limite. Ver o
+  // bloco acima: com ele desligado o braco anda livre, e leitura fora da
+  // faixa e leitura boa de onde o braco de fato esta.
+  if (!protCurso) return true;
   if (!j.calibrada) return true;
   return graus >= j.grausMin - FOLGA_PLAUSIVEL_GRAUS &&
          graus <= j.grausMax + FOLGA_PLAUSIVEL_GRAUS;

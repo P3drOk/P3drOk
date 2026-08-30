@@ -191,7 +191,10 @@ button,input{font:inherit;color:inherit}
    o operador confere antes de mandar o proximo comando. */
 .agora{font-family:var(--mono);font-size:15px;letter-spacing:.02em;
  padding:8px 10px;margin-bottom:9px;border-radius:4px;
- background:var(--painel);border:1px solid var(--linha);color:var(--letra)}
+ background:var(--painel);border:1px solid var(--linha);color:var(--letra);
+ /* Uma linha, sempre: "(medido)" e "(comandado)" tem larguras diferentes
+    e a troca quebrava a linha em duas, mexendo em tudo abaixo. */
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Ir para um angulo numa linha so: de onde esta, para onde vai. */
 /* Velocidade numa barra, ao lado do braco: e olhando ele andar que se
    acerta velocidade, nao numa gaveta de ajustes. */
@@ -312,7 +315,13 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
  color:var(--letra);font-weight:700}
 .teSub{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
  color:var(--letra3);text-transform:uppercase}
-.teMsg{font-size:12.5px;color:var(--letra2);line-height:1.45;margin-top:3px}
+/* Altura de DUAS linhas reservada. A mensagem oscila entre uma e duas
+   linhas a cada estado, e cada oscilacao empurrava para baixo tudo o que
+   vem depois -- inclusive as setas de jog, que o dedo ja estava
+   apertando. Reservar o espaco custa dezoito pixels e devolve uma coluna
+   que fica parada. */
+.teMsg{font-size:12.5px;color:var(--letra2);line-height:1.45;margin-top:3px;
+ min-height:36px}
 /* O PROXIMO PASSO, quando ha um obvio. Botao, nao frase: quem esta
    comecando nao devia ter de procurar onde se faz o que a tela pediu. */
 .teAcao{margin:8px 0 0;width:100%}
@@ -371,7 +380,11 @@ h4:first-child{margin-top:0}
 .eixo{display:grid;grid-template-columns:1fr 96px 1fr;gap:6px;align-items:center;
  margin-bottom:7px}
 .eixo .id{text-align:center}
-.eixo .fx{font-family:var(--mono);font-size:9px;color:var(--letra3);margin-top:2px}
+.eixo .fx{font-family:var(--mono);font-size:9px;color:var(--letra3);margin-top:2px;
+ /* "sem curso" e uma linha de texto; com curso medido vem numero MAIS a
+    barrinha. As duas alturas tem de ser a mesma, senao calibrar uma
+    junta empurra as setas da outra. */
+ min-height:21px}
 /* Onde a junta esta DENTRO do curso calibrado. Numero sozinho nao diz
    se o braco esta sobrando ou raspando no limite. */
 .fxB{display:block;position:relative;height:4px;margin-top:4px;border-radius:2px;
@@ -2045,9 +2058,15 @@ function jogOn(j,d,el){
   tm[j]=setInterval(function(){ping("/api/jog?j="+j+"&d="+d);},100);
 }
 function jogOff(j,el){
+  const estava=!!tm[j];
   if(tm[j]){clearInterval(tm[j]);delete tm[j];}
   if(el)el.classList.remove("press");
-  ping("/api/jog?j="+j+"&d=0");
+  /* So manda o zero se havia jog DESTA pagina. A captura de ponteiro faz
+     pointerup e lostpointercapture chegarem em sequencia pelo mesmo
+     gesto, e mandar o zero duas vezes so ocuparia a unica conexao do
+     servidor. Se ainda assim ele se perder, o firmware corta o jog
+     sozinho em 350 ms sem heartbeat (TIMEOUT_JOG_MS). */
+  if(estava)ping("/api/jog?j="+j+"&d=0");
 }
 /* ---------- as setas ----------
    Voltaram a ser jog puro: segura e anda, solta e para. O modo de passo
@@ -2056,23 +2075,41 @@ function jogOff(j,el){
    um angulo exato usa "ir para um angulo", logo abaixo, que e onde essa
    frase ja existe.
 
-   O angulo de onde a junta ESTA. Prefere o que o encoder mediu: e a
-   posicao de verdade do braco. Sem leitura, cai no comandado. */
-function anguloAtual(j){
-  if(j===1) return (D.m1ok ? D.m1 : D.t1) || 0;
-  return (D.m2ok ? D.m2 : D.t2) || 0;
-}
+   Havia aqui um anguloAtual() que preferia o encoder e caia no
+   comandado. Ele era usado para preencher o destino do eixo NAO
+   selecionado em "Levar", e era exatamente por onde as duas contas se
+   misturavam. Saiu junto com o defeito: cada lugar agora diz qual conta
+   esta usando, em vez de uma funcao escolher por todos. */
 
+/* O GESTO FICA PRESO AO BOTAO, como ja acontecia no joystick.
+   A coluna da direita rola e o conteudo dela muda de altura sozinho: a
+   barra de estado ganha uma linha, o botao de proximo passo aparece ou
+   some, uma dica surge sob outro botao. Qualquer uma dessas coisas tira
+   a seta de baixo do dedo -- e sem captura isso disparava
+   "pointerleave", o jog morria no meio do movimento e o eixo parava
+   sozinho. Era o "faco um ajuste na aba e depois as setas nao movem o
+   motor direito".
+   Com setPointerCapture o botao continua recebendo o fluxo do ponteiro
+   onde quer que ele va, e o pointerup chega sempre -- entao "pointerleave"
+   sai da lista de parada: com captura ele dispara justamente quando o
+   botao se move, nao quando o dedo levanta. */
 document.querySelectorAll(".jb").forEach(function(b){
+  let idAtivo=null;
   b.addEventListener("pointerdown",function(e){
     e.preventDefault();
+    idAtivo=e.pointerId;
+    try{b.setPointerCapture(e.pointerId);}catch(x){}
     const j=+b.dataset.j;
     juntaSel=j;
     const sel=$("selJunta"); if(sel) sel.value=String(j);
     jogOn(b.dataset.j,b.dataset.d,b);
   });
-  ["pointerup","pointerleave","pointercancel"].forEach(function(v){
-    b.addEventListener(v,function(){ jogOff(b.dataset.j,b); });});
+  ["pointerup","pointercancel","lostpointercapture"].forEach(function(v){
+    b.addEventListener(v,function(e){
+      if(idAtivo!==null&&e.pointerId!==undefined&&e.pointerId!==idAtivo)return;
+      idAtivo=null;
+      jogOff(b.dataset.j,b);
+    });});
 });
 
 $("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
@@ -2197,8 +2234,19 @@ $("btMoverSel").onclick=function(){
     if(q){q.textContent=tr("digite o angulo de destino");q.style.display="block";}
     return;
   }
-  const t1=(j===1)?alvo:anguloAtual(1);
-  const t2=(j===2)?alvo:anguloAtual(2);
+  /* O OUTRO EIXO TEM DE FICAR PARADO -- e "parado" se escreve na conta
+     do FIRMWARE, nao na do encoder.
+     /api/mover recebe um destino ABSOLUTO para as duas juntas e o
+     converte em pulsos pela contagem que ele mesmo mantem (D.t1/D.t2).
+     Mandar aqui o angulo MEDIDO (anguloAtual, que prefere o encoder)
+     misturava as duas contas: onde elas divergem -- perda de passo,
+     folga, escala recem-medida -- o firmware via um destino diferente da
+     posicao atual e mexia num eixo que ninguem pediu para mexer. Levar a
+     junta 1 a zero sacudia a junta 2 junto.
+     Mandando a propria contagem do firmware, a diferenca e exatamente
+     zero e o eixo nao recebe pulso nenhum. */
+  const t1=(j===1)?alvo:(D.t1||0);
+  const t2=(j===2)?alvo:(D.t2||0);
   post("/api/mover?t1="+t1.toFixed(2)+"&t2="+t2.toFixed(2),"qMoverSel");
 };
 /* Setas do teclado no mesmo sentido dos botoes: esquerda = anti-horario. */
@@ -5317,8 +5365,16 @@ function pintarEstado(d,motivoErro,movendo){
   /* Enquanto a maquina anda sozinha, nao ha proximo passo do operador. */
   if(calib||movendo||soldando||d.modo==="EXECUTANDO")achou=null;
   proximoAtual=achou;
-  if(achou){ bt.style.display="block"; bt.textContent=tr(achou.rotulo); }
-  else bt.style.display="none";
+  /* So mexe no DOM quando o passo MUDOU. Reescrever display e texto a
+     cada estado (4,5 vezes por segundo) refazia o layout da coluna
+     inteira o tempo todo -- e e esse layout que carrega as setas de
+     jog. */
+  const rot=achou?tr(achou.rotulo):"";
+  if(bt.dataset.rot!==rot){
+    bt.dataset.rot=rot;
+    bt.textContent=rot;
+    bt.style.display=achou?"block":"none";
+  }
 }
 
 function aplicar(d){
@@ -5339,7 +5395,12 @@ function aplicar(d){
     }
     const de=$("irDe");
     if(de){
-      const v=(juntaSel===1)?(d.m1ok?d.m1:d.t1):(d.m2ok?d.m2:d.t2);
+      /* AQUI E A CONTA DO FIRMWARE, de proposito -- a mesma que
+         /api/mover usa para calcular o destino. Mostrar o angulo do
+         encoder faria a linha prometer "de -65,9 para 0" e a maquina
+         andar outra distancia. Onde o braco esta de verdade se le na
+         linha de cima ("medido") e na regua do rodape. */
+      const v=(juntaSel===1)?d.t1:d.t2;
       de.textContent=(v||0).toFixed(1)+"\u00b0";
     }
   }

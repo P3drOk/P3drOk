@@ -782,14 +782,23 @@ o braço está solto e o encoder é a única coisa que sabe onde ele foi
 parar. A contagem é acertada pela leitura, e "movi com a mão" passa a
 dar o mesmo resultado que "mandei ir".
 
-> **Toda leitura passa por um teste de possibilidade física.** O braço
-> não pode estar fora do curso que o próprio operador mediu (com 10° de
-> folga para o batente). Leitura dali para fora não vira posição, não é
-> seguida e não aparece na tela como medida boa — ela é denunciada, com o
-> número, para o operador conferir registrador e contagens por volta.
-> Sem isso, uma leitura errada virava a posição oficial da máquina e o
-> "ir ao zero" mandava um curso inteiro de pulso contra o batente. Ver
-> `ACHADOS.md`, R78, e o cenário **T01**.
+> **Toda leitura passa por um teste de possibilidade física.** Nenhuma
+> junta desta máquina está a 170 mil graus: leitura além de **720°** é
+> defeito de configuração (registrador do vizinho, contagens por volta
+> erradas, 32 bits trocado) e nunca vira posição. Esse teto vale sempre,
+> calibrado ou não. Sem ele, uma leitura errada virava a posição oficial
+> da máquina e o "ir ao zero" mandava um curso inteiro de pulso contra o
+> batente. Ver `ACHADOS.md`, R78 e R103, e os cenários **T01** e **V12**.
+>
+> **O curso medido só confere quando o limite está ligado.** Enquanto o
+> limite de curso é opção desligada, o braço anda livre pela mesa — e
+> leitura fora da faixa medida é leitura *boa* de um lugar onde o braço
+> legitimamente está. Conferir assim mesmo produzia o pior defeito
+> possível: uma calibração abortada, com quatro graus de faixa, calava o
+> encoder da máquina inteira — sem reancoragem, sem seguir o braço à
+> mão, sem assentamento, e com o desenho congelado. Ligado o limite, a
+> conferência volta (10° de folga para o batente) e a leitura de fora é
+> denunciada com o número. Ver `ACHADOS.md`, R143, e o cenário **V24**.
 
 > **Só com o torque desligado.** Com servo ligado o motor segura a
 > posição: se o eixo saiu do lugar mesmo assim, isso é **perda de

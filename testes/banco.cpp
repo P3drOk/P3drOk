@@ -4887,6 +4887,86 @@ static void teste_V12_leitura_absurda_nao_e_confiavel() {
 }
 
 // ---------------------------------------------------------------------
+// V24: curso medido nao pode CALAR o encoder quando o limite esta
+//      desligado.
+//
+// Relato: "movo o motor e o braco nao acompanha o movimento".
+//
+// leituraPlausivel() recusava qualquer angulo fora do curso medido, sem
+// olhar se o operador tinha LIGADO o limite. Desde que o limite virou
+// opcao, o curso medido deixou de ser uma afirmacao sobre onde o braco
+// pode estar -- o braco anda livre pela mesa por padrao.
+//
+// O efeito era total: uma calibracao abortada deixava um curso de dois
+// graus, o braco parava em -65 graus, e TODA leitura do encoder passava
+// a ser descartada. Sem encoder nao havia reancoragem, nem seguimento de
+// eixo solto, nem assentamento -- e o desenho na tela, que so obedece ao
+// encoder, congelava.
+// ---------------------------------------------------------------------
+static void teste_V24_curso_medido_nao_cala_o_encoder() {
+  secao("V24  Curso medido nao cala o encoder com o limite desligado");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  // Uma calibracao que parou no meio: a junta 1 fica com um curso
+  // ridiculo de dois graus, e "calibrada" mesmo assim.
+  const long dois = (long)(2.0f * J1.passosPorGrau);
+  J1.passosMin = -dois; J1.passosMax = dois;
+  recalcularResolucao();
+  rodarComWeb(50);
+
+  // A escala medida do encoder: contagens por grau DA JUNTA, que e o que
+  // a calibracao guiada ensina. Sem ela a leitura sairia pela reducao de
+  // catalogo e o cenario nao teria escala nenhuma para posicionar.
+  const float redJ1 = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  const float cpg   = configEncoder.contagensPorVolta[0] * redJ1 / 360.0f;
+  configEncoder.contagensPorGrau[0] = cpg;
+  rodarComWeb(50);
+
+  // E o braco esta bem longe dali -- 40 graus, que e onde a mao o deixou.
+  const float LONGE = 40.0f;
+  g_uart.escravo[0].posicao = (int32_t)(500000 + LONGE * cpg);
+  rodarComWeb(400);
+
+  const LeituraEncoder L = encoderLer(1);
+  nota("curso medido da junta 1: %.1f a %.1f graus; encoder lendo %.2f",
+       (double)J1.grausMin, (double)J1.grausMax, (double)L.graus);
+
+  // Com o LIMITE LIGADO a conferencia continua valendo: e o operador
+  // dizendo "este curso e real, respeite-o".
+  protCurso = true;
+  rodarComWeb(100);
+  checar(!leituraConfiavel(1), "V24a",
+         "com o limite LIGADO, leitura fora do curso medido segue recusada");
+
+  // Com o limite DESLIGADO -- o padrao da maquina -- o braco anda livre,
+  // e leitura fora daquela faixa e leitura boa de onde ele de fato esta.
+  protCurso = false;
+  rodarComWeb(100);
+  nota("limite desligado: confiavel=%d", (int)leituraConfiavel(1));
+  checar(leituraConfiavel(1), "V24b",
+         "com o limite DESLIGADO o encoder volta a valer: curso medido nao "
+         "e fronteira quando a maquina anda livre");
+
+  // E o status tem de dizer isso, porque e m1ok que manda a tela desenhar.
+  webGet("/api/status");
+  const std::string js = webCorpo();
+  checar(js.find("\"m1ok\":true") != std::string::npos, "V24c",
+         "e o status diz m1ok:true, para o desenho voltar a seguir o braco");
+
+  // O teto absoluto continua valendo com o limite desligado: ele e que
+  // separa leitura de lixo, e nao depende de opcao nenhuma.
+  g_uart.escravo[0].posicao = 500000000;
+  rodarComWeb(400);
+  nota("com lixo no barramento e limite desligado: %.0f graus, confiavel=%d",
+       (double)encoderLer(1).graus, (int)leituraConfiavel(1));
+  checar(!leituraConfiavel(1), "V24d",
+         "angulo absurdo segue recusado mesmo com o limite desligado");
+}
+
+// ---------------------------------------------------------------------
 // V13: o angulo na tela tem de ser o do BRACO.
 //
 // A conversao antiga tira o angulo de dois numeros digitados -- contagens
@@ -7148,6 +7228,7 @@ int main() {
   teste_V10_habilitar_so_a_junta_2();
   teste_V11_posicionar_respeita_precisao();
   teste_V12_leitura_absurda_nao_e_confiavel();
+  teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V14_velocidade_por_motor();
   teste_V15_ir_a_um_angulo_sem_calibracao();
   teste_V16_contagem_perdida_e_reancorada();

@@ -3719,12 +3719,135 @@ de um movimento não move o desenho nem um grau na direção do comandado;
 e quando a leitura volta, o desenho retoma exatamente do valor medido,
 ignorando tudo que o comandado fez enquanto a leitura estava fora.
 
+## R143 · O curso medido calava o encoder da máquina inteira  `V24`  ✅
+
+Relato: "movo o motor e o braço não acompanha o movimento".
+
+Na foto, a junta 1 mostrava um curso medido de **cerca de quatro graus**
+— uma calibração que parou no meio — e o braço parado em **−65,9°**.
+`leituraPlausivel()` recusava qualquer leitura fora do curso medido:
+
+```c
+if (!j.calibrada) return true;
+return graus >= j.grausMin - FOLGA_PLAUSIVEL_GRAUS &&
+       graus <= j.grausMax + FOLGA_PLAUSIVEL_GRAUS;
+```
+
+Com o braço a 65 graus de uma faixa de quatro, **toda** leitura do
+encoder era descartada. E como `leituraConfiavel()` é o portão de tudo, o
+efeito foi total:
+
+| deixou de funcionar | consequência |
+|---|---|
+| reancoragem da contagem | a conta de pulsos nunca mais se corrigia |
+| seguimento de eixo solto | mover o braço na mão não movia a contagem |
+| assentamento pós-movimento | nenhuma correção depois de posicionar |
+| `m1ok`/`m2ok` no status | e o desenho, que desde R142 só obedece ao encoder, **congelava** |
+
+A causa raiz é uma premissa que envelheceu. Quando essa conferência foi
+escrita, o curso medido *era* uma afirmação sobre onde o braço pode
+estar. Desde que o limite virou **opção** (R-limites, tarefa 29), não é
+mais: o braço anda livre pela mesa por padrão, e o operador liga o limite
+quando quiser. Leitura fora da faixa passou a ser leitura **boa** de um
+lugar onde o braço legitimamente está.
+
+**Correção:** a conferência contra o curso vale quando o limite está
+**ligado** — que é o operador dizendo "este curso é real, respeite-o". O
+que separa leitura de lixo em qualquer caso é o teto absoluto de 720°
+(R103), e esse vale sempre.
+
+`V24` prende os quatro lados: com o limite ligado a recusa continua; com
+ele desligado a leitura volta a valer; o status volta a dizer
+`m1ok:true`; e um ângulo absurdo segue recusado com o limite desligado.
+
+## R144 · A coluna mexia debaixo do dedo e matava o jog  ✅
+
+Relato: "esta aba lateral deve ser fixa sem arrastar, pois quando faço
+algum ajuste nela, ao clicar nas setas de atalho o motor não se move
+corretamente".
+
+As setas de jog escutavam **`pointerleave`** para parar:
+
+```js
+["pointerup","pointerleave","pointercancel"].forEach(...)
+```
+
+Sem `setPointerCapture`, qualquer coisa que mudasse a altura da coluna —
+a barra de estado ganhando uma linha, o botão de próximo passo
+aparecendo, uma dica surgindo sob outro botão — tirava a seta de baixo do
+dedo. `pointerleave` disparava, o jog morria no meio e o eixo parava
+sozinho, sem ninguém ter soltado nada.
+
+O joystick, ao lado, já fazia certo desde sempre — inclusive com o
+comentário explicando por que `pointerleave` não podia estar na lista. As
+setas nunca ganharam o mesmo tratamento.
+
+**Correção**, na mesma forma do joystick: `setPointerCapture` no
+`pointerdown`, e a parada por `pointerup` / `pointercancel` /
+`lostpointercapture`. Com a captura, o botão continua recebendo o fluxo
+do ponteiro onde quer que ele vá, e o `pointerup` chega sempre.
+
+`jogOff()` passou a mandar o zero só quando havia jog desta página: a
+captura entrega `pointerup` e `lostpointercapture` em sequência pelo
+mesmo gesto, e dois zeros seguidos só ocupariam a única conexão do
+servidor. Se ainda assim ele se perder, o firmware corta o jog em 350 ms
+sem heartbeat (`TIMEOUT_JOG_MS`).
+
+**E a coluna parou de pular** onde dava para parar sem custo:
+
+- `.teMsg` reserva **duas linhas**. Era a oscilação mais frequente: a
+  mensagem de estado troca a cada leitura e cada linha a mais empurrava
+  tudo abaixo.
+- `.agora` virou uma linha só, com reticências: "(medido)" e
+  "(comandado)" têm larguras diferentes e a troca quebrava a linha em
+  duas.
+- `.eixo .fx` ganhou altura fixa: "sem curso" é uma linha de texto,
+  curso medido é número **mais** barrinha — calibrar uma junta empurrava
+  as setas da outra.
+- O botão de próximo passo só mexe no DOM quando o passo **muda**, em
+  vez de reescrever `display` e texto 4,5 vezes por segundo.
+
+O banco reproduz o defeito antes de provar a correção: com a captura
+removida, o cenário acusa `parada precoce: true`.
+
+## R145 · "Levar a um ângulo" sacudia o eixo que ninguém pediu  ✅
+
+Relato: "quando clico levar a tal ângulo não está indo corretamente".
+
+`/api/mover` recebe um destino **absoluto para as duas juntas** e o
+converte em pulsos pela contagem que o próprio firmware mantém. A tela
+preenchia o eixo não selecionado com `anguloAtual()`, que **prefere o
+ângulo medido pelo encoder**:
+
+```js
+const t1=(j===1)?alvo:anguloAtual(1);
+const t2=(j===2)?alvo:anguloAtual(2);
+```
+
+Duas contas diferentes no mesmo pedido. Onde elas divergem — perda de
+passo, folga do redutor, escala recém-medida — o firmware via um destino
+diferente da posição atual e mexia num eixo que ninguém mandou mexer:
+levar a junta 1 a zero sacudia a junta 2 junto.
+
+**Correção:** o eixo parado recebe a **própria contagem do firmware**
+(`D.t1`/`D.t2`), então a diferença é exatamente zero e ele não recebe
+pulso nenhum. E o "de" da linha ("−65,9° → 0") passou a mostrar essa
+mesma conta, para a linha descrever o que vai de fato acontecer — onde o
+braço está de verdade continua na linha de cima ("medido") e na régua do
+rodapé.
+
+`anguloAtual()` saiu: era exatamente a função que escolhia a conta por
+todos, e não sobrou nenhum uso dela.
+
+Não havia **nenhum** cenário cobrindo o botão "Levar" — por isso o
+defeito atravessou tantas rodadas. Agora há três.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **446 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **275 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **450 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **281 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).
