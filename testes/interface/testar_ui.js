@@ -243,11 +243,10 @@ async function fecharGaveta(pag) {
   checar(dim[0] > 100 && dim[1] > 100, 'o canvas e redimensionado ao abrir a aba Mesa',
          dim[0] + 'x' + dim[1] + ' px');
 
-  // Arquivos: DUAS bibliotecas, uma por tipo, ambas na tela ao mesmo
-  // tempo. Antes era uma lista so com um seletor de tres posicoes
-  // (programas, trajetorias, ajustes) e o operador nunca sabia qual
-  // estava vendo. Os ajustes sairam da biblioteca -- eles se copiam
-  // sozinhos, num arquivo reservado.
+  // Arquivos: UMA biblioteca. Havia dois cartoes lado a lado, cada um
+  // com o seu campo de nome, o seu Salvar e a sua lista -- e para usar
+  // era preciso saber ANTES em qual das duas palavras (programa ou
+  // trajetoria) o que voce acabou de fazer se encaixa.
   await p.locator('#abas button[data-aba="arq"]').click();
   await p.waitForTimeout(700);
   await p.evaluate(() => {
@@ -255,16 +254,29 @@ async function fecharGaveta(pag) {
   });
   await p.waitForTimeout(400);
   const bib = await p.evaluate(() => ({
-    prog: document.querySelectorAll('#sdListaProg .arq').length,
-    traj: document.querySelectorAll('#sdListaTraj .arq').length,
+    linhas: document.querySelectorAll('#sdLista .arq').length,
+    prog: document.querySelectorAll('#sdLista .arq[data-tipo="prog"]').length,
+    traj: document.querySelectorAll('#sdLista .arq[data-tipo="traj"]').length,
+    etiquetas: [...document.querySelectorAll('#sdLista .arq .tag')]
+                 .map(e => e.textContent.trim()),
+    duasListas: !!document.getElementById('sdListaProg') ||
+                !!document.getElementById('sdListaTraj'),
+    doisNomes: !!document.getElementById('sdNomeProg') ||
+               !!document.getElementById('sdNomeTraj'),
     seletor: !!document.getElementById('segTipo'),
     comoUsado: [...document.querySelectorAll('#pnArq .tt')]
                  .some(e => /Como o cartao e usado/.test(e.textContent)),
     titulo: document.getElementById('sdTit').textContent,
   }));
-  checar(bib.prog === 2 && bib.traj === 1,
-         'Arquivos: programas e trajetorias aparecem juntos, cada um no seu cartao',
-         bib.prog + ' programa(s), ' + bib.traj + ' trajetoria(s); "' + bib.titulo + '"');
+  checar(bib.linhas === 3 && bib.prog === 2 && bib.traj === 1,
+         'Arquivos: uma lista so, com os dois tipos dentro',
+         bib.prog + ' programa(s) e ' + bib.traj + ' trajetoria(s) em '
+         + bib.linhas + ' linhas; "' + bib.titulo + '"');
+  checar(bib.etiquetas.includes('programa') && bib.etiquetas.includes('trajetoria'),
+         'Arquivos: o tipo vira etiqueta na linha, depois de salvo',
+         bib.etiquetas.join(' '));
+  checar(!bib.duasListas && !bib.doisNomes,
+         'Arquivos: nao sobrou nenhuma das duas bibliotecas antigas');
   checar(!bib.seletor,
          'Arquivos: o seletor de tres posicoes saiu -- nao ha mais "qual lista e esta?"');
   checar(!bib.comoUsado,
@@ -272,53 +284,95 @@ async function fecharGaveta(pag) {
 
   // "Nao consegui salvar o desenho no cartao": o botao respondia 200 e a
   // recusa ia so para a tira de mensagem. Agora ele diz o que falta.
-  await p.locator('#sdNomeProg').fill('peca teste');
+  await p.locator('#sdNome').fill('peca teste');
   await p.waitForTimeout(300);
   const salvarOk = await p.evaluate(() => ({
-    dis: document.getElementById('btSdSalvarProg').disabled,
-    oque: document.getElementById('sdOqueProg').textContent.trim(),
+    dis: document.getElementById('btSdSalvar').disabled,
+    oque: document.getElementById('sdOque').textContent.trim(),
+    escolha: getComputedStyle(document.getElementById('segGuardar')).display,
   }));
   checar(!salvarOk.dis && /3 pontos/.test(salvarOk.oque),
          'Arquivos: com programa na maquina, Salvar libera e diz o que vai gravar',
          salvarOk.oque);
+  // A maquina de teste tem as DUAS coisas: e o unico caso em que a
+  // escolha de tipo aparece na tela.
+  checar(salvarOk.escolha !== 'none',
+         'Arquivos: com as duas coisas na maquina, a escolha aparece',
+         salvarOk.escolha);
+  await p.locator('#segGuardar [data-t="traj"]').click();
+  await p.waitForTimeout(200);
+  const trocouTipo = await p.evaluate(() =>
+    document.getElementById('sdOque').textContent.trim());
+  checar(/amostras/.test(trocouTipo),
+         'Arquivos: e escolher a trajetoria muda o que vai ser gravado', trocouTipo);
+  await p.locator('#segGuardar [data-t="prog"]').click();
+  await p.waitForTimeout(200);
+
+  // Tirando a trajetoria, sobra so o programa -- e a escolha some, porque
+  // deixou de ser uma escolha.
+  await p.request.post(BASE + '/teste/estado', { data: { trajN: 0 } });
+  await p.waitForTimeout(700);
+  const soProg = await p.evaluate(() => ({
+    escolha: getComputedStyle(document.getElementById('segGuardar')).display,
+    oque: document.getElementById('sdOque').textContent.trim(),
+  }));
+  checar(soProg.escolha === 'none' && /3 pontos/.test(soProg.oque),
+         'Arquivos: so ha programa para guardar, entao nao ha o que escolher',
+         soProg.escolha + ' · ' + soProg.oque);
 
   await p.request.post(BASE + '/teste/estado', { data: { progN: 0 } });
   await p.waitForTimeout(700);
-  const semProg = await p.evaluate(() => ({
-    dis: document.getElementById('btSdSalvarProg').disabled,
-    motivo: document.getElementById('qSdSalvarProg').textContent.trim(),
-    oque: document.getElementById('sdOqueProg').textContent.trim(),
-  }));
-  checar(semProg.dis && semProg.motivo.length > 0,
-         'Arquivos: sem programa na maquina, Salvar trava dizendo o porque',
-         semProg.motivo);
-  checar(/Desenhe na mesa|importe um DXF/.test(semProg.oque),
-         'Arquivos: e diz de onde vem um programa', semProg.oque);
-
-  // O cartao de trajetorias tem o seu proprio botao e a sua propria
-  // recusa: travar os dois com a mesma mensagem seria mentir sobre um.
-  const trajRecusa = await p.evaluate(() => ({
-    dis: document.getElementById('btSdSalvarTraj').disabled,
-    oque: document.getElementById('sdOqueTraj').textContent.trim(),
-  }));
-  checar(/trajetoria/.test(trajRecusa.oque),
-         'Arquivos: o cartao de trajetorias fala de trajetoria, nao de programa',
-         trajRecusa.oque);
-
-  await p.locator('#sdNomeProg').fill('nome/invalido');
-  await p.waitForTimeout(300);
-  await p.request.post(BASE + '/teste/estado', { data: { progN: 3 } });
+  // Sem programa, sobrou a trajetoria: a escolha se faz sozinha e o
+  // Salvar passa a falar de trajetoria, nao de programa.
+  await p.request.post(BASE + '/teste/estado', { data: { trajN: 24 } });
   await p.waitForTimeout(700);
+  const semProg = await p.evaluate(() => ({
+    dis: document.getElementById('btSdSalvar').disabled,
+    motivo: document.getElementById('qSdSalvar').textContent.trim(),
+    oque: document.getElementById('sdOque').textContent.trim(),
+    escolha: getComputedStyle(document.getElementById('segGuardar')).display,
+  }));
+  checar(/trajetoria/.test(semProg.oque) && semProg.escolha === 'none',
+         'Arquivos: sem programa, o Salvar vira o da trajetoria sem perguntar',
+         semProg.oque);
+
+  // E sem nenhuma das duas ele trava, dizendo o porque e de onde vem um
+  // programa -- antes ele respondia 200 e a recusa ia so para a tira.
+  await p.request.post(BASE + '/teste/estado', { data: { trajN: 0 } });
+  await p.waitForTimeout(700);
+  const semNada = await p.evaluate(() => ({
+    dis: document.getElementById('btSdSalvar').disabled,
+    motivo: document.getElementById('qSdSalvar').textContent.trim(),
+    oque: document.getElementById('sdOque').textContent.trim(),
+  }));
+  checar(semNada.dis && semNada.motivo.length > 0,
+         'Arquivos: sem nada na maquina, Salvar trava dizendo o porque',
+         semNada.motivo);
+  checar(/Desenhe na mesa|importe um DXF/.test(semNada.oque),
+         'Arquivos: e diz de onde vem um programa', semNada.oque);
+
+  await p.request.post(BASE + '/teste/estado', { data: { progN: 3, trajN: 40 } });
+  await p.waitForTimeout(700);
+
+  await p.locator('#sdNome').fill('nome/invalido');
+  await p.waitForTimeout(300);
   const nomeRuim = await p.evaluate(() =>
-    document.getElementById('qSdSalvarProg').textContent.trim());
+    document.getElementById('qSdSalvar').textContent.trim());
   checar(/letras/.test(nomeRuim),
          'Arquivos: nome com caractere proibido e barrado antes de ir ao robo',
          nomeRuim);
-  await p.locator('#sdNomeProg').fill('');
+  await p.locator('#sdNome').fill('');
   await p.waitForTimeout(200);
 
   chamadas.length = 0;
-  await p.locator('#sdListaProg [data-car]').first().click();
+  await p.locator('#sdLista .arq[data-tipo="traj"] [data-car]').first().click();
+  await p.waitForTimeout(200);
+  const abriuTraj = chamadas.find(c => c.startsWith('/api/sd/carregar'));
+  checar(!!abriuTraj && /tipo=traj/.test(abriuTraj),
+         'Arquivos: abrir uma trajetoria da lista unica pede o tipo certo', abriuTraj);
+
+  chamadas.length = 0;
+  await p.locator('#sdLista .arq[data-tipo="prog"] [data-car]').first().click();
   await p.waitForTimeout(200);
   const carregou = chamadas.find(c => c.startsWith('/api/sd/carregar'));
   checar(!!carregou, 'o botao carregar chama a rota certa com o nome escapado', carregou);
@@ -1693,6 +1747,82 @@ async function fecharGaveta(pag) {
          '"Declarar esta posicao como referencia" confirma e chama /api/referenciar');
 
   // ------------------------------------------------------------------
+  // A GAVETA GANHOU UM COMECO E UMA BUSCA.
+  //
+  // Eram quinze cartoes sem ordem nenhuma: quem monta a maquina pela
+  // primeira vez descobria a sequencia abrindo cartao por cartao. O
+  // roteiro poe os cinco passos em ordem, cada um lendo do estado REAL
+  // da maquina se ja esta feito.
+  // ------------------------------------------------------------------
+  await abrirGaveta(t, 'maquina');
+  await t.waitForTimeout(500);
+  const rot = await t.evaluate(() => ({
+    passos: [...document.querySelectorAll('#roteiro .rtItem')]
+              .map(e => e.querySelector('.tt2').textContent.trim()),
+    feitos: [...document.querySelectorAll('#roteiro .rtItem.ok')]
+              .map(e => e.querySelector('.tt2').textContent.trim()),
+    resumo: document.getElementById('sbRoteiro').textContent.trim(),
+  }));
+  checar(rot.passos.length === 5 && /Calibrar o braco/.test(rot.passos.join('|')),
+         'Gaveta: o roteiro lista os cinco passos da instalacao, em ordem',
+         rot.passos.join(' > '));
+  checar(/\d+ de \d+ passos feitos/.test(rot.resumo),
+         'Gaveta: e o cabecalho do roteiro conta quantos ja estao feitos',
+         rot.resumo);
+  checar(rot.feitos.length > 0,
+         'Gaveta: os passos ja feitos vem riscados, lidos do estado da maquina',
+         rot.feitos.join(', ') || 'nenhum');
+
+  // O atalho de cada passo tem que LEVAR ao lugar. "Calibrar o braco"
+  // mora noutra pagina da gaveta: se o botao so abrisse o cartao, quem
+  // clicasse ficaria olhando para uma tela que nao mudou.
+  await t.evaluate(() => document.getElementById('etRoteiro').classList.add('aberta'));
+  await t.waitForTimeout(200);
+  await t.locator('#roteiro .rtItem:nth-child(3) [data-rt]').click();
+  await t.waitForTimeout(350);
+  const foiParaCalib = await t.evaluate(() =>
+    document.getElementById('cfgCalib').classList.contains('on'));
+  checar(foiParaCalib,
+         'Gaveta: o atalho do roteiro troca de pagina, nao so abre o cartao');
+
+  // A busca varre o TEXTO INTEIRO do cartao, de todas as paginas: quem
+  // procura "aceleracao" nao sabe (nem tem de saber) que ela mora em
+  // "Ajustes da maquina", dentro de "Avancado".
+  await t.locator('#cfgProcurar').fill('aceleracao');
+  await t.waitForTimeout(350);
+  const busca = await t.evaluate(() => ({
+    procurando: document.body.classList.contains('cfgProcurando'),
+    achados: [...document.querySelectorAll('.cfgRol .et')]
+               .filter(e => !e.classList.contains('foraDaBusca'))
+               .map(e => e.querySelector('.tt').textContent.trim()),
+  }));
+  checar(busca.procurando && busca.achados.includes('Ajustes da maquina'),
+         'Gaveta: procurar "aceleracao" acha o cartao onde ela mora',
+         busca.achados.join(', '));
+  checar(busca.achados.length < 5,
+         'Gaveta: e esconde os cartoes que nao tem nada a ver',
+         busca.achados.length + ' cartao(oes) de pe');
+
+  // Sem acento: quem procura no celular raramente acentua.
+  await t.locator('#cfgProcurar').fill('calibracao');
+  await t.waitForTimeout(350);
+  const semAcento = await t.evaluate(() =>
+    [...document.querySelectorAll('.cfgRol .et')]
+      .filter(e => !e.classList.contains('foraDaBusca')).length);
+  checar(semAcento > 0,
+         'Gaveta: a busca ignora acento dos dois lados', semAcento + ' achado(s)');
+
+  await t.locator('#cfgProcurarX').click();
+  await t.waitForTimeout(350);
+  const limpou = await t.evaluate(() => ({
+    procurando: document.body.classList.contains('cfgProcurando'),
+    escondidos: document.querySelectorAll('.cfgRol .et.foraDaBusca').length,
+  }));
+  checar(!limpou.procurando && limpou.escondidos === 0,
+         'Gaveta: limpar a busca devolve a gaveta inteira',
+         JSON.stringify(limpou));
+
+  // ------------------------------------------------------------------
   // Aba Calibracao: as duas medidas, e a area da mesa.
   //
   // As duas medem coisas DIFERENTES e nao podem ser confundidas: o passo
@@ -2291,12 +2421,12 @@ async function fecharGaveta(pag) {
   await t.locator('#abas button[data-aba="arq"]').click();
   await t.waitForTimeout(500);
   await t.evaluate(() => {
-    const alvo = document.getElementById('sdListaProg').closest('.et');
+    const alvo = document.getElementById('sdLista').closest('.et');
     document.querySelectorAll('#pnArq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(400);
   rotas = [];
-  await t.locator('#sdListaProg [data-ver]').first().click();
+  await t.locator('#sdLista [data-ver]').first().click();
   await t.waitForTimeout(900);
   const pediuPrevia = rotas.some(x => x.split('?')[0] === '/api/sd/prever');
   checar(pediuPrevia, 'Biblioteca: "ver" pede a previa e NAO carrega a peca',
@@ -2327,7 +2457,7 @@ async function fecharGaveta(pag) {
   await t.request.post(BASE + '/teste/previa', { data: { l1: 450.0, l2: 400.0 } });
   await t.locator('#pvFechar').click();
   await t.waitForTimeout(200);
-  await t.locator('#sdListaProg [data-ver]').first().click();
+  await t.locator('#sdLista [data-ver]').first().click();
   await t.waitForTimeout(900);
   const semAviso = await t.evaluate(() =>
     document.getElementById('pvAviso').style.display);

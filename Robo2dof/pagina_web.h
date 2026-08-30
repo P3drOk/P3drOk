@@ -693,6 +693,29 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 .cfgTopo h2{flex:1;margin:0}
 .cfgTopo .ajd{flex:0 0 auto}
 .cfgTopo .b{margin:0;width:auto;flex:0 0 auto}
+.cfgBusca{display:flex;gap:7px;padding:9px 16px 0}
+.cfgBusca input{flex:1;min-width:0;background:var(--fundo);color:var(--letra);
+ border:1px solid var(--linha);border-radius:3px;padding:8px 10px;font-size:12.5px}
+.cfgBusca input:focus{outline:none;border-color:var(--arco)}
+/* Procurando, as abas param de valer: o que a busca mostra vem de todas
+   elas ao mesmo tempo, e deixar uma marcada seria mentir sobre isso. */
+body.cfgProcurando .cfgAbas{opacity:.35;pointer-events:none}
+body.cfgProcurando .cfgRol .pane{display:block}
+body.cfgProcurando .et.foraDaBusca{display:none}
+
+/* O roteiro: uma linha por passo, numero, nome, estado e o atalho. */
+.roteiro{border:1px solid var(--linha);border-radius:3px;overflow:hidden;
+ margin-bottom:9px}
+.rtItem{display:flex;align-items:center;gap:9px;padding:9px 10px;
+ background:var(--painel);border-bottom:1px solid var(--linha)}
+.rtItem:last-child{border-bottom:none}
+.rtItem .n{font-family:var(--mono);font-size:11px;color:var(--letra3);
+ width:14px;flex:0 0 auto;text-align:center}
+.rtItem .tx{flex:1;min-width:0}
+.rtItem .tt2{font-size:12.5px;color:var(--letra)}
+.rtItem .st{display:block;font-size:10.5px;color:var(--letra3);margin-top:1px}
+.rtItem.ok .n{color:var(--pronto)}
+.rtItem.ok .st{color:var(--pronto)}
 .cfgAbas{display:flex;gap:4px;padding:10px 16px 0;border-bottom:1px solid var(--linha)}
 .cfgAbas button{flex:1;background:none;border:none;border-bottom:2px solid transparent;
  color:var(--fraca);font:inherit;font-size:12px;padding:8px 4px 9px;cursor:pointer;
@@ -820,6 +843,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
  white-space:nowrap}
 .arq .kb{font-family:var(--mono);font-size:9.5px;color:var(--letra3);
  flex:0 0 auto}
+/* A etiqueta de tipo vem DEPOIS do nome, em cinza: o tipo importa para
+   conferir, nao para escolher -- na hora de escolher, o que se procura
+   e o nome. */
+.arq .tag{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;
+ text-transform:uppercase;color:var(--letra3);border:1px solid var(--linha2);
+ border-radius:2px;padding:2px 5px;flex:0 0 auto}
 .lista.arqs{border:1px solid var(--linha);border-radius:3px;overflow:hidden;
  margin-bottom:9px}
 /* ---------- encoder ---------- */
@@ -1396,35 +1425,35 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             </div>
             <button class="b mini" id="btSdMontar">Procurar cartao de novo</button>
 
-            <h4>Programas salvos</h4>
-            <div class="res" id="sdOqueProg">--</div>
-            <div class="linhaNome">
-              <input id="sdNomeProg" maxlength="24" placeholder="nome do programa" autocomplete="off">
-              <button class="b mini" id="btSdSalvarProg" style="width:auto;margin:0">Salvar</button>
+            <!-- UMA biblioteca, nao duas.
+                 Havia dois cartoes lado a lado -- "Programas salvos" e
+                 "Trajetorias salvas" -- cada um com o seu campo de nome,
+                 o seu botao Salvar e a sua lista. Para usar, era preciso
+                 saber ANTES em qual das duas palavras o que voce acabou
+                 de fazer se encaixa. Quem nunca operou nao sabe, e o
+                 segundo cartao ainda nascia fechado.
+                 Agora e um so: um campo de nome, um Salvar, uma lista.
+                 O tipo aparece como etiqueta em cada linha -- depois de
+                 salvo, quando ja nao e uma decisao. E a escolha de tipo
+                 so aparece na tela quando a maquina tem MESMO as duas
+                 coisas para guardar. -->
+            <h4>Guardar o que esta na maquina</h4>
+            <div class="seg" id="segGuardar" style="display:none">
+              <button data-t="prog">programa</button>
+              <button data-t="traj">trajetoria</button>
             </div>
-            <div class="pq2" id="qSdSalvarProg"></div>
-            <div id="sdListaProg"></div>
-            <div class="nt">Sao os desenhos e programas de ponto que voce fez
-            na maquina. <b>Apagar tudo nao mexe neles</b> &mdash; so na memoria
-            interna da maquina.</div>
-          </div>
-        </div>
+            <div class="res" id="sdOque">--</div>
+            <div class="linhaNome">
+              <input id="sdNome" maxlength="24" placeholder="nome do arquivo" autocomplete="off">
+              <button class="b mini" id="btSdSalvar" style="width:auto;margin:0">Salvar</button>
+            </div>
+            <div class="pq2" id="qSdSalvar"></div>
 
-        <div class="et">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-caminho"/></svg></div>
-            <div class="tx"><div class="tt">Trajetorias salvas</div>
-            <span class="sb" id="sbSdTraj">--</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            <div class="res" id="sdOqueTraj">--</div>
-            <div class="linhaNome">
-              <input id="sdNomeTraj" maxlength="24" placeholder="nome da trajetoria" autocomplete="off">
-              <button class="b mini" id="btSdSalvarTraj" style="width:auto;margin:0">Salvar</button>
-            </div>
-            <div class="pq2" id="qSdSalvarTraj"></div>
-            <div id="sdListaTraj"></div>
-            <div class="nt">O caminho inteiro gravado a mao livre, com o estado
-            do arco em cada instante. Grava-se em <b>Programa &rsaquo; Trajetoria
-            a mao livre</b>.</div>
+            <h4>No cartao</h4>
+            <div id="sdLista"></div>
+            <div class="nt">Os desenhos, os programas de ponto e as gravacoes
+            a mao livre que voce fez na maquina. <b>Apagar tudo nao mexe
+            neles</b> &mdash; so na memoria interna.</div>
           </div>
         </div>
       </section>
@@ -1463,6 +1492,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
     <button class="ajd" id="cfgAjuda" title="Mostrar ou esconder as explicacoes">?</button>
     <button class="b mini" id="cfgFechar">Fechar</button>
   </div>
+  <!-- Procurar um ajuste pelo nome. Sao quatro paginas e uns quinze
+       cartoes: lembrar em qual deles mora "aceleracao" e trabalho que a
+       maquina pode fazer. Digitou, ela mostra os cartoes que casam --
+       de TODAS as paginas -- e abre cada um. Vazio, tudo volta ao
+       normal. -->
+  <div class="cfgBusca">
+    <input id="cfgProcurar" placeholder="procurar um ajuste pelo nome" autocomplete="off">
+    <button class="b mini" id="cfgProcurarX" style="display:none">limpar</button>
+  </div>
   <nav class="cfgAbas" id="cfgAbas">
     <button data-cfg="maquina" class="on">Maquina</button>
     <button data-cfg="calib">Calibracao</button>
@@ -1471,7 +1509,25 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
   </nav>
   <div class="cfgRol">
     <div class="pane on" id="cfgMaquina">
-      
+      <!-- O ROTEIRO.
+           A gaveta tinha quinze cartoes e nenhuma ordem. Quem monta a
+           maquina pela primeira vez nao sabe o que vem antes do que, e
+           nada na tela dizia -- descobria-se abrindo cartao por cartao.
+           Aqui estao os cinco passos, na ordem, cada um dizendo se ja
+           esta feito e levando ao lugar onde se faz. Quem ja instalou
+           fecha e nunca mais abre. -->
+      <div class="et aberta" id="etRoteiro">
+        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-lista"/></svg></div>
+          <div class="tx"><div class="tt">Por onde comecar</div>
+          <span class="sb" id="sbRoteiro">--</span></div><div class="chv">&#9654;</div></div>
+        <div class="dentro">
+          <div class="roteiro" id="roteiro"></div>
+          <div class="nt">Nenhum destes passos e obrigatorio para mover o
+          braco na mao. Eles sao o que faz a maquina saber ONDE ela esta
+          &mdash; e sem isso um programa nao cai no mesmo lugar duas vezes.</div>
+        </div>
+      </div>
+
         <div class="et aberta" id="e1" data-e="1">
           <div class="cab"><div class="mk">1</div>
             <div class="tx"><div class="tt">Preparar a maquina</div>
@@ -2506,8 +2562,11 @@ function calibAtualizar(){
 /* Enquanto a aba estiver aberta, o quadro se atualiza sozinho: quem esta
    girando o eixo precisa ver a contagem andar. */
 setInterval(function(){
-  if($("veuCfg")&&$("veuCfg").classList.contains("on")&&cfgAtual==="calib")
-    calibAtualizar();
+  if(!$("veuCfg")||!$("veuCfg").classList.contains("on"))return;
+  if(cfgAtual==="calib")calibAtualizar();
+  /* O roteiro le o estado real: calibrar ou ensinar a mesa noutra aba
+     tem que riscar o passo aqui sem ninguem reabrir a gaveta. */
+  if(cfgAtual==="maquina"&&typeof roteiroPintar==="function")roteiroPintar();
 }, 500);
 
 $("btMesaCanto").onclick=function(){
@@ -5678,7 +5737,10 @@ const EN={
  "Encerrar gravacao":"Stop recording","Abrir arco":"Strike arc",
  "Restaurar padroes":"Restore defaults",
  "Carregar esta peca na maquina":"Load this part into the machine",
- "carregar":"load","apagar":"delete","ver":"view",
+ "abrir":"open","apagar":"delete","ver":"view",
+ "programa":"program","trajetoria":"path",
+ "Guardar o que esta na maquina":"Save what is in the machine",
+ "No cartao":"On the card",
  /* titulos de secao */
  "Ensinar o caminho":"Teach the path","Ensaiar sem arco":"Dry run, no arc",
  "Soldar":"Weld","Modo aprendizado":"Teach mode",
@@ -5811,6 +5873,7 @@ function irCfg(qual){
      duas requisicoes que nao fazem falta enquanto ninguem olha. */
   if(qual === "sistema"){ saudeAtualizar(); pintarQR(); }
   if(qual === "calib"){ calibAtualizar(); }
+  if(qual === "maquina"){ roteiroPintar(); }
   /* Em coluna larga a aba abre com TUDO a vista: sao poucos cartoes por
      assunto, eles cabem lado a lado, e assim ninguem precisa clicar para
      descobrir se o ajuste que procura existe. Fechar continua sendo um
@@ -5870,6 +5933,108 @@ function medirCabecalho(){
 }
 addEventListener("resize", function(){ medirCabecalho(); cfgColunas(); });
 medirCabecalho();
+
+/* =====================================================================
+   O ROTEIRO DE INSTALACAO
+   Cinco passos, na ordem em que se faz. Cada um diz se ja esta feito --
+   lido do estado real da maquina, nao de um "ja marquei essa" guardado
+   no navegador -- e leva ao cartao onde se faz.
+   ===================================================================== */
+const ROTEIRO=[
+ {t:"Medidas do braco",
+  q:function(){return null;},   /* nao da para saber: so mostra o valor */
+  v:function(){return "elo 1 "+Math.round(D.l1||0)+" mm · elo 2 "+
+                      Math.round(D.l2||0)+" mm";},
+  ir:function(){irCfg("maquina");abrirEt($("e1"));}},
+ {t:"Torque nos motores",
+  q:function(){return !!(D.srv1&&D.srv2);},
+  v:function(){return D.srv1&&D.srv2 ? "os dois eixos com torque"
+             : (D.srv1||D.srv2) ? "so um eixo com torque"
+             : "os dois soltos";},
+  ir:function(){irCfg("maquina");abrirEt($("e1"));}},
+ {t:"Calibrar o braco",
+  q:function(){return !!(D.cal1&&D.cal2);},
+  v:function(){return D.cal1&&D.cal2 ? "curso medido nas duas juntas"
+             : (D.cal1||D.cal2) ? "so uma junta medida"
+             : "nao medido — a maquina opera assim mesmo";},
+  ir:function(){irCfg("calib");}},
+ {t:"Area da mesa",
+  q:function(){return !!D.mesaOn;},
+  v:function(){return D.mesaOn ? "cantos ensinados" : "nao ensinada";},
+  ir:function(){irCfg("calib");abrirEt($("btMesaCanto").closest(".et"));}},
+ {t:"Zero absoluto",
+  q:function(){return !!(D.zEn1&&D.zEn2);},
+  v:function(){return (D.zEn1&&D.zEn2) ? "as duas juntas se localizam ao ligar"
+             : (D.zEn1||D.zEn2) ? "so uma junta ensinada"
+             : "a maquina nao sabe onde esta ao ligar";},
+  ir:function(){irCfg("maquina");}}
+];
+function abrirEt(et){
+  if(!et)return;
+  const painel=et.closest(".pane")||document;
+  painel.querySelectorAll(".et").forEach(function(x){
+    if(x.querySelector(".cab .chv"))x.classList.remove("aberta");});
+  et.classList.add("aberta");
+  et.scrollIntoView({block:"start"});
+}
+let roteiroAssim="";
+function roteiroPintar(){
+  const cx=$("roteiro"); if(!cx)return;
+  let feitos=0,total=0,h="";
+  ROTEIRO.forEach(function(r,i){
+    const ok=r.q();
+    if(ok!==null){ total++; if(ok)feitos++; }
+    h+='<div class="rtItem'+(ok?" ok":"")+'">'+
+       '<div class="n">'+(ok?"\u2713":(i+1))+'</div>'+
+       '<div class="tx"><div class="tt2">'+r.t+'</div>'+
+       '<span class="st">'+r.v()+'</span></div>'+
+       '<button class="mb" data-rt="'+i+'">abrir</button></div>';
+  });
+  /* Redesenhar de meio em meio segundo trocaria os botoes por outros
+     iguais o tempo todo -- e um clique que cai entre a destruicao e a
+     criacao se perde. So mexe no DOM quando alguma coisa mudou de
+     verdade. */
+  if(h===roteiroAssim){ $("sbRoteiro").textContent=feitos+" de "+total+" passos feitos"; return; }
+  roteiroAssim=h;
+  cx.innerHTML=h;
+  traduzirDom(cx);
+  cx.querySelectorAll("[data-rt]").forEach(function(b){
+    b.onclick=function(){ROTEIRO[+b.dataset.rt].ir();};});
+  $("sbRoteiro").textContent=feitos+" de "+total+" passos feitos";
+}
+
+/* =====================================================================
+   PROCURAR UM AJUSTE
+   Casa o que foi digitado com o TEXTO INTEIRO de cada cartao -- titulo,
+   rotulos dos campos, notas. Procurar "aceleracao" tem que achar o
+   cartao certo mesmo que a palavra so apareca no rotulo de um campo.
+   ===================================================================== */
+function cfgProcurar(){
+  const alvo=$("cfgProcurar").value.trim().toLowerCase();
+  $("cfgProcurarX").style.display=alvo?"inline-flex":"none";
+  document.body.classList.toggle("cfgProcurando",!!alvo);
+  const cartoes=document.querySelectorAll(".cfgRol .et");
+  if(!alvo){
+    cartoes.forEach(function(e){e.classList.remove("foraDaBusca");});
+    irCfg(cfgAtual);
+    return;
+  }
+  /* Sem acento e sem cedilha dos dois lados: quem procura no celular
+     raramente acentua, e "calibracao" tem que achar "calibração". */
+  const limpar=function(t){
+    return t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  };
+  const q=limpar(alvo);
+  cartoes.forEach(function(e){
+    const casa=limpar(e.textContent||"").indexOf(q)>=0;
+    e.classList.toggle("foraDaBusca",!casa);
+    if(casa&&e.querySelector(".cab .chv"))e.classList.add("aberta");
+  });
+  cfgColunas();
+}
+$("cfgProcurar").oninput=cfgProcurar;
+$("cfgProcurarX").onclick=function(){
+  $("cfgProcurar").value="";cfgProcurar();$("cfgProcurar").focus();};
 
 function abrirCfg(){
   medirCabecalho();
@@ -6074,74 +6239,99 @@ joyDesenhar();
    O mesmo codigo serve as duas: o que muda e o tipo e os ids. */
 let sdSeq=-1,sdEstado="";
 const BIB={
-  prog:{arqs:[],nome:"sdNomeProg",oque:"sdOqueProg",lista:"sdListaProg",
-        bt:"SdSalvarProg",ver:true},
-  traj:{arqs:[],nome:"sdNomeTraj",oque:"sdOqueTraj",lista:"sdListaTraj",
-        bt:"SdSalvarTraj",ver:false}
+  prog:{arqs:[],rot:"programa",   ver:true},
+  traj:{arqs:[],rot:"trajetoria", ver:false}
 };
+/* O que o Salvar vai gravar. So vira uma PERGUNTA na tela quando a
+   maquina tem as duas coisas ao mesmo tempo -- que e raro. No resto do
+   tempo a escolha se faz sozinha e o operador nem ve que existia. */
+let tipoGuardar="prog";
 $("btSdMontar").onclick=function(){post("/api/sd/montar").then(function(){sdSeq=-1;});};
 
-Object.keys(BIB).forEach(function(tipo){
-  const b=BIB[tipo];
-  $("bt"+b.bt).onclick=function(){
-    const n=$(b.nome).value.trim();
-    if(!n){acao(b.bt,"informe um nome para o arquivo");return;}
-    post("/api/sd/salvar?tipo="+tipo+"&nome="+encodeURIComponent(n))
-     .then(function(){sdSeq=-1;});
-  };
-  $(b.nome).oninput=function(){sdEstadoSalvar();};
+function sdQuanto(tipo){ return (tipo==="prog"?(D.progN||0):(D.trajN||0)); }
+function sdTem(tipo){ return sdQuanto(tipo)>=2; }
+
+$("segGuardar").querySelectorAll("[data-t]").forEach(function(b){
+  b.onclick=function(){ tipoGuardar=b.dataset.t; sdEstadoSalvar(); };
 });
+$("sdNome").oninput=function(){sdEstadoSalvar();};
+$("btSdSalvar").onclick=function(){
+  const n=$("sdNome").value.trim();
+  if(!n){acao("SdSalvar","informe um nome para o arquivo");return;}
+  post("/api/sd/salvar?tipo="+tipoGuardar+"&nome="+encodeURIComponent(n))
+   .then(function(){sdSeq=-1;});
+};
 
 /* O que "Salvar" vai gravar, e por que ele nao pode agora.
    Antes o botao respondia 200 sempre: o firmware enfileirava o pedido e
    a recusa ("nada para salvar", "cartao ausente") aparecia so na tira de
    mensagem, que rola. O operador apertava e concluia que nao funcionava. */
 function sdEstadoSalvar(){
-  Object.keys(BIB).forEach(function(tipo){
-    const b=BIB[tipo];
-    const nome=$(b.nome).value.trim();
-    const quanto=(tipo==="prog")?(D.progN||0):(D.trajN||0);
-    $(b.oque).textContent = (tipo==="prog")
-      ? (quanto>=2 ? "vai gravar o programa que esta na maquina: "+quanto+" pontos"
-                   : "nao ha programa na maquina. Desenhe na mesa, importe um DXF ou grave pontos na aba Mover")
-      : (quanto>=2 ? "vai gravar a trajetoria na memoria: "+quanto+" amostras"
-                   : "nao ha trajetoria gravada. Use \"Trajetoria a mao livre\" na aba Programa");
-    acao(b.bt,
-        sdEstado==="DESLIGADO" ? "o cartao nao foi iniciado"
-      : sdEstado==="SEM_CARTAO" ? "nenhum cartao no slot"
-      : sdEstado==="OCUPADO" ? "o cartao esta ocupado, aguarde"
-      : (D.modo&&D.modo!=="MANUAL") ? "salve com o robo parado no modo manual"
-      : (quanto<2) ? (tipo==="prog" ? "nao ha programa na maquina para salvar"
-                                    : "nao ha trajetoria gravada para salvar")
-      : !nome ? "de um nome ao arquivo"
-      : /[^A-Za-z0-9 _-]/.test(nome) ? "use so letras, numeros, espaco, hifen e sublinhado"
-      : "");
-  });
-  $("sbSdTraj").textContent=(BIB.traj.arqs.length||0)+" no cartao";
+  const temP=sdTem("prog"), temT=sdTem("traj");
+  /* A maquina so tem uma das duas coisas: nao ha o que escolher. E sem
+     nenhuma das duas o texto volta a falar de programa, que e o que a
+     pessoa quase sempre esta tentando guardar -- dizer "nao ha
+     trajetoria" a quem acabou de desenhar uma peca so confunde. */
+  if(temP&&!temT)tipoGuardar="prog";
+  if(temT&&!temP)tipoGuardar="traj";
+  if(!temP&&!temT)tipoGuardar="prog";
+  const dois=temP&&temT;
+  $("segGuardar").style.display=dois?"flex":"none";
+  $("segGuardar").querySelectorAll("[data-t]").forEach(function(b){
+    b.classList.toggle("on",b.dataset.t===tipoGuardar);});
+
+  const nome=$("sdNome").value.trim();
+  const quanto=sdQuanto(tipoGuardar);
+  $("sdOque").textContent =
+      (tipoGuardar==="prog")
+    ? (temP ? "vai gravar o programa que esta na maquina: "+quanto+" pontos"
+            : "nao ha programa na maquina. Desenhe na mesa, importe um DXF ou grave pontos na aba Mover")
+    : (temT ? "vai gravar a trajetoria na memoria: "+quanto+" amostras"
+            : "nao ha trajetoria gravada. Use \"Trajetoria a mao livre\" na aba Programa");
+  acao("SdSalvar",
+      sdEstado==="DESLIGADO" ? "o cartao nao foi iniciado"
+    : sdEstado==="SEM_CARTAO" ? "nenhum cartao no slot"
+    : sdEstado==="OCUPADO" ? "o cartao esta ocupado, aguarde"
+    : (D.modo&&D.modo!=="MANUAL") ? "salve com o robo parado no modo manual"
+    : (quanto<2) ? (tipoGuardar==="prog" ? "nao ha programa na maquina para salvar"
+                                         : "nao ha trajetoria gravada para salvar")
+    : !nome ? "de um nome ao arquivo"
+    : /[^A-Za-z0-9 _-]/.test(nome) ? "use so letras, numeros, espaco, hifen e sublinhado"
+    : "");
 }
 
-function sdPintar(tipo){
-  const b=BIB[tipo], cx=$(b.lista);
-  if(!b.arqs.length){
+/* UMA lista com os dois tipos dentro, cada linha com a sua etiqueta.
+   Programas primeiro: e o que se abre no dia a dia. */
+function sdPintar(){
+  const cx=$("sdLista");
+  const tudo=[];
+  Object.keys(BIB).forEach(function(tipo){
+    BIB[tipo].arqs.forEach(function(a){
+      tudo.push({tipo:tipo,n:a.n,b:a.b});});
+  });
+  if(!tudo.length){
     cx.innerHTML='<div class="nulo">Nenhum arquivo salvo ainda.</div>';return;}
   let h='<div class="lista arqs">';
-  b.arqs.forEach(function(a){
-    h+='<div class="arq"><div class="nm">'+a.n+'</div>'+
+  tudo.forEach(function(a){
+    const b=BIB[a.tipo];
+    h+='<div class="arq" data-tipo="'+a.tipo+'">'+
+       '<div class="nm">'+a.n+'</div>'+
+       '<div class="tag">'+b.rot+'</div>'+
        '<div class="kb">'+(a.b<1024?a.b+" B":(a.b/1024).toFixed(1)+" kB")+'</div>'+
        (b.ver?'<button class="mb" data-ver="'+a.n+'">ver</button>':'')+
-       '<button class="mb" data-car="'+a.n+'">carregar</button>'+
-       '<button class="mb x" data-apg="'+a.n+'">apagar</button></div>';
+       '<button class="mb" data-car="'+a.n+'" data-t="'+a.tipo+'">abrir</button>'+
+       '<button class="mb x" data-apg="'+a.n+'" data-t="'+a.tipo+'">apagar</button></div>';
   });
   cx.innerHTML=h+'</div>';
   traduzirDom(cx);
   cx.querySelectorAll("[data-ver]").forEach(function(e){e.onclick=function(){
     verPeca(e.dataset.ver);};});
   cx.querySelectorAll("[data-car]").forEach(function(e){e.onclick=function(){
-    post("/api/sd/carregar?tipo="+tipo+"&nome="+encodeURIComponent(e.dataset.car))
+    post("/api/sd/carregar?tipo="+e.dataset.t+"&nome="+encodeURIComponent(e.dataset.car))
      .then(function(){sdSeq=-1;});};});
   cx.querySelectorAll("[data-apg]").forEach(function(e){e.onclick=function(){
     if(!confirm('Apagar "'+e.dataset.apg+'" do cartao?'))return;
-    post("/api/sd/apagar?tipo="+tipo+"&nome="+encodeURIComponent(e.dataset.apg))
+    post("/api/sd/apagar?tipo="+e.dataset.t+"&nome="+encodeURIComponent(e.dataset.apg))
      .then(function(){sdSeq=-1;});};});
 }
 
@@ -6262,7 +6452,7 @@ function sdLer(){
     return fetch("/api/sd/lista?tipo="+tipo).then(function(r){return r.json();})
      .then(function(j){
        BIB[tipo].arqs=j.arq||[];
-       sdPintar(tipo);
+       sdPintar();
        /* A tarefa do cartao pode ainda estar montando outra pasta: nesse
           caso o firmware avisa "pronto:false" e a gente volta no proximo
           ciclo, sem ficar martelando o SPI. Sem cartao nao adianta

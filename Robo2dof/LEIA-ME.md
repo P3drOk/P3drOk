@@ -915,7 +915,9 @@ sobrevive a uma correção de resolução.
 
 ### Zerar a máquina na posição atual
 
-`Mover → Zerar a máquina aqui` faz o que a máquina faz ao ligar: declara
+`Mover → Mudar a origem → Declarar esta posição como referência` (atrás
+de um cadeado, porque desloca a área útil inteira) faz o que a máquina
+faz ao ligar: declara
 que a postura atual é a de referência e zera a contagem de pulsos dos
 dois eixos. É o conserto para "o braço perdeu passo e o desenho na tela
 ficou deslocado do braço de verdade" — leve o braço de volta à

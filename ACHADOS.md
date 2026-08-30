@@ -3577,12 +3577,94 @@ computador estava **antes** da que o abre. Mesma especificidade, ganha a
 última — e a última era a errada. O joystick continuava na tela apesar da
 regra existir.
 
+## R135 · A régua do rodapé virou o número que se lê de pé  ✅
+
+Corpo 16 é tamanho de texto, não de leitura de processo. Quem opera está
+**de pé, a um metro da bancada**, de máscara — e para conferir o ângulo
+tinha de se abaixar. Os cinco valores passaram a corpo 28, tabulares. O
+rótulo em cima e o medido embaixo continuam pequenos **de propósito**: se
+tudo crescesse junto, a faixa voltaria a ser um bloco cinza uniforme e a
+hierarquia se perderia outra vez.
+
+## R136 · "Zero" queria dizer duas coisas, a um botão de distância  ✅
+
+Na aba Mover conviviam **"Ir para o zero da máquina"** e **"Zerar a
+máquina aqui"**. O primeiro anda até a referência; o segundo *muda onde
+ela fica* — e desloca a área útil inteira. Nomes parecidos, consequências
+opostas, e o destrutivo com o nome mais curto.
+
+O que muda a origem virou **"Declarar esta posição como referência"**,
+atrás do mesmo cadeado que já guardava o zero absoluto na gaveta. Não é
+senha: é um tranco para não se mexer sem querer.
+
+## R137 · A ajuda voltou, no lugar da dúvida  ✅
+
+O "?" do cabeçalho tinha saído, e por um bom motivo: ele *escondia* as
+notas, e um interruptor para o que nunca se esconde é só mais um botão.
+Voltou com outro papel — ele **acrescenta** uma frase sobre a aba em que
+a pessoa está: o que ela é e qual o primeiro passo. Nasce ligado; quem já
+sabe operar desliga uma vez e nunca mais vê. As notas curtas de cada
+painel seguem sempre visíveis, com ele ligado ou desligado — e o banco
+compara a contagem antes e depois para provar isso.
+
+## R138 · O desenho estava dominado pelo alcance, não pelo braço  ✅
+
+O contorno da região alcançável era azul cheio, 1,5 px — a coisa mais
+forte da tela. Só que **o alcance não muda nunca**: é cenário, não
+informação. Virou um risco cinza fino, do mesmo peso da grade. O azul
+volta a significar uma coisa só: o braço e a ponta que ele carrega.
+
+## R139 · Duas bibliotecas onde cabia uma  ✅
+
+A aba Arquivos tinha dois cartões lado a lado — "Programas salvos" e
+"Trajetórias salvas" —, cada um com o seu campo de nome, o seu botão
+Salvar e a sua lista. Para usar era preciso saber **antes** em qual das
+duas palavras o que você acabou de fazer se encaixa. Quem nunca operou
+não sabe, e o segundo cartão ainda nascia fechado.
+
+Agora é um só: um campo de nome, um Salvar, uma lista. O tipo aparece
+como **etiqueta em cada linha** — depois de salvo, quando já não é uma
+decisão. E a escolha de tipo só aparece na tela quando a máquina tem
+mesmo as duas coisas para guardar; nos outros casos ela se faz sozinha e
+o operador nem vê que existia. Sem nenhuma das duas, o texto volta a
+falar de programa: dizer "não há trajetória" a quem acabou de desenhar
+uma peça só confunde.
+
+"Carregar" virou **"abrir"**.
+
+## R140 · A gaveta ganhou um começo  ✅
+
+Quinze cartões e nenhuma ordem. Quem monta a máquina pela primeira vez
+não sabe o que vem antes do quê, e nada na tela dizia — descobria-se
+abrindo cartão por cartão.
+
+O cartão **"Por onde começar"** põe os cinco passos em ordem (medidas,
+torque, calibração, mesa, zero absoluto), cada um lendo do **estado real
+da máquina** se já está feito — não de um "já marquei essa" guardado no
+navegador — e levando ao lugar onde se faz, trocando de página da gaveta
+quando é preciso.
+
+Defeito encontrado ao escrever o teste: o roteiro se redesenhava de meio
+em meio segundo, trocando os botões por outros iguais o tempo todo. Um
+clique que caísse entre a destruição e a criação se perderia. Agora só
+mexe no DOM quando alguma coisa mudou de verdade.
+
+## R141 · Procurar um ajuste pelo nome  ✅
+
+Lembrar em qual dos quinze cartões mora "aceleração" é trabalho que a
+máquina pode fazer. A busca casa o que foi digitado com o **texto inteiro**
+de cada cartão — título, rótulos dos campos, notas —, de todas as quatro
+páginas ao mesmo tempo, e abre os que casam. Ignora acento dos dois
+lados, porque quem procura no celular raramente acentua. Enquanto ela
+está valendo, as abas ficam apagadas: o que está na tela vem de todas
+elas, e deixar uma marcada seria mentir sobre isso.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **439 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **251 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **446 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **273 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

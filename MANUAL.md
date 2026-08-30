@@ -226,16 +226,26 @@ A tela de trabalho tem cinco abas, e só elas:
 | **Encoder** | a leitura ao vivo, análise e diagnóstico da linha |
 
 Tudo que se ajusta **uma vez** mora atrás da **engrenagem** do cabeçalho,
-numa gaveta com três páginas:
+numa gaveta com quatro páginas:
 
 | página | o que tem |
 |---|---|
-| **Máquina** | elos, velocidades, acelerações, resolução, sentido dos eixos, proteções |
+| **Máquina** | **por onde começar**, elos, velocidades, acelerações, resolução, sentido dos eixos, proteções |
 | **Calibração** | resolução e redução medidas, curso das juntas, área da mesa |
 | **Encoder** | correção de posição, zero absoluto, ligação Modbus |
 | **Sistema** | saúde, registro de eventos, QR de conexão, firmware, cópia no cartão, idioma, apagar tudo |
 
 A divisão é essa: **operar** fica nas abas, **instalar** fica na gaveta.
+
+Duas coisas ajudam quem chega:
+
+- **Por onde começar**, no alto da página Máquina: os cinco passos da
+  instalação em ordem — medidas, torque, calibração, área da mesa, zero
+  absoluto —, cada um dizendo se **já está feito** (lido do estado real
+  da máquina) e levando ao cartão onde se faz.
+- A **busca**, logo abaixo do título: digite "aceleração" e a gaveta
+  mostra os cartões que falam disso, de todas as páginas ao mesmo tempo,
+  já abertos. Ela varre o texto inteiro do cartão e ignora acento.
 
 > O **cabeçalho e a barra de abas ficam acima da gaveta**, e continuam
 > clicáveis com ela aberta. O botão PARAR mora no cabeçalho — parada de
@@ -670,12 +680,21 @@ tela pedir confirmação não protege nada se a rota abre o arco para
 qualquer chamada, e ela é alcançável por qualquer coisa na rede da
 máquina. Cenário **Q04**.
 
-### 5.4.3 Biblioteca de peças, com miniatura
+### 5.4.3 Biblioteca do cartão, com miniatura
 
-Na aba **Arquivos**, cada programa do cartão tem um botão **ver**: ele lê
+A aba **Arquivos** tem **uma** lista, com programas e trajetórias
+juntos: um campo de nome, um **Salvar** e as linhas do cartão, cada uma
+com a etiqueta do seu tipo. O tipo é informação de conferência, não uma
+decisão a tomar antes de começar.
+
+O que o **Salvar** vai gravar se decide sozinho quando a máquina só tem
+uma das duas coisas — e só aparece como escolha na tela quando ela tem
+as duas ao mesmo tempo.
+
+Cada programa do cartão tem um botão **ver**: ele lê
 o arquivo para uma área de troca e **desenha** a peça — cordões em linha
 grossa, deslocamentos tracejados — sem tocar no programa que está na
-máquina. Ver a peça errada é barato; carregar a peça errada custa uma
+máquina. Ver a peça errada é barato; abrir a peça errada custa uma
 chapa.
 
 A miniatura também acende o **aviso de peça errada**: um programa feito
