@@ -188,6 +188,19 @@ void correcaoAtualizar() {
     return;
   }
 
+  // O RETOQUE E MOVIMENTO, e passa pelo mesmo portao que todo o resto.
+  //
+  // pararTudo() ja cancela o assentamento, entao na pratica ele nao
+  // chega aqui com a emergencia acionada. Mas este e o unico caminho do
+  // firmware que move o braco sem ter vindo de um comando do operador:
+  // depender de um cancelamento la longe para ele nao andar e confiar em
+  // ordem de chamada. A trava fica aqui tambem.
+  if (!movimentoSeguro) {
+    r.estado = CORR_PARADA;
+    dizer("assentamento suspenso: intertravamento de seguranca");
+    return;
+  }
+
   // Devagar: retoque e ajuste fino, nao viagem. Um quarto da velocidade
   // normal ja e mais que suficiente para poucos decimos de grau, e
   // reduz o quanto o eixo passa do ponto.
@@ -585,7 +598,6 @@ static void vigiarTravamento() {
 
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
-    const Junta& j = (k == 1) ? J1 : J2;
 
     // Sem leitura, sem julgamento: um cabo solto no encoder nao pode
     // parar o braco no meio de um cordao.

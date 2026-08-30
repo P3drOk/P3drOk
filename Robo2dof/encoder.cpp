@@ -36,12 +36,7 @@ static uint32_t cfgSerial(uint8_t paridade) {
     default: return SERIAL_8N1;
   }
 }
-static uint32_t bitsPorChar(uint8_t paridade) { return paridade ? 11 : 10; }
 
-static uint32_t usPorChar() {
-  const uint32_t b = configEncoder.baud ? configEncoder.baud : 19200;
-  return (bitsPorChar(configEncoder.paridade) * 1000000UL) / b;
-}
 // DE alto = nos dirigimos a linha. RE baixo = escutamos. Os niveis sao
 // os do monitor do operador, sem invencao.
 static void modoEscuta() {

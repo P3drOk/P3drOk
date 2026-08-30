@@ -5410,6 +5410,79 @@ static void teste_V21_a_tela_nao_corta_o_movimento() {
   nota("%u rota(s) de tela varridas com o braco andando", (unsigned)N);
 }
 
+// ---------------------------------------------------------------------
+// V22: o assentamento passa pelo mesmo portao que o resto.
+//
+// Ele e o unico caminho do firmware que move o braco sem ter vindo de um
+// comando do operador. pararTudo() ja o cancela, mas depender disso e
+// confiar em ordem de chamada: se um dia alguem cortar o movimento por
+// outro caminho, o retoque daria mais um passo depois.
+// ---------------------------------------------------------------------
+static void teste_V22_assentamento_respeita_o_portao() {
+  secao("V22  O assentamento nao anda com o portao de seguranca fechado");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+  g_espelharEixo = false;
+
+  // Um desvio grande o bastante para o assentamento querer retocar.
+  const float onde = passosParaGraus(J1, posicaoJ1());
+  const float cv   = configEncoder.contagensPorVolta[0];
+  const float red  = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao =
+      encoderLer(1).referencia +
+      (int32_t)lroundf((((onde - 1.0f) - J1.grausHome) * red / 360.0f) * cv);
+  rodarComWeb(300);
+
+  // Portao fechado por uma causa de verdade: o painel some. Por a
+  // variavel na mao nao serve -- o supervisor a recalcula todo ciclo.
+  // (rodar() sem o "ComWeb" e exatamente isso: nenhum contato HTTP.)
+  rodar(TIMEOUT_CONEXAO_MS + 400);
+  nota("painel sumido: movimentoSeguro=%d, modo=%d",
+       (int)movimentoSeguro, (int)modoAtual);
+
+  const long antes = posicaoJ1();
+  correcaoIniciar();
+  for (int k = 0; k < 200; k++) { correcaoAtualizar(); rodar(10); }
+
+  nota("portao fechado: contagem %ld -> %ld, estado %d -- \"%s\"",
+       antes, posicaoJ1(), (int)correcaoResumo().estado, ultimaMensagem);
+  checar(!movimentoSeguro && posicaoJ1() == antes && !motoresEmMovimento(),
+         "V22a", "com o portao fechado o retoque nao move o braco");
+  checar(correcaoResumo().estado == CORR_PARADA, "V22b",
+         "e o assentamento se declara parado, em vez de ficar tentando");
+
+  // Reaberto o portao -- painel de volta e servos rearmados -- ele volta
+  // a fazer o trabalho dele.
+  rodarComWeb(400);
+  enviarComando(CMD_SERVOS, 1);
+  rodarComWeb(300);
+  // O desvio e reposto: o que se testa e o portao, nao a memoria do
+  // desvio anterior.
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao =
+      encoderLer(1).referencia +
+      (int32_t)lroundf((((passosParaGraus(J1, posicaoJ1()) - 1.0f) - J1.grausHome)
+                        * red / 360.0f) * cv);
+  rodarComWeb(300);
+  const long antes2 = posicaoJ1();
+  correcaoIniciar();
+  bool retocou = false;
+  for (int k = 0; k < 400; k++) {
+    correcaoAtualizar(); rodarComWeb(10);
+    if (correcaoEmCurso() || posicaoJ1() != antes2) { retocou = true; break; }
+  }
+  nota("portao aberto: movimentoSeguro=%d, estado %d, contagem %ld -> %ld",
+       (int)movimentoSeguro, (int)correcaoResumo().estado, antes2, posicaoJ1());
+  checar(movimentoSeguro && retocou &&
+         correcaoResumo().estado != CORR_PARADA, "V22c",
+         "reaberto o portao, o assentamento volta a valer");
+  pararSuave();
+  rodarComWeb(100);
+}
+
 static void teste_P07_estop_a_prova_de_falha() {
   secao("P07  Emergencia: fio partido tem de parar a maquina");
 
@@ -5958,10 +6031,14 @@ static const char* ROTAS_POST[] = {
 // Rotas de POST deixadas de fora de proposito, com o motivo. A lista
 // abaixo e conferida contra o firmware em S01b: rota nova que ninguem
 // varreu e rota que ninguem testou com lixo.
+// Lida pelo conferir_rotas.py, nao pelo C++: o (void) e para o
+// compilador nao reclamar de uma lista que existe para outra ferramenta.
 static const char* ROTAS_POST_FORA[] = {
   "/api/ota",            // sobe firmware: o mock nao tem o que receber
   "/api/cfg/restaurar",  // le do cartao e reescreve a maquina inteira
 };
+static const size_t nROTAS_POST_FORA =
+    sizeof(ROTAS_POST_FORA) / sizeof(ROTAS_POST_FORA[0]);
 
 static const char* ROTAS_GET[] = {
   "/api/encoder", "/api/encoder/teste", "/api/pontos", "/api/rede",
@@ -6006,6 +6083,7 @@ static void teste_S01_rotas_com_lixo() {
   const long min1Antes = J1.passosMin, max1Antes = J1.passosMax;
 
   const size_t nP = sizeof(ROTAS_POST) / sizeof(ROTAS_POST[0]);
+  (void)nROTAS_POST_FORA;
   const size_t nG = sizeof(ROTAS_GET)  / sizeof(ROTAS_GET[0]);
   const size_t nK = sizeof(CHAVES)     / sizeof(CHAVES[0]);
   const size_t nV = sizeof(VALORES)    / sizeof(VALORES[0]);
@@ -6929,6 +7007,7 @@ int main() {
   teste_V19_calibrar_com_a_mao();
   teste_V20_junta_muda_nao_rouba_o_barramento();
   teste_V21_a_tela_nao_corta_o_movimento();
+  teste_V22_assentamento_respeita_o_portao();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();

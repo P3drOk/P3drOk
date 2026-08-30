@@ -1382,6 +1382,28 @@ não existe mais e deixava cinco de fora. `conferir_rotas.py` passou a
 comparar as duas pontas antes de cada compilação, com uma lista explícita
 de exceções e o motivo de cada uma.
 
+## R134 · Varredura de código morto e do portão de segurança  ✅
+
+A revisão pedida achou, além do que já está acima:
+
+**O gráfico do erro era código morto.** O canvas saiu com R108, mas o
+histórico continuava sendo alimentado a cada consulta — memória e
+trabalho para desenhar algo que não existia. Junto saiu a única função
+que sobrou sem chamador no firmware (`usPorChar`) e uma variável não usada
+no vigia. **O firmware compila agora sem um único aviso.**
+
+**O assentamento era o único caminho que move o braço sem vir de um
+comando do operador.** `pararTudo()` já o cancela, mas depender disso é
+confiar em ordem de chamada: se um dia alguém cortar o movimento por
+outro caminho, o retoque daria mais um passo depois. A trava do portão
+(`movimentoSeguro`) passou a valer também ali, e ele se declara parado em
+vez de ficar tentando.
+
+**Nenhuma rota da tela corta um movimento em curso.** O cenário V21 varre
+as dezoito rotas que a interface pode disparar com o braço andando e
+denuncia quem encostar. Passou limpo — o que confirmou que a causa do
+"anda dois segundos e trava" estava no firmware (R127), não numa rota.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -3559,7 +3581,7 @@ regra existir.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **436 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **439 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **251 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
