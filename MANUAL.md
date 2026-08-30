@@ -215,15 +215,22 @@ escreve registrador):
 
 ### 5.0 Onde fica cada coisa na tela
 
-A tela de trabalho tem cinco abas, e só elas:
+A tela de trabalho tem quatro abas, e só elas:
 
 | aba | para quê |
 |---|---|
 | **Mesa** | traçado, desenho e a vista 2D/3D do braço |
 | **Mover** | joystick, ir para ângulo, atalhos |
 | **Programa** | ensinar o caminho, ensaiar, soldar, produção |
-| **Arquivos** | cartão: peças, trajetórias, backups |
 | **Encoder** | a leitura ao vivo, análise e diagnóstico da linha |
+
+**Arquivos** saiu daqui: era um terço de coluna ao lado do braço, e ali
+uma lista de trabalhos nunca cabia. Virou **gaveta de tela cheia**, no
+mesmo molde da Configuração, e se abre pelo atalho **Arquivos** do
+cabeçalho. Guardar e abrir trabalho é uma biblioteca — biblioteca quer
+largura, e não se olha para o braço enquanto se escolhe arquivo. As duas
+gavetas se comportam igual: mesmo lugar do título, mesmo botão Fechar,
+**Esc** fecha, tocar fora fecha, e só uma fica aberta por vez.
 
 Tudo que se ajusta **uma vez** mora atrás da **engrenagem** do cabeçalho,
 numa gaveta com quatro páginas:
@@ -725,7 +732,7 @@ máquina. Cenário **Q04**.
 
 ### 5.4.3 Biblioteca do cartão, com miniatura
 
-A aba **Arquivos** tem **uma** lista, com programas e trajetórias
+A gaveta **Arquivos** tem **uma** lista, com programas e trajetórias
 juntos: um campo de nome, um **Salvar** e as linhas do cartão, cada uma
 com a etiqueta do seu tipo. O tipo é informação de conferência, não uma
 decisão a tomar antes de começar.

@@ -669,6 +669,10 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
 .veu{position:fixed;inset:0;background:rgba(20,25,32,.72);display:none;align-items:center;
  justify-content:center;padding:16px;z-index:70;backdrop-filter:blur(3px)}
 .veu.on{display:flex}
+/* A previa da peca abre DE DENTRO da gaveta de Arquivos, entao tem de
+   ficar por cima dela. Com o mesmo z-index vencia quem viesse depois no
+   documento -- e a gaveta vem depois. */
+#veuPeca{z-index:80}
 .cx{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;padding:20px;
  width:100%;max-width:400px;max-height:92vh;overflow-y:auto;overscroll-behavior:contain}
 .cx h2{margin:0 0 4px;font-size:15px}
@@ -1484,8 +1488,53 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
         </div>
       </section>
 
-      <!-- ========================== ARQUIVOS ========================== -->
-      <section class="pane" id="pnArq">
+      <!-- ARQUIVOS SAIU DA COLUNA.
+           Guardar e abrir trabalho nao e coisa que se faz olhando o
+           braco: e uma biblioteca, e biblioteca quer largura. Virou
+           gaveta de tela cheia, como a Configuracao, e se abre pelo
+           atalho do cabecalho. -->
+
+      <!-- =========================== ENCODER =========================== -->
+
+      <!-- ========================== MAQUINA =========================== -->
+    </div></aside>
+  </div>
+
+  <nav class="abas" id="abas"></nav>
+</div>
+
+<!-- Miniatura de uma peca do cartao, sem trocar a que esta na maquina. -->
+<div class="veu" id="veuPeca"><div class="cx">
+  <h2 id="pvNome">--</h2>
+  <div class="pp">previa do cartao</div>
+  <canvas id="pvTela" width="340" height="240" class="pvTela"></canvas>
+  <div class="res" id="pvInfo">--</div>
+  <div class="perigo" id="pvAviso" style="display:none"></div>
+  <div class="nt">Linha grossa e cordao; tracejado e deslocamento sem arco.
+  O ponto maior e o inicio. Isto le o arquivo <b>sem</b> trocar o programa
+  que esta na maquina.</div>
+  <button class="b pri" id="pvCarregar">Carregar esta peca na maquina</button>
+  <button class="b" id="pvFechar">Fechar</button>
+</div></div>
+
+<!-- =====================================================================
+     GAVETA DE CONFIGURACAO (a engrenagem do topo)
+     Tudo que se ajusta UMA VEZ mora aqui dentro. A tela de trabalho fica
+     com o que se usa o dia inteiro: mesa, mover, programa e arquivos.
+     ===================================================================== -->
+<!-- =====================================================================
+     GAVETA DE ARQUIVOS (o atalho "Arquivos" do cabecalho)
+     Mesmo molde da Configuracao: tela cheia, abaixo do cabecalho, com o
+     fechar no mesmo canto. Duas gavetas com a mesma forma sao uma coisa
+     so de aprender.
+     ===================================================================== -->
+<div class="veu cfgVeu" id="veuArq"><div class="cx cfgCx">
+  <div class="cfgTopo">
+    <h2>Arquivos</h2>
+    <button class="b mini" id="arqFechar">Fechar</button>
+  </div>
+  <div class="cfgRol">
+    <div class="pane on" id="pnArq">
         <div class="et aberta">
           <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cartao"/></svg></div>
             <div class="tx"><div class="tt">Cartao de memoria</div>
@@ -1528,36 +1577,10 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             neles</b> &mdash; so na memoria interna.</div>
           </div>
         </div>
-      </section>
-
-      <!-- =========================== ENCODER =========================== -->
-
-      <!-- ========================== MAQUINA =========================== -->
-    </div></aside>
+    </div>
   </div>
-
-  <nav class="abas" id="abas"></nav>
-</div>
-
-<!-- Miniatura de uma peca do cartao, sem trocar a que esta na maquina. -->
-<div class="veu" id="veuPeca"><div class="cx">
-  <h2 id="pvNome">--</h2>
-  <div class="pp">previa do cartao</div>
-  <canvas id="pvTela" width="340" height="240" class="pvTela"></canvas>
-  <div class="res" id="pvInfo">--</div>
-  <div class="perigo" id="pvAviso" style="display:none"></div>
-  <div class="nt">Linha grossa e cordao; tracejado e deslocamento sem arco.
-  O ponto maior e o inicio. Isto le o arquivo <b>sem</b> trocar o programa
-  que esta na maquina.</div>
-  <button class="b pri" id="pvCarregar">Carregar esta peca na maquina</button>
-  <button class="b" id="pvFechar">Fechar</button>
 </div></div>
 
-<!-- =====================================================================
-     GAVETA DE CONFIGURACAO (a engrenagem do topo)
-     Tudo que se ajusta UMA VEZ mora aqui dentro. A tela de trabalho fica
-     com o que se usa o dia inteiro: mesa, mover, programa e arquivos.
-     ===================================================================== -->
 <div class="veu cfgVeu" id="veuCfg"><div class="cx cfgCx">
   <div class="cfgTopo">
     <h2>Configuracao</h2>
@@ -2023,7 +2046,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <button class="b mini" id="btCfgRestaurar">Restaurar do cartao</button>
             <div class="pq2" id="qCfgRestaurar"></div>
             <div class="nt">Programas e trajetorias sao outra coisa: ficam na
-            aba Arquivos e <b>nao</b> sao tocados nem por isto nem por "apagar
+            gaveta Arquivos e <b>nao</b> sao tocados nem por isto nem por "apagar
             tudo".</div>
           </div>
         </div>
@@ -2048,7 +2071,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             disso o braco precisa ser calibrado de novo antes de trabalhar.
             <br><b>O cartao SD nao e tocado.</b> As pecas salvas sao trabalho
             seu, nao configuracao da maquina; apagar programa continua sendo na
-            aba Arquivos, um a um.</div>
+            gaveta Arquivos, um a um.</div>
             <div class="cp"><label>Digite APAGAR</label>
               <input type="text" id="apgConf" placeholder="APAGAR" autocomplete="off"></div>
             <button class="b mini perigoso" id="btApagarTudo">Apagar tudo e reiniciar</button>
@@ -5607,7 +5630,7 @@ function aplicar(d){
     gv.className="gravBox tem";
     $("gravTit").textContent=tr("Trajetoria na memoria");
     $("gravMsg").textContent=d.trajN+" "+tr("amostras")+" · "+
-      (d.trajMs/1000).toFixed(1)+" s · "+tr("reproduza abaixo ou salve na aba Arquivos");
+      (d.trajMs/1000).toFixed(1)+" s · "+tr("reproduza abaixo ou salve em Arquivos");
   }else{
     gv.className="gravBox";
     $("gravTit").textContent=tr("Parado");
@@ -5634,7 +5657,7 @@ function aplicar(d){
   $("sbMover").textContent=instalacao?"modo de instalacao · jog livre":
     (d.precisao?"precisao ligada":"passo, angulo e referencia");
   if(d.maxPts>1&&d.maxPts!==MAX_PTS){MAX_PTS=d.maxPts;posContar();}
-  if(abaAtual==="arq")sdEstadoSalvar();
+  if(arqAberta())sdEstadoSalvar();
   acao("Home", porQueNaoMove(d,true));
   acao("EncZerar", (encD&&encD.ativo) ? "" : "ligue a leitura do encoder");
   acao("EncSalvar", (d.modo==="MANUAL") ? ""
@@ -5659,7 +5682,7 @@ function tick(){
   /* O cartao so e consultado quando a aba de arquivos esta aberta: o
      WebServer atende uma conexao por vez e cada requisicao a mais
      concorre com o heartbeat do jog. */
-  if(abaAtual==="arq")sdAtualizar(false);
+  if(arqAberta())sdAtualizar(false);
   /* Consulta quando o painel do encoder esta NA TELA, nao quando a aba
      esta escolhida. No computador ele virou coluna fixa e nao ha mais
      aba "enc" para escolher -- amarrar a consulta a aba deixava a coluna
@@ -5861,13 +5884,15 @@ const ABAS=[
  ["mesa","Mesa","M4 19h16M6 19V9l6-5 6 5v10"],
  ["mover","Mover","M12 4v16M4 12h16M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3"],
  ["prog","Programa","M5 6h14M5 12h9M5 18h5M17 15l2 2 3-4"],
- ["arq","Arquivos","M4 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2z"],
  ["enc","Encoder","M12 3a9 9 0 100 18 9 9 0 000-18zM12 12l5-3M12 12v-4"],
 ];
 /* Paineis da tela de TRABALHO. Ajustes, configuracao do encoder e
    sistema sairam daqui: moram na gaveta da engrenagem, porque sao coisa
    de instalar uma vez, nao de usar no turno. */
-const PANES={mover:"pnMover",prog:"pnProg",arq:"pnArq",enc:"pnEnc"};
+/* Arquivos saiu daqui: virou gaveta de tela cheia, como a Configuracao.
+   Guardar e abrir trabalho e uma biblioteca, e biblioteca quer largura --
+   nao um terco de coluna ao lado do braco. */
+const PANES={mover:"pnMover",prog:"pnProg",enc:"pnEnc"};
 
 (function montarAbas(){
   let h="",t="";
@@ -6081,6 +6106,7 @@ $("cfgProcurarX").onclick=function(){
   $("cfgProcurar").value="";cfgProcurar();$("cfgProcurar").focus();};
 
 function abrirCfg(){
+  fecharArq();
   medirCabecalho();
   irCfg(cfgAtual);
   $("veuCfg").classList.add("on");
@@ -6112,11 +6138,29 @@ $("btEnc").onclick=function(){
 };
 try{ if(localStorage.getItem("enc")==="1") mostrarEnc(true); }catch(e){}
 
-/* Arquivos no cabecalho, no lugar que era dos comandos de maquina.
-   E a aba que se abre de qualquer lugar -- guardar o trabalho e abrir
-   outro nao e coisa de uma aba so. Fica aceso quando ela esta na frente,
-   como o link da Configuracao. */
-$("btArq").onclick = function(){ fecharCfg(); irAba("arq"); };
+/* ARQUIVOS: gaveta de tela cheia, no molde da Configuracao.
+   Era um terco de coluna ao lado do braco, e ali uma lista de trabalhos
+   nunca cabia. Guardar e abrir trabalho e uma biblioteca -- biblioteca
+   quer largura, e nao se olha para o braco enquanto se escolhe arquivo.
+   Duas gavetas com a mesma forma sao uma coisa so de aprender: mesmo
+   lugar do titulo, mesmo fechar, mesmo Esc, mesmo toque fora. */
+function arqAberta(){ return $("veuArq").classList.contains("on"); }
+function abrirArq(){
+  fecharCfg();
+  medirCabecalho();
+  $("veuArq").classList.add("on");
+  $("btArq").classList.add("on");
+  sdAtualizar(true);
+}
+function fecharArq(){
+  $("veuArq").classList.remove("on");
+  $("btArq").classList.remove("on");
+}
+$("btArq").onclick   = function(){ if(arqAberta()) fecharArq(); else abrirArq(); };
+$("arqFechar").onclick = fecharArq;
+$("veuArq").addEventListener("click", function(e){
+  if(e.target === $("veuArq")) fecharArq();
+});
 
 $("btCfg").onclick = function(){
   if($("veuCfg").classList.contains("on")) fecharCfg(); else abrirCfg();
@@ -6130,10 +6174,11 @@ document.querySelectorAll("#cfgAbas button").forEach(function(b){
 $("veuCfg").addEventListener("click", function(e){
   if(e.target === $("veuCfg")) fecharCfg();
 });
-/* Esc fecha, e a gaveta nao pode engolir a parada de emergencia: o
-   botao PARAR fica no cabecalho, fora dela, e continua alcancavel. */
+/* Esc fecha a gaveta que estiver aberta -- as duas se comportam igual. */
 addEventListener("keydown", function(e){
-  if(e.key === "Escape" && $("veuCfg").classList.contains("on")) fecharCfg();
+  if(e.key !== "Escape") return;
+  if($("veuCfg").classList.contains("on")) fecharCfg();
+  else if(arqAberta()) fecharArq();
 });
 try{ const g = localStorage.getItem("cfg"); if(g) cfgAtual = g; }catch(e){}
 irCfg(cfgAtual);
@@ -6153,8 +6198,6 @@ function irAba(nome){
   document.querySelectorAll("[data-aba]").forEach(function(b){
     b.classList.toggle("on",b.dataset.aba===nome);});
   if(nome==="mesa")medir();
-  if(nome==="arq")sdAtualizar(true);
-  $("btArq").classList.toggle("on",nome==="arq");
   ajudaPintar();
   try{localStorage.setItem("aba",nome);}catch(e){}
 }
@@ -6172,9 +6215,6 @@ const AJUDA={
  prog:["Ensinar o caminho",
    "Leve o braco ate um lugar bom e grave o ponto. A lista vira o programa; "+
    "so depois de gravada e que ela roda."],
- arq:["Trabalhos no cartao",
-   "Guarde o programa da lista com um nome, ou abra um que ja esteja no "+
-   "cartao. Abrir troca a lista atual."],
  enc:["Conferencia do encoder",
    "Compara o angulo que a maquina COMANDOU com o que o encoder MEDIU. "+
    "Serve para diagnostico; nao e preciso mexer aqui para operar."]

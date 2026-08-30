@@ -4188,12 +4188,45 @@ O cenário novo prende a ausência com uma divergência enorme — comandado
 0°, medido 60° — e confirma que o desenho continua mostrando **um braço
 só**, o medido.
 
+## R155 · Arquivos virou gaveta de tela cheia  ✅
+
+Pedido: "a aba Arquivos deve abrir um novo sistema, igual à Configuração
+que abre por inteiro na tela; e o Files do lado direito deve ser
+removido dali".
+
+Arquivos era um terço de coluna ao lado do desenho do braço — e ali uma
+lista de trabalhos nunca coube. Guardar e abrir trabalho é uma
+**biblioteca**: quer largura, e não se olha para o braço enquanto se
+escolhe arquivo.
+
+Virou gaveta de tela cheia no **mesmo molde da Configuração** —
+`veu cfgVeu` + `cx cfgCx` + `cfgRol` —, e se abre pelo atalho **Arquivos**
+do cabeçalho, que já estava lá desde R150. Duas gavetas com a mesma forma
+são uma coisa só de aprender: mesmo lugar do título, mesmo botão Fechar,
+**Esc** fecha, tocar fora fecha, e **só uma fica aberta por vez**.
+
+A aba saiu das **duas** barras (a de baixo, do celular, e a de cima, do
+computador), do mapa `PANES` e da ajuda por aba. A tela de trabalho ficou
+com quatro abas: Mesa, Mover, Programa, Encoder.
+
+Duas coisas que só apareceram ao mexer:
+
+- **A prévia da peça ficava atrás da gaveta.** `#veuPeca` e a gaveta
+  têm o mesmo `z-index`, e com empate ganha quem vem depois no documento
+  — a gaveta. Só que a prévia abre *de dentro* dela, então tem de ficar
+  por cima: `#veuPeca` subiu para 80.
+- **A varredura hostil de botões** percorria os painéis de trabalho e
+  depois as páginas da engrenagem. Arquivos saiu dos primeiros, então
+  entrou junto das gavetas — botão mudo atrás de uma gaveta continua
+  sendo botão mudo, e deixá-lo fora da varredura seria perder a cobertura
+  em silêncio.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **470 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **288 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **290 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

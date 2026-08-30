@@ -29,6 +29,18 @@ async function abrirGaveta(pag, alvo) {
     await pag.waitForTimeout(250);
   }
 }
+async function abrirArquivos(pag) {
+  if (!(await pag.locator('#veuArq.on').count())) {
+    await pag.locator('#btArq').click();
+    await pag.waitForTimeout(300);
+  }
+}
+async function fecharArquivos(pag) {
+  if (await pag.locator('#veuArq.on').count()) {
+    await pag.locator('#arqFechar').click();
+    await pag.waitForTimeout(220);
+  }
+}
 async function fecharGaveta(pag) {
   if (await pag.locator('#veuCfg.on').count()) {
     await pag.locator('#cfgFechar').click();
@@ -97,8 +109,10 @@ async function fecharGaveta(pag) {
          ' bytes na rede');
 
   // Barra de abas presente e com as cinco abas
+  // Arquivos saiu da barra: virou gaveta de tela cheia, como a
+  // Configuracao, e se abre pelo atalho do cabecalho.
   const nAbas = await p.locator('#abas button').count();
-  checar(nAbas === 5, 'barra de abas inferior com 5 abas de trabalho',
+  checar(nAbas === 4, 'barra de abas inferior com 4 abas de trabalho',
          nAbas + ' abas encontradas');
 
   // Aba inicial = Mover, com o joystick visivel
@@ -181,7 +195,6 @@ async function fecharGaveta(pag) {
   // ---- abas de trabalho ----
   for (const [aba, alvo, nome] of [
     ['prog',   '#e2',      'Programa'],
-    ['arq',    '#sdBar',   'Arquivos'],
     ['enc',    '#eM1',     'Encoder'],
     ['mesa',   '#cv',      'Mesa'],
   ]) {
@@ -191,6 +204,58 @@ async function fecharGaveta(pag) {
     checar(vis, 'aba ' + nome + ' mostra o seu conteudo (' + alvo + ')');
     await p.screenshot({ path: SAIDA + '/celular-3-' + aba + '.png' });
   }
+
+  // ---- ARQUIVOS: gaveta de tela cheia, no molde da Configuracao ----
+  //
+  // Era um terco de coluna ao lado do braco, e ali uma lista de
+  // trabalhos nunca cabia. Guardar e abrir trabalho e uma biblioteca --
+  // biblioteca quer largura, e nao se olha para o braco enquanto se
+  // escolhe arquivo.
+  const arqFora = await p.evaluate(() => ({
+    naColuna: !!document.querySelector('.coluna #pnArq'),
+    naGaveta: !!document.querySelector('#veuArq #pnArq'),
+    naBarra: !!document.querySelector('#abas button[data-aba="arq"]'),
+    noTopo: !!document.querySelector('#abasTopo button[data-aba="arq"]'),
+  }));
+  checar(!arqFora.naColuna && arqFora.naGaveta &&
+         !arqFora.naBarra && !arqFora.noTopo,
+         'Arquivos: saiu da coluna e das duas barras de aba, e virou gaveta',
+         JSON.stringify(arqFora));
+
+  await p.locator('#btArq').click();
+  await p.waitForTimeout(500);
+  const arqAberto = await p.evaluate(() => {
+    const v = document.getElementById('veuArq');
+    const cx = v.querySelector('.cfgCx').getBoundingClientRect();
+    return { on: v.classList.contains('on'),
+             aceso: document.getElementById('btArq').classList.contains('on'),
+             larguraCheia: cx.width >= innerWidth - 2,
+             conteudo: !!document.querySelector('#veuArq #sdBar') };
+  });
+  checar(arqAberto.on && arqAberto.aceso && arqAberto.larguraCheia &&
+         arqAberto.conteudo,
+         'Arquivos: o atalho do cabecalho abre a gaveta em tela cheia',
+         JSON.stringify(arqAberto));
+
+  // Mesmo gesto de sair da Configuracao: Esc fecha.
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(300);
+  checar(await p.evaluate(() => !document.getElementById('veuArq').classList.contains('on')),
+         'Arquivos: Esc fecha a gaveta, como na Configuracao');
+
+  // Uma gaveta de cada vez: abrir a engrenagem fecha os Arquivos.
+  await p.locator('#btArq').click();
+  await p.waitForTimeout(350);
+  await p.locator('#btCfg').click();
+  await p.waitForTimeout(350);
+  const soUma = await p.evaluate(() => ({
+    arq: document.getElementById('veuArq').classList.contains('on'),
+    cfg: document.getElementById('veuCfg').classList.contains('on'),
+  }));
+  checar(!soUma.arq && soUma.cfg,
+         'Arquivos: abrir a Configuracao fecha a gaveta de Arquivos -- uma de cada vez',
+         JSON.stringify(soUma));
+  await fecharGaveta(p);
 
   // ---- a gaveta da engrenagem ----
   // Os ajustes sairam da barra de abas. A barra ficou so com o que se usa
@@ -254,7 +319,7 @@ async function fecharGaveta(pag) {
   // com o seu campo de nome, o seu Salvar e a sua lista -- e para usar
   // era preciso saber ANTES em qual das duas palavras (programa ou
   // trajetoria) o que voce acabou de fazer se encaixa.
-  await p.locator('#abas button[data-aba="arq"]').click();
+  await p.locator('#btArq').click();
   await p.waitForTimeout(700);
   await p.evaluate(() => {
     document.querySelectorAll('#pnArq .et').forEach(x => x.classList.add('aberta'));
@@ -489,7 +554,7 @@ async function fecharGaveta(pag) {
   // Aberta, ela fica aberta enquanto se usa o resto: e para isso que ela
   // saiu da barra de abas. Trocar de aba para olhar o erro seria perder
   // justamente o momento em que ele acontece.
-  for (const aba of ['mover', 'prog', 'arq']) {
+  for (const aba of ['mover', 'prog']) {
     await q.locator('#abasTopo button[data-aba="' + aba + '"]').click();
     await q.waitForTimeout(220);
     const vis = await q.locator('#eM1').isVisible();
@@ -659,24 +724,24 @@ async function fecharGaveta(pag) {
          'Painel: o "?" explica a aba atual',
          JSON.stringify(ajudaTopo));
 
-  await q.evaluate(() => irAba('arq'));
+  await q.evaluate(() => irAba('prog'));
   await q.waitForTimeout(250);
   const ajudaTroca = await q.evaluate(() =>
     (document.getElementById('ajudaAba').textContent || '').trim());
-  checar(/cart/i.test(ajudaTroca),
+  checar(/caminho|ponto/i.test(ajudaTroca),
          'Painel: a ajuda troca junto com a aba', ajudaTroca);
 
   // Desligar o "?" tira a faixa e SO ela: as notas curtas de cada
   // painel nao dependem dele. Comparar antes e depois e o unico jeito
   // honesto de provar isso.
   const notasAntes = await q.evaluate(() =>
-    [...document.querySelectorAll('#pnArq .nt')]
+    [...document.querySelectorAll('#pnProg .nt')]
       .filter(n => n.getBoundingClientRect().height > 0).length);
   await q.locator('#btAjuda').click();
   await q.waitForTimeout(200);
   const ajudaFora = await q.evaluate(() => ({
     escondida: document.getElementById('ajudaAba').hidden,
-    notas: [...document.querySelectorAll('#pnArq .nt')]
+    notas: [...document.querySelectorAll('#pnProg .nt')]
              .filter(n => n.getBoundingClientRect().height > 0).length,
   }));
   checar(ajudaFora.escondida && ajudaFora.notas === notasAntes,
@@ -959,7 +1024,7 @@ async function fecharGaveta(pag) {
 
   // Clica cada botao de cada secao, uma secao aberta por vez.
   // Ajustes saiu da barra de abas e virou aba da gaveta da engrenagem.
-  const PANES = { mover: '#pnMover', prog: '#pnProg', arq: '#pnArq' };
+  const PANES = { mover: '#pnMover', prog: '#pnProg' };
   const CFG_PANES = { maquina: '#cfgMaquina', calib: '#cfgCalib',
                       encoder: '#cfgEncoder', sistema: '#cfgSistema' };
   const mortos = [], mudos = [];
@@ -973,11 +1038,19 @@ async function fecharGaveta(pag) {
   // mudo escondido atras da engrenagem continua sendo um botao mudo.
   const TUDO = Object.entries(PANES).concat(
     Object.entries(CFG_PANES).map(([k, v]) => ['cfg:' + k, v]));
+  // A gaveta de Arquivos entra na varredura junto com as da engrenagem:
+  // botao mudo atras de uma gaveta continua sendo botao mudo.
+  TUDO.push(['arq:', '#pnArq']);
   for (const [aba, sel] of TUDO) {
     if (aba.startsWith('cfg:')) {
+      await fecharArquivos(t);
       await abrirGaveta(t, aba.slice(4));
+    } else if (aba.startsWith('arq:')) {
+      await fecharGaveta(t);
+      await abrirArquivos(t);
     } else {
       await fecharGaveta(t);
+      await fecharArquivos(t);
       await t.locator('#abas button[data-aba="' + aba + '"]').click();
     }
     await t.waitForTimeout(250);
@@ -1055,6 +1128,7 @@ async function fecharGaveta(pag) {
   checar(mortos.length === 0, 'todo botao visivel e habilitado dispara uma acao',
          mortos.length ? 'mortos: ' + mortos.join(', ') : clicados + ' botoes clicados, todos responderam');
   await fecharGaveta(t);
+  await fecharArquivos(t);
   checar(mudos.length === 0, 'botao desabilitado explica o motivo na tela',
          mudos.length ? 'sem motivo: ' + mudos.join(', ') : 'todos os bloqueios sao explicados');
 
@@ -2639,8 +2713,8 @@ async function fecharGaveta(pag) {
   // ------------------------------------------------------------------
   // Biblioteca de pecas: ver a miniatura ANTES de carregar.
   // ------------------------------------------------------------------
-  await t.locator('#abas button[data-aba="arq"]').click();
-  await t.waitForTimeout(500);
+  await t.locator('#btArq').click();
+  await t.waitForTimeout(600);
   await t.evaluate(() => {
     const alvo = document.getElementById('sdLista').closest('.et');
     document.querySelectorAll('#pnArq .et').forEach(x => x.classList.toggle('aberta', x === alvo));
@@ -2691,6 +2765,7 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(400);
   checar(rotas.some(x => /\/api\/sd\/carregar/.test(x)),
          'Biblioteca: dali mesmo da para carregar a peca vista', rotas.join(' '));
+  await fecharArquivos(t);
 
 
   // ------------------------------------------------------------------
