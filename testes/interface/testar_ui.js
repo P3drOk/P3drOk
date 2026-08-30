@@ -2547,7 +2547,9 @@ async function fecharGaveta(pag) {
   // Amostra o desenho DURANTE a transicao, pelo caminho de verdade: um
   // valor novo chega do /api/status e os quadros seguintes tem de passar
   // por angulos no meio, em vez de saltar.
-  await t.request.post(BASE + '/teste/estado', { data: { t1: 0, t2: 0, m1ok: false, m2ok: false } });
+  // O desenho so segue o ENCODER (ja passado pela reducao) -- nunca o
+  // comandado. m1 e o angulo medido, m1ok diz que a leitura vale.
+  await t.request.post(BASE + '/teste/estado', { data: { m1: 0, m1ok: true, m2ok: false } });
   await t.waitForTimeout(900);
 
   await t.evaluate(() => {
@@ -2559,7 +2561,7 @@ async function fecharGaveta(pag) {
       requestAnimationFrame(laco);
     })();
   });
-  await t.request.post(BASE + '/teste/estado', { data: { t1: 10 } });
+  await t.request.post(BASE + '/teste/estado', { data: { m1: 10 } });
   await t.waitForTimeout(1400);
   const am = await t.evaluate(() => { window.__amOn = false; return window.__am; });
 
@@ -2570,6 +2572,30 @@ async function fecharGaveta(pag) {
   checar(am.length && am[am.length - 1] === 10,
          'Movimento: e encosta no valor de verdade, sem sobra permanente',
          String(am[am.length - 1]));
+
+  // O DESENHO SO OBEDECE AO ENCODER. Perder a leitura no meio do
+  // movimento nao pode fazer o braco "voltar" a seguir o comandado --
+  // ele tem de CONGELAR na ultima postura que de fato foi medida. Se
+  // voltasse a seguir o comandado, um driver sem encoder no barramento
+  // desenharia uma posicao que ninguem mediu, e um passo perdido nunca
+  // apareceria no desenho.
+  await t.request.post(BASE + '/teste/estado', { data: { t1: 47, m1ok: false } });
+  await t.waitForTimeout(400);
+  const congelado = await t.evaluate(() => postura().t1);
+  checar(Math.abs(congelado - 10) < 0.5,
+         'Movimento: sem encoder o desenho congela na ultima medida, ignora o comandado',
+         'desenhado=' + congelado + ' (comandado foi para 47)');
+
+  // E quando a leitura volta, o desenho retoma dali -- do encoder, nunca
+  // do comandado que ficou mudando enquanto a leitura estava fora.
+  // (8, nao 15: tem de ficar fora da faixa 11-89 que o proximo teste usa
+  // para reconhecer "isto e um salto, nao um deslizar".)
+  await t.request.post(BASE + '/teste/estado', { data: { m1: 8, m1ok: true } });
+  await t.waitForTimeout(700);
+  const retomou = await t.evaluate(() => postura().t1);
+  checar(Math.abs(retomou - 8) < 0.5,
+         'Movimento: a leitura volta e o desenho retoma do encoder, nao do comandado',
+         'desenhado=' + retomou);
 
   // Salto que NAO e movimento -- zerar a maquina, recuperar posicao pelo
   // encoder -- nao pode ser glisado: o braco nao percorreu aquele
@@ -2583,7 +2609,7 @@ async function fecharGaveta(pag) {
       requestAnimationFrame(laco);
     })();
   });
-  await t.request.post(BASE + '/teste/estado', { data: { t1: 90 } });
+  await t.request.post(BASE + '/teste/estado', { data: { m1: 90 } });
   await t.waitForTimeout(1000);
   const am2 = await t.evaluate(() => { window.__amOn2 = false; return window.__am2; });
   const meio2 = am2.filter(v => v > 11 && v < 89).length;

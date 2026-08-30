@@ -538,8 +538,13 @@ discordam de mais de meio grau, o comandado aparece por trás como um
 número. A legenda do rodapé diz qual das duas está sendo desenhada.
 
 Sem leitura confiável (encoder desligado, cabo solto, leitura fora do
-curso) volta a valer o comandado — e a legenda diz isso. Um boneco que
-muda de significado sem avisar é pior que nenhum.
+curso) o boneco **congela** na última postura que de fato foi medida —
+nunca volta a seguir o comandado. Passo perdido, folga do redutor ou uma
+escala mal medida não aparecem no comandado; só aparecem no braço de
+verdade, que é o que o encoder vê, e desenhar pelo comandado escondia
+justo o caso em que mostrar a diferença importa. A legenda do rodapé diz
+qual dos três estados vale: medido, "sem leitura ainda" (nunca mediu) ou
+"última posição medida" (mediu, perdeu a leitura agora).
 
 A área da mesa ensinada aparece nas duas vistas, tracejada.
 

@@ -3659,12 +3659,72 @@ lados, porque quem procura no celular raramente acentua. Enquanto ela
 está valendo, as abas ficam apagadas: o que está na tela vem de todas
 elas, e deixar uma marcada seria mentir sobre isso.
 
+## R142 · O desenho ainda tinha uma porta para o comandado  ✅
+
+Relato: "o desenho está fora de posição, a posição dele deve ser
+influenciada apenas pelos encoders ou a redução, apenas isso".
+
+`postura()` — a função única que alimenta o braço 2D, o 3D e a deteção
+de clique nos dois — já preferia o ângulo medido pelo encoder quando ele
+existia. Mas por junta, na falta de leitura confiável, ela caía de volta
+no **comandado** (a conta de pulsos):
+
+```js
+const b1 = tem1 ? (D.m1 || 0) : c1;   // c1 = D.t1, contagem de passos
+```
+
+Isso foi decisão deliberada em R103/R104, para uma bancada com um
+driver só no barramento continuar desenhando alguma coisa. Só que
+comandado e medido são **duas fontes diferentes de verdade** — um diz
+para onde o firmware mandou o motor ir, o outro diz onde a redução e o
+encoder dizem que a junta está de fato. Um passo perdido, uma folga no
+redutor ou `contagensPorGrau` mal medido abrem uma diferença entre os
+dois, e o desenho, ao usar o comandado, escondia justo o caso em que
+mostrar a diferença importava.
+
+**Correção:** o desenho passou a depender só do encoder, sem exceção.
+Sem leitura confiável, a junta **congela** na última postura que de fato
+foi medida — nunca volta a seguir o comandado. `ultimoMedido` guarda
+esse último ângulo por junta; `postura()` só o atualiza quando `m1ok`/
+`m2ok` está de pé.
+
+```js
+let ultimoMedido = {t1:0, t2:0, tem1:false, tem2:false};
+function postura(){
+  const tem1 = !!D.m1ok, tem2 = !!D.m2ok;
+  if(tem1){ ultimoMedido.t1 = D.m1 || 0; ultimoMedido.tem1 = true; }
+  if(tem2){ ultimoMedido.t2 = D.m2 || 0; ultimoMedido.tem2 = true; }
+  const sv = suavizar(ultimoMedido.t1, ultimoMedido.t2);
+  ...
+}
+```
+
+A legenda sob o desenho ganhou um terceiro estado, porque "sem leitura"
+deixou de significar "mostrando o comandado":
+
+| estado | frase |
+|---|---|
+| encoder respondendo | "posição medida pelo encoder" |
+| nunca teve leitura | "sem leitura do encoder ainda" |
+| já teve, perdeu agora | "última posição medida (sem leitura agora)" |
+
+O comandado (`c1`/`c2`) continua existindo dentro de `postura()` só para
+o **fantasma tracejado** (R104-ish): a linha que aparece quando medido e
+comandado divergem mais de 0,5°. Isso é um alerta *sobre* a posição, não
+a posição — continua correto mostrar para onde o firmware mandou o motor
+ir, ao lado de onde ele de fato está.
+
+Dois cenários de banco cobrem o congelamento: perder a leitura no meio
+de um movimento não move o desenho nem um grau na direção do comandado;
+e quando a leitura volta, o desenho retoma exatamente do valor medido,
+ignorando tudo que o comandado fez enquanto a leitura estava fora.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **446 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **273 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **275 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

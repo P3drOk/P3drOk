@@ -3179,9 +3179,10 @@ function legendaPostura(z){
   /* A frase do desvio saiu junto com o tracejado da vista de cima: ela
      so descrevia aquele tracejado. O que sobra e de onde vem a posicao
      desenhada, que continua importando. */
-  if(!z.medido) return "posicao comandada (sem leitura do encoder)";
-  return z.completo ? "posicao medida pelo encoder"
-                    : "posicao medida (uma junta sem leitura)";
+  if(z.medido) return z.completo ? "posicao medida pelo encoder"
+                                 : "posicao medida (uma junta sem leitura)";
+  if(z.travado) return "ultima posicao medida (sem leitura agora)";
+  return "sem leitura do encoder ainda";
 }
 
 /* ---------- o braco desenhado glisa entre as amostras ----------
@@ -3226,20 +3227,32 @@ function suavizar(a1, a2){
 function suavePular(){ suave = null; }
 const SUAVE_PULO_GRAUS = 30;
 
+/* O que se DESENHA vem so do encoder, ja passado pela reducao medida
+   (contagensPorGrau) -- nunca da contagem de pulsos comandada. Passo
+   perdido, folga do redutor ou um driver mal calibrado nao aparecem no
+   comandado; so aparecem no braco de verdade, que e o que o encoder ve.
+   Misturar os dois deixaria o desenho mentindo justo quando ele mais
+   precisa avisar que algo saiu do lugar.
+
+   Sem leitura confiavel, a junta CONGELA no ultimo angulo medido -- nao
+   volta a seguir o comandado. Um driver sem encoder no barramento
+   continua desenhado (na ultima postura que se sabia real), em vez de
+   passar a desenhar uma posicao que ninguem mediu. */
+let ultimoMedido = {t1:0, t2:0, tem1:false, tem2:false};
+
 function postura(){
-  const c1 = D.t1 || 0, c2 = D.t2 || 0;
   const tem1 = !!D.m1ok, tem2 = !!D.m2ok;
-  /* Junta sem leitura usa o comandado dela: uma bancada com um driver so
-     no barramento tem de desenhar o braco inteiro assim mesmo. */
-  const b1 = tem1 ? (D.m1 || 0) : c1;
-  const b2 = tem2 ? (D.m2 || 0) : c2;
-  const sv = suavizar(b1, b2);
+  if(tem1){ ultimoMedido.t1 = D.m1 || 0; ultimoMedido.tem1 = true; }
+  if(tem2){ ultimoMedido.t2 = D.m2 || 0; ultimoMedido.tem2 = true; }
+  const sv = suavizar(ultimoMedido.t1, ultimoMedido.t2);
   const r1 = sv.t1, r2 = sv.t2;
+  const c1 = D.t1 || 0, c2 = D.t2 || 0;
   return {
     t1: r1, t2: r2,               /* o que se desenha */
-    c1: c1, c2: c2,               /* o comandado, para o fantasma */
+    c1: c1, c2: c2,               /* o comandado, so para o fantasma */
     medido: tem1 || tem2,
     completo: tem1 && tem2,
+    travado: ultimoMedido.tem1 || ultimoMedido.tem2,
     desvio: Math.max(tem1 ? Math.abs(r1 - c1) : 0,
                      tem2 ? Math.abs(r2 - c2) : 0)
   };
