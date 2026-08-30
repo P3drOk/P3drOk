@@ -25,18 +25,31 @@
 //      com a rampa de movimento.
 //   2. So com leitura VALIDA e RECENTE. Corrigir por dado velho e mover
 //      o braco baseado em onde ele estava, nao onde esta.
-//   3. So dentro do curso calibrado. O retoque nunca empurra o eixo
-//      para fora do limite -- ele e um ajuste fino, nao uma excecao as
-//      protecoes.
+//   3. So dentro do curso, QUANDO o curso esta valendo. Com o limite
+//      de curso ligado o retoque nunca empurra o eixo para fora dele --
+//      e ajuste fino, nao excecao as protecoes. Com o limite desligado
+//      o braco anda livre pela mesa e o curso medido nao o prende (ver
+//      R143 e R149: prender o retoque num curso fora de vigor -- pior,
+//      num curso medido pela metade -- era um dos jeitos de o braco nao
+//      chegar ao angulo pedido).
 //   4. NUNCA com a solda ligada. Um retoque no meio do cordao estraga o
 //      cordao, e o operador nao pediu por ele ali.
-//   5. Erro GRANDE nao se corrige, se DENUNCIA. Acima de
-//      maxCorrecaoGraus o problema nao e folga: e acoplamento solto,
-//      registrador errado ou reducao errada. Empurrar o braco varios
-//      graus achando que esta consertando e a maneira mais rapida de
-//      bater a ferramenta em alguma coisa.
-//   6. Numero de tentativas limitado. Se tres retoques nao resolveram,
-//      o problema nao e o que este modulo conserta.
+//   5. Erro GRANDE se fecha EM PASSOS, nunca de uma vez.
+//      maxCorrecaoGraus e o tamanho maximo de UM retoque, nao um motivo
+//      para desistir: cada passo anda no maximo isso, le o encoder de
+//      novo e repete. A intencao da regra original continua de pe -- o
+//      braco nunca lunga varios graus achando que esta consertando --,
+//      mas RECUSAR deixava o braco parado no tanto do erro, que era
+//      exatamente o defeito (R149).
+//   6. Insiste enquanto APROXIMA. Contar tentativas absolutas desistia
+//      no meio de uma convergencia saudavel. O que denuncia acoplamento
+//      solto nao e o numero de retoques: e o retoque nao diminuir o
+//      erro. Enquanto cada passo aproxima pelo menos 15%, continua;
+//      parou de aproximar, desiste e diz. Ha um teto absoluto de 40 so
+//      para nunca existir laco infinito no core 1.
+//   7. A chegada e SUAVE. A velocidade do retoque acompanha o que
+//      falta: meia velocidade longe, afinando ate o minimo da maquina.
+//      O ultimo decimo de grau e um encosto, nao um tranco.
 // =====================================================================
 
 // Em que pe esta o assentamento. Vai para a tela.

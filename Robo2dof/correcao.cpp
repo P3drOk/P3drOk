@@ -38,23 +38,44 @@ static void dizer(const char* m) {
 // esta parado -- e e nele que o operador quer o braco.
 // ---------------------------------------------------------------------
 static bool faltaPara(uint8_t junta, float alvoGraus, float& falta) {
-  const Junta& j = (junta == 1) ? J1 : J2;
-  if (!j.calibrada) return false;
-  // Junta sem registrador nao esta ligada: nao ha o que corrigir.
-  if (configEncoder.reg[junta - 1] == 0) return false;
+  // NAO exige curso medido. O encoder mede a junta com ou sem
+  // calibracao, e exigi-la aqui era o mesmo defeito de R143: uma junta
+  // sem curso -- ou com um curso pela metade -- ficava sem assentamento
+  // nenhum, e o braco parava onde o erro deixasse. leituraConfiavel()
+  // cobre registrador, validade, idade e possibilidade fisica.
+  if (!leituraConfiavel(junta)) return false;
 
   const LeituraEncoder L = encoderLer(junta);
-  if (!L.valido) return false;
-  if (L.idadeMs > ENC_IDADE_MAX_MS) return false;
-
   falta = alvoGraus - L.graus;   // graus da junta que faltam andar
   return true;
+}
+
+// Teto absoluto de retoques. Nao e criterio de qualidade -- quem julga
+// isso e o progresso, logo abaixo. E so a garantia de que nenhum defeito
+// novo consegue prender o core 1 num laco.
+static const uint8_t RETOQUES_MAXIMOS = 40;
+
+// Acima disto o retoque anda a meia velocidade; abaixo, proporcional.
+static const float GRAUS_VEL_CHEIA = 3.0f;
+
+// Maior |erro| do ciclo anterior, e quantos ciclos seguidos nao
+// aproximaram. E o que separa "esta convergindo" de "esta martelando".
+static float   erroAnterior = 0.0f;
+static uint8_t semProgresso = 0;
+
+// Limita a MAGNITUDE de um retoque, guardando o sinal.
+static float comTeto(float v, float teto) {
+  if (v >  teto) return  teto;
+  if (v < -teto) return -teto;
+  return v;
 }
 
 // ---------------------------------------------------------------------
 void correcaoNovoMovimento() {
   r.estado     = CORR_PARADA;
   r.tentativas = 0;
+  erroAnterior = 0.0f;
+  semProgresso = 0;
   dizer("");
 }
 
@@ -65,6 +86,8 @@ void correcaoIniciar() {
 
   r.estado     = CORR_ESPERANDO;
   r.tentativas = 0;
+  erroAnterior = 0.0f;
+  semProgresso = 0;
   r.erroInicial1 = r.erroInicial2 = 0.0f;
   r.erroFinal1   = r.erroFinal2   = 0.0f;
   alvo1Original = posicaoJ1();
@@ -141,16 +164,43 @@ void correcaoAtualizar() {
     return;
   }
 
-  // Regra 5: erro grande nao se corrige, se denuncia.
+  // REGRA 5, REFEITA: erro grande nao se pula, mas tambem nao se
+  // abandona.
+  //
+  // Antes, erro acima de maxCorrecaoGraus era RECUSADO e o braco ficava
+  // onde estava. Era isto que fazia "peco zero grau e quem chega e so o
+  // tracejado": com sete graus de diferenca o assentamento se recusava a
+  // mexer, o operador via a contagem no alvo e o braco longe dele.
+  //
+  // O teto passou a ser o tamanho do PASSO, nao um motivo para desistir.
+  // Cada retoque anda no maximo maxCorrecaoGraus, le o encoder de novo e
+  // repete: sete graus fecham em tres passos, sempre olhando o encoder,
+  // e nenhum deles e um pulo. A intencao da regra continua de pe -- o
+  // braco nunca lunga varios graus de uma vez.
   const float teto = configCorrecao.maxCorrecaoGraus;
-  if ((t1 && m1 > teto) || (t2 && m2 > teto)) {
-    r.estado = CORR_RECUSADA;
-    dizer("erro grande demais: veja acoplamento e reducao");
+
+  // REGRA 6, REFEITA: desiste de nao PROGREDIR, nao de tentar.
+  //
+  // Contar tentativas absolutas desistia no meio de uma convergencia
+  // perfeitamente saudavel. O que de fato denuncia acoplamento solto ou
+  // reducao errada e o retoque NAO diminuir o erro -- ali insistir so
+  // martela o eixo. Enquanto cada passo aproxima, continua.
+  const float faltaMaior = (m1 > m2) ? m1 : m2;
+  if (r.tentativas > 0) {
+    // Aproximou pelo menos 15%? Entao esta convergindo.
+    if (faltaMaior < erroAnterior * 0.85f) semProgresso = 0;
+    else                                   semProgresso++;
+  }
+  erroAnterior = faltaMaior;
+
+  if (semProgresso >= configCorrecao.tentativas) {
+    r.estado = CORR_DESISTIU;
+    r.totalDesistiu++;
+    dizer("o retoque nao aproxima: veja acoplamento e reducao");
     return;
   }
-
-  // Regra 6: numero de tentativas limitado.
-  if (r.tentativas >= configCorrecao.tentativas) {
+  // Teto absoluto, so para nunca existir laco infinito no core 1.
+  if (r.tentativas >= RETOQUES_MAXIMOS) {
     r.estado = CORR_DESISTIU;
     r.totalDesistiu++;
     dizer("nao fechou na tolerancia");
@@ -165,16 +215,18 @@ void correcaoAtualizar() {
   // DIFERENCA -- passar diferenca por ela somaria o zero duas vezes.
   long alvo1 = posicaoJ1();
   long alvo2 = posicaoJ2();
-  if (t1 && m1 > tol) alvo1 += lroundf(e1 * J1.passosPorGrau);
-  if (t2 && m2 > tol) alvo2 += lroundf(e2 * J2.passosPorGrau);
+  if (t1 && m1 > tol) alvo1 += lroundf(comTeto(e1, teto) * J1.passosPorGrau);
+  if (t2 && m2 > tol) alvo2 += lroundf(comTeto(e2, teto) * J2.passosPorGrau);
 
-  // Regra 3: nunca para fora do curso calibrado. O retoque e ajuste
-  // fino, nao excecao as protecoes.
-  if (J1.calibrada) {
+  // Regra 3: nunca para fora do curso, QUANDO o curso esta valendo.
+  // Com o limite desligado o braco anda livre pela mesa (ver R143), e
+  // prender o retoque num curso que nao esta em vigor -- pior, num curso
+  // medido pela metade -- era mais um jeito de o braco nao chegar.
+  if (protCurso && J1.calibrada) {
     if (alvo1 < J1.passosMin) alvo1 = J1.passosMin;
     if (alvo1 > J1.passosMax) alvo1 = J1.passosMax;
   }
-  if (J2.calibrada) {
+  if (protCurso && J2.calibrada) {
     if (alvo2 < J2.passosMin) alvo2 = J2.passosMin;
     if (alvo2 > J2.passosMax) alvo2 = J2.passosMax;
   }
@@ -201,10 +253,19 @@ void correcaoAtualizar() {
     return;
   }
 
-  // Devagar: retoque e ajuste fino, nao viagem. Um quarto da velocidade
-  // normal ja e mais que suficiente para poucos decimos de grau, e
-  // reduz o quanto o eixo passa do ponto.
-  moverCoordenado(alvo1, alvo2, velNormal * 0.25f);
+  // SUAVIDADE NA CHEGADA: a velocidade acompanha o que falta.
+  //
+  // Era fixa em um quarto da normal -- boa para decimos de grau, dura
+  // para graus inteiros, e sempre a mesma no ultimo passo, que e onde
+  // passar do ponto custa outra viagem. Agora o retoque longe anda a
+  // meia velocidade e vai afinando ate o minimo da maquina, entao o
+  // ultimo decimo e um encosto e nao um tranco.
+  const float cheia = velNormal * 0.5f;
+  float vel = (GRAUS_VEL_CHEIA > 0.001f)
+            ? cheia * (faltaMaior / GRAUS_VEL_CHEIA) : cheia;
+  if (vel > cheia)     vel = cheia;
+  if (vel < velMinima) vel = velMinima;
+  moverCoordenado(alvo1, alvo2, vel);
   r.tentativas++;
   r.estado = CORR_RETOCANDO;
   esperaAte = millis() + ESPERA_ASSENTAR_MS;
@@ -765,6 +826,8 @@ void correcaoReiniciarTeste() {
   memset(&r, 0, sizeof(r));
   esperaAte = 0;
   alvo1Original = alvo2Original = 0;
+  erroAnterior = 0.0f;
+  semProgresso = 0;
   alertas = 0;
   trav.ativo = false; trav.junta = 0; trav.total = 0;
   memset(&z, 0, sizeof(z));

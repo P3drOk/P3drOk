@@ -3977,11 +3977,69 @@ chamada pela página"*), e aviso que ninguém sabe explicar acaba ignorado
 envelhecer calada: se a página voltar a chamar a rota, ou se o firmware
 deixar de registrá-la, a compilação reprova dizendo qual das duas.
 
+## R149 · O braço não chegava: três portões fechados de uma vez  `M06`  ✅
+
+Relato, depois de R147: "ainda não chega; quem chega é apenas o
+tracejado. Para movimento para ângulo o braço deve se basear no
+**encoder**, não no erro, com suavidade na chegada."
+
+R147 consertou o **ponto de partida** (ancorar a contagem no encoder
+antes de calcular o destino). Faltava a **chegada**. Quem fecha a conta
+depois que o eixo para é o assentamento — e ele estava barrado por três
+portões independentes, cada um bastando sozinho para o braço ficar onde
+estava:
+
+| # | portão | efeito na máquina do relato |
+|---|---|---|
+| 1 | `faltaPara()` exigia **curso medido** | junta sem calibração não recebia assentamento nenhum |
+| 2 | erro acima de `maxCorrecaoGraus` (3°) era **RECUSADO** | os ~7° de erro caíam direto em "erro grande demais" |
+| 3 | o retoque era preso ao **curso calibrado** mesmo com o limite desligado | num curso medido pela metade ele não cabia, e virava "retoque cairia fora do curso" |
+
+**1 — o encoder mede a junta com ou sem calibração.** Mesmo defeito de
+R143, noutro lugar: exigir curso medido para *ler* o encoder. Agora
+`faltaPara()` usa `leituraConfiavel()`, que confere registrador,
+validade, idade e possibilidade física — e nada mais.
+
+**2 — o teto virou o tamanho do PASSO, não um motivo para desistir.** A
+intenção da regra original era boa: nunca lançar o braço vários graus de
+uma vez achando que está consertando. Mas *recusar* deixava o braço
+parado — que era exatamente o sintoma. Agora cada retoque anda no máximo
+`maxCorrecaoGraus`, lê o encoder de novo e repete: 7° fecham em três
+passos, sempre olhando o encoder, e nenhum deles é um pulo.
+
+**3 — o curso só prende o retoque quando o limite está ligado.** Com o
+limite desligado o braço anda livre pela mesa (R143); prender o retoque
+num curso que não está em vigor — pior, num curso medido pela metade —
+era mais um jeito de não chegar. Com o limite **ligado** ele volta a
+valer, e `M06e` prende isso.
+
+**E a regra das tentativas virou progresso.** Contar tentativas
+absolutas desistia no meio de uma convergência saudável. O que denuncia
+acoplamento solto não é o número de retoques, é o retoque **não diminuir
+o erro**. Agora: enquanto cada passo aproxima pelo menos 15%, continua;
+parou de aproximar, desiste e diz. Sobra um teto absoluto de 40 só para
+nunca existir laço infinito no núcleo 1.
+
+**Suavidade na chegada.** A velocidade do retoque era fixa em ¼ da
+normal — boa para décimos de grau, dura para graus inteiros, e sempre a
+mesma no último passo, que é onde passar do ponto custa outra viagem.
+Agora ela acompanha o que falta: meia velocidade longe, afinando até o
+mínimo da máquina. O último décimo é um encosto, não um tranco.
+
+> **E se o eixo simplesmente não seguir?** Soltar o número de tentativas
+> poderia virar licença para martelar o ferro. Não vira: o **vigia de
+> travamento** pega antes — comando andando e medido parado é a
+> definição de travamento — para o eixo e diz qual junta. `M07` prende
+> essa ordem; na prática o assentamento nem chega a rodar.
+
+Os três portões foram verificados um a um: reintroduzido cada um
+sozinho, `M06` reprova; restaurados, passa.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **456 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **464 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **278 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

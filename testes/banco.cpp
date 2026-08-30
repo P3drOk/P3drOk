@@ -3653,21 +3653,26 @@ static void teste_M02_nao_retoca_quando_nao_deve() {
   checar(correcaoResumo().tentativas == 0, "M02a",
          "perda dentro da tolerancia nao vira retoque: o eixo nao fica cutucando");
 
-  // 2. Erro GRANDE: nao e folga. Empurrar o braco varios graus achando
-  //    que esta consertando e o jeito mais rapido de bater a ferramenta.
-  const long antes = (long)J1.motor->pulsosGerados;
+  // 2. Erro GRANDE: fecha, mas EM PASSOS.
+  //
+  // Antes, erro acima de maxCorrecaoGraus era recusado e o braco ficava
+  // onde estava -- era isso que fazia "peco zero grau e quem chega e so
+  // o tracejado". O teto virou o tamanho do PASSO: cada retoque anda no
+  // maximo maxCorrecaoGraus, le o encoder de novo e repete. A intencao
+  // da regra continua de pe -- o braco nunca lunga varios graus de uma
+  // vez -- e o erro fecha assim mesmo.
+  const float teto = configCorrecao.maxCorrecaoGraus;
   irComPerda(25, 5, 9.0f);
-  const long depois = (long)J1.motor->pulsosGerados;
-  const long previsto = labs(grausParaPassos(J1, 25.0f) - grausParaPassos(J1, 15.0f));
-  nota("perda de 9 graus: estado %u -- \"%s\"", (unsigned)correcaoResumo().estado,
-       correcaoResumo().motivo);
-  nota("pulsos emitidos %ld (o movimento em si pedia ~%ld)",
-       depois - antes, previsto);
-  checar(correcaoResumo().estado == CORR_RECUSADA, "M02b",
-         "erro grande demais NAO e corrigido: e denunciado");
-  // Nenhum pulso ALEM do movimento pedido: o retoque nao aconteceu.
-  checar(labs((depois - antes) - previsto) < 20, "M02c",
-         "e nenhum pulso a mais sai no fio -- o braco nao anda por adivinhacao");
+  nota("perda de 9 graus (teto de %.1f por retoque): eixo em %.3f, "
+       "%u retoque(s), estado %u -- \"%s\"",
+       (double)teto, (double)eixoFisicoGraus(),
+       (unsigned)correcaoResumo().tentativas,
+       (unsigned)correcaoResumo().estado, correcaoResumo().motivo);
+  checar(fabsf(eixoFisicoGraus() - 25.0f) < 0.15f, "M02b",
+         "erro grande fecha assim mesmo: o BRACO chega ao alvo");
+  checar(correcaoResumo().tentativas >= 3, "M02c",
+         "e fecha em varios retoques, nenhum maior que o teto -- "
+         "o braco nunca lunga nove graus de uma vez");
 
   // 3. Sem leitura do encoder: nao se move o braco no escuro.
   reiniciarSistema();
@@ -3686,6 +3691,139 @@ static void teste_M02_nao_retoca_quando_nao_deve() {
          "sem leitura confiavel o assentamento recusa, em vez de adivinhar");
   checar(modoAtual == MODO_MANUAL, "M02e",
          "e o robo nao fica preso em POSICIONANDO por causa disso");
+}
+
+// ---------------------------------------------------------------------
+// M06: o braco chega ao angulo mesmo na maquina do relato -- junta SEM
+//      curso medido, limite desligado, e erro maior que o teto.
+//
+// Relato: "peco para ir ao angulo tal e ele nao chega; quem chega e
+// apenas o tracejado em vermelho. Deve se basear no encoder, nao no
+// erro".
+//
+// Eram TRES portoes fechados ao mesmo tempo, cada um bastando sozinho
+// para o braco ficar onde estava:
+//
+//   1. faltaPara() exigia curso medido -- junta sem calibracao nao
+//      recebia assentamento nenhum;
+//   2. erro acima de maxCorrecaoGraus era RECUSADO em vez de fechado em
+//      passos;
+//   3. o retoque era preso ao curso calibrado mesmo com o limite
+//      desligado -- e num curso medido pela metade ele nao cabia.
+// ---------------------------------------------------------------------
+static void teste_M06_chega_sem_curso_e_com_erro_grande() {
+  secao("M06  Sem curso medido, limite desligado e erro grande: chega");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  // A maquina do relato: junta 1 sem curso medido e limite desligado --
+  // o braco anda livre pela mesa, que e o padrao da maquina.
+  J1.calibrada = false;
+  protCurso = false;
+  rodarComWeb(50);
+
+  const float teto = configCorrecao.maxCorrecaoGraus;
+  nota("junta 1 calibrada=%d, protCurso=%d, teto de retoque %.1f grau",
+       (int)J1.calibrada, (int)protCurso, (double)teto);
+
+  irComPerda(30, 0, 7.0f);
+  nota("pedi 30 graus com 7 de perda: eixo em %.3f, %u retoque(s), "
+       "estado %u -- \"%s\"",
+       (double)eixoFisicoGraus(), (unsigned)correcaoResumo().tentativas,
+       (unsigned)correcaoResumo().estado, correcaoResumo().motivo);
+  checar(fabsf(eixoFisicoGraus() - 30.0f) < 0.15f, "M06a",
+         "o BRACO chega ao angulo pedido, sem curso medido e com o erro "
+         "acima do teto -- antes ele parava no tanto do erro");
+  checar(correcaoResumo().estado == CORR_PRONTA, "M06b",
+         "e o assentamento fecha, em vez de recusar");
+
+  // Sai e volta: o lugar tem de ser o mesmo, que e o pedido de sempre.
+  irComPerda(0, 0, 2.0f);
+  irComPerda(30, 0, 2.0f);
+  nota("saiu e voltou: eixo em %.3f grau", (double)eixoFisicoGraus());
+  checar(fabsf(eixoFisicoGraus() - 30.0f) < 0.15f, "M06c",
+         "sai, volta e cai no mesmo lugar");
+
+  // E o caso exato da maquina do relato: a junta ESTA "calibrada", mas
+  // com um curso ridiculo de quatro graus -- uma calibracao que parou no
+  // meio -- e o braco esta bem longe dali. Com o limite desligado, esse
+  // curso nao pode prender o retoque.
+  const long dois = (long)(2.0f * J1.passosPorGrau);
+  J1.calibrada = true;
+  J1.passosMin = -dois; J1.passosMax = dois;
+  recalcularResolucao();
+  protCurso = false;
+  rodarComWeb(50);
+  nota("curso medido pela metade: %.1f a %.1f graus, braco indo a 30",
+       (double)J1.grausMin, (double)J1.grausMax);
+
+  irComPerda(30, 0, 5.0f);
+  nota("com curso de quatro graus e limite desligado: eixo em %.3f, "
+       "estado %u -- \"%s\"", (double)eixoFisicoGraus(),
+       (unsigned)correcaoResumo().estado, correcaoResumo().motivo);
+  checar(fabsf(eixoFisicoGraus() - 30.0f) < 0.15f, "M06d",
+         "curso medido pela metade nao prende o retoque quando o limite "
+         "esta desligado -- era mais um jeito de o braco nao chegar");
+
+  // Com o limite LIGADO o curso volta a valer, inclusive para o retoque:
+  // ali ele e uma excecao que nunca se abre.
+  protCurso = true;
+  rodarComWeb(50);
+  const float ondeEstava = eixoFisicoGraus();
+  irComPerda(30, 0, 5.0f);
+  nota("limite ligado: eixo saiu de %.2f para %.2f -- \"%s\"",
+       (double)ondeEstava, (double)eixoFisicoGraus(), correcaoResumo().motivo);
+  checar(eixoFisicoGraus() < 30.0f - 1.0f, "M06e",
+         "e com o limite LIGADO o retoque respeita o curso, como sempre");
+  protCurso = false;
+}
+
+// ---------------------------------------------------------------------
+// M07: soltar o numero de tentativas nao pode virar licenca para
+//      martelar o eixo.
+//
+// O assentamento passou a insistir enquanto APROXIMA, em vez de parar
+// num numero fixo de tentativas. A pergunta que sobra e: e quando o eixo
+// simplesmente nao segue -- acoplamento solto, driver desarmado?
+//
+// A resposta e que o assentamento nem chega a rodar. O vigia de
+// travamento pega antes: comando andando e medido parado e a definicao
+// de travamento, e ele para o eixo e diz. Este cenario prende essa
+// ordem, que e o que impede o retoque de bater no ferro.
+// ---------------------------------------------------------------------
+static void teste_M07_desiste_quando_nao_aproxima() {
+  secao("M07  Eixo que nao segue e pego antes de o retoque martelar");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+
+  // O eixo NAO segue os pulsos: o encoder fica onde esta, faca o retoque
+  // o que fizer. E o que se ve com o acoplamento solto.
+  g_espelharEixo = false;
+  irComPerda(20, 0, 0.0f);
+
+  nota("encoder preso: %u retoque(s), estado %u -- \"%s\"; travamento=%d "
+       "total=%lu; modo=%d; msg=\"%s\"",
+       (unsigned)correcaoResumo().tentativas,
+       (unsigned)correcaoResumo().estado, correcaoResumo().motivo,
+       (int)correcaoTravamento().ativo, (unsigned long)correcaoTravamento().total,
+       (int)modoAtual, ultimaMensagem);
+  checar(correcaoTravamento().total > 0, "M07a",
+         "o eixo que nao segue e pego pelo vigia de travamento, e a "
+         "maquina diz qual junta e o que pode ter acontecido");
+  checar(correcaoResumo().tentativas <= 8, "M07b",
+         "e o retoque nao martela o ferro: pouquissimas tentativas, muito "
+         "abaixo do teto absoluto de 40");
+  checar(modoAtual == MODO_MANUAL, "M07c",
+         "e o robo nao fica preso em POSICIONANDO");
 }
 
 static void teste_M03_desligado_e_parada() {
@@ -7318,6 +7456,8 @@ int main() {
 
   teste_M01_assentar_no_fim_do_movimento();
   teste_M02_nao_retoca_quando_nao_deve();
+  teste_M06_chega_sem_curso_e_com_erro_grande();
+  teste_M07_desiste_quando_nao_aproxima();
   teste_M03_desligado_e_parada();
   teste_M04_travamento_nao_dispara_a_toa();
   teste_M05_seguir_o_eixo_solto();

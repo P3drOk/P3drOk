@@ -764,24 +764,40 @@ Duas coisas fazem isso funcionar de verdade:
    desvio não some — ele só muda de lugar, e o próximo movimento absoluto
    nasce errado pelo mesmo tanto.
 
-**Seis regras, todas com cenário no banco de testes:**
+**Sete regras, todas com cenário no banco de testes:**
 
 | | |
 |---|---|
 | 1 | só com o eixo **parado** |
 | 2 | só com leitura **válida e recente** |
-| 3 | nunca fora do **curso calibrado** |
+| 3 | nunca fora do curso — **quando o limite está ligado** |
 | 4 | **nunca com a solda ligada** |
-| 5 | erro acima do teto **não se corrige, se denuncia** |
-| 6 | número de tentativas limitado |
+| 5 | erro grande se fecha **em passos**, nunca de uma vez |
+| 6 | insiste enquanto **aproxima** |
+| 7 | a chegada é **suave** |
 
-A regra 5 é a que mais importa: vários graus de erro **não é folga**. É
-acoplamento solto, registrador errado ou redução errada — e empurrar o
-braço achando que está consertando é a maneira mais rápida de bater a
-ferramenta em alguma coisa.
+As regras 5 e 6 já foram outra coisa, e a troca vale explicar. Elas
+diziam "erro acima do teto não se corrige, se denuncia" e "no máximo
+três tentativas". A intenção era boa — vários graus de erro não é folga,
+e empurrar o braço achando que está consertando é a maneira mais rápida
+de bater a ferramenta. Só que **recusar deixava o braço parado no tanto
+do erro**, que era exatamente o defeito: pedia-se zero grau e quem
+chegava era a contagem, não o braço.
 
-Ajustes: tolerância (0,10° de fábrica), teto do retoque (3°), aviso de
-desvio (1°), tentativas (3). Tudo desligável.
+Hoje o teto é o tamanho de **um passo**: cada retoque anda no máximo
+`maxCorrecaoGraus`, relê o encoder e repete. O braço nunca lança vários
+graus de uma vez — e o erro fecha assim mesmo. E o que denuncia
+acoplamento solto deixou de ser um número de tentativas: é o retoque
+**não diminuir o erro**. Enquanto cada passo aproxima pelo menos 15%,
+continua; parou de aproximar, desiste e diz.
+
+Se o eixo simplesmente não seguir, o assentamento nem chega a rodar: o
+**vigia de travamento** pega antes (comando andando, medido parado) e
+para o eixo dizendo qual junta.
+
+Ajustes: tolerância (0,10° de fábrica), tamanho do passo do retoque
+(3°), aviso de desvio (1°), tentativas sem progresso (3). Tudo
+desligável.
 
 **Vigilância**: com o eixo parado, se o erro passar do limite por mais de
 um segundo, o painel avisa. Não mexe no motor — só conta e avisa.
