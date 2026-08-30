@@ -298,6 +298,23 @@ body[data-pos="1"] .tela canvas{cursor:move;touch-action:none}
 .regua b.mv{color:var(--arco)}
 .regua b.hot{color:var(--quente)}
 
+/* O PAINEL DE JOG E UM QUADRO FIXO.
+   Aqui o dedo procura o mesmo botao no mesmo lugar, toda vez. Rolar
+   significa que a seta que estava sob o dedo saiu dali -- entao o
+   conteudo tem de CABER, e as folgas deste painel sao menores que as do
+   resto da pagina de proposito. Cada pixel poupado aqui e um pixel a
+   menos de rolagem. */
+#pnMover .agora{margin-bottom:6px}
+#pnMover .eixo{margin-bottom:4px}
+#pnMover .velLinha{margin-top:7px;margin-bottom:6px}
+#pnMover .velEq{margin-bottom:6px}
+#pnMover .linhaBt{margin-bottom:3px}
+#pnMover h4{margin-top:10px;margin-bottom:6px}
+#pnMover .cab{padding:8px 12px}
+#pnMover .dentro{padding-bottom:6px}
+#pnMover .cp{margin-bottom:5px}
+#pnMover .irAng{margin-bottom:4px}
+
 /* ---------- coluna ---------- */
 .coluna{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;
  display:flex;flex-direction:column;min-height:0;overflow:hidden}
@@ -784,8 +801,6 @@ body.cfgProcurando .et.foraDaBusca{display:none}
    sair do lugar. */
 .joy.bloq{opacity:.4}
 .joy.bloq .joyKnob{border-color:var(--letra3)}
-.joyMotivo{text-align:center;font-size:11.5px;color:var(--quente);
- margin:8px 0 0;line-height:1.5;min-height:1px}
 .joyKnob b{font-family:var(--mono);font-size:9px;letter-spacing:.06em;
  color:var(--letra2);text-transform:uppercase;pointer-events:none}
 .joyEix{position:absolute;font-family:var(--mono);font-size:9px;
@@ -1255,7 +1270,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
               <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
-            <div class="joyMotivo" id="joyMotivo"></div>
             <div class="velLinha">
               <label for="inVelMov">Velocidade</label>
               <input type="range" id="inVelMov" min="1" max="120" step="1">
@@ -1290,25 +1304,11 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             </div>
             <div class="pq2" id="qGravar"></div>
             <div class="pq2" id="qHome"></div>
-
-            <!-- "Zerar a maquina aqui" ficava a um botao de distancia de
-                 "Ir para o zero da maquina". Um ANDA ate a referencia, o
-                 outro MUDA onde ela fica -- e o segundo desloca a area util
-                 inteira. Nomes parecidos, consequencias opostas: agora o
-                 que muda a origem tem nome inteiro e um cadeado na frente. -->
-            <div class="trancado" id="movOrig">
-              <div class="cadeado" id="movCadeado">
-                <div class="ic">&#128274;</div>
-                <div><b>Mudar a origem</b>
-                <span>desloca a area util inteira &mdash; toque para abrir</span></div>
-              </div>
-              <div class="trancavel">
-                <button class="b mini x" id="btRefer">Declarar esta posicao como referencia</button>
-                <div class="pq2" id="qRefer"></div>
-                <div class="nt">O curso e contado a partir da referencia:
-                declara-la fora do lugar desloca a area util inteira.</div>
-              </div>
-            </div>
+            <!-- "Mudar a origem" morava aqui e foi para a gaveta, no
+                 cartao "Zero absoluto", que ja e sobre origem e ja tem o
+                 cadeado. Este painel e o de MEXER no braco: o que se
+                 ajusta uma vez nao disputa espaco com ele, e o que sai
+                 daqui e o que fazia a coluna crescer e rolar. -->
 
           </div>
         </div>
@@ -1777,6 +1777,12 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             </div>
 
             <div class="trancavel">
+              <h4>Declarar a posicao de agora</h4>
+              <button class="b mini x" id="btRefer">Declarar esta posicao como referencia</button>
+              <div class="pq2" id="qRefer"></div>
+              <div class="nt">O curso e contado a partir da referencia:
+              declara-la fora do lugar desloca a area util inteira.</div>
+
               <h4>Ensinar o zero</h4>
               
               <div class="cp"><label>Junta</label>
@@ -4922,12 +4928,6 @@ function corrAplicar(d){
 const ZERO=["esperando o encoder","localizado","indo para o zero",
             "pronto","sem encoder"];
 let zCarregou=false;
-$("movCadeado").onclick=function(){
-  $("movOrig").classList.toggle("trancado");
-  $("movCadeado").querySelector(".ic").textContent=
-    $("movOrig").classList.contains("trancado")?"\u{1F512}":"\u{1F513}";
-};
-
 $("etZero").classList.add("trancado");
 $("zCadeado").onclick=function(){
   $("etZero").classList.toggle("trancado");
@@ -5273,9 +5273,9 @@ function acao(id,motivo){
    levar o braco ate os limites. */
 function porQueNaoMove(d,exigeCalib){
   if(d.modo==="FALHA")            return "sistema em falha: rearme os servos primeiro";
-  if(!d.servos)                   return "habilite os servos (aba Ajustes, etapa 1)";
+  if(!d.servos)                   return "habilite os servos";
   if(exigeCalib&&(!d.cal1||!d.cal2))
-    return "calibre as juntas (aba Ajustes, etapa 1)";
+    return "calibre as juntas";
   if(d.modo!=="MANUAL")           return "robo ocupado: "+(RM[d.modo]||d.modo);
   return "";
 }
@@ -5648,24 +5648,19 @@ function aplicar(d){
   $("btArco").className="b "+(d.solda?"rod":"quente");
   acao("Arco", d.solda ? ""
        : (d.modo!=="MANUAL"&&d.modo!=="GRAVANDO") ? "arco manual so no modo manual ou gravando"
-       : !d.servos ? "habilite os servos (aba Ajustes, etapa 1)" : "");
+       : !d.servos ? "habilite os servos" : "");
   acao("Mover", porQueNaoMove(d,true));
   acao("TrajLimpar", (d.trajN<2) ? "nao ha trajetoria para apagar"
        : (d.modo!=="MANUAL") ? "so com o robo parado no modo manual" : "");
   const bloqJog=porQueNaoMove(d);
   const instalacao=d.servos&&!(d.cal1&&d.cal2)&&d.modo!=="FALHA";
   joy.classList.toggle("bloq",!!bloqJog);
-  $("joyMotivo").textContent=bloqJog;
-  $("sbMover").textContent=bloqJog||(instalacao?"modo de instalacao · jog livre":
-    (d.precisao?"precisao ligada":"passo, angulo e referencia"));
-  if(!bloqJog&&instalacao){
-    $("joyMotivo").textContent=
-      "Modo de instalacao: sem calibracao nao ha limite de curso. "+
-      "Quem protege sao os batentes da maquina.";
-    $("joyMotivo").style.color="var(--letra2)";
-  }else{
-    $("joyMotivo").style.color="";
-  }
+  /* Nem o subtitulo nem o rodape do joystick repetem o motivo: quem
+     responde "por que nao anda" e a tarja de estado, logo acima, em
+     corpo maior e com o botao do proximo passo. O joystick continua
+     dizendo que esta bloqueado pelo proprio jeito -- apagado. */
+  $("sbMover").textContent=instalacao?"modo de instalacao · jog livre":
+    (d.precisao?"precisao ligada":"passo, angulo e referencia");
   if(d.maxPts>1&&d.maxPts!==MAX_PTS){MAX_PTS=d.maxPts;posContar();}
   if(abaAtual==="arq")sdEstadoSalvar();
   acao("Home", porQueNaoMove(d,true));
@@ -6221,8 +6216,11 @@ function ajudaPintar(){
     ajudaPintar();
   };
   b.onclick=function(){por(!b.classList.contains("on"));};
-  let g="1";
-  try{g=localStorage.getItem("ajudaAba")||"1";}catch(e){}
+  /* Nasce FECHADA. Aberta, ela ocupa quase cem pixels bem em cima das
+     setas de jog -- e era o que obrigava o painel a rolar. Quem esta
+     comecando abre no "?" e a escolha fica gravada no navegador. */
+  let g="0";
+  try{g=localStorage.getItem("ajudaAba")||"0";}catch(e){}
   por(g==="1");
 })();
 

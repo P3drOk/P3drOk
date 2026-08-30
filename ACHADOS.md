@@ -3842,12 +3842,61 @@ todos, e não sobrou nenhum uso dela.
 Não havia **nenhum** cenário cobrindo o botão "Levar" — por isso o
 defeito atravessou tantas rodadas. Agora há três.
 
+## R146 · O painel de jog virou quadro fixo  ✅
+
+Pedido: "a aba da direita do jog deve ser um quadro fixo, não de
+rolagem; os restos devem sumir".
+
+Rolar é o defeito, não o sintoma: se a coluna rola, a seta que estava sob
+o dedo saiu dali. R144 já tinha feito o **gesto** sobreviver a isso
+(captura de ponteiro); faltava a coluna parar de precisar rolar.
+
+Medido a 1280×800, o conteúdo passava **119 px** do quadro. De onde ele
+vinha:
+
+| bloco | px | destino |
+|---|---|---|
+| ajuda por aba (`ajudaAba`) | 97 | **nasce fechada**, atrás do "?" |
+| "Mudar a origem" + botão | ~90 | foi para a gaveta, no cartão "Zero absoluto" |
+| rodapé do joystick | ~20 | saiu: repetia o motivo |
+| folgas do painel | ~25 | menores que as do resto da página, de propósito |
+
+**A ajuda por aba nasce fechada.** Aberta, ela ocupava quase cem pixels
+bem em cima das setas — sozinha, era 80% do estouro. Continua a um toque
+no "?", e a escolha fica gravada no navegador.
+
+**"Mudar a origem" foi para a gaveta.** Ela mudou de lugar, não sumiu:
+mora no cartão *Zero absoluto*, que já é sobre origem e já tem o mesmo
+cadeado. Este painel é o de **mexer** no braço; o que se ajusta uma vez
+não disputa espaço com ele.
+
+**"Habilite os servos" aparecia três vezes na mesma tela** — na tarja de
+estado, no subtítulo do cartão e no rodapé do joystick. Ficou só na
+tarja, que é onde ela vem em corpo maior e com o botão do próximo passo.
+O joystick continua dizendo que está bloqueado do jeito dele: apagado. E
+o texto apontava para uma "aba Ajustes, etapa 1" que **não existe mais**
+— quem leva até os servos agora é o botão da tarja.
+
+Resultado, com a máquina pronta:
+
+| | |
+|---|---|
+| 1440×900 | fixo |
+| 1366×768 | fixo |
+| 1280×800 | fixo |
+
+Bloqueada, a tarja cresce o botão de próximo passo e a coluna pode rolar
+nas telas mais baixas — mas ali o jog está desligado de qualquer jeito, e
+o que a tela precisa mostrar é **como destravar**. No celular ela
+continua rolando: joystick, setas, velocidade, ir-para-ângulo e atalhos
+não cabem em 844 px, e rolar é melhor que esconder um botão.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **450 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **281 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **284 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

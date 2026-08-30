@@ -619,14 +619,27 @@ async function fecharGaveta(pag) {
   // a aba em que a pessoa esta -- o que ela e, e o primeiro passo. As
   // notas curtas de cada painel continuam sempre visiveis, com ele
   // ligado ou desligado.
+  //
+  // Nasce FECHADO: aberto, ele ocupa quase cem pixels bem em cima das
+  // setas de jog, e era o que obrigava o painel a rolar.
   await q.evaluate(() => irAba('mover'));
   await q.waitForTimeout(250);
-  const ajudaTopo = await q.evaluate(() => ({
+  const ajudaNasce = await q.evaluate(() => ({
     botao: !!document.getElementById('btAjuda'),
+    ligado: document.getElementById('btAjuda').classList.contains('on'),
+    escondida: document.getElementById('ajudaAba').hidden,
+  }));
+  checar(ajudaNasce.botao && !ajudaNasce.ligado && ajudaNasce.escondida,
+         'Painel: a ajuda por aba nasce fechada, atras do "?"',
+         JSON.stringify(ajudaNasce));
+
+  await q.locator('#btAjuda').click();
+  await q.waitForTimeout(250);
+  const ajudaTopo = await q.evaluate(() => ({
     ligado: document.getElementById('btAjuda').classList.contains('on'),
     faixa: (document.getElementById('ajudaAba').textContent || '').trim(),
   }));
-  checar(ajudaTopo.botao && ajudaTopo.ligado && /joystick/i.test(ajudaTopo.faixa),
+  checar(ajudaTopo.ligado && /joystick/i.test(ajudaTopo.faixa),
          'Painel: o "?" explica a aba atual',
          JSON.stringify(ajudaTopo));
 
@@ -653,10 +666,39 @@ async function fecharGaveta(pag) {
   checar(ajudaFora.escondida && ajudaFora.notas === notasAntes,
          'Painel: quem ja sabe desliga a ajuda, e as notas ficam',
          JSON.stringify(ajudaFora) + ' antes=' + notasAntes);
-  await q.locator('#btAjuda').click();
-  await q.waitForTimeout(150);
+  /* Fica desligada, que e como ela nasce -- e como o painel de jog
+     precisa dela para caber sem rolar. */
   await q.evaluate(() => irAba('mover'));
   await q.waitForTimeout(250);
+
+  // O PAINEL DE JOG E UM QUADRO FIXO: com a maquina pronta, ele nao
+  // rola. O dedo procura o mesmo botao no mesmo lugar toda vez, e rolar
+  // significa que a seta que estava sob o dedo saiu dali.
+  //
+  // Bloqueada, a tarja de estado cresce um botao de proximo passo e a
+  // coluna pode rolar -- mas ali o jog esta desligado de qualquer jeito,
+  // e o que a tela precisa mostrar e como destravar.
+  await q.evaluate(() => irAba('mover'));
+  await q.request.post(BASE + '/teste/estado',
+    { data: { servos: true, srv1: true, srv2: true, cal1: true, cal2: true,
+              modo: 'MANUAL' } });
+  await q.waitForTimeout(800);
+  const quadroJog = await q.evaluate(() => {
+    const rol = document.querySelector('.coluna .rol');
+    return { sobra: rol.scrollHeight - rol.clientHeight,
+             frame: rol.clientHeight };
+  });
+  checar(quadroJog.sobra <= 1,
+         'Mover: com a maquina pronta o painel de jog cabe inteiro, sem rolar',
+         'sobra ' + quadroJog.sobra + ' px em ' + quadroJog.frame);
+
+  // A ajuda por aba nasce fechada: aberta, ela ocupa quase cem pixels
+  // bem em cima das setas, e era o que obrigava o painel a rolar.
+  const ajudaFechada = await q.evaluate(() =>
+    document.getElementById('ajudaAba').hidden &&
+    !document.getElementById('btAjuda').classList.contains('on'));
+  checar(ajudaFechada,
+         'Mover: a ajuda por aba nasce fechada, atras do "?"');
 
   // Os controles continuam todos la -- menos o joystick, que sai DE
   // PROPOSITO no computador: as setas de passo fazem o mesmo com mais
@@ -1733,18 +1775,27 @@ async function fecharGaveta(pag) {
   // ate ela. Nomes parecidos, consequencias opostas.
   await t.locator('#abas button[data-aba="mover"]').click();
   await t.waitForTimeout(250);
-  const origemTrancada = await t.evaluate(() =>
-    document.getElementById('movOrig').classList.contains('trancado') &&
-    !document.getElementById('btRefer').offsetParent);
-  checar(origemTrancada,
-         'Mover: mudar a origem nasce atras do cadeado');
-  await t.locator('#movCadeado').click();
+  const semOrigemNoJog = await t.evaluate(() =>
+    !document.getElementById('pnMover').querySelector('#btRefer'));
+  checar(semOrigemNoJog,
+         'Mover: mudar a origem saiu do painel de jog -- e ajuste, nao comando');
+
+  // Ela mora na gaveta, no cartao que ja e sobre origem e ja tem cadeado.
+  await abrirGaveta(t, 'encoder');
+  await t.waitForTimeout(400);
+  await t.evaluate(() => {
+    document.getElementById('etZero').classList.add('aberta');
+    document.getElementById('etZero').classList.remove('trancado');
+  });
   await t.waitForTimeout(200);
   rotas = [];   /* o aceite do confirm() ja esta armado la em cima */
   await t.locator('#btRefer').click();
   await t.waitForTimeout(300);
   checar(rotas.some(x => x.split('?')[0] === '/api/referenciar'),
          '"Declarar esta posicao como referencia" confirma e chama /api/referenciar');
+  await fecharGaveta(t);
+  await t.locator('#abas button[data-aba="mover"]').click();
+  await t.waitForTimeout(250);
 
   // ------------------------------------------------------------------
   // A GAVETA GANHOU UM COMECO E UMA BUSCA.
@@ -2226,13 +2277,17 @@ async function fecharGaveta(pag) {
   checar(semMotivo.length === 0,
          'sem servos e sem calibracao, cada acao bloqueada diz o porque',
          Object.entries(bloqueios).map(([k, v]) => k + ': ' + (v.motivo || (v.dis ? 'MUDO' : 'liberado'))).join(' | '));
+  // O joystick diz que esta bloqueado pelo proprio jeito -- apagado. O
+  // MOTIVO nao se repete aqui embaixo: quem responde "por que nao anda"
+  // e a tarja de estado, em corpo maior e com o botao do proximo passo.
   const joyBloq = await t.evaluate(() => ({
     dim: document.getElementById('joy').classList.contains('bloq'),
-    motivo: document.getElementById('joyMotivo').textContent.trim(),
+    rodape: !!document.getElementById('joyMotivo'),
+    tarja: document.getElementById('teMsg').textContent.trim(),
   }));
-  checar(joyBloq.dim && joyBloq.motivo.length > 0,
-         'o joystick mostra que esta bloqueado, em vez de parecer pronto',
-         'apagado: ' + joyBloq.dim + ' | "' + joyBloq.motivo + '"');
+  checar(joyBloq.dim && !joyBloq.rodape && joyBloq.tarja.length > 0,
+         'o joystick mostra que esta bloqueado, e o motivo fica so na tarja',
+         'apagado: ' + joyBloq.dim + ' | tarja: "' + joyBloq.tarja + '"');
   await t.screenshot({ path: SAIDA + '/celular-4-bloqueios.png' });
 
   await t.request.post(BASE + '/teste/estado',
