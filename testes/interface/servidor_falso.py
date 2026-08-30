@@ -90,6 +90,7 @@ PREVIA = {"n": 4, "l1": 380.0, "l2": 300.0, "l1Maq": 450.0, "l2Maq": 400.0,
 # Maquina saudavel com historico: e o estado em que a tela tem de mostrar
 # tudo. O banco troca campos daqui para encenar defeito.
 SAUDE = {
+    "fw": "3f9a1c7e5b204d8896aa11ff3c2d7e40",
     "up": 9312, "heap": 236864, "heapMin": 198000,
     "flashUso": 1721921, "flashTot": 3145728,
     "ciclos": 137, "ciclosSes": 9, "abortados": 3,

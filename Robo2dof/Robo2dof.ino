@@ -113,18 +113,35 @@ static bool irParaPassos(long p1, long p2) {
 // tracejado chegava ao angulo pedido e o braco desenhado nao. Ver
 // ancorarNoEncoder() em correcao.h.
 static void irParaAngulos(float t1, float t2) {
-  const float ajuste = ancorarNoEncoder();
-  if (irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) {
+  const Ancoragem anc = ancorarNoEncoder();
+  if (!irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) return;
+
+  // A MENSAGEM DIZ EM QUE CONTA O MOVIMENTO SAIU.
+  //
+  // Ir por medida do encoder e ir pela contagem de pulsos sao duas
+  // coisas diferentes, e so uma delas leva o BRACO ao angulo pedido
+  // quando as duas divergem. Sair calado nos dois casos era o pior
+  // pedaco do defeito: o operador pedia zero grau, o braco parava longe
+  // dali, e a tela dizia a mesma frase de sempre.
+  if (anc.semLeitura || anc.andando) {
+    // Ha encoder configurado e ele nao serviu agora: este movimento NAO
+    // e baseado na medida, e quem pediu tem de saber.
+    const char* porque = anc.andando ? "o eixo ainda estava andando"
+                                     : "sem leitura confiavel do encoder";
+    definirMensagem("Indo para %.1f / %.1f graus PELA CONTAGEM: %s", t1, t2, porque);
+  } else if (anc.ajuste > 0.5f) {
     // Reescrever a posicao da maquina em silencio seria a tela mudando de
     // numero sem ninguem entender por que. So avisa quando a correcao foi
     // grande o bastante para o operador ter visto o fantasma na tela.
-    if (ajuste > 0.5f) {
-      definirMensagem("Indo para %.1f / %.1f graus (a contagem estava %.2f "
-                      "graus fora e foi acertada pelo encoder)",
-                      t1, t2, (double)ajuste);
-    } else {
-      definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
-    }
+    definirMensagem("Indo para %.1f / %.1f graus (a contagem estava %.2f "
+                    "graus fora e foi acertada pelo encoder)",
+                    t1, t2, (double)anc.ajuste);
+  } else if (anc.comEncoder) {
+    definirMensagem("Indo para %.1f / %.1f graus, medido pelo encoder", t1, t2);
+  } else {
+    // Maquina sem encoder nenhum: operar pela contagem e a escolha da
+    // instalacao, nao uma falha, e nao ha o que avisar.
+    definirMensagem("Indo para %.1f / %.1f graus", t1, t2);
   }
 }
 

@@ -70,6 +70,10 @@ extern SerialMock Serial;
 // ---- ESP -------------------------------------------------------------
 struct EspMock {
   uint32_t getSketchSize()      const { return 1721921; }
+  // MD5 do binario gravado. No ESP32 e calculado sobre o que esta na
+  // flash, entao muda a cada binario diferente -- e o unico carimbo que
+  // nao mente sobre qual firmware a placa esta rodando.
+  const char* getSketchMD5()    const { return "0123456789abcdef0123456789abcdef"; }
   uint32_t getFreeSketchSpace() const { return g_espParticaoOta; }
   uint32_t getFreeHeap()        const { return 236864; }
   uint32_t getMinFreeHeap()     const { return 198000; }

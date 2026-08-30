@@ -755,31 +755,36 @@ uint32_t correcaoAlertas() { return alertas; }
 // bem acima do tremor.
 static const float ANCORA_MORTA_GRAUS = 0.05f;
 
-float ancorarNoEncoder() {
-  // Nunca sobre eixo andando: reescrever a contagem no meio da rampa
-  // muda o destino que o gerador de pulso ja esta perseguindo.
-  if (motoresEmMovimento()) return 0.0f;
-  if (correcaoEmCurso()) return 0.0f;
+Ancoragem ancorarNoEncoder() {
+  Ancoragem a = {0.0f, false, 0, false};
 
-  float maior = 0.0f;
+  // Nunca sobre eixo andando: reescrever a contagem no meio da rampa
+  // muda o destino que o gerador de pulso ja esta perseguindo. Mas isso
+  // TEM de aparecer: o movimento seguinte sai pela contagem, e quem
+  // pediu um angulo pelo encoder precisa saber que nao foi assim.
+  if (motoresEmMovimento() || correcaoEmCurso()) { a.andando = true; return a; }
+
   for (uint8_t k = 1; k <= 2; k++) {
     Junta& j = (k == 1) ? J1 : J2;
+    // Junta sem encoder configurado nao e falha: e uma maquina que se
+    // escolheu operar pela contagem, e ali nao ha nada a avisar.
     if (configEncoder.reg[k - 1] == 0) continue;
     if (j.passosPorGrau <= 0.0f) continue;
     // leituraConfiavel() ja cobre validade, idade e possibilidade fisica.
-    if (!leituraConfiavel(k)) continue;
+    if (!leituraConfiavel(k)) { a.semLeitura |= (uint8_t)(1u << (k - 1)); continue; }
 
+    a.comEncoder = true;
     const LeituraEncoder L = encoderLer(k);
     const float conta = passosParaGraus(j, (k == 1) ? posicaoJ1() : posicaoJ2());
     const float dif   = L.graus - conta;
     if (fabsf(dif) < ANCORA_MORTA_GRAUS) continue;
 
     ajustarContagem(j, grausParaPassos(j, L.graus));
-    if (fabsf(dif) > maior) maior = fabsf(dif);
+    if (fabsf(dif) > a.ajuste) a.ajuste = fabsf(dif);
     logEvento("contagem ancorada no encoder na junta %u: %.2f -> %.2f graus",
               (unsigned)k, (double)conta, (double)L.graus);
   }
-  return maior;
+  return a;
 }
 
 void correcaoVigiar() {

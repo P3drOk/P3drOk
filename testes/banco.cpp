@@ -5219,6 +5219,88 @@ static void teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta() {
 }
 
 // ---------------------------------------------------------------------
+// V26: "ir a um angulo" diz EM QUE CONTA saiu.
+//
+// Ir pela medida do encoder e ir pela contagem de pulsos sao duas coisas
+// diferentes, e so uma delas leva o BRACO ao angulo pedido quando as
+// duas divergem. O ancoramento devolvia so um numero, entao "nao havia
+// o que corrigir" e "nao consegui ler o encoder" saiam iguais: a mesma
+// frase de sempre, o movimento pela contagem, e o braco parando longe.
+// ---------------------------------------------------------------------
+// A saude diz QUAL firmware esta rodando. Sem isso, um defeito ja
+// corrigido no fonte continua aparecendo na bancada e nao ha como saber
+// se aquela placa tem ou nao a correcao -- foi exatamente o que
+// aconteceu, e custou uma rodada inteira de diagnostico do lado errado.
+static void teste_V27_saude_diz_qual_firmware_esta_rodando() {
+  secao("V27  A maquina diz qual binario esta gravado nela");
+  reiniciarSistema();
+  rodarComWeb(200);
+
+  webGet("/api/saude");
+  const std::string js = webCorpo();
+  const size_t onde = js.find("\"fw\"");
+  nota("saude: %s", onde == std::string::npos
+       ? "sem campo fw" : js.substr(onde, 34).c_str());
+  checar(onde != std::string::npos, "V27a",
+         "a saude publica um carimbo do firmware gravado");
+  checar(js.find(std::string("\"fw\":\"") + ESP.getSketchMD5() + "\"") != std::string::npos,
+         "V27b",
+         "e o carimbo e o MD5 do binario gravado -- muda quando o binario "
+         "muda, e so quando ele muda");
+}
+
+static void teste_V26_diz_em_que_conta_o_movimento_saiu() {
+  secao("V26  Ir a um angulo diz se foi pelo encoder ou pela contagem");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();
+  rodarComWeb(300);
+
+  const float redJ1 = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  configEncoder.contagensPorGrau[0] =
+      configEncoder.contagensPorVolta[0] * redJ1 / 360.0f;
+  rodarComWeb(50);
+
+  // 1. Encoder respondendo e contagem ja certa: diz que foi medido.
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, 5.0f, 0.0f);
+  rodarComWeb(40);
+  nota("com encoder bom: \"%s\"", ultimaMensagem);
+  checar(strstr(ultimaMensagem, "encoder") != nullptr, "V26a",
+         "com leitura boa, a tela diz que o movimento saiu pelo encoder");
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < 8000) { rodarComWeb(20); t += 20; }
+
+  // 2. O cabo cai. O movimento ainda acontece -- recusar deixaria o
+  //    operador sem jeito de tirar o braco do lugar -- mas a tela para
+  //    de dizer a mesma frase de sempre.
+  g_uart.escravo[0].mudo = true;
+  g_uart.escravo[1].mudo = true;
+  rodarComWeb(1500);
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, 10.0f, 0.0f);
+  rodarComWeb(40);
+  nota("com o cabo caido: modo=%d -- \"%s\"", (int)modoAtual, ultimaMensagem);
+  checar(modoAtual == MODO_POSICIONANDO, "V26b",
+         "sem encoder o movimento ainda acontece: recusar deixaria o "
+         "operador sem tirar o braco do lugar");
+  checar(strstr(ultimaMensagem, "PELA CONTAGEM") != nullptr, "V26c",
+         "mas a tela avisa que ESTE movimento nao e baseado na medida");
+
+  // 3. Maquina sem encoder nenhum nao e falha: e a instalacao que se
+  //    escolheu, e ali nao ha o que avisar.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  configEncoder.reg[0] = configEncoder.reg[1] = 0;
+  rodarComWeb(200);
+  enviarComando(CMD_IR_HOME);
+  rodarComWeb(40);
+  nota("maquina sem encoder: \"%s\"", ultimaMensagem);
+  checar(strstr(ultimaMensagem, "PELA CONTAGEM") == nullptr &&
+         strstr(ultimaMensagem, "Indo para") != nullptr, "V26d",
+         "maquina sem encoder nenhum nao leva aviso: operar pela contagem "
+         "ali e escolha da instalacao, nao falha");
+}
+
+// ---------------------------------------------------------------------
 // V13: o angulo na tela tem de ser o do BRACO.
 //
 // A conversao antiga tira o angulo de dois numeros digitados -- contagens
@@ -7484,6 +7566,8 @@ int main() {
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta();
+  teste_V26_diz_em_que_conta_o_movimento_saiu();
+  teste_V27_saude_diz_qual_firmware_esta_rodando();
   teste_V14_velocidade_por_motor();
   teste_V15_ir_a_um_angulo_sem_calibracao();
   teste_V16_contagem_perdida_e_reancorada();

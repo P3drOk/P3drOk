@@ -3027,6 +3027,11 @@ function saudeAtualizar(){
              (e.vale?"":" · SEM LEITURA");
     };
     const linhas=[
+      /* PRIMEIRA LINHA, de proposito: QUAL firmware esta rodando.
+         Faltava, e a falta custou caro -- um defeito ja corrigido no
+         fonte continuou aparecendo na bancada e nao havia nada na tela
+         que dissesse se aquela placa tinha ou nao a correcao. */
+      ["Firmware nesta placa",   j.fw ? String(j.fw).slice(0,12) : "--"],
       ["Ligada ha",              dur(j.up)],
       ["Pecas prontas",          j.ciclos+" (nesta sessao: "+j.ciclosSes+")"],
       ["Interrompidas no meio",  String(j.abortados)],

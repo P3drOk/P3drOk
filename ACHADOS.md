@@ -4102,11 +4102,66 @@ botão.
 | 1366×768 | fixo | fixo |
 | 1280×800 | fixo | fixo |
 
+## R152 · A máquina não dizia qual firmware estava rodando  `V27`  ✅
+
+A foto do relato mostra contagem **−3,3°**, encoder **63,00°**, erro
+**+66,31°** — e a mensagem *"Indo para 0.0 / 0.0 graus"*. Essa frase é a
+**anterior** ao ancoramento de R147: com 66° de correção, o firmware
+corrigido diria *"a contagem estava 66,31 graus fora e foi acertada pelo
+encoder"*. A placa estava rodando um binário sem as correções.
+
+E não havia **nada na tela** que dissesse isso. Diagnosticar o fonte
+enquanto a máquina roda outro binário é trabalho jogado fora, e foi o que
+aconteceu: uma rodada inteira olhando para o lado errado.
+
+A saúde da máquina passou a publicar o **MD5 do binário gravado**, na
+primeira linha. `__DATE__` não serviria: é do momento em que *aquele
+arquivo* foi compilado, e uma correção noutro `.cpp` não mexe nele — o
+carimbo ficaria velho justamente na hora em que precisa estar certo. O
+MD5 é calculado sobre o que está na flash: muda quando o binário muda, e
+só quando ele muda.
+
+## R153 · Movimento pela contagem não podia sair calado  `V26`  ✅
+
+Pedido: "quando o usuário pedir para ir a tal ângulo, quero que mova com
+base na medida do encoder, não de leitura acumulada de erro".
+
+Olhando o próprio ancoramento com essa frase na mão, apareceu uma brecha
+real: `ancorarNoEncoder()` devolvia **só um número**, e devolvia zero em
+três situações diferentes:
+
+| situação | o que acontecia |
+|---|---|
+| não havia o que corrigir | move pelo encoder ✔ |
+| **não deu para ler o encoder** | move pela contagem, **calado** |
+| **o eixo ainda estava andando** | move pela contagem, **calado** |
+
+Nos dois últimos casos o movimento saía exatamente com o defeito do
+relato — o braço parando longe do ângulo pedido — e a tela dizia a mesma
+frase de sempre. Para quem pediu um movimento baseado no encoder, essas
+três coisas não podem ter a mesma cara.
+
+Agora a função devolve **por quê**, e a mensagem diz em que conta o
+movimento saiu:
+
+| | mensagem |
+|---|---|
+| leitura boa, contagem já certa | "Indo para X / Y graus, medido pelo encoder" |
+| leitura boa, contagem fora | "…(a contagem estava N graus fora e foi acertada pelo encoder)" |
+| tem encoder, sem leitura agora | **"Indo para X / Y graus PELA CONTAGEM: sem leitura confiável do encoder"** |
+| máquina sem encoder nenhum | "Indo para X / Y graus" |
+
+O último caso é deliberado: operar pela contagem numa máquina sem encoder
+é escolha da instalação, não falha, e ali não há o que avisar. E o
+movimento **não é recusado** quando falta leitura — recusar deixaria o
+operador sem tirar o braço do lugar. Ele acontece, e a tela diz que
+aquele não foi pelo encoder.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **464 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **470 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **286 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

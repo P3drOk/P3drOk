@@ -924,7 +924,7 @@ static void handleSaude() {
     "\"enc2\":{\"ok\":%lu,\"falha\":%lu,\"taxa\":%u,\"idade\":%lu,\"graus\":%.2f,\"vale\":%s},"
     "\"trav\":%lu,\"alerta\":%lu,"
     "\"cartao\":%s,\"cartaoLivre\":%lu,\"cartaoTotal\":%lu,"
-    "\"apr\":%s,\"aprBotao\":%s,\"estop\":%s,\"ota\":%s}",
+    "\"apr\":%s,\"aprBotao\":%s,\"estop\":%s,\"ota\":%s,\"fw\":\"%s\"}",
     (unsigned long)up,
     (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
     (unsigned long)ESP.getSketchSize(),
@@ -943,7 +943,21 @@ static void handleSaude() {
     (unsigned long)(armBytesLivres() / 1024), (unsigned long)(armBytesTotais() / 1024),
     ra.ativo ? "true" : "false", ra.instalado ? "true" : "false",
     ESTOP_FISICO_INSTALADO ? "true" : "false",
-    otaDisponivel() ? "true" : "false");
+    otaDisponivel() ? "true" : "false",
+    // QUAL FIRMWARE ESTA RODANDO, sem chance de mentir.
+    //
+    // Faltava, e a falta custou caro: um defeito ja corrigido no fonte
+    // continuou aparecendo na bancada, e nao havia nada na tela que
+    // dissesse se aquela placa tinha ou nao a correcao -- diagnosticar
+    // o fonte enquanto a maquina roda outro binario e trabalho jogado
+    // fora.
+    //
+    // __DATE__ nao serve: e do momento em que AQUELE arquivo foi
+    // compilado, e uma correcao noutro .cpp nao mexe nele -- o carimbo
+    // ficaria velho justamente na hora em que precisa estar certo. O
+    // MD5 e calculado sobre o binario que esta na flash: muda quando o
+    // binario muda, e so quando ele muda.
+    ESP.getSketchMD5());
 
   server.send(200, "application/json", json);
 }

@@ -110,11 +110,21 @@ uint32_t correcaoAlertas();
 //  estiver ligado. Este arruma o ponto de PARTIDA, que e de onde o erro
 //  vinha.
 //
-//  Devolve a maior correcao aplicada, em graus da junta -- zero quando
-//  nao havia o que corrigir, quando nao ha leitura confiavel ou quando
-//  o braco nao esta parado.
+//  E DIZ POR QUE, quando nao da.
+//
+//  Devolver so um numero escondia a diferenca entre "nao havia o que
+//  corrigir" e "nao consegui ler o encoder" -- e nos dois casos o
+//  movimento saia igual, pela contagem, calado. Para quem pediu um
+//  angulo baseado no encoder, essas duas coisas nao podem ter a mesma
+//  cara na tela.
 // =====================================================================
-float ancorarNoEncoder();
+struct Ancoragem {
+  float   ajuste;      // maior correcao aplicada, em graus da junta
+  bool    comEncoder;  // ao menos uma junta foi ancorada no encoder
+  uint8_t semLeitura;  // juntas COM encoder que nao deram leitura: bit0=J1, bit1=J2
+  bool    andando;     // recusou porque o eixo nao estava parado
+};
+Ancoragem ancorarNoEncoder();
 
 // =====================================================================
 //  TRAVAMENTO: o eixo foi mandado andar e nao andou
