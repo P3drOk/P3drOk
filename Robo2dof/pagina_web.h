@@ -1058,6 +1058,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <button class="zb" id="zMais" title="Aproximar">+</button>
           <button class="zb" id="zMenos" title="Afastar">&minus;</button>
           <button class="zb pq" id="zAuto" title="Enquadrar o braco">FIT</button>
+          <button class="zb pq" id="zIr" title="Tocar na mesa leva a PONTA ate la">IR</button>
           <button class="zb pq" id="zDes" title="Desenhar o caminho com o dedo">DES</button>
           <button class="zb pq" id="zTema" title="Alternar tema">TEMA</button>
           <button class="zb pq" id="z3D" title="Alternar vista 2D / 3D">3D</button>
@@ -1149,9 +1150,9 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             </div>
             <div class="velEq"><b id="velMovTx">--</b>
               <span class="atalhosVel">
-                <button class="mb" data-vel="0.08">lento</button>
-                <button class="mb" data-vel="0.25">normal</button>
-                <button class="mb" data-vel="0.8">rapido</button>
+                <button class="mb" data-vel="0.1">lento</button>
+                <button class="mb" data-vel="0.45">normal</button>
+                <button class="mb" data-vel="1">rapido</button>
               </span></div>
             <div class="linhaBt">
               <button class="b mini" id="btPrec">Precisao: desligada</button>
@@ -1429,6 +1430,18 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             manual.</div>
 
             <h4>Velocidade do braco</h4>
+            <!-- A FAIXA DA BARRA. Maquina nenhuma usa de 1 a 120 graus/s:
+                 uma com redutor grande nunca passa de vinte, outra com
+                 redutor curto so comeca a ser util acima de cinquenta.
+                 Configurada aqui, a barra inteira passa a ser util nesta
+                 maquina -- e o teto vira tambem um limite de seguranca,
+                 guardado na maquina em vez de no navegador. -->
+            <div class="cp"><label>Barra da aba Mover &middot; minimo</label>
+              <input type="number" id="inVmn" min="0.1" step="0.5"><span class="un">°/s</span></div>
+            <div class="cp"><label>Barra da aba Mover &middot; maximo</label>
+              <input type="number" id="inVmx" min="1" max="720" step="1"><span class="un">°/s</span></div>
+            <button class="b pri mini" id="btFaixaSalvar">Salvar a faixa</button>
+            <div class="pq2" id="qFaixaSalvar"></div>
             <div class="seg" id="segVel">
               <button data-v="lento">Lento</button>
               <button data-v="normal">Normal</button>
@@ -1544,26 +1557,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
       </div>
 
       <div class="et">
-        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-engrenagem"/></svg></div>
-          <div class="tx"><div class="tt">Redutor de cada junta</div>
-          <span class="sb" id="sbRed">--</span></div><div class="chv">&#9654;</div></div>
-        <div class="dentro">
-          <div class="nt">O unico numero que a calibracao <b>nao mede</b>. O
-          encoder fica no eixo do motor, antes do redutor: com um sensor so
-          desse lado, nenhuma medida revela a relacao dele. Declare o que voce
-          comprou.</div>
-          <div class="cp"><label>Junta 1 &middot; redutor</label>
-            <input type="number" id="inRd1" min="0.1" step="0.1"><span class="un">: 1</span></div>
-          <div class="cp"><label>Junta 2 &middot; redutor</label>
-            <input type="number" id="inRd2" min="0.1" step="0.1"><span class="un">: 1</span></div>
-          <button class="b pri mini" id="btRedSalvar">Salvar</button>
-          <div class="pq2" id="qRedSalvar"></div>
-          <div class="nt">Se o curso medido sair em graus que nao batem com a
-          maquina, e aqui que se conserta &mdash; sem refazer a calibracao.</div>
-        </div>
-      </div>
-
-      <div class="et">
         <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
           <div class="tx"><div class="tt">Area da mesa</div>
           <span class="sb" id="sbMesa">--</span></div><div class="chv">&#9654;</div></div>
@@ -1670,10 +1663,23 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="cp"><label>Endereco do driver</label><input type="number" id="encId1" min="1" max="247"></div>
             <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg1" min="0" max="65535"></div>
             <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv1" min="1"></div>
+            <!-- O REDUTOR MORA AQUI, embaixo da medicao daquela junta.
+                 O encoder conta no eixo do MOTOR, antes do redutor: a
+                 contagem so vira grau da junta passando por ele. Os dois
+                 numeros pertencem a mesma conta, e estavam em telas
+                 diferentes. -->
+            <div class="cp"><label>Redutor</label>
+              <input type="number" id="inRd1" min="0.1" step="0.1"><span class="un">: 1</span></div>
+            <div class="nt">O unico numero que a calibracao nao mede: com o
+            sensor antes do redutor, nenhuma medida revela a relacao dele.</div>
             <h4>Junta 2</h4>
             <div class="cp"><label>Endereco do driver</label><input type="number" id="encId2" min="1" max="247"></div>
             <div class="cp"><label>Registrador da posicao</label><input type="number" id="encReg2" min="0" max="65535"></div>
             <div class="cp"><label>Contagens por volta</label><input type="number" id="encCv2" min="1"></div>
+            <div class="cp"><label>Redutor</label>
+              <input type="number" id="inRd2" min="0.1" step="0.1"><span class="un">: 1</span></div>
+            <button class="b pri mini" id="btRedSalvar">Salvar os redutores</button>
+            <div class="pq2" id="qRedSalvar"></div>
             <h4 class="dobra">Escala do angulo</h4>
             <div class="sub">
             <div class="nt">Quantas contagens o encoder da por grau da junta.
@@ -1963,8 +1969,11 @@ $("selJunta").onchange=function(){ juntaSel=+$("selJunta").value; pintar(); };
    O modo Precisao continua com o valor dele: e o proposito daquele
    botao.
    --------------------------------------------------------------------- */
-const VEL_GRAUS_MAX = 120;   /* teto da barra; o firmware aceita ate 720 */
-const VEL_GRAUS_MIN = 1;
+/* A faixa da barra vem da maquina (velMn/velMx no estado), configurada
+   em Ajustes. Estes sao so os valores enquanto o primeiro estado nao
+   chegou -- e o teto de seguranca do firmware. */
+let VEL_GRAUS_MAX = 60;
+let VEL_GRAUS_MIN = 2;
 /* Tempo de subida ate a velocidade escolhida. E ele que se mantem
    constante -- nao a aceleracao. */
 const VEL_RAMPA_S = 0.35;
@@ -1973,7 +1982,20 @@ function alcanceMm(){ return (D.l1||200)+(D.l2||200); }
 function grausParaMm(g){ return g*Math.PI*alcanceMm()/180; }
 function mmParaGraus(v){ const R=alcanceMm(); return R>1 ? v*180/(Math.PI*R) : v; }
 
+function velFaixa(){
+  const mn=(typeof D.velMn==="number"&&D.velMn>0)?D.velMn:VEL_GRAUS_MIN;
+  const mx=(typeof D.velMx==="number"&&D.velMx>mn)?D.velMx:VEL_GRAUS_MAX;
+  VEL_GRAUS_MIN=mn; VEL_GRAUS_MAX=mx;
+  const b=$("inVelMov");
+  if(b&&(+b.min!==mn||+b.max!==mx)){
+    b.min=String(mn); b.max=String(mx);
+    b.step=String(Math.max(0.1,(mx-mn)/120));
+  }
+  return [mn,mx];
+}
+
 function velMostrar(g){
+  velFaixa();
   const gg=Math.min(VEL_GRAUS_MAX,Math.max(VEL_GRAUS_MIN,g));
   $("inVelMov").value=Math.round(gg);
   $("inVelMm").value=Math.round(grausParaMm(gg));
@@ -1986,6 +2008,7 @@ function velMostrar(g){
 
 let velEnviando=false, velUltimoEnviado=-1;
 function velEnviar(g){
+  velFaixa();
   const gg=Math.min(VEL_GRAUS_MAX,Math.max(VEL_GRAUS_MIN,g));
   velMostrar(gg);
   if(velEnviando) return;
@@ -2020,8 +2043,14 @@ $("inVelMm").onchange=function(){
   if(isNaN(v)){velMostrar(velUltimoEnviado>0?velUltimoEnviado:20);return;}
   velEnviar(mmParaGraus(v));
 };
+/* Os tres degraus repartem a FAIXA configurada, nao o teto absoluto:
+   numa maquina cujo maximo util e vinte graus por segundo, "rapido" tem
+   de ser vinte, e nao um numero que ela nunca alcanca. */
 document.querySelectorAll("[data-vel]").forEach(function(b){
-  b.onclick=function(){ velEnviar(VEL_GRAUS_MAX*(+b.dataset.vel)); };
+  b.onclick=function(){
+    const f=velFaixa();
+    velEnviar(f[0]+(f[1]-f[0])*(+b.dataset.vel));
+  };
 });
 $("btTesteMov").onclick=function(){post("/api/teste/rele","qMoverSel");};
 
@@ -2240,6 +2269,17 @@ function salvar(vc){
 }
 $("btSalvar").onclick=function(){salvar($("inVc2").value);};
 
+/* A faixa da barra e salva sozinha: ela nao pertence ao mesmo formulario
+   que as tres velocidades, e mandar tudo junto faria salvar a faixa
+   reaplicar valores que o operador nao tocou. */
+$("btFaixaSalvar").onclick=function(){
+  const mn=parseFloat($("inVmn").value), mx=parseFloat($("inVmx").value);
+  if(!(mn>0)||!(mx>mn)){
+    acao("FaixaSalvar","o minimo tem de ser menor que o maximo");return;}
+  acao("FaixaSalvar","");
+  post("/api/config?velMin="+mn+"&velMax="+mx,"qFaixaSalvar");
+};
+
 /* ---------- escala do angulo ----------
    Ela era ensinada aqui, em dois toques: marca onde esta, leva a junta
    ate um angulo conhecido, diz quantos graus foram. Virou consequencia
@@ -2372,8 +2412,6 @@ function calibAtualizar(){
             "bem afastado dos outros")
          : "nenhum canto ensinado ainda");
 
-    $("sbRed").textContent = j.red1.toFixed(2)+" : 1  ·  "+
-                             j.red2.toFixed(2)+" : 1";
     if($("inRd1")!==document.activeElement) $("inRd1").value=j.red1;
     if($("inRd2")!==document.activeElement) $("inRd2").value=j.red2;
 
@@ -3803,15 +3841,27 @@ function juntaNoPonto(q){
   return (d2<=d1) ? 2 : 1;      /* empate vai para o antebraco, que fica por cima */
 }
 
+/* LEVAR A PONTA COM UM TOQUE PRECISA SER PEDIDO.
+   Era o comportamento padrao da mesa: tocar em qualquer lugar vazio
+   mandava o robo para la. Quem esta olhando o desenho toca nele o tempo
+   todo -- para conferir uma cota, para escolher o eixo, para dar zoom --
+   e cada toque desses virava um movimento que ninguem pediu. Agora ha o
+   botao IR: ligado, o toque comanda; desligado, o desenho e so desenho. */
+let irOn=false;
+$("zIr").onclick=function(){
+  irOn=!irOn;
+  $("zIr").classList.toggle("on",irOn);
+  if(irOn&&desOn)desModo(false);
+};
+
 cv.addEventListener("click",function(e){
   /* No modo desenho o toque e traco; no modo posicionar e arraste.
      Nem um nem outro manda o braco para o ponto tocado. */
   if(desOn||posOn)return;
   const q=mmDe(e);
 
-  /* Tocar SOBRE o braco seleciona aquela junta. So o que cai fora do
-     braco e que vira "leve a ponta ate aqui" -- senao um toque para
-     escolher o eixo mandaria o robo andar, que e o oposto do esperado. */
+  /* Tocar SOBRE o braco seleciona aquela junta -- sempre, com IR ligado
+     ou nao: escolher o eixo nunca deve mandar o robo andar. */
   const j=juntaNoPonto(q);
   if(j){
     juntaSel=j;
@@ -3819,6 +3869,7 @@ cv.addEventListener("click",function(e){
     pintar();
     return;
   }
+  if(!irOn)return;
   post("/api/mover_xy?x="+q[0].toFixed(1)+"&y="+q[1].toFixed(1));
 });
 
@@ -3872,6 +3923,8 @@ function desContar(){
 }
 function desModo(v){
   desOn=v;desenhando=false;
+  /* Os dois modos disputam o mesmo toque: ligar um desliga o outro. */
+  if(v&&irOn){irOn=false;$("zIr").classList.remove("on");}
   document.body.dataset.des=v?"1":"0";
   cv.classList.toggle("des",v);
   $("zDes").classList.toggle("on",v);
@@ -4363,7 +4416,6 @@ redeAtualizar();
 const MOTIVO=["ok","aguardando","sem resposta","quadro corrompido",
               "registrador recusado","formato inesperado"];
 const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
-const encHist=[[],[]];
 /* Amostra INTEIRA, nao so o erro: e o que a analise detalhada mostra e o
    que vai para o CSV. Guardar so o erro obrigaria a olhar duas telas
    para responder "o erro subiu porque o braco andou ou porque a leitura
@@ -4372,15 +4424,15 @@ const encAmostras=[];
 let encT0=0;
 let encD=null, encCarregou=false;
 
-const cvEnc=$("cvEnc"), ctEnc=cvEnc?cvEnc.getContext("2d"):null;
 const cvPos=$("cvPos"), ctPos=cvPos?cvPos.getContext("2d"):null;
 
 /* ---------------------------------------------------------------------
    As duas rodinhas.
 
-   Cada uma e a junta vista de cima. Ponteiro GROSSO = onde o encoder diz
-   que o eixo esta. Ponteiro FINO = onde o firmware mandou. A abertura
-   entre os dois e o erro, e da para ver sem ler numero.
+   Cada uma e a junta vista de cima. O ponteiro diz onde o encoder mede
+   que o eixo esta -- e so isso. O ponteiro fino do comandado saiu: ele
+   girava sozinho numa maquina em montagem e fazia o painel parecer
+   travado.
 
    No centro, um disco pequeno gira com a volta do MOTOR (a contagem
    modulo uma volta). Ele e a prova visual de que a leitura esta viva: se
@@ -4404,7 +4456,6 @@ function rodaPintar(i,d){
   ct.clearRect(0,0,w,h);
 
   const L=(d.j||[])[i]||{};
-  const cmd=(i===0)?d.t1:d.t2;
   const lim=(i===0)?[d.j1min,d.j1max]:[d.j2min,d.j2max];
   const temFaixa=(typeof lim[0]==="number")&&(lim[1]>lim[0]);
   const g=Math.PI/180;
@@ -4429,12 +4480,14 @@ function rodaPintar(i,d){
     ct.beginPath();ct.moveTo(p1[0],p1[1]);ct.lineTo(p2[0],p2[1]);ct.stroke();
   }
 
-  /* ponteiro fino: comandado */
-  if(typeof cmd==="number"){
-    const p=P(cmd,R-13);
-    ct.strokeStyle=C.arco;ct.lineWidth=1.8;
-    ct.beginPath();ct.moveTo(cx,cy);ct.lineTo(p[0],p[1]);ct.stroke();
-  }
+  /* O PONTEIRO FINO AZUL SAIU.
+     Ele mostrava o COMANDADO -- a contagem de passos do firmware. Numa
+     maquina em montagem essa contagem anda sozinha, e o risquinho azul
+     ficava girando sem parar em volta do mostrador: o painel parecia
+     estar processando alguma coisa, ou travado. E o mesmo motivo pelo
+     qual o numero comandado ja tinha saido da tela (ver ACHADOS R108) --
+     faltava tirar o risco. Fica o ponteiro do que importa: onde a junta
+     ESTA. */
 
   /* ponteiro grosso: medido */
   if(L.ok){
@@ -4474,51 +4527,8 @@ function medirTela(cv,ct){
   cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);
   ct.setTransform(d,0,0,d,0,0);
 }
-function encMedir(){ medirTela(cvEnc,ctEnc); medirTela(cvPos,ctPos); }
+function encMedir(){ medirTela(cvPos,ctPos); }
 addEventListener("resize",encMedir);
-
-function encPintar(){
-  if(!ctEnc||!cvEnc.width)return;
-  const C=paleta();
-  const dp=window.devicePixelRatio||1;
-  const w=cvEnc.width/dp,h=cvEnc.height/dp;
-  ctEnc.clearRect(0,0,w,h);
-  ctEnc.fillStyle=C.papel;ctEnc.fillRect(0,0,w,h);
-
-  /* Escala simetrica em torno do zero, com piso: sem piso, ruido de
-     centesimo de grau viraria montanha e assustaria por nada. */
-  let pico=0.5;
-  encHist.forEach(function(s){s.forEach(function(v){
-    const a=Math.abs(v);if(a>pico)pico=a;});});
-  pico=pico*1.15;
-
-  /* grade e rotulos */
-  ctEnc.strokeStyle="rgba("+C.grade+",.45)";ctEnc.lineWidth=1;
-  ctEnc.fillStyle=C.letra3;
-  ctEnc.font="9px ui-monospace,Menlo,monospace";ctEnc.textAlign="left";
-  [-1,-0.5,0,0.5,1].forEach(function(f){
-    const y=h/2-f*(h/2-10);
-    ctEnc.beginPath();ctEnc.moveTo(34,y);ctEnc.lineTo(w-6,y);
-    if(f===0){ctEnc.strokeStyle=C.arco;ctEnc.globalAlpha=.5;}
-    ctEnc.stroke();
-    ctEnc.strokeStyle="rgba("+C.grade+",.45)";ctEnc.globalAlpha=1;
-    ctEnc.fillText((f*pico).toFixed(2)+"°",4,y+3);
-  });
-
-  /* as duas juntas */
-  [[0,C.arco],[1,C.quente]].forEach(function(par){
-    const s=encHist[par[0]];
-    if(s.length<2)return;
-    ctEnc.strokeStyle=par[1];ctEnc.lineWidth=1.8;
-    ctEnc.beginPath();
-    s.forEach(function(v,i){
-      const x=34+(w-40)*i/(ENC_AMOSTRAS-1);
-      const y=h/2-(v/pico)*(h/2-10);
-      if(i)ctEnc.lineTo(x,y);else ctEnc.moveTo(x,y);
-    });
-    ctEnc.stroke();
-  });
-}
 
 /* ---------------------------------------------------------------------
    Grafico da POSICAO MEDIDA.
@@ -4797,7 +4807,7 @@ function encAplicar(d){
     const L=j[i]||{};
     if(L.ok){
       encCelula("eM"+(i+1),L.graus.toFixed(2)+"°");
-      encHist[i].push(L.erro);
+
     }else{
       /* Registrador 0 quer dizer "esta junta nao foi ligada ainda".
          Nao e falha: e o estado normal de quem so tem um driver na
@@ -4808,9 +4818,9 @@ function encAplicar(d){
                           : MOTIVO[L.motivo||1]);
       /* Sem leitura o historico continua andando com zero, senao o
          grafico mente dizendo que estava tudo bem no buraco. */
-      if(encHist[i].length)encHist[i].push(0);
+
     }
-    while(encHist[i].length>ENC_AMOSTRAS)encHist[i].shift();
+
   });
 
   /* Amostra inteira, para a analise detalhada e para o CSV. */
@@ -4827,7 +4837,7 @@ function encAplicar(d){
   });
   while(encAmostras.length>ENC_AMOSTRAS)encAmostras.shift();
 
-  window.__encN=encHist[0].length;   /* o banco de interface confere */
+  window.__encN=encAmostras.length;  /* o banco de interface confere */
 
   const L1=j[0]||{},L2=j[1]||{};
   $("sbEnc").textContent = !d.ativo ? "desligado"
@@ -4867,10 +4877,19 @@ function encAplicar(d){
   rodaPintar(0,d);rodaPintar(1,d);
 }
 
+let encEmVoo = false, encDesde = 0;
 function encAtualizar(){
+  /* Mesma regra do estado: uma por vez, com o mesmo prazo de escape. O
+     painel do encoder e a segunda consulta mais frequente da pagina, e
+     duas filas crescendo somam. */
+  const agoraEnc = Date.now();
+  if(encEmVoo && (agoraEnc - encDesde) < 3000) return Promise.resolve();
+  encEmVoo = true;
+  encDesde = agoraEnc;
   return fetch("/api/encoder").then(function(r){return r.json();})
-   .then(encAplicar)
+   .then(function(d){encEmVoo=false;return encAplicar(d);})
    .catch(function(e){
+     encEmVoo=false;
      /* O catch existe para a REDE cair sem encher a tela de erro. Ele
         engolia tambem defeito de codigo dentro de encAplicar, e ai meia
         tela parava de atualizar sem nada explicando -- foi assim que uma
@@ -4894,7 +4913,7 @@ $("btEncSalvar").onclick=function(){
        "&b32="+on("enc32")+"&lo="+on("encLo")+
        "&id1="+$("encId1").value+"&reg1="+$("encReg1").value+"&cv1="+$("encCv1").value+
        "&id2="+$("encId2").value+"&reg2="+$("encReg2").value+"&cv2="+$("encCv2").value)
-   .then(function(){encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
+   .then(function(){encCarregou=false;encAmostras.length=0;encT0=0;});
 };
 /* O habilita. Carrega uma vez do status para nao apagar o que o operador
    esta digitando a cada atualizacao de tela. */
@@ -4964,7 +4983,7 @@ function sonPintar(d){
 
 $("btEncPadroes").onclick=function(){
   post("/api/encoder/padroes").then(function(){
-    encCarregou=false;encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
+    encCarregou=false;encAmostras.length=0;encT0=0;});
 };
 /* A cacada e o teste escrevem no mesmo relatorio: e sempre "o que a
    linha respondeu por ultimo". */
@@ -4994,7 +5013,7 @@ $("btEncComparar").onclick=function(){
 };
 $("btEncZerar").onclick=function(){
   post("/api/encoder/zerar?j=0").then(function(){
-    encHist[0]=[];encHist[1]=[];encAmostras.length=0;encT0=0;});
+    encAmostras.length=0;encT0=0;});
 };
 
 /* ---------- status ---------- */
@@ -5253,6 +5272,8 @@ function aplicar(d){
   if(!carregou){
     carregou=true;
     $("inVn").value=d.velN;$("inVp").value=d.velP;$("inVa").value=d.velA;
+    if($("inVmn")&&document.activeElement!==$("inVmn"))$("inVmn").value=d.velMn;
+    if($("inVmx")&&document.activeElement!==$("inVmx"))$("inVmx").value=d.velMx;
     $("inVc").value=d.velCordao;$("inVc2").value=d.velCordao;
     $("inA1").value=d.acel1;$("inA2").value=d.acel2;
     $("inSuav").value=d.suav;
@@ -5364,6 +5385,7 @@ function aplicar(d){
 }
 
 let encPulos = 0;
+let statusEmVoo = false, statusDesde = 0;
 function tick(){
   /* O cartao so e consultado quando a aba de arquivos esta aberta: o
      WebServer atende uma conexao por vez e cada requisicao a mais
@@ -5394,9 +5416,31 @@ function tick(){
     if(encPulos >= 4) encPulos = 0;
     encAtualizar();
   }
+  /* UMA consulta de estado por vez.
+
+     O relogio dispara a cada 220 ms, mas o WebServer do ESP32 atende UMA
+     conexao de cada vez. Quando a maquina engasga -- Wi-Fi ruim, um
+     salvamento em memoria nao volatil, o barramento do encoder esperando
+     um timeout -- as consultas nao esperam a anterior: elas se empilham,
+     e a fila cresce enquanto a origem do atraso durar. Dali para a frente
+     tudo chega tarde: o heartbeat do jog, o botao que se aperta, o
+     proprio estado. E era isto que fazia a tela parecer travada e o
+     movimento parecer cortado -- nao havia nada errado no motor.
+
+     Pulando a volta quando a anterior nao voltou, a fila nunca passa de
+     uma requisicao. */
+  /* Com uma valvula de escape: fetch nao tem prazo proprio, e uma
+     requisicao que nunca resolve deixaria a pagina muda para sempre --
+     defeito pior que o que se esta consertando. Passado o prazo, a volta
+     seguinte tenta de novo. */
+  const agoraMs = Date.now();
+  if(statusEmVoo && (agoraMs - statusDesde) < 3000) return;
+  statusEmVoo = true;
+  statusDesde = agoraMs;
   fetch("/api/status").then(function(r){return r.json();}).then(function(d){
-    quedas=0;aplicar(d);
+    statusEmVoo=false;quedas=0;aplicar(d);
   }).catch(function(){
+    statusEmVoo=false;
     quedas++;
     if(quedas>=2){
       lamp($("lRede"),"er");

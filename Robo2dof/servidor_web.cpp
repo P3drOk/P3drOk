@@ -192,7 +192,8 @@ static void handleStatus() {
     "\"trajN\":%u,\"trajMs\":%lu,\"trajPct\":%u,\"escala\":%u,"
     "\"progN\":%u,\"progIdx\":%u,\"progPct\":%u,\"ensaio\":%s,\"velCordao\":%.1f,"
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
-    "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"acel1\":%.0f,\"acel2\":%.0f,"
+    "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"velMn\":%.1f,\"velMx\":%.1f,"
+    "\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
@@ -224,7 +225,8 @@ static void handleStatus() {
     velCordaoMmS, velCordaoMmS,
     protCurso ? "true" : "false", protDobra ? "true" : "false",
     protEnvelope ? "true" : "false",
-    velNormal, velPrecisao, velAuto, J1.aceleracao, J2.aceleracao,
+    velNormal, velPrecisao, velAuto, velMinima, velMaxima,
+    J1.aceleracao, J2.aceleracao,
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
@@ -550,6 +552,8 @@ static void handleConfig() {
   const float vn = argF("velN",  velNormal);
   const float vp = argF("velP",  velPrecisao);
   const float va = argF("velA",  velAuto);
+  const float vmn = argF("velMin", velMinima);
+  const float vmx = argF("velMax", velMaxima);
   // "velC" e o nome antigo do mesmo parametro. Aceitar os dois e certo;
   // errado era dar prioridade ao antigo com o valor VIVO como padrao --
   // como a interface so manda "velCordao", o antigo sempre vencia com o
@@ -573,6 +577,12 @@ static void handleConfig() {
   if (vn <= 0 || vp <= 0 || va <= 0 || vs <= 0 || a1 <= 0 || a2 <= 0 || pv1 <= 0 || rd1 <= 0 || pv2 <= 0 || rd2 <= 0) {
     erro("valor invalido"); return;
   }
+  // A faixa da barra tem de ser uma faixa: minimo abaixo do maximo, e os
+  // dois dentro do que o gerador de pulso aceita.
+  if (vmn <= 0.0f || vmx <= 0.0f || vmn >= vmx || vmx > 720.0f) {
+    erro("faixa de velocidade invalida: minimo menor que o maximo, e ate 720 graus/s");
+    return;
+  }
   // Teto em graus/s: acima disso o pulso passaria do que o driver aceita
   // na junta de maior reducao. 720 graus/s ja e o dobro de qualquer coisa
   // sensata num braco de solda.
@@ -591,6 +601,8 @@ static void handleConfig() {
   configPendente.velNormal    = vn;
   configPendente.velPrecisao  = vp;
   configPendente.velAuto      = va;
+  configPendente.velMinima    = vmn;
+  configPendente.velMaxima    = vmx;
   configPendente.velCordaoMmS = vs;
   configPendente.acel1        = a1;
   configPendente.acel2        = a2;

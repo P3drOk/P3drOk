@@ -22,6 +22,7 @@ import pathlib
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 PAGINA = RAIZ / "Robo2dof" / "pagina_web.h"
 SERVIDOR = RAIZ / "Robo2dof" / "servidor_web.cpp"
+BANCO = RAIZ / "testes" / "banco.cpp"
 
 # Rotas que o navegador pede sozinho, sem aparecer em nenhum fetch().
 IMPLICITAS = {"/", "/manifest.webmanifest", "/icone.svg"}
@@ -29,6 +30,42 @@ IMPLICITAS = {"/", "/manifest.webmanifest", "/icone.svg"}
 
 def rotas_registradas(texto):
     return {m.group(1) for m in re.finditer(r'server\.on\(\s*"([^"]+)"', texto)}
+
+
+def _lista_c(texto, nome):
+    """Extrai os literais de uma lista de strings C chamada `nome`."""
+    i = texto.find("static const char* %s[]" % nome)
+    if i < 0:
+        return None
+    j = texto.index("};", i)
+    return {m.group(1) for m in re.finditer(r'"(/api/[^"]+)"', texto[i:j])}
+
+
+def confere_varredura(servidor, banco):
+    """Toda rota de POST tem de estar na varredura de valores hostis.
+
+    O banco dispara lixo em cada rota registrada -- numeros absurdos,
+    texto onde se espera numero, caminho de arquivo onde se espera
+    indice. Uma rota fora dessa lista e uma rota que ninguem nunca
+    testou com o que um cliente errado manda, e a lista ficava para tras
+    calada: era so acrescentar uma rota e esquecer de inscreve-la.
+    """
+    registradas = {m.group(1) for m in
+                   re.finditer(r'server\.on\(\s*"(/api/[^"]+)",\s*HTTP_POST', servidor)}
+    varridas = _lista_c(banco, "ROTAS_POST")
+    fora = _lista_c(banco, "ROTAS_POST_FORA")
+    if varridas is None or fora is None:
+        print("ERRO  nao achei ROTAS_POST/ROTAS_POST_FORA em banco.cpp")
+        return 1
+    faltando = sorted(registradas - varridas - fora)
+    sobrando = sorted((varridas | fora) - registradas)
+    for r in faltando:
+        print("ERRO  %s aceita POST e nao esta na varredura de valores "
+              "hostis (ROTAS_POST em banco.cpp)" % r)
+    for r in sobrando:
+        print("ERRO  a varredura cita %s, que o firmware nao registra "
+              "mais" % r)
+    return 1 if (faltando or sobrando) else 0
 
 
 def rotas_chamadas(texto):
@@ -58,10 +95,14 @@ def main():
     for r in ociosas:
         print("aviso rota %s registrada e nunca chamada pela pagina" % r)
 
-    if mudas:
+    ruim = 1 if mudas else 0
+    if BANCO.exists():
+        ruim |= confere_varredura(servidor, BANCO.read_text(encoding="utf-8"))
+    if ruim:
         return 1
     print("conferir_rotas: %d rotas registradas, %d chamadas pela pagina, "
-          "nenhuma muda" % (len(registradas), len(chamadas)))
+          "nenhuma muda, e toda rota de POST esta na varredura hostil"
+          % (len(registradas), len(chamadas)))
     return 0
 
 

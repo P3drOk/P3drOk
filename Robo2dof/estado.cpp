@@ -9,6 +9,8 @@ Junta J1;
 Junta J2;
 
 float velNormal      = VEL_NORMAL_PADRAO;
+float velMinima      = VEL_MIN_PADRAO;
+float velMaxima      = VEL_MAX_PADRAO;
 float velPrecisao    = VEL_PRECISAO_PADRAO;
 float velAuto        = VEL_AUTO_PADRAO;
 float velCordaoMmS   = VEL_CORDAO_PADRAO;
@@ -193,6 +195,8 @@ void definirMensagem(const char* fmt, ...) {
 // ---------------------------------------------------------------------
 void prepararConfigPendente() {
   configPendente.velNormal    = velNormal;
+  configPendente.velMinima    = velMinima;
+  configPendente.velMaxima    = velMaxima;
   configPendente.velPrecisao  = velPrecisao;
   configPendente.velAuto      = velAuto;
   configPendente.fVel1        = J1.fatorVel;
@@ -237,6 +241,8 @@ void prepararConfigPendente() {
 
 void aplicarConfigPendente() {
   velNormal         = configPendente.velNormal;
+  velMinima         = configPendente.velMinima;
+  velMaxima         = configPendente.velMaxima;
   velPrecisao       = configPendente.velPrecisao;
   velAuto           = configPendente.velAuto;
   J1.fatorVel       = configPendente.fVel1;
@@ -309,6 +315,8 @@ void carregarConfiguracoes() {
   producao.desdeManutencao = prefs.getUInt("cicMan", 0);
 
   velNormal      = prefs.getFloat("velNg",       VEL_NORMAL_PADRAO);
+  velMinima      = prefs.getFloat("velMn",       VEL_MIN_PADRAO);
+  velMaxima      = prefs.getFloat("velMx",       VEL_MAX_PADRAO);
   velPrecisao    = prefs.getFloat("velPg",       VEL_PRECISAO_PADRAO);
   velAuto        = prefs.getFloat("velAg",       VEL_AUTO_PADRAO);
   velCordaoMmS   = prefs.getFloat("velCmm",      VEL_CORDAO_PADRAO);
@@ -500,6 +508,8 @@ void salvarConfiguracoes() {
   prefs.begin("robo2dof", false);
 
   prefs.putFloat("velNg",       velNormal);
+  prefs.putFloat("velMn",       velMinima);
+  prefs.putFloat("velMx",       velMaxima);
   prefs.putFloat("velPg",       velPrecisao);
   prefs.putFloat("velAg",       velAuto);
   prefs.putFloat("velCmm",      velCordaoMmS);
@@ -637,6 +647,8 @@ void apagarTudo() {
 void restaurarPadroes() {
   // Chamada apenas pelo core 1 (ver CMD_RESTAURAR_PADROES no .ino).
   velNormal      = VEL_NORMAL_PADRAO;
+  velMinima      = VEL_MIN_PADRAO;
+  velMaxima      = VEL_MAX_PADRAO;
   velPrecisao    = VEL_PRECISAO_PADRAO;
   velAuto        = VEL_AUTO_PADRAO;
   velCordaoMmS   = VEL_CORDAO_PADRAO;

@@ -1295,6 +1295,93 @@ andar. O controle de velocidade agora manda a rampa junto, calculada para
 que o **tempo** de subida fique constante. O movimento tem a mesma cara
 em qualquer velocidade.
 
+## R127 · "Anda dois segundos e trava": o contador que ninguém mandava parar  ✅
+
+> "quando clico para ir para o 0 ele anda tipo 2 seg e trava o movimento"
+
+O vigia de travamento tem duas metades: **acusar** e **parar**. Ao separar
+as duas (R124) eu deixei o contador `trav.total` subindo nos dois casos —
+e é esse contador que o laço principal observa para **interromper o
+movimento automático**. Resultado: o vigia "só avisava", mas o movimento
+morria do mesmo jeito, sem ninguém ter mandado. Exatamente meio segundo
+depois de arrancar, mais a rampa: os dois segundos do relato.
+
+Agora quem conta é quem para. E o critério mudou de forma, o que fecha o
+problema pela raiz:
+
+| | |
+|---|---|
+| **com escala medida** | exige proporção: o eixo entrega menos de um quinto do que deveria. Preciso, pega até escorregão parcial |
+| **sem escala medida** | exige o sinal que **não depende de escala nenhuma**: pulso claramente correndo e encoder claramente **parado**. Eixo que gira produz contagem, seja qual for a escala — então aqui não existe falso positivo por número errado |
+
+A proteção voltou a valer em qualquer máquina, calibrada ou não, e o
+falso positivo por número de catálogo continua fechado.
+
+## R128 · O relógio da tela empilhava requisições  ✅
+
+`setInterval(tick, 220)` dispara a cada 220 ms **sem esperar a volta
+anterior**. O WebServer do ESP32 atende uma conexão por vez: quando a
+máquina engasga — Wi-Fi ruim, uma gravação em memória não volátil, o
+barramento do encoder esperando um timeout —, as consultas não esperam,
+elas se empilham, e a fila cresce enquanto a origem do atraso durar. Dali
+em diante tudo chega tarde: o heartbeat do jog, o botão que se aperta, o
+próprio estado.
+
+Uma consulta de estado por vez, uma do encoder por vez, com prazo de
+escape de 3 s — `fetch` não tem prazo próprio, e uma requisição que nunca
+resolve deixaria a página muda para sempre, defeito pior que o que se
+estava consertando.
+
+## R129 · Tocar no desenho não manda mais o robô andar  ✅
+
+Era o comportamento padrão da mesa: tocar em qualquer lugar vazio mandava
+a ponta para lá. Quem está olhando o desenho toca nele o tempo todo — para
+conferir uma cota, para escolher o eixo — e cada toque virava um movimento
+que ninguém pediu. Agora há o botão **IR**: ligado, o toque comanda;
+desligado, o desenho é só desenho. IR e DES disputam o mesmo toque, então
+ligar um desliga o outro.
+
+## R130 · O risquinho azul girando  ✅
+
+As duas rodinhas do encoder tinham um ponteiro **fino azul** com o
+**comandado** — a contagem de passos do firmware. Numa máquina em
+montagem essa contagem anda sozinha, e o risquinho ficava girando sem
+parar em volta do mostrador: o painel parecia estar processando alguma
+coisa, ou travado. É o mesmo motivo pelo qual o número comandado já tinha
+saído da tela (R108) — faltava tirar o risco. Ficou o ponteiro do que
+importa: onde a junta **está**.
+
+Junto saiu o **gráfico do erro**, que era código morto desde R108: o
+canvas não existia mais, mas o histórico continuava sendo alimentado a
+cada consulta, alimentando um desenho que ninguém veria.
+
+## R131 · A faixa da barra de velocidade é da máquina  ✅
+
+A barra ia de 1 a 120 °/s cravados no código da página. Máquina nenhuma
+usa a faixa inteira: uma com redutor grande nunca passa de vinte, outra
+com redutor curto só começa a ser útil acima de cinquenta. **Mínimo e
+máximo** viraram configuração gravada na máquina — a barra inteira passa
+a ser útil, os três degraus repartem a faixa em vez de um teto que ela
+nunca alcança, e o máximo vira também um limite de segurança guardado na
+máquina em vez de no navegador.
+
+## R132 · O redutor foi para debaixo da medição do encoder  ✅
+
+O encoder conta no eixo do **motor**, antes do redutor: a contagem só vira
+grau da junta passando por ele. Os dois números pertencem à mesma conta e
+estavam em telas diferentes. Agora o redutor de cada junta fica logo
+abaixo do endereço, do registrador e das contagens por volta daquela
+junta.
+
+## R133 · A varredura hostil não pode envelhecer calada  ✅
+
+O banco dispara lixo em cada rota de POST — números absurdos, texto onde
+se espera número, caminho de arquivo onde se espera índice. A lista de
+rotas era mantida à mão, e tinha ficado para trás: citava uma rota que
+não existe mais e deixava cinco de fora. `conferir_rotas.py` passou a
+comparar as duas pontas antes de cada compilação, com uma lista explícita
+de exceções e o motivo de cada uma.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -3472,8 +3559,8 @@ regra existir.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **417 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **247 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **436 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **251 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

@@ -286,6 +286,17 @@ static const uint32_t ENC_IDADE_MAX_MS   = 1000;
 // inversoes -- que serve para achar folga de verdade -- nao valeria nada.
 static const int32_t  ENC_PARADO_CONTAGENS = 3;
 
+// Vigia de travamento, quando NAO ha escala do encoder medida.
+//
+// O criterio proporcional -- "o medido esta abaixo de um quinto do
+// esperado" -- precisa saber quanto o eixo DEVERIA andar, e esse numero
+// so existe com escala medida. Sem ela sobra um criterio que nao depende
+// de escala nenhuma: o gerador de pulso claramente correndo e o encoder
+// claramente PARADO. Eixo que anda produz contagem, qualquer que seja a
+// escala; entao este criterio nao da falso positivo por numero errado.
+static const float TRAV_HZ_MINIMO       = 200.0f;  // pulso claramente correndo
+static const float TRAV_CONTAGENS_QUIETO = 20.0f;  // contagens/s: ruido, nao movimento
+
 #ifndef PIN_SD_CS
 #define PIN_SD_CS    5
 #endif
@@ -355,6 +366,18 @@ static const float    REDUCAO_PADRAO          = 1.0f;   // reducao mecanica da j
 static const float VEL_NORMAL_PADRAO   = 20.0f;   // graus/s
 static const float VEL_PRECISAO_PADRAO =  2.0f;   // graus/s
 static const float VEL_AUTO_PADRAO     = 12.0f;   // graus/s
+
+// FAIXA DA BARRA DE VELOCIDADE, em graus/s.
+//
+// A barra da aba Mover ia de 1 a 120 graus/s cravados no codigo da
+// pagina. Maquina nenhuma usa a faixa inteira: uma com redutor grande
+// nunca passa de vinte, outra com redutor curto so comeca a ser util
+// acima de cinquenta. Deixando a faixa configuravel, a barra inteira
+// passa a ser util na maquina de quem a esta usando -- e o teto vira
+// tambem um limite de seguranca, guardado na maquina em vez de no
+// navegador.
+static const float VEL_MIN_PADRAO      =  2.0f;   // graus/s
+static const float VEL_MAX_PADRAO      = 60.0f;   // graus/s
 // Velocidade do cordao em mm/s: e assim que se especifica solda, nao em
 // pulsos. O firmware converte para pulsos resolvendo a cinematica.
 static const float    VEL_CORDAO_PADRAO   = 5.0f;

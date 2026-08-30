@@ -81,6 +81,8 @@ extern Junta J2;
 // Em graus por segundo. Ver a nota em config.h: Hz nao servia porque
 // significa velocidades diferentes em juntas com engrenagens diferentes.
 extern float velNormal;
+// Faixa que a barra de velocidade da interface percorre. Ver config.h.
+extern float velMinima, velMaxima;
 extern float velPrecisao;
 extern float velAuto;
 extern float velCordaoMmS;   // mm/s: o cordao ja e especificado assim
@@ -209,6 +211,7 @@ void definirMensagem(const char* fmt, ...);
 // ---------------------------------------------------------------------
 struct ConfigPendente {
   float    velNormal, velPrecisao, velAuto;   // graus/s
+  float    velMinima, velMaxima;              // faixa da barra, graus/s
   float    velCordaoMmS;                      // mm/s
   float    acel1, acel2;                      // graus/s2
   uint32_t ppv1, ppv2;

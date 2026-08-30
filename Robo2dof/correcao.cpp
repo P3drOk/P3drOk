@@ -595,51 +595,54 @@ static void vigiarTravamento() {
     if (!leituraConfiavel(k)) { desde[i] = 0; continue; }
     const LeituraEncoder L = encoderLer(k);
 
-    const float esperado = esperadoContagensPorSeg(k);
-    // So julga quando o comando esta CLARAMENTE andando. Perto de zero a
-    // conta nao distingue eixo parado de eixo travado, e nao precisa:
-    // eixo parado nao esta forcando contra nada.
-    if (esperado < 200.0f || j.passosPorVolta == 0) { desde[i] = 0; continue; }
+    // DOIS CRITERIOS, E O SEGUNDO NAO PRECISA DE ESCALA NENHUMA.
+    //
+    // Com escala medida da para exigir proporcao: "o eixo entrega menos
+    // de um quinto do que deveria". E preciso, e pega ate escorregao
+    // parcial.
+    //
+    // Sem escala medida essa conta sai de dois numeros de catalogo, e um
+    // deles errado transforma braco andando em braco travado -- foi o que
+    // fazia a maquina parar do nada. Mas ha um sinal que independe de
+    // escala: o gerador de pulso claramente correndo e o encoder
+    // claramente PARADO. Eixo que gira produz contagem, seja qual for a
+    // escala; entao aqui nao existe falso positivo por numero errado.
+    const float cpg = configEncoder.contagensPorGrau[i];
+    const bool reguaMedida = (cpg > 0.0001f || cpg < -0.0001f);
+    const float hz = (k == 1) ? velocidadeJ1Hz() : velocidadeJ2Hz();
 
-    // Medido claramente parado: menos de um quinto do esperado.
-    if (fabsf(L.velocidade) > esperado * 0.2f) { desde[i] = 0; continue; }
+    if (reguaMedida) {
+      const float esperado = esperadoContagensPorSeg(k);
+      // Perto de zero a conta nao distingue eixo parado de eixo travado,
+      // e nao precisa: eixo parado nao esta forcando contra nada.
+      if (esperado < 200.0f) { desde[i] = 0; continue; }
+      if (fabsf(L.velocidade) > esperado * 0.2f) { desde[i] = 0; continue; }
+    } else {
+      if (hz < TRAV_HZ_MINIMO) { desde[i] = 0; continue; }
+      if (fabsf(L.velocidade) > TRAV_CONTAGENS_QUIETO) { desde[i] = 0; continue; }
+    }
 
     if (!desde[i]) { desde[i] = agora; continue; }
     // Meio segundo dando pulso sem o eixo responder. A leitura vem a 20
     // Hz: menos que isso seria julgar com duas ou tres amostras.
     if ((uint32_t)(agora - desde[i]) > 500) {
       desde[i] = 0;
-      if (!trav.ativo) {
+      {
+        // Parar o eixo e a acao, nao o aviso: continuar forcando contra o
+        // batente aquece o servo e torce a mecanica.
+        //
+        // Quem observa `trav.total` la no laco principal interrompe o
+        // movimento automatico -- programa, trajetoria, posicionamento.
+        // Contar sem parar seria o movimento morrendo sem ninguem ter
+        // mandado.
+        if (trav.ativo) continue;
         trav.ativo = true;
         trav.junta = k;
         trav.total++;
-
-        // PARAR O BRACO EXIGE UMA REGUA MEDIDA.
-        //
-        // Este vigia compara o que o encoder ve com o que o gerador de
-        // pulso deveria estar produzindo. Quando essa segunda conta sai
-        // de numeros DIGITADOS (pulsos por volta e contagens por volta),
-        // basta um deles estar errado para um braco andando normalmente
-        // ser declarado travado -- e ai o vigia corta o movimento, meio
-        // segundo depois de arrancar. Foi essa a queixa: "as vezes
-        // trava".
-        //
-        // Com escala ensinada -- e a calibracao ensina sozinha -- a
-        // regua e medida na propria maquina, e ai parar e a acao certa:
-        // continuar forcando contra o batente aquece o servo e torce a
-        // mecanica. Sem ela, o vigia AVISA e nao encosta no movimento.
-        const float cpg = configEncoder.contagensPorGrau[i];
-        const bool reguaMedida = (cpg > 0.0001f || cpg < -0.0001f);
-        if (reguaMedida) {
-          jogZerar();
-          pararSuave();
-          definirMensagem("Junta %u travada: o comando anda e o eixo nao. "
-                          "Encostou no batente?", (unsigned)k);
-        } else {
-          definirMensagem("Junta %u parece travada, mas a escala do encoder "
-                          "nunca foi medida -- calibre para o aviso valer. "
-                          "O movimento segue.", (unsigned)k);
-        }
+        jogZerar();
+        pararSuave();
+        definirMensagem("Junta %u travada: o comando anda e o eixo nao. "
+                        "Encostou no batente?", (unsigned)k);
       }
     }
   }

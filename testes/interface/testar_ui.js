@@ -1065,12 +1065,39 @@ async function fecharGaveta(pag) {
   // Mesa de tracado: clique comanda XY, zoom e tema respondem.
   await t.locator('#abas button[data-aba="mesa"]').click();
   await t.waitForTimeout(350);
+  // LEVAR A PONTA COM UM TOQUE PRECISA SER PEDIDO.
+  // Era o padrao: tocar em qualquer lugar vazio mandava o robo para la.
+  // Quem esta olhando o desenho toca nele o tempo todo -- para conferir
+  // uma cota, para escolher o eixo -- e cada toque virava um movimento
+  // que ninguem pediu.
   rotas = [];
   const cvb = await t.locator('#cv').boundingBox();
   await t.mouse.click(cvb.x + cvb.width * 0.62, cvb.y + cvb.height * 0.4);
   await t.waitForTimeout(250);
+  checar(!rotas.some(x => x.split('?')[0] === '/api/mover_xy'),
+         'tocar na mesa NAO manda o braco andar: o desenho e so desenho',
+         rotas.join(' ') || 'nenhuma rota');
+
+  rotas = [];
+  await t.locator('#zIr').click();
+  await t.waitForTimeout(150);
+  await t.mouse.click(cvb.x + cvb.width * 0.62, cvb.y + cvb.height * 0.4);
+  await t.waitForTimeout(250);
   checar(rotas.some(x => x.split('?')[0] === '/api/mover_xy'),
-         'tocar na mesa de tracado comanda a ponta');
+         'com o botao IR ligado, o toque comanda a ponta', rotas.join(' '));
+
+  // IR e DES disputam o mesmo toque: ligar um desliga o outro.
+  await t.locator('#zDes').click();
+  await t.waitForTimeout(200);
+  const modos = await t.evaluate(() => ({
+    ir: document.getElementById('zIr').classList.contains('on'),
+    des: document.getElementById('zDes').classList.contains('on'),
+  }));
+  checar(modos.des && !modos.ir,
+         'IR e DES nao ficam ligados juntos: os dois consomem o mesmo toque',
+         JSON.stringify(modos));
+  await t.locator('#zDes').click();
+  await t.waitForTimeout(150);
   const v1 = await t.evaluate(() => window.__vista);
   await t.locator('#zMais').click(); await t.waitForTimeout(150);
   await t.locator('#zAuto').click(); await t.waitForTimeout(150);
@@ -1512,10 +1539,14 @@ async function fecharGaveta(pag) {
          'Encoder: as duas rodinhas sao desenhadas com a posicao do motor',
          rodas.w1 + 'x' + rodas.w1 + ' px, centro pintado: ' + rodas.pintou);
 
-  // O historico tem de crescer com as consultas.
+  // A coleta tem de crescer com as consultas. Antes o contador vinha do
+  // historico do grafico de erro; esse grafico saiu junto com o erro (ver
+  // ACHADOS R108) e o historico ficou alimentando um desenho que nao
+  // existia mais. Agora o contador e o da tabela de amostras, que e o que
+  // se ve na tela.
   await t.waitForTimeout(1600);
   const nAmostras = await t.evaluate(() => window.__encN || 0);
-  checar(nAmostras >= 2, 'Encoder: o grafico acumula historico do erro',
+  checar(nAmostras >= 2, 'Encoder: a coleta de amostras cresce a cada consulta',
          nAmostras + ' amostras');
 
   // Abre a secao PELO CONTEUDO, nao pelo indice: acrescentar uma secao
@@ -1617,30 +1648,94 @@ async function fecharGaveta(pag) {
          'Calibracao: com a reducao e a resolucao de cada junta',
          resumo.txt.slice(0, 70));
 
-  // O REDUTOR e o unico numero que a calibracao nao mede: o encoder fica
-  // no eixo do motor, antes dele, e com um sensor so desse lado nenhuma
-  // medida revela a relacao. As duas telas de afericao avulsa
-  // ("engrenagem eletronica" e "reducao mecanica pelo encoder") sairam:
-  // a calibracao mede a escala sozinha, das proprias marcas.
-  await t.evaluate(() => {
-    const alvo = document.getElementById('btRedSalvar').closest('.et');
-    document.querySelectorAll('#cfgCalib .et')
-      .forEach(x => x.classList.toggle('aberta', x === alvo));
-  });
-  await t.waitForTimeout(400);
-  const red = await t.evaluate(() => ({
-    r1: document.getElementById('inRd1').value,
-    sb: document.getElementById('sbRed').textContent.trim(),
-    sumiu: !document.getElementById('btAfMarcar') &&
-           !document.getElementById('btRdAplicar') &&
-           !document.getElementById('guiaLista'),
+  // O REDUTOR mudou de lugar: mora embaixo da medicao do encoder daquela
+  // junta. O encoder conta no eixo do MOTOR, antes do redutor -- a
+  // contagem so vira grau da junta passando por ele. Os dois numeros
+  // pertencem a mesma conta, e estavam em telas diferentes.
+  const semAvulsa = await t.evaluate(() => ({
+    afericao: !!document.getElementById('btAfMarcar'),
+    reducaoEnc: !!document.getElementById('btRdAplicar'),
+    lista: !!document.getElementById('guiaLista'),
+    calibrar: !!document.getElementById('btCalIni2'),
   }));
-  checar(red.sumiu,
+  checar(!semAvulsa.afericao && !semAvulsa.reducaoEnc && !semAvulsa.lista,
          'Calibracao: as telas de afericao avulsa e a lista guiada sairam -- '
          + 'a calibracao mede sozinha');
-  checar(parseFloat(red.r1) > 0 && /:/.test(red.sb),
-         'Calibracao: o redutor de cada junta continua declaravel',
-         'junta 1 = ' + red.r1 + '  |  ' + red.sb);
+  checar(semAvulsa.calibrar,
+         'Calibracao: e o que sobrou e um botao so -- calibrar');
+
+  await t.locator('#cfgAbas button[data-cfg="encoder"]').click();
+  await t.waitForTimeout(500);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('inRd1').closest('.et');
+    document.querySelectorAll('#cfgEncoder .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+    const d = document.getElementById('inRd1').closest('.sub');
+    if (d) d.style.display = 'block';
+  });
+  await t.waitForTimeout(400);
+  const red = await t.evaluate(() => {
+    const cv1 = document.getElementById('encCv1');
+    const rd1 = document.getElementById('inRd1');
+    // "Embaixo da medicao": o redutor da junta 1 vem depois das
+    // contagens por volta dela, e antes de qualquer coisa da junta 2.
+    const pos = cv1.compareDocumentPosition(rd1);
+    const cv2 = document.getElementById('encCv2');
+    return { depoisDaJ1: !!(pos & Node.DOCUMENT_POSITION_FOLLOWING),
+             antesDaJ2: !!(rd1.compareDocumentPosition(cv2) &
+                           Node.DOCUMENT_POSITION_FOLLOWING),
+             v1: rd1.value };
+  });
+  checar(red.depoisDaJ1 && red.antesDaJ2,
+         'Encoder: o redutor de cada junta fica embaixo da medicao daquela junta',
+         JSON.stringify(red));
+
+  // A FAIXA DA BARRA se configura na maquina, em Ajustes: dois campos,
+  // um botao, e a barra da aba Mover passa a percorrer o que eles dizem.
+  await t.locator('#cfgAbas button[data-cfg="maquina"]').click();
+  await t.waitForTimeout(400);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('inVmn').closest('.et');
+    document.querySelectorAll('#cfgMaquina .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+  });
+  await t.waitForTimeout(300);
+  rotas = [];
+  await t.evaluate(() => {
+    document.getElementById('inVmn').value = '5';
+    document.getElementById('inVmx').value = '90';
+  });
+  await t.locator('#btFaixaSalvar').click();
+  await t.waitForTimeout(400);
+  const posFaixa = rotas.find(x => x.split('?')[0] === '/api/config');
+  checar(!!posFaixa && /velMin=5/.test(posFaixa) && /velMax=90/.test(posFaixa),
+         'Ajustes: o minimo e o maximo da barra de velocidade sao configuraveis',
+         posFaixa || 'nada');
+
+  // Faixa invertida e recusada na tela, com motivo.
+  await t.evaluate(() => {
+    document.getElementById('inVmn').value = '90';
+    document.getElementById('inVmx').value = '5';
+  });
+  rotas = [];
+  await t.locator('#btFaixaSalvar').click();
+  await t.waitForTimeout(300);
+  const motivoFaixa = await t.evaluate(() =>
+    document.getElementById('qFaixaSalvar').textContent.trim());
+  checar(!rotas.some(x => x.split('?')[0] === '/api/config') &&
+         /menor/.test(motivoFaixa),
+         'Ajustes: faixa invertida e recusada antes de sair da tela, com motivo',
+         motivoFaixa);
+  await t.locator('#cfgAbas button[data-cfg="encoder"]').click();
+  await t.waitForTimeout(400);
+  await t.evaluate(() => {
+    const alvo = document.getElementById('inRd1').closest('.et');
+    document.querySelectorAll('#cfgEncoder .et')
+      .forEach(x => x.classList.toggle('aberta', x === alvo));
+    const d = document.getElementById('inRd1').closest('.sub');
+    if (d) d.style.display = 'block';
+  });
+  await t.waitForTimeout(300);
 
   rotas = [];
   await t.evaluate(() => { document.getElementById('inRd1').value = '20'; });
@@ -1648,8 +1743,10 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(400);
   const posRed = rotas.find(x => x.split('?')[0] === '/api/config');
   checar(!!posRed && /red1=20/.test(posRed),
-         'Calibracao: salvar o redutor manda so ele, sem carregar o resto junto',
+         'Encoder: salvar o redutor manda so ele, sem carregar o resto junto',
          posRed || 'nada');
+  await t.locator('#cfgAbas button[data-cfg="calib"]').click();
+  await t.waitForTimeout(500);
 
   // Area da mesa.
   await t.evaluate(() => {
@@ -1805,15 +1902,26 @@ async function fecharGaveta(pag) {
          'Velocidade: a equivalencia em grau/s fica a vista, e o alcance usado no titulo',
          eq.txt + ' | ' + eq.tit);
 
-  // Os tres degraus cobrem o dia inteiro sem ninguem digitar nada.
+  // Os tres degraus repartem a FAIXA configurada na maquina, nao um teto
+  // cravado no codigo: numa maquina cujo maximo util e 20 graus/s,
+  // "rapido" tem de ser 20, e nao um numero que ela nunca alcanca.
   rotas = [];
-  await t.locator('[data-vel="0.8"]').click();
+  await t.locator('[data-vel="1"]').click();
   await t.waitForTimeout(400);
   const rapido = rotas.find(x => x.split('?')[0] === '/api/config');
   const gRapido = rapido && +(/velN=([\d.]+)/.exec(rapido) || [])[1];
-  checar(!!rapido && gRapido > lidoN,
-         'Velocidade: o atalho "rapido" sobe de verdade, sem digitar nada',
-         'velN=' + gRapido);
+  checar(!!rapido && Math.abs(gRapido - 60) < 0.6,
+         'Velocidade: o atalho "rapido" leva ao maximo da faixa configurada',
+         'velN=' + gRapido + ' (faixa 2..60)');
+
+  // E a barra percorre exatamente essa faixa.
+  const faixaVel = await t.evaluate(() => {
+    const b = document.getElementById('inVelMov');
+    return { min: b.min, max: b.max };
+  });
+  checar(+faixaVel.min === 2 && +faixaVel.max === 60,
+         'Velocidade: a barra percorre a faixa que a maquina publica',
+         faixaVel.min + ' a ' + faixaVel.max + ' °/s');
 
   // Maquina sem calibracao e sem servos: o que bloqueia tem que dizer.
   await t.request.post(BASE + '/teste/estado',
@@ -2019,23 +2127,6 @@ async function fecharGaveta(pag) {
   // O passo do sentido nao tem medida: e uma conferencia, e a marca dela
   // vive no navegador. Limpa-se antes para o cenario comecar com um
   // passo pendente de verdade -- senao a maquina do banco ja nasce toda
-  // A LISTA GUIADA SAIU.
-  //
-  // Ela apontava quatro passos -- sentido, reducao, curso, mesa -- porque
-  // calibrar era um percurso longo com dependencias entre etapas. Agora
-  // calibrar sao quatro marcas e nada mais, e um indice para quatro
-  // marcas e mais tela do que trabalho.
-  const semGuia = await t.evaluate(() => ({
-    lista: !!document.getElementById('guiaLista'),
-    afericao: !!document.getElementById('btAfMarcar'),
-    reducaoEnc: !!document.getElementById('btRdAplicar'),
-    calibrar: !!document.getElementById('btCalIni2'),
-  }));
-  checar(!semGuia.lista && !semGuia.afericao && !semGuia.reducaoEnc,
-         'Calibracao: a lista guiada e as afericoes avulsas sairam da tela');
-  checar(semGuia.calibrar,
-         'Calibracao: e o que sobrou e um botao so -- calibrar');
-
   // ------------------------------------------------------------------
   // AJUSTES DA MAQUINA em linguagem de operador.
   // A queixa: "queria algo mais simples, de forma que um operador nao

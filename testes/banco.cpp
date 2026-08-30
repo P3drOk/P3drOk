@@ -755,7 +755,8 @@ static void teste_A10_json_status() {
     "\"trajN\":%u,\"trajMs\":%lu,\"trajPct\":%u,\"escala\":%u,"
     "\"progN\":%u,\"progIdx\":%u,\"progPct\":%u,\"ensaio\":%s,\"velCordao\":%.1f,"
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
-    "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"acel1\":%lu,\"acel2\":%lu,"
+    "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"velMn\":%lu,\"velMx\":%lu,"
+    "\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
@@ -776,7 +777,7 @@ static void teste_A10_json_status() {
     1500u, 4294967295UL, 100u, 200u,
     40u, 40u, 100u, "false", 999.9f,
     999.9f, "false","false","false",
-    180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
+    180000UL, 180000UL, 180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
     999999UL, 999.999f, 999999UL, 999.999f,
     "false","false", 255u,
     40u,
@@ -5166,36 +5167,51 @@ static void teste_V18_vigia_usa_a_escala_medida() {
          "eixo que nao responde ao pulso continua sendo acusado E parado, "
          "quando ha regua medida para julgar");
 
-  // SEM regua medida o vigia AVISA, mas nao encosta no movimento.
+  // SEM regua medida o vigia continua pegando o eixo REALMENTE parado.
   //
-  // Parar o braco a partir de dois numeros digitados foi o que fazia a
-  // maquina "travar as vezes": um pulsos-por-volta errado no driver e um
-  // braco andando normalmente vira eixo travado meio segundo depois de
-  // arrancar.
+  // O criterio muda de forma: com escala medida ele exige proporcao ("o
+  // eixo entrega menos de um quinto do que deveria"); sem ela, exige o
+  // sinal que independe de escala -- pulso claramente correndo e encoder
+  // claramente parado. Eixo que gira produz contagem, seja qual for a
+  // escala, entao aqui nao ha falso positivo por numero errado.
   correcaoLimparTravamento();
   configEncoder.contagensPorGrau[0] = 0.0f;
+  rodarComWeb(50);
   const uint32_t travAntes2 = correcaoTravamento().total;
   const float preso2 = passosParaGraus(J1, posicaoJ1());
   const int32_t travado2 = g_uart.escravo[0].posicao;
   moverCoordenado(grausParaPassos(J1, preso2 + 30.0f), posicaoJ2(), 20.0f);
-  // Noventa ciclos: o vigia dispara aos 500 ms e o movimento de 30 graus
-  // a 20 graus/s so terminaria bem depois. Se o braco parar aqui, foi o
-  // vigia que o parou.
-  bool aindaAndando = true, avisou = false;
-  for (int k = 0; k < 90; k++) {
+  for (int k = 0; k < 200 && motoresEmMovimento(); k++) {
     g_uart.escravo[0].parar();
     g_uart.escravo[0].posicao = travado2;   // eixo preso
     rodarComWeb(10);
-    if (strstr(ultimaMensagem, "escala") != nullptr) avisou = true;
-    if (!motoresEmMovimento()) { aindaAndando = false; break; }
   }
-  nota("sem escala medida: travamentos=%u, ainda andando=%d, avisou=%d",
-       (unsigned)(correcaoTravamento().total - travAntes2),
-       (int)aindaAndando, (int)avisou);
-  checar(aindaAndando && avisou, "V18e",
-         "sem regua medida o vigia avisa e nao para o braco: cortar o "
-         "movimento por causa de numero digitado e o que fazia a maquina "
-         "travar do nada");
+  rodarComWeb(100);
+  nota("sem escala medida, eixo preso: travamentos=%u -- \"%s\"",
+       (unsigned)(correcaoTravamento().total - travAntes2), ultimaMensagem);
+  checar(correcaoTravamento().total > travAntes2, "V18e",
+         "eixo parado com o pulso correndo e pego mesmo sem escala medida: "
+         "esse sinal nao depende de escala nenhuma");
+
+  // E o braco ANDANDO nunca e acusado, com ou sem escala -- que era o
+  // defeito: numero de catalogo errado virava eixo travado.
+  correcaoLimparTravamento();
+  g_espelharEixo = true;
+  rodarComWeb(200);
+  const uint32_t travAntes3 = correcaoTravamento().total;
+  const float parte3 = passosParaGraus(J1, posicaoJ1());
+  enviarComando(CMD_MOVER_ANGULOS, 0, 0, parte3 + 25.0f,
+                passosParaGraus(J2, posicaoJ2()));
+  rodarComWeb(120);
+  uint32_t t3 = 0;
+  while (motoresEmMovimento() && t3 < 30000) { rodarComWeb(40); t3 += 40; }
+  nota("sem escala medida, eixo andando: travamentos=%u, chegou em %.1f",
+       (unsigned)(correcaoTravamento().total - travAntes3),
+       (double)passosParaGraus(J1, posicaoJ1()));
+  checar(correcaoTravamento().total == travAntes3 &&
+         fabsf(passosParaGraus(J1, posicaoJ1()) - (parte3 + 25.0f)) < 1.5f, "V18f",
+         "e braco andando nunca e acusado, com ou sem escala: eixo que gira "
+         "produz contagem, e e isso que o criterio olha");
 
   pararSuave();
   rodarComWeb(200);
@@ -5324,6 +5340,74 @@ static void teste_V20_junta_muda_nao_rouba_o_barramento() {
   nota("religada: leituras na junta 2 = %u", (unsigned)encoderLer(2).leituras);
   checar(encoderLer(2).leituras > 0, "V20c",
          "e o cabo voltando, a junta reaparece sozinha");
+}
+
+// ---------------------------------------------------------------------
+// V21: mexer na tela nao pode cortar um movimento em curso.
+//
+// "quando clico em algo ela atualiza informacao, e dessa forma se tem
+// algo rodando ele acaba cortando, por exemplo quando clico para ir para
+// o 0 ele anda tipo 2 seg e trava o movimento."
+//
+// A tela toca dezenas de rotas enquanto o braco anda -- consulta de
+// estado, de calibracao, do encoder, e as acoes dos botoes que ficam
+// visiveis. Nenhuma delas, exceto a PARADA, pode encostar no movimento.
+// Este cenario varre a lista inteira e denuncia quem encostar.
+// ---------------------------------------------------------------------
+static void teste_V21_a_tela_nao_corta_o_movimento() {
+  secao("V21  Mexer na tela nao corta um movimento em curso");
+
+  // Rotas que a tela pode disparar com o braco andando. A PARADA fica de
+  // fora de proposito: parar e o trabalho dela.
+  static const char* ROTAS_TELA[] = {
+    "/api/config?velN=30&velA=30&acel1=90&acel2=90",
+    "/api/precisao?v=1",
+    "/api/precisao?v=0",
+    "/api/jog?j=1&d=0",
+    "/api/jog?j=2&d=0",
+    "/api/jogxy?f1=0&f2=0",
+    "/api/teste/rele",
+    "/api/referenciar",
+    "/api/ponto/gravar",
+    "/api/mesa/canto",
+    "/api/correcao?on=1",
+    "/api/encoder/config?per=50",
+    "/api/geometria?l1=450&l2=400",
+    "/api/sentido?j=1&v=0",
+    "/api/aprender?v=0",
+    "/api/prog/pausar?v=0",
+    "/api/travamento/ok",
+    "/api/manutencao/ok",
+  };
+  const size_t N = sizeof(ROTAS_TELA) / sizeof(ROTAS_TELA[0]);
+
+  for (size_t r = 0; r < N; r++) {
+    reiniciarSistema();
+    prepararRoboCalibrado();
+    rodarComWeb(60);
+
+    // Um percurso longo: da para tocar a rota no meio dele com folga.
+    if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, -60.0f));
+    rodarComWeb(20);
+    enviarComando(CMD_MOVER_ANGULOS, 0, 0, 60.0f, 0.0f);
+    rodarComWeb(200);
+    if (!motoresEmMovimento()) {
+      nota("%s: o movimento nem comecou -- cenario invalido", ROTAS_TELA[r]);
+      continue;
+    }
+
+    webPost(ROTAS_TELA[r]);
+    rodarComWeb(300);
+    const bool andando = motoresEmMovimento();
+    if (!andando) {
+      nota("CORTOU: %s -- modo=%d, \"%s\"", ROTAS_TELA[r], (int)modoAtual,
+           ultimaMensagem);
+    }
+    checar(andando, "V21",
+           "a tela nao corta o movimento em curso");
+    if (!andando) break;   // um so ja basta para o operador sentir
+  }
+  nota("%u rota(s) de tela varridas com o braco andando", (unsigned)N);
 }
 
 static void teste_P07_estop_a_prova_de_falha() {
@@ -5858,17 +5942,27 @@ static const char* ROTAS_POST[] = {
   "/api/encoder/config", "/api/encoder/padroes", "/api/encoder/testar",
   "/api/encoder/zerar", "/api/geometria", "/api/gravar/iniciar",
   "/api/gravar/parar", "/api/home", "/api/jog", "/api/jogxy",
-  "/api/manutencao/ok", "/api/mover", "/api/mover_xy", "/api/painel",
+  "/api/manutencao/ok", "/api/mesa/canto", "/api/mesa/limpar",
+  "/api/mover", "/api/mover_xy",
   "/api/parar", "/api/ponto/gravar", "/api/ponto/ir", "/api/ponto/remover",
   "/api/ponto/solda", "/api/precisao", "/api/prog/desenho",
   "/api/prog/desfazer", "/api/prog/executar", "/api/prog/limpar",
   "/api/prog/parar", "/api/prog/pausar", "/api/prog/repetir",
   "/api/protecoes", "/api/referenciar", "/api/reproduzir", "/api/sd/apagar",
   "/api/sd/carregar", "/api/sd/montar", "/api/sd/prever", "/api/sd/salvar",
-  "/api/sentido", "/api/servos", "/api/solda", "/api/teste/rele",
+  "/api/sentido", "/api/servos", "/api/solda", "/api/son/config",
+  "/api/teste/rele",
   "/api/traj/limpar", "/api/travamento/ok", "/api/zero/config",
   "/api/zero/ensinar", "/api/zero/esquecer"
 };
+// Rotas de POST deixadas de fora de proposito, com o motivo. A lista
+// abaixo e conferida contra o firmware em S01b: rota nova que ninguem
+// varreu e rota que ninguem testou com lixo.
+static const char* ROTAS_POST_FORA[] = {
+  "/api/ota",            // sobe firmware: o mock nao tem o que receber
+  "/api/cfg/restaurar",  // le do cartao e reescreve a maquina inteira
+};
+
 static const char* ROTAS_GET[] = {
   "/api/encoder", "/api/encoder/teste", "/api/pontos", "/api/rede",
   "/api/registro", "/api/saude", "/api/sd", "/api/sd/lista",
@@ -6834,6 +6928,7 @@ int main() {
   teste_V18_vigia_usa_a_escala_medida();
   teste_V19_calibrar_com_a_mao();
   teste_V20_junta_muda_nao_rouba_o_barramento();
+  teste_V21_a_tela_nao_corta_o_movimento();
   teste_P07_estop_a_prova_de_falha();
   teste_Q01_pausar_no_meio_do_cordao();
   teste_Q02_contagem_de_pecas();
