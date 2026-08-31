@@ -787,6 +787,11 @@ static void avisarNoSerial(uint8_t i, bool ok) {
   Serial.print(" sem leitura -- "); Serial.println(quadro);
 }
 
+// Salto a confirmar: a leitura que pulou longe demais fica de lado ate a
+// proxima dizer se era o eixo ou defeito. Ver publicar().
+static bool    encSaltoPendente[2] = {false, false};
+static int32_t encSaltoBruto[2]    = {0, 0};
+
 static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   const Junta& j = (i == 0) ? J1 : J2;
   const float  cv  = configEncoder.contagensPorVolta[i];
@@ -802,6 +807,53 @@ static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   const uint32_t agora = millis();
 
   portENTER_CRITICAL(&travaEnc);
+
+  // SALTO IMPOSSIVEL: numero possivel nao e o mesmo que numero do eixo.
+  //
+  // Quadro corrompido que passou no CRC, palavra baixa de um instante
+  // casada com a alta de outro, contador dando a volta -- todos chegam
+  // aqui como um inteiro perfeitamente plausivel. O que os denuncia e a
+  // DISTANCIA ate a leitura anterior: a posicao pula meia volta ou uma
+  // volta inteira do motor de uma amostra para a outra, e nenhum eixo
+  // desta maquina faz isso.
+  //
+  // Obedecer teleporta a posicao oficial da maquina: o desenho salta, o
+  // ancoramento reescreve a contagem com o numero errado e o braco
+  // arranca para o lugar errado. Era o "braco pulando angulo". Recusar
+  // custa uma amostra; obedecer custa a peca.
+  //
+  // E O QUE SEPARA UM GLITCH DE UM MOVIMENTO GRANDE E DE VERDADE:
+  // o glitch NAO SE REPETE. Um quadro corrompido vem uma vez e o
+  // seguinte volta para perto de onde o eixo estava; um eixo que
+  // realmente foi para longe continua la na amostra seguinte.
+  //
+  // Entao um salto nao e recusado de vez: ele fica PENDENTE. A amostra
+  // seguinte decide -- se confirmar a posicao nova, ela e aceita e o
+  // eixo perdeu uma amostra; se voltar, era defeito e nada foi obedecido.
+  if (ok && encTinhaAntes[i] && cv > 0.5f) {
+    const uint32_t dtSalto = agora - encUltimoMs[i];
+    const int32_t  d       = (int32_t)((uint32_t)bruto - (uint32_t)encBrutoAntes[i]);
+    float voltas = ENC_SALTO_VOLTAS_POR_S * (float)dtSalto / 1000.0f;
+    if (voltas < ENC_SALTO_VOLTAS_MIN) voltas = ENC_SALTO_VOLTAS_MIN;
+    const float limite = voltas * cv;
+    if (fabsf((float)d) > limite) {
+      const int32_t dCand =
+          (int32_t)((uint32_t)bruto - (uint32_t)encSaltoBruto[i]);
+      if (encSaltoPendente[i] && fabsf((float)dCand) <= limite) {
+        // A amostra anterior tinha apontado para ca, e esta confirma: o
+        // eixo esta mesmo la. Aceita e volta ao normal.
+        encSaltoPendente[i] = false;
+      } else {
+        encSaltoPendente[i] = true;
+        encSaltoBruto[i]    = bruto;
+        ok = false;
+        motivo = MOTIVO_SALTO;
+        leitura[i].saltos++;
+      }
+    } else {
+      encSaltoPendente[i] = false;
+    }
+  }
   leitura[i].motivo = motivo;
   if (ok) {
     leitura[i].bruto    = bruto;
@@ -871,7 +923,14 @@ static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
     leitura[i].rpm        = 0.0f;
     leitura[i].sentido    = 0;
     leitura[i].delta      = 0;
-    encTinhaAntes[i] = false;  // a proxima leitura recomeca a contagem de tempo
+    // Silencio de verdade recomeca a contagem de tempo: sem resposta nao
+    // ha do que a proxima amostra ser medida.
+    //
+    // Salto recusado e outra coisa: ali HOUVE resposta, e a leitura
+    // anterior continua valendo como ponto de comparacao. Zerar aqui
+    // faria a amostra seguinte passar sem conferencia -- e um defeito que
+    // se repete passaria em toda segunda amostra.
+    if (motivo != MOTIVO_SALTO) encTinhaAntes[i] = false;
   }
   portEXIT_CRITICAL(&travaEnc);
 }

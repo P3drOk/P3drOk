@@ -801,14 +801,15 @@ static void jsonEncoderJunta(String& out, uint8_t j) {
   char b[360];
   snprintf(b, sizeof(b),
     "{\"ok\":%s,\"bruto\":%ld,\"ref\":%ld,\"graus\":%.3f,\"erro\":%.3f,"
-    "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu,\"motivo\":%u,"
+    "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu,\"saltos\":%lu,\"motivo\":%u,"
     // Derivados: calculados no firmware, com os instantes de verdade.
     "\"delta\":%ld,\"vel\":%.1f,\"rpm\":%.2f,\"sent\":%d,"
     "\"passos\":%lu,\"inv\":%lu,"
     "\"bmin\":%ld,\"bmax\":%ld,\"vmax\":%.1f,\"vmin\":%.1f}",
     L.valido ? "true" : "false", (long)L.bruto, (long)L.referencia,
     L.graus, L.erro, (unsigned long)L.idadeMs,
-    (unsigned long)L.leituras, (unsigned long)L.falhas, (unsigned)L.motivo,
+    (unsigned long)L.leituras, (unsigned long)L.falhas,
+    (unsigned long)L.saltos, (unsigned)L.motivo,
     (long)L.delta, L.velocidade, L.rpm, (int)L.sentido,
     (unsigned long)L.passosTotais, (unsigned long)L.inversoes,
     (long)L.brutoMin, (long)L.brutoMax, L.velMax, L.velMin);

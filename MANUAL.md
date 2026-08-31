@@ -773,6 +773,38 @@ Ferramentas de diagnóstico embutidas:
 O diagnóstico sai **também no monitor serial**, uma linha a cada 5 s
 enquanto falha.
 
+#### A leitura que teleporta
+
+Um quadro pode passar no CRC e ainda assim não ser o eixo: palavra baixa
+de um instante casada com a alta do seguinte, contador dando a volta,
+corrupção que calhou de fechar a conta. Chegam como um inteiro
+perfeitamente plausível — o que os denuncia não é o valor, é a
+**distância até a leitura anterior**.
+
+Obedecer é caro, porque essa leitura vira tudo: o desenho salta, a
+contagem de passos é reescrita com o número errado e o movimento seguinte
+arranca de um lugar onde o braço nunca esteve.
+
+Então a leitura passa por um limite de **velocidade**: no máximo 3 voltas
+de motor por segundo de variação, medidas sobre o intervalo real entre as
+amostras (com um piso, para o barramento poder atrasar uma resposta). Em
+voltas de motor, e não em graus de junta, o limite não depende da redução
+configurada — que é justamente uma das coisas que podem estar erradas.
+
+**Mas um salto não é descartado de cara.** Alguém empurrando o braço com
+a mão produz uma variação igualmente grande, e verdadeira — recusá-la
+deixaria a máquina cega na hora em que ela mais precisa enxergar. O que
+separa os dois casos não é o tamanho, é a **repetição**: o quadro
+corrompido vem uma vez e o seguinte volta para perto; o eixo que foi mesmo
+para longe continua lá. Por isso o salto fica **pendente** e a amostra
+seguinte decide — se confirmar, a posição é aceita e o custo total foi
+uma amostra (50 ms); se voltar, era defeito e nada foi obedecido.
+
+Essas recusas aparecem como **saltos** junto das outras na tela do
+encoder. Saltos ocasionais são a proteção funcionando. Saltos constantes
+são o barramento pedindo cabo, terminação ou aterramento — e aí veja
+também a taxa de acerto em **Máquina → Saúde**.
+
 ### 5.6 Correção de posição pelo encoder
 
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o

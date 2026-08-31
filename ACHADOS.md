@@ -4276,11 +4276,71 @@ Os dois lados foram verificados desligando cada correção sozinha: sem o
 critério sem escala, `M09` acusa a trava a 1,9°; sem o ganho aprendido,
 `M08` acusa a parada em 18,14° e o caminho curto errando o alvo.
 
+## R157 · Uma leitura que teleporta não pode virar posição  `M10`  ✅
+
+**Relato:** *"o braço está pulando ângulo e movimento e travando no meio
+do trajeto."* A tela do relato fecha o diagnóstico sozinha: **pior erro
+−369,736°**, **oscilação 80,401°**, **voltas do motor 0,983**, **bruto
+128885** — e 131072 × 0,983 = 128885. O gráfico dá um degrau de ~360°.
+
+Isso não é um eixo. Nenhuma junta desta máquina anda uma volta de motor
+entre duas amostras de 50 ms. É uma **leitura** que teleporta: quadro
+corrompido que passou no CRC, palavra baixa de um instante casada com a
+alta do seguinte, contador dando a volta. Todas chegam como um inteiro
+perfeitamente plausível — nenhuma trava de valor absoluto as pega, porque
+o número em si é possível. O que as denuncia é a **distância até a
+leitura anterior**.
+
+E obedecer sai caro, porque essa leitura vira tudo: o desenho salta, o
+`ancorarNoEncoder()` reescreve a contagem com o número errado, e o
+movimento seguinte arranca a partir de um lugar onde o braço nunca
+esteve. Era o "pulando ângulo" — e, quando o vigia via o pulso correndo
+contra um encoder que acabara de teleportar, também o "travando no meio
+do trajeto".
+
+**O limite é de velocidade, não de posição.** Uma leitura só é recusada
+se a variação bruta passar de `ENC_SALTO_VOLTAS_POR_S` (3 voltas de motor
+por segundo) multiplicado pelo intervalo real entre as amostras, com piso
+de `ENC_SALTO_VOLTAS_MIN` (0,10 volta) para o barramento respirar quando
+uma resposta atrasa. Um limite em graus de junta dependeria da redução
+lida da configuração; em voltas de motor, não depende de nada que possa
+estar errado.
+
+**Recusar de imediato seria pior que o defeito.** Alguém empurrando o
+braço com a mão, ou o eixo voltando de um religamento, produz uma
+variação igualmente grande — e verdadeira. Recusá-la deixaria a máquina
+cega justamente quando ela mais precisa enxergar.
+
+O que separa os dois casos não é o tamanho: é a **repetição**. O quadro
+corrompido vem uma vez e o seguinte volta para perto de onde o eixo
+estava; o eixo que foi mesmo para longe **continua lá** na amostra
+seguinte. Então o salto não é descartado — ele fica **pendente**:
+
+- a amostra que pula é recusada, contada em `saltos`, e guardada;
+- a amostra seguinte decide: se **confirmar** aquela posição, ela é
+  aceita e o custo total foi uma amostra perdida (50 ms);
+- se voltar, era defeito, e nada foi obedecido.
+
+A leitura recusada também **não vira referência**: `encTinhaAntes` só é
+zerado nas outras recusas, nunca na de salto. Sem isso o glitch
+envenenaria a comparação seguinte e o eixo de verdade seria recusado
+depois de voltar ao normal.
+
+`M10` prende as duas metades no mesmo cenário, porque uma sem a outra é
+meio conserto: o glitch de uma volta — **presente em uma única amostra,
+que é a assinatura real** — é recusado e a posição não se mexe (`M10a`,
+`M10b`); e um movimento verdadeiro de 40° passa, porque a amostra
+seguinte o confirma (`M10c`). Desligando só a guarda, `M10a` e `M10b`
+acusam, e mais nada no banco muda.
+
+O painel mostra a contagem de `saltos` junto das outras recusas: o
+operador vê a diferença entre um barramento que erra e um que teleporta.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **477 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **480 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **290 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

@@ -3955,6 +3955,80 @@ static void teste_M09_regua_errada_nao_inventa_travamento() {
          "e o movimento vai ate o fim, em vez de morrer no meio");
 }
 
+// ---------------------------------------------------------------------
+// M10: leitura que PULA nao vira posicao -- mas movimento de verdade sim.
+//
+// Uma leitura pode ser numericamente possivel e ainda assim nao ser o
+// eixo: quadro corrompido que passou no CRC, palavra baixa de um
+// instante casada com a alta de outro, contador dando a volta. Todos
+// chegam como um inteiro plausivel, e o que os denuncia e a DISTANCIA
+// ate a leitura anterior -- meia volta ou uma volta do motor de uma
+// amostra para a outra, que nenhum eixo desta maquina faz.
+//
+// Obedecer teleporta a posicao oficial: o desenho salta, o ancoramento
+// reescreve a contagem com o numero errado e o braco arranca para o
+// lugar errado. Era o "braco pulando angulo".
+//
+// E o que separa glitch de movimento grande e de verdade: o glitch NAO
+// SE REPETE. Por isso o salto fica pendente e a amostra seguinte decide.
+// ---------------------------------------------------------------------
+static void teste_M10_salto_impossivel_nao_vira_posicao() {
+  secao("M10  Leitura que pula longe demais nao vira posicao");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(300);
+
+  const float cv = configEncoder.contagensPorVolta[0];
+  const int32_t base = g_uart.escravo[0].posicao;
+  const float grausAntes = encoderLer(1).graus;
+  const uint32_t saltosAntes = encoderLer(1).saltos;
+
+  // A posicao pula uma volta de motor adiante em UMA amostra so -- essa e
+  // a assinatura do quadro corrompido, que aparece e some. Enquanto ela
+  // esta la, a maquina NAO pode adotar aquele angulo: e nesse instante
+  // que o desenho saltava e o ancoramento reescrevia a contagem errada.
+  g_uart.escravo[0].posicao = base + (int32_t)cv;
+  float    durante       = grausAntes;
+  uint32_t saltosDurante = saltosAntes;
+  for (int i = 0; i < 40; i++) {
+    rodarComWeb(10);
+    saltosDurante = encoderLer(1).saltos;
+    if (saltosDurante > saltosAntes) break;
+  }
+  durante = encoderLer(1).graus;
+
+  // O barramento volta ao normal na amostra seguinte.
+  g_uart.escravo[0].posicao = base;
+  rodarComWeb(400);
+
+  nota("glitch de uma volta: antes %.2f, DURANTE %.2f, depois %.2f graus; "
+       "%lu salto(s) recusado(s)", (double)grausAntes, (double)durante,
+       (double)encoderLer(1).graus,
+       (unsigned long)(saltosDurante - saltosAntes));
+  checar(saltosDurante > saltosAntes, "M10a",
+         "o quadro que pulou uma volta inteira e recusado, e contado");
+  checar(fabsf(durante - grausAntes) < 1.0f, "M10b",
+         "e a posicao da maquina nao se mexe enquanto o glitch esta la -- "
+         "era nesse instante que o desenho saltava");
+
+  // MOVIMENTO DE VERDADE para longe: a segunda amostra confirma, e a
+  // maquina aceita. Recusar aqui seria pior que o defeito -- o braco
+  // movido a mao ficaria invisivel.
+  const float longe = grausAntes + 40.0f;
+  const float cpg = (configEncoder.contagensPorGrau[0] != 0.0f)
+                  ? configEncoder.contagensPorGrau[0]
+                  : cv * ((J1.reducao > 0.001f) ? J1.reducao : 1.0f) / 360.0f;
+  g_uart.escravo[0].posicao = base + (int32_t)lroundf(40.0f * cpg);
+  rodarComWeb(600);
+  nota("movimento real de 40 graus: encoder le %.2f", (double)encoderLer(1).graus);
+  checar(fabsf(encoderLer(1).graus - longe) < 1.0f, "M10c",
+         "movimento grande DE VERDADE passa: a amostra seguinte confirma, "
+         "e o glitch e justamente o que nao se repete");
+}
+
 static void teste_M03_desligado_e_parada() {
   secao("M03  Desligar o assentamento, e a parada de emergencia");
   reiniciarSistema();
@@ -7671,6 +7745,7 @@ int main() {
   teste_M07_desiste_quando_nao_aproxima();
   teste_M08_regua_discordante_chega_mesmo_assim();
   teste_M09_regua_errada_nao_inventa_travamento();
+  teste_M10_salto_impossivel_nao_vira_posicao();
   teste_M03_desligado_e_parada();
   teste_M04_travamento_nao_dispara_a_toa();
   teste_M05_seguir_o_eixo_solto();

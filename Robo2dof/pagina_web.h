@@ -4625,7 +4625,8 @@ redeAtualizar();
 /* Por que nao esta lendo. Espelha MotivoEncoder em encoder.h -- tela que
    so diz "nada" nao ensina ninguem. */
 const MOTIVO=["ok","aguardando","sem resposta","quadro corrompido",
-              "registrador recusado","formato inesperado"];
+              "registrador recusado","formato inesperado",
+              "salto impossivel: leitura recusada"];
 const ENC_AMOSTRAS=240;          /* uns 60 s a 4 Hz de consulta */
 /* Amostra INTEIRA, nao so o erro: e o que a analise detalhada mostra e o
    que vai para o CSV. Guardar so o erro obrigaria a olhar duas telas

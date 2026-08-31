@@ -44,7 +44,8 @@ enum MotivoEncoder : uint8_t {
   MOTIVO_SILENCIO,   // ninguem respondeu naquele endereco
   MOTIVO_CRC,        // veio byte, mas corrompido ou de outro escravo
   MOTIVO_EXCECAO,    // o driver respondeu "esse registrador nao existe"
-  MOTIVO_FORMATO     // respondeu, mas nao no formato pedido
+  MOTIVO_FORMATO,    // respondeu, mas nao no formato pedido
+  MOTIVO_SALTO       // respondeu numero possivel, mas longe demais do anterior
 };
 
 struct LeituraEncoder {
@@ -56,6 +57,7 @@ struct LeituraEncoder {
   uint32_t idadeMs;       // ha quanto tempo foi a ultima leitura boa
   uint32_t leituras;      // contador de sucessos
   uint32_t falhas;        // contador de silencios e CRC ruim
+  uint32_t saltos;        // leituras recusadas por pular longe demais
   uint8_t  motivo;        // MotivoEncoder: por que a ultima tentativa falhou
 
   // ---- derivados, calculados AQUI e nao no navegador ----------------

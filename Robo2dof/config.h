@@ -301,6 +301,24 @@ static const int32_t  ENC_PARADO_CONTAGENS = 3;
 // de escala nenhuma: o gerador de pulso claramente correndo e o encoder
 // claramente PARADO. Eixo que anda produz contagem, qualquer que seja a
 // escala; entao este criterio nao da falso positivo por numero errado.
+// SALTO IMPOSSIVEL ENTRE DUAS LEITURAS.
+//
+// Uma leitura pode ser numericamente possivel e ainda assim nao ser o
+// eixo: quadro corrompido que passou no CRC, palavra baixa de um
+// instante casada com a alta de outro, contador dando a volta. O sinal
+// disso e sempre o mesmo -- a posicao PULA, tipicamente meia volta ou
+// uma volta inteira do motor, de uma amostra para a outra.
+//
+// Nenhum eixo desta maquina gira tres voltas de motor por segundo. Acima
+// disso nao e movimento: e defeito de leitura, e obedecer a ele teleporta
+// a posicao oficial da maquina -- foi o "braco pulando angulo".
+//
+// O piso existe para a amostra que chega logo depois da anterior: com dt
+// de poucos milissegundos, a conta proporcional daria uma tolerancia
+// menor que o proprio tremor do encoder.
+static const float ENC_SALTO_VOLTAS_POR_S = 3.0f;
+static const float ENC_SALTO_VOLTAS_MIN   = 0.10f;
+
 static const float TRAV_HZ_MINIMO       = 200.0f;  // pulso claramente correndo
 static const float TRAV_CONTAGENS_QUIETO = 20.0f;  // contagens/s: ruido, nao movimento
 
