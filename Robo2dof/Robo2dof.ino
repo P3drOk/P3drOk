@@ -87,15 +87,13 @@ static bool irParaPassos(long p1, long p2) {
     return false;
   }
 
-  // A velocidade do posicionamento manual respeita o modo PRECISAO.
+  // UMA VELOCIDADE SO, e ela vem do campo em mm/s.
   //
-  // Antes ia sempre em velAuto: digitar um angulo e apertar o botao
-  // mandava o braco no deslocamento cheio, com o operador olhando de
-  // perto e sem jeito de pedir mais devagar. O botao Precisao ja existe
-  // e fica logo acima destes campos, na mesma aba -- ele so nao valia
-  // aqui. Agora vale: o mesmo gesto que deixa o jog fino deixa o
-  // posicionamento fino.
-  moverCoordenado(p1, p2, modoPrecisao ? velPrecisao : velAuto);
+  // Existia um modo PRECISAO, com uma segunda velocidade guardada a
+  // parte, e um botao que alternava entre as duas. Com um controle unico
+  // em mm/s isso perdeu o sentido: "precisao" virou digitar um numero
+  // menor, que e mais direto do que lembrar em que modo a maquina esta.
+  moverCoordenado(p1, p2, velAuto);
   // Movimento novo, assentamento novo: sem isto o "ja terminei" do
   // movimento anterior valeria para este, e a correcao rodaria uma vez
   // so na vida da maquina.
@@ -147,7 +145,7 @@ static void irParaAngulos(float t1, float t2) {
 
 // ---------------------------------------------------------------------
 static const char* NOME_CMD[] = {
-  "JOG","PARAR","PRECISAO","SERVOS","GRAVAR_INI","GRAVAR_FIM","REPRODUZIR",
+  "JOG","PARAR","SERVOS","GRAVAR_INI","GRAVAR_FIM","REPRODUZIR",
   "TRAJ_LIMPAR","SOLDA","TESTE_RELE","PONTO_GRAVAR","PONTO_REMOVER",
   "PONTO_SOLDA","PROG_LIMPAR","PROG_EXECUTAR","PROG_PARAR","IR_PARA_PONTO",
   "APLICAR_CONFIG","RESTAURAR_PADROES","MOVER_ANGULOS","IR_HOME",
@@ -250,12 +248,6 @@ static void processarComando(const Comando& c) {
 
     case CMD_PARAR:
       pararTudo("PARADA: movimento interrompido e solda desligada");
-      break;
-
-    case CMD_PRECISAO:
-      modoPrecisao = (c.a < 0) ? !modoPrecisao : (c.a != 0);
-      aplicarVelocidadeManual();
-      definirMensagem("Modo precisao %s", modoPrecisao ? "ligado" : "desligado");
       break;
 
     case CMD_SERVOS:
@@ -862,7 +854,6 @@ static void publicar() {
     s.vPontaMmS = sqrtf(vx * vx + vy * vy);
   }
 
-  s.precisao      = modoPrecisao;
   s.solda         = soldaLigada();
   s.servosLigados = servosLigados;
   s.calibrada1    = J1.calibrada;

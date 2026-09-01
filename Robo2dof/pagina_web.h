@@ -198,24 +198,6 @@ button,input{font:inherit;color:inherit}
     e a troca quebrava a linha em duas, mexendo em tudo abaixo. */
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Ir para um angulo numa linha so: de onde esta, para onde vai. */
-/* Velocidade numa barra, ao lado do braco: e olhando ele andar que se
-   acerta velocidade, nao numa gaveta de ajustes. */
-.velLinha{display:flex;align-items:center;gap:10px;margin:10px 0 8px}
-.velLinha label{font-size:12px;color:var(--letra2);flex:0 0 auto}
-.velLinha input[type=range]{flex:1;min-width:0;accent-color:var(--arco)}
-.velLinha input[type=number]{width:74px;flex:0 0 auto;background:var(--fundo);
- border:1px solid var(--linha);border-radius:2px;padding:6px 8px;text-align:right;
- font-family:var(--mono);font-size:12px;color:var(--letra)}
-.velLinha input[type=number]:focus{outline:none;border-color:var(--arco)}
-.velLinha .un{font-family:var(--mono);font-size:9px;color:var(--letra3);
- width:34px;flex:0 0 auto}
-/* A linha de baixo diz a mesma velocidade na outra unidade, e traz os
-   tres degraus que cobrem o dia inteiro. Digitar milimetro por segundo e
-   o que se pensa na bancada; grau por segundo e o que a maquina faz. */
-.velEq{display:flex;align-items:center;gap:8px;margin:-4px 0 8px;
- font-family:var(--mono);font-size:10px;color:var(--letra3)}
-.velEq b{font-weight:600;color:var(--letra2);flex:1}
-.atalhosVel{display:flex;gap:5px}
 /* Botoes lado a lado quando sao do mesmo assunto: dois botoes largos
    empilhados ocupavam duas linhas para dizer duas palavras. */
 .linhaBt{display:flex;gap:7px;align-items:stretch;margin-bottom:6px}
@@ -228,8 +210,10 @@ button,input{font:inherit;color:inherit}
 .bq:disabled{opacity:.45;cursor:default}
 .bq .ic{width:19px;height:19px}
 .irAng{display:flex;align-items:center;gap:7px;margin-bottom:6px}
-.irAng #irDe{font-family:var(--mono);font-size:12px;color:var(--letra2);
- min-width:58px;text-align:right}
+.irAng .de{font-family:var(--mono);font-size:12px;color:var(--letra2);
+ min-width:52px;text-align:right}
+.irAng .rot{font-size:11px;color:var(--letra3);flex:0 0 54px;
+ white-space:nowrap}
 .irAng .seta{color:var(--letra3)}
 .irAng input{flex:1;min-width:70px;max-width:none;width:auto;text-align:right}
 /* A LINHA DE COMANDO DO PAINEL DE JOG.
@@ -284,22 +268,6 @@ button,input{font:inherit;color:inherit}
   .comandos .motor,.comandos .estop{padding:10px 4px;font-size:10px;
    letter-spacing:.02em}
 }
-
-/* CINCO DEGRAUS DE VELOCIDADE.
-   Alvos do tamanho do dedo, com o escolhido preenchido. A barra continua
-   que estava aqui pedia mira fina para acertar um numero que ninguem
-   sabe de cor. */
-.velNiveis{display:flex;gap:4px;flex:1 1 auto;min-width:0}
-.velNiveis button{flex:1 1 0;min-width:0;background:var(--painel);
- border:1px solid var(--linha);color:var(--letra2);border-radius:3px;
- font-family:var(--mono);font-size:13px;font-weight:600;padding:8px 0;
- cursor:pointer}
-.velNiveis button:hover{border-color:var(--arco2);color:var(--letra)}
-.velNiveis button.on{background:var(--arco);border-color:var(--arco);
- color:#fff}
-/* O mm/s deixou de ser o que se escolhe e passou a ser o que se confere:
-   entra pequeno, do lado, sem disputar com os degraus. */
-.velLinha #inVelMm{flex:0 0 62px;width:62px;font-size:11px;padding:5px 6px}
 
 /* ---------- mesa de tracado ---------- */
 .quadro{background:var(--mesa);border:1px solid var(--linha);border-radius:5px;
@@ -391,8 +359,6 @@ body[data-aba="mao"] #pnMao > .et.aberta > .dentro{flex:1 1 auto;
    menos de rolagem. */
 #pnMover .agora{margin-bottom:6px}
 #pnMover .eixo{margin-bottom:4px}
-#pnMover .velLinha{margin-top:7px;margin-bottom:6px}
-#pnMover .velEq{margin-bottom:6px}
 #pnMover .linhaBt{margin-bottom:3px}
 #pnMover h4{margin-top:10px;margin-bottom:6px}
 #pnMover .cab{padding:8px 12px}
@@ -865,8 +831,38 @@ body.cfgProcurando .et.foraDaBusca{display:none}
  margin:14px 2px 6px;padding-bottom:4px;border-bottom:1px solid var(--linha)}
 .grupoTt:first-child{margin-top:2px}
 
-.faixa{display:flex;gap:6px;padding:5px 8px;background:var(--painel);
+.faixa{display:flex;flex-wrap:wrap;gap:6px;padding:5px 8px;
+ background:var(--painel);
  border-top:1px solid var(--linha);position:relative;z-index:80}
+/* Campo da tira: mesma moldura do botao ao lado, para a tira ler como
+   uma linha so. Nao cresce -- quem cresce e o botao de calibrar, que e
+   texto; estes sao numeros de largura conhecida. */
+.fxN{flex:0 0 auto;display:flex;align-items:center;gap:6px;
+ background:var(--face);border:1px solid var(--linha);border-radius:3px;
+ padding:5px 9px;font-size:11.5px;color:var(--letra3)}
+.fxN input{width:64px;background:var(--fundo);border:1px solid var(--linha);
+ border-radius:2px;padding:5px 7px;text-align:right;
+ font-family:var(--mono);font-size:12px;color:var(--letra)}
+.fxN input:focus{outline:none;border-color:var(--arco)}
+.fxN .un{font-family:var(--mono);font-size:9px;color:var(--letra3)}
+.fxN .fxE{margin-left:4px}
+/* NO TELEFONE A TIRA TEM DE CABER NUMA LINHA. Empilhada ela virava um
+   segundo rodape de 140 px sobre uma tela de 780 -- exatamente o que o
+   proprio pedido ressalva ao pedir a tira. Aqui a palavra "velocidade"
+   sai (o "mm/s" ao lado ja diz o que o campo e), o °/s equivalente sai
+   junto, e o botao de calibrar encolhe com reticencias -- ele e o unico
+   dos tres cuja largura nao e a de um numero. */
+@media(max-width:760px){
+  /* A tira e item de uma GRADE (#app): sem isto ela nasce com
+     min-width:auto e o conteudo a empurra para fora da tela em vez de
+     encolher -- e o telefone ganha rolagem horizontal. */
+  .faixa{flex-wrap:nowrap;gap:4px;padding:5px 6px;min-width:0}
+  .fx{padding:7px 8px;font-size:11.5px;flex:1 1 60px}
+  .fxN{padding:4px 6px;gap:4px;font-size:10px}
+  .fxN label span{display:none}
+  .fxN .fxE{display:none}
+  .fxN input{width:48px;padding:4px 5px;font-size:11px}
+}
 .fx{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;
  background:var(--face);border:1px solid var(--linha);border-radius:3px;
  padding:7px 10px;cursor:pointer;color:var(--letra);text-align:left;
@@ -1415,42 +1411,37 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="id"><span class="rot">junta 2</span><div class="fx" id="fx2"></div></div>
               <button class="jb" data-j="2" data-d="-1" title="horario">&#8635;<small>HORARIO</small></button>
             </div>
-            <!-- VELOCIDADE EM CINCO DEGRAUS.
-                 Era uma barra continua: mira fina para escolher um numero
-                 que ninguem sabe de cor. Cinco degraus repartem a faixa
-                 configurada da maquina, e o de baixo e o de cima sao
-                 exatamente o minimo e o maximo dela.
-                 O mm/s continua na tela -- e a unidade em que se pensa o
-                 cordao -- mas pequeno, e ao lado: deixou de ser o que se
-                 escolhe para ser o que se confere. -->
-            <div class="velLinha">
-              <label>Velocidade</label>
-              <div class="velNiveis" id="velNiveis">
-                <button data-niv="1">1</button>
-                <button data-niv="2">2</button>
-                <button data-niv="3">3</button>
-                <button data-niv="4">4</button>
-                <button data-niv="5">5</button>
-              </div>
-              <input type="number" id="inVelMm" min="1" step="10">
-              <span class="un">mm/s</span>
-            </div>
-            <div class="velEq"><b id="velMovTx">--</b>
-              <span class="atalhosVel">
-                <button class="mb" data-vel="1">lento</button>
-                <button class="mb" data-vel="3">normal</button>
-                <button class="mb" data-vel="5">rapido</button>
-                <button class="mb" id="btPrec">precisao</button>
-              </span></div>
+            <!-- A VELOCIDADE SAIU DAQUI: e um controle so, em mm/s, e
+                 mora na tira do rodape, alcancavel de qualquer aba.
+                 Cinco degraus, tres apelidos e o botao "precisao" eram
+                 quatro maneiras de escolher o mesmo numero, cada uma
+                 numa escala diferente -- e nenhuma na unidade em que se
+                 pensa o cordao. -->
             <div class="linhaBt">
               <button class="lamp" id="btTesteMov" title="Pulsar o rele de solda"><svg class="ic"><use href="#i-lampada"/></svg><span>rele</span></button>
             </div>
             <h4>Ir para um angulo</h4>
+            <!-- UM CAMPO POR JUNTA. Era um campo so, agindo na junta
+                 selecionada em outro lugar da tela: para levar as duas
+                 era preciso mandar uma, esperar, trocar a selecao e
+                 repetir -- e quem esquecia de trocar mandava a junta
+                 errada para o angulo certo. O comando ja aceitava as
+                 duas de uma vez; faltava a tela deixar pedir. -->
             <div class="irAng">
-              <span id="irDe">--</span>
+              <span class="rot">junta 1</span>
+              <span class="de" id="irDe1">--</span>
               <span class="seta">&rarr;</span>
-              <input type="number" id="inMtSel" step="0.5" placeholder="alvo">
+              <input type="number" id="inMt1" step="0.5" placeholder="alvo">
               <span class="un">&deg;</span>
+            </div>
+            <div class="irAng">
+              <span class="rot">junta 2</span>
+              <span class="de" id="irDe2">--</span>
+              <span class="seta">&rarr;</span>
+              <input type="number" id="inMt2" step="0.5" placeholder="alvo">
+              <span class="un">&deg;</span>
+            </div>
+            <div class="linhaBt">
               <button class="b mini" id="btMoverSel">Levar</button>
             </div>
             <div class="pq2" id="qMoverSel"></div>
@@ -1657,6 +1648,20 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
       <span class="fxT">Calibrar braco e area da mesa</span>
       <b class="fxE" id="fxCalEst">--</b>
     </button>
+    <!-- VELOCIDADE E PARTIDA NA TIRA. Sao os dois ajustes que se mexe
+         COM a maquina andando, olhando o braco -- e ate aqui um morava
+         na aba Mover e o outro tres toques dentro da gaveta. Um controle
+         cada: mm/s na ponta, e o quanto a partida e macia. -->
+    <div class="fxN" title="Velocidade da ponta do braco">
+      <label for="inVelMm"><span>velocidade</span></label>
+      <input type="number" id="inVelMm" min="1" step="10">
+      <span class="un">mm/s</span>
+      <b class="fxE" id="velMovTx">--</b>
+    </div>
+    <div class="fxN" title="Quanto maior, mais macia a partida e a parada.">
+      <label for="inSuav">partida</label>
+      <input type="number" id="inSuav" min="0" max="255" step="10">
+    </div>
   </div>
 
   <nav class="abas" id="abas"></nav>
@@ -1824,17 +1829,13 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <input type="number" id="inVmx" min="1" max="720" step="1"><span class="un">°/s</span></div>
             <button class="b pri mini" id="btFaixaSalvar">Salvar a faixa</button>
             <div class="pq2" id="qFaixaSalvar"></div>
-            <div class="seg" id="segVel">
-              <button data-v="lento">Lento</button>
-              <button data-v="normal">Normal</button>
-              <button data-v="rapido">Rapido</button>
-              <button data-v="custom">Ajustar</button>
-            </div>
             <div class="res" id="resumoVel">--</div>
-            
-            <div id="velCustom" class="oculto">
+            <!-- Lento / Normal / Rapido saiu: eram tres nomes para tres
+                 numeros que a tira do rodape ja escolhe em mm/s, e cada
+                 um deles mexia em quatro campos de uma vez. O que fica e
+                 o ajuste direto, para quem monta a maquina. -->
+            <div id="velCustom">
               <div class="cp"><label>Jog normal</label><input type="number" id="inVn" min="0.1" step="0.5"><span class="un">°/s</span></div>
-              <div class="cp"><label>Jog precisao</label><input type="number" id="inVp" min="0.1" step="0.1"><span class="un">°/s</span></div>
               <div class="cp"><label>Deslocamento</label><input type="number" id="inVa" min="0.1" step="0.5"><span class="un">°/s</span></div>
               <div class="cp"><label>Cordao</label><input type="number" id="inVc2" min="0.5" step="0.5"><span class="un">mm/s</span></div>
               <div class="cp"><label>Fator do motor 1</label><input type="number" id="inFv1" min="0.05" max="3" step="0.05"><span class="un">x</span></div>
@@ -1846,19 +1847,13 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             </div>
 
             <h4>Partida e parada</h4>
-            <div class="seg" id="segRampa">
-              <button data-r="macia">Macia</button>
-              <button data-r="media">Media</button>
-              <button data-r="firme">Firme</button>
-              <button data-r="custom">Ajustar</button>
-            </div>
             <div class="res" id="resumoRampa">--</div>
-            
-            <div id="rampaCustom" class="oculto">
+            <!-- Macia / Media / Firme saiu pelo mesmo motivo. A
+                 suavidade em si subiu para a tira do rodape, onde se
+                 mexe nela olhando o braco partir. -->
+            <div id="rampaCustom">
               <div class="cp"><label>Aceleracao da junta 1</label><input type="number" id="inA1" min="1" step="5"><span class="un">°/s²</span></div>
               <div class="cp"><label>Aceleracao da junta 2</label><input type="number" id="inA2" min="1" step="5"><span class="un">°/s²</span></div>
-              <div class="cp"><label>Suavidade da partida</label><input type="number" id="inSuav" min="0" max="255" step="10"></div>
-              
             </div>
 
             <button class="b pri" id="btSalvar">Salvar velocidade e partida</button>
@@ -2374,8 +2369,10 @@ document.querySelectorAll(".jb").forEach(function(b){
    parte "complexa" -- subir a barra do jog e o posicionamento continuar
    lerdo, porque quem mandava nele era outro campo.
 
-   O modo Precisao continua com o valor dele: e o proposito daquele
-   botao.
+   E ha UM controle: mm/s na ponta. Os cinco degraus, os apelidos
+   lento/normal/rapido e o modo Precisao eram quatro escalas para o
+   mesmo numero -- e trocar de escala era o que fazia parecer que a
+   velocidade "nao pegava".
    --------------------------------------------------------------------- */
 /* A faixa da barra vem da maquina (velMn/velMx no estado), configurada
    em Ajustes. Estes sao so os valores enquanto o primeiro estado nao
@@ -2397,29 +2394,9 @@ function velFaixa(){
   return [mn,mx];
 }
 
-/* Os cinco degraus repartem a FAIXA configurada da maquina, nao o teto
-   absoluto: numa maquina cujo maximo util e vinte graus por segundo, o
-   degrau 5 tem de ser vinte, e nao um numero que ela nunca alcanca. O 1
-   e o minimo e o 5 e o maximo, entao nenhum degrau e inalcancavel. */
-const VEL_NIVEIS=5;
-function velDoNivel(n){
-  const f=velFaixa();
-  const k=Math.min(VEL_NIVEIS,Math.max(1,n));
-  return f[0]+(f[1]-f[0])*((k-1)/(VEL_NIVEIS-1));
-}
-function nivelDaVel(g){
-  const f=velFaixa();
-  if(f[1]<=f[0])return 1;
-  const bruto=1+(g-f[0])/(f[1]-f[0])*(VEL_NIVEIS-1);
-  return Math.min(VEL_NIVEIS,Math.max(1,Math.round(bruto)));
-}
-
 function velMostrar(g){
   velFaixa();
   const gg=Math.min(VEL_GRAUS_MAX,Math.max(VEL_GRAUS_MIN,g));
-  const niv=nivelDaVel(gg);
-  $("velNiveis").querySelectorAll("[data-niv]").forEach(function(b){
-    b.classList.toggle("on",+b.dataset.niv===niv);});
   if(document.activeElement!==$("inVelMm"))
     $("inVelMm").value=Math.round(grausParaMm(gg));
   $("velMovTx").textContent=gg.toFixed(0)+" \u00b0/s "+tr("na junta");
@@ -2455,9 +2432,6 @@ function velEnviar(g){
     .catch(function(){velEnviando=false;});
 }
 
-$("velNiveis").querySelectorAll("[data-niv]").forEach(function(b){
-  b.onclick=function(){ velEnviar(velDoNivel(+b.dataset.niv)); };
-});
 $("inVelMm").oninput=function(){
   const v=parseFloat($("inVelMm").value);
   if(!isNaN(v))$("velMovTx").textContent=mmParaGraus(v).toFixed(0)+" \u00b0/s";
@@ -2467,13 +2441,14 @@ $("inVelMm").onchange=function(){
   if(isNaN(v)){velMostrar(velUltimoEnviado>0?velUltimoEnviado:20);return;}
   velEnviar(mmParaGraus(v));
 };
-/* Lento, normal e rapido sao apelidos dos degraus 1, 3 e 5 -- os mesmos
-   degraus dos numeros, nao uma segunda escala. Quem prefere a palavra
-   aperta a palavra, quem prefere o numero aperta o numero, e o degrau
-   aceso e o mesmo nos dois. */
-document.querySelectorAll("[data-vel]").forEach(function(b){
-  b.onclick=function(){ velEnviar(velDoNivel(+b.dataset.vel)); };
-});
+/* A suavidade da partida fica ao lado da velocidade, na mesma tira, e
+   vale na hora: e olhando o braco arrancar que se decide se ela esta
+   macia demais. */
+$("inSuav").onchange=function(){
+  const v=parseInt($("inSuav").value,10);
+  if(isNaN(v))return;
+  post("/api/config?suav="+Math.min(255,Math.max(0,v)));
+};
 /* A lampada ACENDE enquanto o pulso dura -- 2 s, que e o que a rota faz.
    Sem isso o unico retorno seria o clique, e rele que nao se ouve da
    bancada parece nao ter disparado. */
@@ -2492,17 +2467,18 @@ $("btTesteMov").onclick=function(){
   post("/api/teste/rele","qMoverSel");};
 
 $("btMoverSel").onclick=function(){
-  const j=juntaSel;
-  const alvo=parseFloat($("inMtSel").value);
-  /* Sem alvo, DIZER que falta o alvo. Sair calado deixava o botao
-     parecendo quebrado. */
-  if(isNaN(alvo)){
+  const a1=parseFloat($("inMt1").value);
+  const a2=parseFloat($("inMt2").value);
+  /* Sem nenhum alvo, DIZER que falta o alvo. Sair calado deixava o
+     botao parecendo quebrado. Com um campo so preenchido nao falta
+     nada: a outra junta fica onde esta. */
+  if(isNaN(a1)&&isNaN(a2)){
     const q=$("qMoverSel");
     if(q){q.textContent=tr("digite o angulo de destino");q.style.display="block";}
     return;
   }
-  /* O OUTRO EIXO TEM DE FICAR PARADO -- e "parado" se escreve na conta
-     do FIRMWARE, nao na do encoder.
+  /* A JUNTA SEM ALVO TEM DE FICAR PARADA -- e "parada" se escreve na
+     conta do FIRMWARE, nao na do encoder.
      /api/mover recebe um destino ABSOLUTO para as duas juntas e o
      converte em pulsos pela contagem que ele mesmo mantem (D.t1/D.t2).
      Mandar aqui o angulo MEDIDO (anguloAtual, que prefere o encoder)
@@ -2512,8 +2488,8 @@ $("btMoverSel").onclick=function(){
      junta 1 a zero sacudia a junta 2 junto.
      Mandando a propria contagem do firmware, a diferenca e exatamente
      zero e o eixo nao recebe pulso nenhum. */
-  const t1=(j===1)?alvo:(D.t1||0);
-  const t2=(j===2)?alvo:(D.t2||0);
+  const t1=isNaN(a1)?(D.t1||0):a1;
+  const t2=isNaN(a2)?(D.t2||0):a2;
   post("/api/mover?t1="+t1.toFixed(2)+"&t2="+t2.toFixed(2),"qMoverSel");
 };
 /* Setas do teclado no mesmo sentido dos botoes: esquerda = anti-horario. */
@@ -2591,7 +2567,6 @@ $("btParar").onclick =function(){post("/api/parar");};
     post("/api/servos?v="+(ligado?0:1)+"&j="+k);
   };
 });
-$("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
 $("btTeste").onclick =function(){
   pulsarLampada("btTeste");
   post("/api/teste/rele");};
@@ -2710,7 +2685,7 @@ $("btSalvarElos").onclick=geo;
 $("btSalvarGeo").onclick =geo;
 
 function salvar(vc){
-  return post("/api/config?velN="+$("inVn").value+"&velP="+$("inVp").value+
+  return post("/api/config?velN="+$("inVn").value+
     "&velA="+$("inVa").value+"&velCordao="+vc+"&acel1="+$("inA1").value+
     "&acel2="+$("inA2").value+"&ppv1="+$("inPv1").value+"&red1="+$("inRd1").value+
     "&ppv2="+$("inPv2").value+"&red2="+$("inRd2").value+
@@ -2743,61 +2718,14 @@ $("btEscLimpar").onclick=function(){
 };
 
 /* =====================================================================
-   AJUSTES EM LINGUAGEM DE OPERADOR
-   Os numeros continuam todos aqui -- nada foi tirado da maquina. O que
-   mudou e a ordem em que aparecem: primeiro tres botoes que qualquer um
-   entende, e os graus por segundo ao quadrado atras de "Ajustar".
-   Quem monta a maquina mexe nos numeros; quem trabalha nela escolhe
-   Lento, Normal ou Rapido e vai fazer peca.
+   AJUSTES DE INSTALACAO
+   Os perfis prontos -- Lento/Normal/Rapido e Macia/Media/Firme -- sairam
+   daqui. Cada um deles escrevia quatro campos de uma vez e competia com
+   a tira do rodape, que ja escolhe a velocidade em mm/s e a suavidade da
+   partida; o operador tinha tres lugares mandando no mesmo numero e
+   nenhum deles ganhava sempre. O que fica aqui e o ajuste direto, que e
+   coisa de quem monta a maquina.
    ===================================================================== */
-const PRE_VEL={
-  /* velN, velP, velA, cordao */
-  lento: [ 8, 1.5,  6, 3],
-  normal:[20, 2.0, 12, 5],
-  rapido:[35, 3.0, 25, 8]
-};
-const PRE_RAMPA={
-  /* acel, suavidade */
-  macia:[ 30, 200],
-  media:[ 60, 120],
-  firme:[140,  40]
-};
-/* Reconhece o ajuste atual como um dos prontos. Sem isto a tela abriria
-   com nenhum botao aceso e o operador nao saberia em que velocidade a
-   maquina esta. */
-function qualPreset(tab,vals){
-  const perto=function(a,b){return Math.abs(a-b)<0.051;};
-  for(const k in tab){
-    if(tab[k].every(function(v,i){return perto(v,vals[i]);}))return k;
-  }
-  return "custom";
-}
-function mostrarPreset(seg,cx,qual){
-  document.querySelectorAll("#"+seg+" button").forEach(function(b){
-    b.classList.toggle("on",b.dataset.v===qual||b.dataset.r===qual);});
-  $(cx).className=(qual==="custom")?"":"oculto";
-}
-document.querySelectorAll("#segVel button").forEach(function(b){
-  b.onclick=function(){
-    const q=b.dataset.v;
-    mostrarPreset("segVel","velCustom",q);
-    if(q==="custom")return;
-    const v=PRE_VEL[q];
-    $("inVn").value=v[0];$("inVp").value=v[1];$("inVa").value=v[2];
-    $("inVc2").value=v[3];$("inVc").value=v[3];
-    salvar(v[3]).then(function(){carregou=false;});
-  };
-});
-document.querySelectorAll("#segRampa button").forEach(function(b){
-  b.onclick=function(){
-    const q=b.dataset.r;
-    mostrarPreset("segRampa","rampaCustom",q);
-    if(q==="custom")return;
-    const v=PRE_RAMPA[q];
-    $("inA1").value=v[0];$("inA2").value=v[0];$("inSuav").value=v[1];
-    salvar($("inVc2").value).then(function(){carregou=false;});
-  };
-});
 $("hAvancado").onclick=function(){
   const abrir=$("avancado").classList.contains("oculto");
   $("avancado").className=abrir?"":"oculto";
@@ -5547,21 +5475,17 @@ function aplicar(d){
   if(!jaEnquadrou){jaEnquadrou=true;autoEnquadrar();}
   sonPintar(d);
   motorPintar(d);
-  /* Posicao atual da junta selecionada -- e o numero que o operador
-     confere antes de mandar o proximo comando. Diz tambem DE ONDE veio:
-     medido pelo encoder ou comandado pelo firmware. */
-  {
-    const de=$("irDe");
-    if(de){
-      /* AQUI E A CONTA DO FIRMWARE, de proposito -- a mesma que
-         /api/mover usa para calcular o destino. Mostrar o angulo do
-         encoder faria a linha prometer "de -65,9 para 0" e a maquina
-         andar outra distancia. Onde o braco esta de verdade se le na
-         linha de cima ("medido") e na regua do rodape. */
-      const v=(juntaSel===1)?d.t1:d.t2;
-      de.textContent=(v||0).toFixed(1)+"\u00b0";
-    }
-  }
+  /* Onde cada junta esta agora -- o numero que o operador confere
+     antes de mandar o proximo comando.
+     AQUI E A CONTA DO FIRMWARE, de proposito -- a mesma que /api/mover
+     usa para calcular o destino. Mostrar o angulo do encoder faria a
+     linha prometer "de -65,9 para 0" e a maquina andar outra distancia.
+     Onde o braco esta de verdade se le na linha de cima ("medido") e na
+     regua do rodape. */
+  [[1,d.t1],[2,d.t2]].forEach(function(k){
+    const de=$("irDe"+k[0]);
+    if(de)de.textContent=(k[1]||0).toFixed(1)+"\u00b0";
+  });
   /* A escala ensinada, se houver. Numero grande e o normal: um encoder
      de 17 bits com reducao 16 da milhares de contagens por grau. */
   const e1=$("escAtual");
@@ -5636,12 +5560,6 @@ function aplicar(d){
        : d.modo!=="MANUAL" ? "so a partir do modo manual: "+(RM[d.modo]||d.modo)
        : (!d.cal1||!d.cal2) ? "calibre as juntas antes de ensinar pontos"
        : d.movendo ? "espere o braco parar" : "");
-  /* Virou um atalho ao lado de lento/normal/rapido: e um jeito de
-     andar, como eles. Aceso quando ligado -- o estado esta no botao, nao
-     numa palavra dentro dele. */
-  $("btPrec").classList.toggle("on",!!d.precisao);
-  $("btPrec").title=d.precisao?tr("precisao ligada"):tr("precisao desligada");
-
   /* Leitura de angulo: comandado em cima, medido pelo encoder embaixo.
      Divergencia acima de meio grau fica vermelha -- abaixo disso e o
      tremor normal de um encoder de 17 bits e nao quer dizer nada. */
@@ -5716,19 +5634,13 @@ function aplicar(d){
 
   /* Em palavras, nao em campos: o resumo e o que o operador le antes de
      decidir se precisa mexer em alguma coisa. */
-  const qv=qualPreset(PRE_VEL,[d.velN,d.velP,d.velA,d.velCordao]);
-  const qr=qualPreset(PRE_RAMPA,[d.acel1,d.suav]);
   $("resumoVel").textContent=
-    (qv==="custom"?"ajuste proprio":qv)+
-    " · jog "+d.velN.toFixed(0)+" °/s · precisao "+d.velP.toFixed(1)+
-    " °/s · deslocamento "+d.velA.toFixed(0)+" °/s · cordao "+
-    d.velCordao.toFixed(1)+" mm/s";
+    "jog "+d.velN.toFixed(0)+" °/s · deslocamento "+d.velA.toFixed(0)+
+    " °/s · cordao "+d.velCordao.toFixed(1)+" mm/s";
   $("resumoRampa").textContent=
-    (qr==="custom"?"ajuste proprio":qr)+
-    " · aceleracao "+d.acel1.toFixed(0)+" °/s² · suavidade "+d.suav;
+    "aceleracao "+d.acel1.toFixed(0)+" °/s² · suavidade "+d.suav;
   $("sbAjustes").textContent=
-    (qv==="custom"?"velocidade propria":"velocidade "+qv)+
-    " · partida "+(qr==="custom"?"propria":qr);
+    d.velN.toFixed(0)+" °/s · rampa "+d.acel1.toFixed(0)+" °/s²";
   const nProt=(d.protCurso?1:0)+(d.protDobra?1:0)+(d.protEnv?1:0);
   $("resumoArea").textContent = nProt===3
     ? "as tres protecoes ligadas"
@@ -5737,13 +5649,8 @@ function aplicar(d){
       (!d.protCurso?"fim de curso ":"")+(!d.protDobra?"cotovelo ":"")+
       (!d.protEnv?"mesa e base ":"")+"desligada(s)";
   if(!carregou){
-    mostrarPreset("segVel","velCustom",qv);
-    mostrarPreset("segRampa","rampaCustom",qr);
-  }
-
-  if(!carregou){
     carregou=true;
-    $("inVn").value=d.velN;$("inVp").value=d.velP;$("inVa").value=d.velA;
+    $("inVn").value=d.velN;$("inVa").value=d.velA;
     if($("inVmn")&&document.activeElement!==$("inVmn"))$("inVmn").value=d.velMn;
     if($("inVmx")&&document.activeElement!==$("inVmx"))$("inVmx").value=d.velMx;
     $("inVc").value=d.velCordao;$("inVc2").value=d.velCordao;
@@ -5754,7 +5661,7 @@ function aplicar(d){
     if($("inFv1"))$("inFv1").value=(d.fvel1!==undefined?d.fvel1:1);
     /* Nao reescrever o campo enquanto o dedo esta nele: a barra pulava de
        volta para o valor da maquina no meio do arrasto. */
-    if($("velNiveis")&&d.velN!==undefined&&!velEnviando&&
+    if(d.velN!==undefined&&!velEnviando&&
        document.activeElement!==$("inVelMm")){
       velMostrar(d.velN);
     }
@@ -5833,7 +5740,7 @@ function aplicar(d){
      corpo maior e com o botao do proximo passo. O joystick continua
      dizendo que esta bloqueado pelo proprio jeito -- apagado. */
   $("sbMover").textContent=instalacao?"modo de instalacao · jog livre":
-    (d.precisao?"precisao ligada":"passo, angulo e referencia");
+    "passo, angulo e referencia";
   if(d.maxPts>1&&d.maxPts!==MAX_PTS){MAX_PTS=d.maxPts;posContar();}
   if(arqAberta())sdEstadoSalvar();
   acao("Home", porQueNaoMove(d,true));
@@ -5947,9 +5854,7 @@ const EN={
  "Ajustes":"Setup","Encoder":"Encoder","Maquina":"Machine",
  /* velocidade */
  "na junta":"at the joint",
- "precisao":"fine","lento":"slow","normal":"normal","rapido":"fast",
- "precisao ligada":"fine mode on","precisao desligada":"fine mode off",
- "Velocidade":"Speed",
+ "Velocidade":"Speed","velocidade":"speed","partida":"start",
  "medido na ponta com o braco esticado":"measured at the tip, arm extended",
  /* lista do programa */
  "cordao":"weld","so desloca":"travel only","percurso":"path",

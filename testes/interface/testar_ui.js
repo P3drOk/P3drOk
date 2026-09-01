@@ -124,6 +124,29 @@ async function fecharGaveta(pag) {
   checar(joyVis, 'abre na aba Mover com o joystick visivel');
   await p.screenshot({ path: SAIDA + '/celular-1-mover.png' });
 
+  // A TIRA DO RODAPE TEM DE CONTINUAR FINA. Ela e a ressalva do proprio
+  // pedido: no telefone a barra de abas ja ocupa o rodape, e um segundo
+  // rodape gordo come a altura mais escassa que a tela tem. Com a
+  // velocidade e a partida dentro dela sao tres itens -- se cada um cair
+  // numa linha ela triplica. Guarda a ALTURA e a LARGURA: a tira e item
+  // de uma grade, e sem min-width:0 ela empurra a pagina para fora da
+  // tela em vez de encolher.
+  const tiraRodape = await p.evaluate(() => {
+    const f = document.getElementById('faixa');
+    const r = f.getBoundingClientRect();
+    const linhas = new Set([...f.children]
+      .map(e => Math.round(e.getBoundingClientRect().top)));
+    return { alt: Math.round(r.height), larg: Math.round(r.width),
+             linhas: linhas.size, itens: f.children.length,
+             vel: !!document.querySelector('#faixa #inVelMm'),
+             suav: !!document.querySelector('#faixa #inSuav') };
+  });
+  checar(tiraRodape.alt <= 60 && tiraRodape.linhas === 1 &&
+         tiraRodape.larg <= 390 && tiraRodape.itens === 3 &&
+         tiraRodape.vel && tiraRodape.suav,
+         'a tira do rodape leva calibracao, velocidade e partida numa linha fina',
+         JSON.stringify(tiraRodape));
+
   // ---- joystick ----
   const cx = await p.locator('#joy').boundingBox();
   const meioX = cx.x + cx.width / 2, meioY = cx.y + cx.height / 2;
@@ -957,18 +980,35 @@ async function fecharGaveta(pag) {
   // precisao e ele so ocupava o espaco dos controles que importam.
   const controles = await q.evaluate(() => ({
     joy: !!document.getElementById('joy').offsetParent,
-    prec: !!document.getElementById('btPrec').offsetParent,
     jb: document.querySelectorAll('#pnMover .jb').length,
-    niveis: document.querySelectorAll('#velNiveis [data-niv]').length,
     barra: !!document.getElementById('inVelMov'),
     rele: !!document.getElementById('btTesteMov'),
     seletor: !!document.getElementById('selJunta'),
     leitura: !!document.getElementById('movAgora'),
+    // A velocidade saiu do painel e virou a tira do rodape: um controle
+    // so, alcancavel de qualquer aba.
+    velNoPainel: !!document.querySelector('#pnMover #inVelMm'),
+    velNaTira: !!document.querySelector('#faixa #inVelMm'),
   }));
-  checar(!controles.joy && controles.prec && controles.jb === 4 &&
-         controles.niveis === 5 && !controles.barra && controles.rele,
-         'Painel: setas, cinco degraus de velocidade e teste de rele na aba Mover',
+  checar(!controles.joy && controles.jb === 4 && !controles.barra &&
+         controles.rele && !controles.velNoPainel && controles.velNaTira,
+         'Painel: setas e teste de rele no Mover; a velocidade mora na tira',
          JSON.stringify(controles));
+
+  // UM CONTROLE DE VELOCIDADE, e um so. Cinco degraus, tres apelidos e o
+  // botao "precisao" eram quatro escalas para o mesmo numero -- e trocar
+  // de escala era o que fazia a velocidade parecer que nao pegava.
+  const sobrou = await q.evaluate(() => ({
+    prec: !!document.getElementById('btPrec'),
+    niveis: document.querySelectorAll('[data-niv]').length,
+    atalhos: document.querySelectorAll('[data-vel]').length,
+    perfisVel: !!document.getElementById('segVel'),
+    perfisRampa: !!document.getElementById('segRampa'),
+  }));
+  checar(!sobrou.prec && sobrou.niveis === 0 && sobrou.atalhos === 0 &&
+         !sobrou.perfisVel && !sobrou.perfisRampa,
+         'Velocidade: nao ha degrau, apelido, precisao nem perfil em lugar nenhum',
+         JSON.stringify(sobrou));
   // O seletor "Junta" e a linha "Eixo 1: x graus" sairam: o eixo se
   // escolhe no desenho ou na propria seta, e o angulo esta na regua do
   // rodape, em corpo 28, comandado e medido lado a lado.
@@ -2442,21 +2482,40 @@ async function fecharGaveta(pag) {
   await t.request.post(BASE + '/teste/estado',
     { data: { t1: 20, t2: 5, m1: 20, m1ok: true, m2: 33, m2ok: true } });
   await t.waitForTimeout(700);
-  await t.evaluate(() => { juntaSel = 1; });
-  await t.locator('#inMtSel').fill('0');
+  // UM CAMPO POR JUNTA. Era um campo so, agindo na junta selecionada em
+  // outro lugar da tela: quem esquecia de trocar a selecao mandava a
+  // junta errada para o angulo certo.
+  await t.locator('#inMt1').fill('0');
+  await t.locator('#inMt2').fill('');
   rotas = [];
   await t.locator('#btMoverSel').click();
   await t.waitForTimeout(300);
   const levou = rotas.find(x => x.split('?')[0] === '/api/mover');
   const par = new URLSearchParams((levou || '').split('?')[1] || '');
   checar(!!levou && parseFloat(par.get('t1')) === 0,
-         'Levar: o eixo escolhido recebe o angulo digitado', levou || 'nada');
+         'Levar: a junta 1 recebe o angulo digitado no campo dela', levou || 'nada');
   checar(!!levou && Math.abs(parseFloat(par.get('t2')) - 5) < 0.01,
-         'Levar: o outro eixo recebe a contagem do firmware, nao o encoder',
+         'Levar: a junta sem alvo recebe a contagem do firmware, nao o encoder',
          't2=' + par.get('t2'));
 
-  // Sem alvo o botao tem de DIZER que falta o alvo, em vez de sair calado.
-  await t.locator('#inMtSel').fill('');
+  // E as DUAS de uma vez, que era o proposito de separar os campos: uma
+  // tacada leva o braco a postura inteira.
+  await t.locator('#inMt1').fill('-12');
+  await t.locator('#inMt2').fill('7.5');
+  rotas = [];
+  await t.locator('#btMoverSel').click();
+  await t.waitForTimeout(300);
+  const juntas2 = rotas.find(x => x.split('?')[0] === '/api/mover');
+  const pd = new URLSearchParams((juntas2 || '').split('?')[1] || '');
+  checar(!!juntas2 && Math.abs(parseFloat(pd.get('t1')) + 12) < 0.01 &&
+         Math.abs(parseFloat(pd.get('t2')) - 7.5) < 0.01,
+         'Levar: os dois campos levam as duas juntas numa tacada so',
+         juntas2 || 'nada');
+
+  // Sem alvo nenhum o botao tem de DIZER que falta o alvo, em vez de
+  // sair calado.
+  await t.locator('#inMt1').fill('');
+  await t.locator('#inMt2').fill('');
   rotas = [];
   await t.locator('#btMoverSel').click();
   await t.waitForTimeout(250);
@@ -2505,60 +2564,52 @@ async function fecharGaveta(pag) {
          'Velocidade: a equivalencia em grau/s fica a vista, e o alcance usado no titulo',
          eq.txt + ' | ' + eq.tit);
 
-  // Os tres degraus repartem a FAIXA configurada na maquina, nao um teto
-  // cravado no codigo: numa maquina cujo maximo util e 20 graus/s,
-  // "rapido" tem de ser 20, e nao um numero que ela nunca alcanca.
+  // A FAIXA DA MAQUINA continua sendo o limite: o campo aceita digitar o
+  // que quiser, mas o que sai e preso entre o minimo e o maximo que a
+  // maquina publica -- numa maquina cujo maximo util e 60 graus/s, pedir
+  // o dobro nao pode virar o dobro.
   rotas = [];
-  await t.locator('[data-vel="5"]').click();
+  await t.evaluate(() => {
+    const c = document.getElementById('inVelMm');
+    c.value = '9000';
+    c.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   await t.waitForTimeout(400);
-  const rapido = rotas.find(x => x.split('?')[0] === '/api/config');
-  const gRapido = rapido && +(/velN=([\d.]+)/.exec(rapido) || [])[1];
-  checar(!!rapido && Math.abs(gRapido - 60) < 0.6,
-         'Velocidade: o atalho "rapido" leva ao maximo da faixa configurada',
-         'velN=' + gRapido + ' (faixa 2..60)');
+  const teto = rotas.find(x => x.split('?')[0] === '/api/config');
+  const gTeto = teto && +(/velN=([\d.]+)/.exec(teto) || [])[1];
+  checar(!!teto && Math.abs(gTeto - 60) < 0.6,
+         'Velocidade: o pedido e preso no maximo da faixa configurada',
+         'velN=' + gTeto + ' (faixa 2..60)');
 
-  // CINCO DEGRAUS, e o 1 e o 5 sao exatamente as pontas da faixa que a
-  // maquina publica -- nenhum degrau e inalcancavel.
-  rotas = [];
-  await t.locator('#velNiveis [data-niv="1"]').click();
-  await t.waitForTimeout(400);
-  const d1 = rotas.find(x => x.split('?')[0] === '/api/config');
-  const g1 = d1 && +(/velN=([\d.]+)/.exec(d1) || [])[1];
-  rotas = [];
-  await t.locator('#velNiveis [data-niv="3"]').click();
-  await t.waitForTimeout(400);
-  const d3 = rotas.find(x => x.split('?')[0] === '/api/config');
-  const g3 = d3 && +(/velN=([\d.]+)/.exec(d3) || [])[1];
-  checar(Math.abs(g1 - 2) < 0.6 && Math.abs(g3 - 31) < 1.0,
-         'Velocidade: os cinco degraus repartem a faixa publicada (1=min, 5=max)',
-         'degrau 1 = ' + g1 + ' °/s, degrau 3 = ' + g3 + ' °/s (faixa 2..60)');
-
-  // O degrau escolhido fica aceso, e "normal" acende o mesmo que o 3:
-  // sao os mesmos degraus, nao duas escalas.
-  const aceso = await t.evaluate(() =>
-    [...document.querySelectorAll('#velNiveis [data-niv]')]
-      .filter(b => b.classList.contains('on')).map(b => b.dataset.niv));
-  checar(aceso.length === 1 && aceso[0] === '3',
-         'Velocidade: so o degrau escolhido fica aceso', aceso.join(',') || 'nenhum');
-  await t.locator('[data-vel="1"]').click();
-  await t.waitForTimeout(400);
-  const acesoLento = await t.evaluate(() =>
-    [...document.querySelectorAll('#velNiveis [data-niv]')]
-      .filter(b => b.classList.contains('on')).map(b => b.dataset.niv));
-  checar(acesoLento.length === 1 && acesoLento[0] === '1',
-         'Velocidade: "lento" e o degrau 1 -- as palavras sao apelidos dos numeros',
-         acesoLento.join(',') || 'nenhum');
-
-  // E o mm/s continua na tela, so que pequeno e ao lado: deixou de ser o
-  // que se escolhe para ser o que se confere.
-  const mm = await t.evaluate(() => {
+  // E o controle e ALCANCAVEL DE QUALQUER ABA: e para isso que ele mora
+  // na tira do rodape, e nao dentro do painel de uma aba so.
+  const tiraVel = await t.evaluate(() => {
+    irAba('programa');
     const e = document.getElementById('inVelMm');
-    return { existe: !!e, largura: Math.round(e.getBoundingClientRect().width),
+    const s = document.getElementById('inSuav');
+    return { velVisivel: !!e.offsetParent, naTira: !!e.closest('#faixa'),
+             partida: !!s && !!s.offsetParent && !!s.closest('#faixa'),
              valor: e.value };
   });
-  checar(mm.existe && mm.largura <= 80 && +mm.valor > 0,
-         'Velocidade: o mm/s continua na tela, pequeno e ao lado',
-         JSON.stringify(mm));
+  await t.evaluate(() => irAba('mover'));
+  await t.waitForTimeout(300);
+  checar(tiraVel.velVisivel && tiraVel.naTira && tiraVel.partida &&
+         +tiraVel.valor > 0,
+         'Velocidade e partida ficam na tira, alcancaveis de qualquer aba',
+         JSON.stringify(tiraVel));
+
+  // A partida grava sozinha, na hora: e olhando o braco arrancar que se
+  // decide se ela esta macia demais.
+  rotas = [];
+  await t.evaluate(() => {
+    const s = document.getElementById('inSuav');
+    s.value = '80';
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await t.waitForTimeout(400);
+  const partiu = rotas.find(x => x.split('?')[0] === '/api/config');
+  checar(!!partiu && /suav=80/.test(partiu),
+         'Partida: mexer na tira grava na hora', partiu || 'nada');
 
   // Maquina sem calibracao e sem servos: o que bloqueia tem que dizer.
   await t.request.post(BASE + '/teste/estado',
@@ -2769,11 +2820,13 @@ async function fecharGaveta(pag) {
   // vive no navegador. Limpa-se antes para o cenario comecar com um
   // passo pendente de verdade -- senao a maquina do banco ja nasce toda
   // ------------------------------------------------------------------
-  // AJUSTES DA MAQUINA em linguagem de operador.
-  // A queixa: "queria algo mais simples, de forma que um operador nao
-  // experiente consiga entender no que ele esta mexendo". Os numeros
-  // continuam todos la -- o que mudou e a ordem: tres botoes na frente,
-  // graus por segundo ao quadrado atras de "Ajustar".
+  // AJUSTES DA MAQUINA: so o ajuste direto.
+  // Os perfis Lento/Normal/Rapido e Macia/Media/Firme sairam. Cada um
+  // escrevia quatro campos de uma vez e competia com a tira do rodape,
+  // que ja escolhe a velocidade em mm/s e a suavidade da partida: o
+  // operador tinha tres lugares mandando no mesmo numero e nenhum deles
+  // ganhava sempre. O que fica aqui e coisa de quem monta a maquina --
+  // e nada some da maquina.
   // ------------------------------------------------------------------
   // O btCfg ALTERNA: clicar nele com a gaveta ja aberta a fecha, e o
   // clique seguinte cai num botao invisivel.
@@ -2785,56 +2838,48 @@ async function fecharGaveta(pag) {
   await t.locator('#cfgAbas button[data-cfg="maquina"]').click();
   await t.waitForTimeout(250);
   await t.evaluate(() => {
-    const alvo = document.getElementById('segVel').closest('.et');
+    const alvo = document.getElementById('velCustom').closest('.et');
     document.querySelectorAll('#cfgMaquina .et')
       .forEach(x => x.classList.toggle('aberta', x === alvo));
   });
   await t.waitForTimeout(600);
 
   const aj = await t.evaluate(() => ({
-    velAceso: [...document.querySelectorAll('#segVel button')]
-                .filter(b => b.classList.contains('on')).map(b => b.dataset.v),
-    rampaAceso: [...document.querySelectorAll('#segRampa button')]
-                .filter(b => b.classList.contains('on')).map(b => b.dataset.r),
     numerosVel: !!document.getElementById('velCustom').offsetParent,
+    numerosRampa: !!document.getElementById('rampaCustom').offsetParent,
     avancado: !!document.getElementById('avancado').offsetParent,
     resumo: document.getElementById('resumoVel').textContent.trim(),
+    rampa: document.getElementById('resumoRampa').textContent.trim(),
     sub: document.getElementById('sbAjustes').textContent.trim(),
+    campos: ['inVn', 'inVa', 'inVc2', 'inA1', 'inA2'].every(i =>
+      !!document.getElementById(i) && document.getElementById(i).value !== ''),
+    // A suavidade subiu para a tira: aqui ela nao pode aparecer de novo,
+    // senao voltam a ser dois lugares mandando no mesmo numero.
+    suavAqui: !!document.querySelector('#cfgMaquina #inSuav'),
   }));
-  checar(aj.velAceso.length === 1 && aj.rampaAceso.length === 1,
-         'Ajustes: a tela abre com a velocidade e a partida atuais ACESAS',
-         'velocidade: ' + aj.velAceso + ', partida: ' + aj.rampaAceso);
-  checar(!aj.numerosVel && !aj.avancado,
-         'Ajustes: os numeros crus comecam recolhidos, nao apagados',
-         JSON.stringify({ velCustom: aj.numerosVel, avancado: aj.avancado }));
-  checar(/°\/s/.test(aj.resumo) && /mm\/s/.test(aj.resumo),
-         'Ajustes: e o resumo em uma linha diz o que aqueles botoes valem',
-         aj.resumo);
+  checar(aj.numerosVel && aj.numerosRampa && aj.campos,
+         'Ajustes: o ajuste direto esta a vista, com todos os campos preenchidos',
+         JSON.stringify(aj));
+  checar(!aj.suavAqui,
+         'Ajustes: a suavidade da partida mora so na tira, e nao em dois lugares');
+  checar(!aj.avancado,
+         'Ajustes: o "Avancado" continua recolhido, nao apagado');
+  checar(/°\/s/.test(aj.resumo) && /mm\/s/.test(aj.resumo) &&
+         /°\/s/.test(aj.rampa),
+         'Ajustes: os resumos em uma linha dizem o que a maquina esta usando',
+         aj.resumo + ' | ' + aj.rampa);
   checar(aj.sub.length > 0,
          'Ajustes: o cabecalho do cartao ja adianta em que pe esta', aj.sub);
 
-  // Escolher um preset grava de verdade -- nao e so pintar botao.
+  // Salvar grava de verdade -- e sem velP, que era o modo precisao.
   rotas = [];
-  await t.locator('#segVel button[data-v="lento"]').click();
+  await t.locator('#btSalvar').click();
   await t.waitForTimeout(500);
   const gravou = rotas.find(u => u.indexOf('/api/config?') === 0);
-  checar(!!gravou && /velN=8/.test(gravou) && /velCordao=3/.test(gravou),
-         'Ajustes: escolher "Lento" grava os quatro numeros de uma vez',
+  checar(!!gravou && /velN=/.test(gravou) && /velCordao=/.test(gravou) &&
+         !/velP=/.test(gravou),
+         'Ajustes: "Salvar" manda os numeros da tela, sem o modo precisao',
          gravou);
-
-  // "Ajustar" revela os campos, e nao mexe em nada sozinho.
-  rotas = [];
-  await t.locator('#segVel button[data-v="custom"]').click();
-  await t.waitForTimeout(400);
-  const custom = await t.evaluate(() => ({
-    visivel: !!document.getElementById('velCustom').offsetParent,
-    campos: ['inVn', 'inVp', 'inVa', 'inVc2'].every(i =>
-      !!document.getElementById(i) && document.getElementById(i).value !== ''),
-  }));
-  checar(custom.visivel && custom.campos &&
-         !rotas.some(u => u.indexOf('/api/config?') === 0),
-         'Ajustes: "Ajustar" so mostra os campos -- nao grava sozinho',
-         JSON.stringify(custom));
 
   // O "Avancado" existe e abre. Era o pedido oposto ao de simplificar:
   // simples na frente, completo atras -- nada some da maquina.

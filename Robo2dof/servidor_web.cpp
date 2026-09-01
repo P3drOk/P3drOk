@@ -185,13 +185,13 @@ static void handleStatus() {
   snprintf(json, sizeof(json),
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
     "\"p1\":%ld,\"p2\":%ld,\"t1\":%.2f,\"t2\":%.2f,\"x\":%.1f,\"y\":%.1f,"
-    "\"precisao\":%s,\"solda\":%s,\"servos\":%s,\"movendo\":%s,"
+    "\"solda\":%s,\"servos\":%s,\"movendo\":%s,"
     "\"cal1\":%s,\"cal2\":%s,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,"
     "\"trajN\":%u,\"trajMs\":%lu,\"trajPct\":%u,\"escala\":%u,"
     "\"progN\":%u,\"progIdx\":%u,\"progPct\":%u,\"ensaio\":%s,\"velCordao\":%.1f,"
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
-    "\"velN\":%.1f,\"velP\":%.1f,\"velA\":%.1f,\"velMn\":%.1f,\"velMx\":%.1f,"
+    "\"velN\":%.1f,\"velA\":%.1f,\"velMn\":%.1f,\"velMx\":%.1f,"
     "\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
@@ -208,7 +208,6 @@ static void handleStatus() {
     "\"msg\":\"%s\"}",
     modo, calib, (unsigned)eixoCalib,
     s.p1, s.p2, s.t1, s.t2, s.x, s.y,
-    s.precisao ? "true" : "false",
     s.solda ? "true" : "false",
     s.servosLigados ? "true" : "false",
     s.emMovimento ? "true" : "false",
@@ -222,7 +221,7 @@ static void handleStatus() {
     velCordaoMmS, velCordaoMmS,
     protCurso ? "true" : "false", protDobra ? "true" : "false",
     protEnvelope ? "true" : "false",
-    velNormal, velPrecisao, velAuto, velMinima, velMaxima,
+    velNormal, velAuto, velMinima, velMaxima,
     J1.aceleracao, J2.aceleracao,
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
@@ -374,7 +373,6 @@ static void handleParar() {
   ok();
 }
 
-static void handlePrecisao()   { registrarContatoOperador(); enfileirar(CMD_PRECISAO, argL("v", -1)); }
 // v = 0|1 (desliga/liga), j = 1|2|0 (junta, 0 = as duas).
 static void handleServos()     { registrarContatoOperador();
                                  enfileirar(CMD_SERVOS, argL("v", 0), argL("j", 0)); }
@@ -547,7 +545,6 @@ static void handleConfig() {
 
   // Tudo em graus/s agora. Ver a nota em config.h.
   const float vn = argF("velN",  velNormal);
-  const float vp = argF("velP",  velPrecisao);
   const float va = argF("velA",  velAuto);
   const float vmn = argF("velMin", velMinima);
   const float vmx = argF("velMax", velMaxima);
@@ -571,7 +568,7 @@ static void handleConfig() {
   const long iv1 = argL("inv1", J1.inverterDir ? 1 : 0);
   const long iv2 = argL("inv2", J2.inverterDir ? 1 : 0);
 
-  if (vn <= 0 || vp <= 0 || va <= 0 || vs <= 0 || a1 <= 0 || a2 <= 0 || pv1 <= 0 || rd1 <= 0 || pv2 <= 0 || rd2 <= 0) {
+  if (vn <= 0 || va <= 0 || vs <= 0 || a1 <= 0 || a2 <= 0 || pv1 <= 0 || rd1 <= 0 || pv2 <= 0 || rd2 <= 0) {
     erro("valor invalido"); return;
   }
   // A faixa da barra tem de ser uma faixa: minimo abaixo do maximo, e os
@@ -583,7 +580,7 @@ static void handleConfig() {
   // Teto em graus/s: acima disso o pulso passaria do que o driver aceita
   // na junta de maior reducao. 720 graus/s ja e o dobro de qualquer coisa
   // sensata num braco de solda.
-  if (vn > 720.0f || vp > 720.0f || va > 720.0f || a1 > 5000.0f || a2 > 5000.0f) {
+  if (vn > 720.0f || va > 720.0f || a1 > 5000.0f || a2 > 5000.0f) {
     erro("velocidade ou rampa fora de faixa"); return;
   }
   // O fator multiplica a velocidade escolhida. Fora desta faixa ele
@@ -596,7 +593,6 @@ static void handleConfig() {
 
   prepararConfigPendente();
   configPendente.velNormal    = vn;
-  configPendente.velPrecisao  = vp;
   configPendente.velAuto      = va;
   configPendente.velMinima    = vmn;
   configPendente.velMaxima    = vmx;
@@ -1512,7 +1508,6 @@ void servidorIniciar() {
   server.on("/api/jog",           HTTP_POST, handleJog);
   server.on("/api/jogxy",         HTTP_POST, handleJogXY);
   server.on("/api/parar",         HTTP_POST, handleParar);
-  server.on("/api/precisao",      HTTP_POST, handlePrecisao);
   server.on("/api/servos",        HTTP_POST, handleServos);
   server.on("/api/solda",         HTTP_POST, handleSolda);
   server.on("/api/teste/rele",    HTTP_POST, handleTesteRele);

@@ -443,7 +443,6 @@ static bool salvarConfig(const char* nome) {
   const ConfigPendente& c = configPendente;
   f.println("ROBO2DOF-CFG 1");
   f.printf("velN=%lu\n",  (unsigned long)c.velNormal);
-  f.printf("velP=%lu\n",  (unsigned long)c.velPrecisao);
   f.printf("velA=%lu\n",  (unsigned long)c.velAuto);
   f.printf("velC=%.3f\n", c.velCordaoMmS);
   f.printf("acel1=%lu\n", (unsigned long)c.acel1);
@@ -531,7 +530,8 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
     const double v = atof(vs);
 
     if      (!strcmp(ch, "velN"))   c.velNormal    = (uint32_t)v;
-    else if (!strcmp(ch, "velP"))   c.velPrecisao  = (uint32_t)v;
+    // "velP" era a velocidade do modo precisao, que nao existe mais.
+    // Arquivo antigo do cartao continua carregando: a chave e ignorada.
     else if (!strcmp(ch, "velA"))   c.velAuto      = (uint32_t)v;
     else if (!strcmp(ch, "velC"))   c.velCordaoMmS = (float)v;
     else if (!strcmp(ch, "acel1"))  c.acel1        = (uint32_t)v;
@@ -578,12 +578,11 @@ static bool carregarConfig(const char* nome, char* erro, size_t tamErro) {
 
   // Mesma validacao do handler HTTP: arquivo do cartao nao e mais
   // confiavel que um POST vindo do navegador.
-  if (c.velNormal == 0 || c.velPrecisao == 0 || c.velAuto == 0 ||
+  if (c.velNormal == 0 || c.velAuto == 0 ||
       c.velCordaoMmS <= 0 || c.acel1 == 0 || c.acel2 == 0 ||
       c.ppv1 == 0 || c.ppv2 == 0 || c.red1 <= 0 || c.red2 <= 0 ||
       c.elo1 <= 0 || c.elo2 <= 0 ||
-      c.velNormal > FREQ_PULSO_MAX_HZ || c.velPrecisao > FREQ_PULSO_MAX_HZ ||
-      c.velAuto > FREQ_PULSO_MAX_HZ ||
+      c.velNormal > FREQ_PULSO_MAX_HZ || c.velAuto > FREQ_PULSO_MAX_HZ ||
       c.folgaDobra < 0 || c.folgaDobra > 90 || c.envRaio < 0 ||
       // Curso invertido ou nulo num arquivo marcado como calibrado nao e
       // "quase certo": e uma maquina que aceitaria qualquer movimento,

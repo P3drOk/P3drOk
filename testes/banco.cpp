@@ -810,13 +810,13 @@ static void teste_A10_json_status() {
   const int n = snprintf(json, sizeof(json),
     "{\"modo\":\"%s\",\"calib\":\"%s\",\"calibEixo\":%u,"
     "\"p1\":%ld,\"p2\":%ld,\"t1\":%.2f,\"t2\":%.2f,\"x\":%.1f,\"y\":%.1f,"
-    "\"precisao\":%s,\"solda\":%s,\"servos\":%s,\"movendo\":%s,"
+    "\"solda\":%s,\"servos\":%s,\"movendo\":%s,"
     "\"cal1\":%s,\"cal2\":%s,"
     "\"j1min\":%.1f,\"j1max\":%.1f,\"j2min\":%.1f,\"j2max\":%.1f,"
     "\"trajN\":%u,\"trajMs\":%lu,\"trajPct\":%u,\"escala\":%u,"
     "\"progN\":%u,\"progIdx\":%u,\"progPct\":%u,\"ensaio\":%s,\"velCordao\":%.1f,"
     "\"velC\":%.1f,\"protCurso\":%s,\"protDobra\":%s,\"protEnv\":%s,"
-    "\"velN\":%lu,\"velP\":%lu,\"velA\":%lu,\"velMn\":%lu,\"velMx\":%lu,"
+    "\"velN\":%lu,\"velA\":%lu,\"velMn\":%lu,\"velMx\":%lu,"
     "\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
@@ -833,12 +833,12 @@ static void teste_A10_json_status() {
     "\"msg\":\"%s\"}",
     "REPRODUZINDO", "J1_NEG", 2u,
     -2000000L, -2000000L, -359.99f, -359.99f, -1999.9f, -1999.9f,
-    "false","false","false","false","false","false",
+    "false","false","false","false","false",
     -359.9f, 359.9f, -359.9f, 359.9f,
     1500u, 4294967295UL, 100u, 200u,
     40u, 40u, 100u, "false", 999.9f,
     999.9f, "false","false","false",
-    180000UL, 180000UL, 180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
+    180000UL, 180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
     999999UL, 999.999f, 999999UL, 999.999f,
     "false","false", 255u,
     40u,
@@ -2387,7 +2387,7 @@ static void teste_H01_velocidade_de_cordao() {
 
   const float antes = velCordaoMmS;
   // Exatamente o que a interface manda ao apertar "Salvar ajustes".
-  const int cod = webPost("/api/config?velN=20&velP=2&velA=12&velCordao=7.5"
+  const int cod = webPost("/api/config?velN=20&velA=12&velCordao=7.5"
                           "&acel1=60&acel2=60&ppv1=4000&red1=16.5"
                           "&ppv2=4000&red2=4&suav=120");
   rodarComWeb(120);
@@ -5603,54 +5603,103 @@ static void teste_V10_habilitar_so_a_junta_2() {
 }
 
 // ---------------------------------------------------------------------
-// V11: a velocidade do posicionamento manual.
+// V11: UM controle de velocidade manda nos dois caminhos.
 //
-// Digitar um angulo e apertar o botao mandava o braco no deslocamento
-// cheio, com o operador olhando de perto e sem jeito de pedir mais
-// devagar. O botao Precisao ja existe e fica na mesma aba, logo acima
-// dos campos -- ele so nao valia aqui.
+// A versao anterior deste cenario prendia o contrato do modo Precisao:
+// "ir para um angulo respeita o botao Precisao". O modo nao existe mais
+// -- ele era a quarta escala para o mesmo numero, ao lado dos cinco
+// degraus e dos apelidos lento/normal/rapido, e trocar de escala era o
+// que fazia a velocidade parecer que nao pegava.
+//
+// O contrato que fica no lugar e o do pedido: um controle so, em mm/s,
+// e ele manda IGUAL no jog e no ir-para-angulo. Sao os dois caminhos que
+// a mao do operador usa; ate aqui cada um obedecia a um campo diferente
+// (velN e velA), guardados em telas diferentes.
 // ---------------------------------------------------------------------
-static void teste_V11_posicionar_respeita_precisao() {
-  secao("V11  Ir para um angulo respeita o modo Precisao");
+static void teste_V11_um_controle_manda_nos_dois() {
+  secao("V11  Uma velocidade so: o mesmo numero manda no jog e no angulo");
   reiniciarSistema();
   prepararRoboCalibrado();
   prepararEncoder(90, true, 500000);
   g_espelharEixo = false;
   rodarComWeb(200);
 
-  // Mede quanto o eixo anda num tempo fixo, com e sem precisao. O que
-  // importa nao e o numero e sim que um seja MUITO menor que o outro.
-  const float alvo = 30.0f;
-  auto percorrido = [&](bool precisao) -> long {
+  // Exatamente o que velEnviar() manda: os dois campos com o MESMO
+  // valor, e a rampa amarrada nele.
+  auto pedirVelocidade = [&](float g) {
+    char rota[128];
+    snprintf(rota, sizeof(rota),
+             "/api/config?velN=%.1f&velA=%.1f&acel1=%.0f&acel2=%.0f",
+             (double)g, (double)g, (double)(g / 0.35f), (double)(g / 0.35f));
+    webPost(rota);
+    rodarComWeb(120);
+  };
+
+  auto voltarAoZero = [&]() {
     enviarComando(CMD_IR_HOME);
     uint32_t t = 0;
     while (motoresEmMovimento() && t < 30000) { rodarComWeb(40); t += 40; }
     rodarComWeb(200);
-    enviarComando(CMD_PRECISAO, precisao ? 1 : 0);
-    rodarComWeb(40);
+  };
+
+  // Quanto o eixo anda numa janela FIXA, ja em regime.
+  //
+  // A janela comeca 400 ms depois da largada de proposito: nos primeiros
+  // instantes o que se mede e a rampa, nao a velocidade, e a rampa faz o
+  // numero depender de onde o eixo estava antes. O alvo fica longe o
+  // bastante para nao ser alcancado dentro da janela -- senao o que se
+  // mede e a distancia.
+  const uint32_t ASSENTAR = 400, JANELA = 400;
+  auto porAngulo = [&]() -> long {
+    voltarAoZero();
+    webPost("/api/mover?t1=60&t2=0");
+    rodarComWeb(ASSENTAR);
     const long de = posicaoJ1();
-    webPost("/api/mover?t1=30&t2=0");
-    rodarComWeb(600);                  // sempre o MESMO tempo de relogio
+    rodarComWeb(JANELA);
     const long quanto = labs(posicaoJ1() - de);
     enviarComando(CMD_PARAR);
     rodarComWeb(200);
     return quanto;
   };
 
-  const long rapido = percorrido(false);
-  const long lento  = percorrido(true);
-  nota("em 600 ms: deslocamento %ld passos, precisao %ld passos (alvo %.0f graus)",
-       rapido, lento, (double)alvo);
-  checar(lento > 0 && rapido > lento * 2, "V11a",
-         "com Precisao ligada o posicionamento anda bem mais devagar: "
-         "o mesmo gesto que afina o jog afina o ir-para-angulo");
+  // O mesmo, no jog: o comando e repetido como a tela repete enquanto o
+  // dedo esta no botao.
+  auto porJog = [&]() -> long {
+    voltarAoZero();
+    for (uint32_t t = 0; t < ASSENTAR; t += 50) {
+      enviarComando(CMD_JOG, 1, 1); rodarComWeb(50);
+    }
+    const long de = posicaoJ1();
+    for (uint32_t t = 0; t < JANELA; t += 50) {
+      enviarComando(CMD_JOG, 1, 1); rodarComWeb(50);
+    }
+    const long quanto = labs(posicaoJ1() - de);
+    enviarComando(CMD_JOG, 1, 0);
+    enviarComando(CMD_PARAR);
+    rodarComWeb(200);
+    return quanto;
+  };
 
-  // Deixa a maquina como a encontrou. reiniciarSistema() nao zera o modo
-  // precisao, e um cenario que o deixasse ligado faria os seguintes
-  // andarem a 2 graus/s -- eles esgotariam o tempo de espera e
-  // reprovariam por um motivo que nao tem nada a ver com o que testam.
-  enviarComando(CMD_PRECISAO, 0);
-  rodarComWeb(40);
+  pedirVelocidade(24.0f);
+  const long ang = porAngulo();
+  const long jog = porJog();
+  const float maior = (float)((ang > jog) ? ang : jog);
+  const float dif   = (maior > 0.0f) ? fabsf((float)(ang - jog)) / maior : 1.0f;
+  nota("em %u ms de regime a 24 graus/s: ir-para-angulo %ld passos, "
+       "jog %ld passos (diferenca %.1f%%)",
+       (unsigned)JANELA, ang, jog, (double)(dif * 100.0f));
+  checar(ang > 0 && jog > 0 && dif < 0.15f, "V11a",
+         "o mesmo numero produz a mesma velocidade de junta nos dois "
+         "caminhos: um controle so, e nao um por tela");
+
+  // E ele MANDA: baixar o numero tem de deixar o ir-para-angulo bem mais
+  // devagar. E o que o botao Precisao fazia, agora sem um segundo modo.
+  pedirVelocidade(6.0f);
+  const long devagar = porAngulo();
+  nota("em %u ms de regime a 6 graus/s: %ld passos (contra %ld a 24 graus/s)",
+       (unsigned)JANELA, devagar, ang);
+  checar(devagar > 0 && ang > devagar * 2, "V11b",
+         "reduzir a velocidade pedida reduz o ir-para-angulo junto");
 }
 
 // ---------------------------------------------------------------------
@@ -6557,8 +6606,6 @@ static void teste_V21_a_tela_nao_corta_o_movimento() {
   // fora de proposito: parar e o trabalho dela.
   static const char* ROTAS_TELA[] = {
     "/api/config?velN=30&velA=30&acel1=90&acel2=90",
-    "/api/precisao?v=1",
-    "/api/precisao?v=0",
     "/api/jog?j=1&d=0",
     "/api/jog?j=2&d=0",
     "/api/jogxy?f1=0&f2=0",
@@ -7119,7 +7166,7 @@ static void teste_Q06_backup_antigo_nao_apaga_calibracao() {
     File f = SD.open("/cfg/antigo.cfg", FILE_WRITE);
     f.println("ROBO2DOF-CFG 1");
     f.println("velN=25");
-    f.println("velP=3");
+    f.println("velP=3");   // chave do modo precisao, que nao existe mais
     f.println("velA=15");
     f.println("velC=6.0");
     f.println("acel1=60");
@@ -7263,7 +7310,7 @@ static const char* ROTAS_POST[] = {
   "/api/manutencao/ok", "/api/mesa/canto", "/api/mesa/limpar",
   "/api/mover", "/api/mover_xy",
   "/api/parar", "/api/ponto/gravar", "/api/ponto/ir", "/api/ponto/remover",
-  "/api/ponto/solda", "/api/precisao", "/api/prog/desenho",
+  "/api/ponto/solda", "/api/prog/desenho",
   "/api/prog/desfazer", "/api/prog/executar", "/api/prog/limpar",
   "/api/prog/parar", "/api/prog/pausar", "/api/prog/repetir",
   "/api/protecoes", "/api/referenciar", "/api/reproduzir", "/api/sd/apagar",
@@ -7295,7 +7342,7 @@ static const char* ROTAS_GET[] = {
 // adivinhar qual rota le qual chave.
 static const char* CHAVES[] = {
   "a","b","i","j","v","g","on","conf","ensaio","tipo","nome","senha",
-  "atual","nova","l1","l2","dobra","envY","envR","velN","velP","velA",
+  "atual","nova","l1","l2","dobra","envY","envR","velN","velA",
   "velCordao","velC","acel1","acel2","ppv1","ppv2","red1","red2","suav",
   "escala","t1","t2","x","y","fx","fy","dir","junta","reg","reg1","reg2",
   "id1","id2","cv1","cv2","baud","par","func","per","b32","lo","ativo",
@@ -8256,7 +8303,7 @@ int main() {
   teste_V08_zero_sem_calibracao();
   teste_V09_desabilitar_junta_ausente();
   teste_V10_habilitar_so_a_junta_2();
-  teste_V11_posicionar_respeita_precisao();
+  teste_V11_um_controle_manda_nos_dois();
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta();

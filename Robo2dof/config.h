@@ -417,7 +417,6 @@ static const float    REDUCAO_PADRAO          = 1.0f;   // reducao mecanica da j
 // engrenagem de cada eixo. Cada junta converte para Hz com o seu proprio
 // passosPorGrau, e FREQ_PULSO_MAX_HZ continua sendo o teto do driver.
 static const float VEL_NORMAL_PADRAO   = 20.0f;   // graus/s
-static const float VEL_PRECISAO_PADRAO =  2.0f;   // graus/s
 static const float VEL_AUTO_PADRAO     = 12.0f;   // graus/s
 
 // FAIXA DA BARRA DE VELOCIDADE, em graus/s.
@@ -622,7 +621,6 @@ enum EstadoCalib : uint8_t {
 enum TipoComando : uint8_t {
   CMD_JOG,              // a = junta (1|2), b = direcao (-1|0|1)
   CMD_PARAR,
-  CMD_PRECISAO,         // a = 0|1|-1 (-1 alterna)
   CMD_SERVOS,           // a = 0|1 (desliga/liga), b = junta (1, 2, ou 0 = as duas)
   CMD_GRAVAR_INICIAR,
   CMD_GRAVAR_PARAR,

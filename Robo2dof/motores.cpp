@@ -260,7 +260,7 @@ static float velDaJunta(const Junta& j, float base) {
 }
 
 void aplicarVelocidadeManual() {
-  const float g = modoPrecisao ? velPrecisao : velNormal;
+  const float g = velNormal;
   programarVelocidade(J1, 0, grausPorSegParaHz(J1, velDaJunta(J1, g)));
   programarVelocidade(J2, 1, grausPorSegParaHz(J2, velDaJunta(J2, g)));
 }
@@ -412,7 +412,7 @@ void jogAtualizar() {
     // runForward a cada milissegundo obriga o gerador a refazer a rampa
     // o tempo todo, o que suja o trem de pulsos.
     {
-      const float base = modoPrecisao ? velPrecisao : velNormal;
+      const float base = velNormal;
       float f = jogFracao[i];
       if (f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
       const uint32_t hz = grausPorSegParaHz(j, velDaJunta(j, base) * f);

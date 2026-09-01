@@ -4631,12 +4631,95 @@ Ele listava cinco passos e dizia em que aba cada um se faz — ou seja, era
 navegação, e navegação já está nas abas. Saiu inteiro: cartão, dados, pintura,
 chamadas e CSS.
 
+## R161 · Quatro escalas para o mesmo número  `V11`  ✅
+
+**§3, §4, §25, §26 e o resto da §27.**
+
+A queixa era "muito complexo". Lendo o que estava na tela, a complexidade
+tinha nome: **havia quatro maneiras de escolher a velocidade**, e cada uma
+falava numa escala diferente.
+
+| onde | escala |
+|---|---|
+| `#velNiveis` | cinco degraus repartindo a faixa da máquina |
+| `data-vel="1\|3\|5"` | *lento / normal / rápido* — apelidos dos degraus 1, 3 e 5 |
+| `#btPrec` | o modo **Precisão**, com uma segunda velocidade guardada à parte |
+| `#segVel` (aba Máquina) | perfis que escreviam **quatro campos** de uma vez |
+
+Cada um desses caminhos gravava por cima do anterior, e nenhum deles ganhava
+sempre. Subir a velocidade num lugar e vê-la não mudar noutro é o que faz o
+operador concluir que o controle não funciona.
+
+Ficou **um**: o campo em mm/s — a unidade em que se pensa o cordão — e ele
+manda no jog **e** no ir-para-ângulo. O `°/s` na junta desceu para o texto de
+apoio, que é onde se confere e não onde se escolhe.
+
+### O modo Precisão saiu do firmware junto com o botão
+
+Deixá-lo como ramo que ninguém alcança seria pior do que tê-lo: `modoPrecisao`,
+`velPrecisao`, `CMD_PRECISAO`, a rota `/api/precisao`, o campo `precisao` do
+estado e o `velP` do JSON saíram inteiros. Sobra **um** caminho de velocidade
+no código, que é o mesmo que sobra na tela.
+
+Uma exceção, de propósito: `armazenamento.cpp` **continua aceitando `velP=`**
+nos arquivos de configuração do cartão. Quem restaura um backup gravado pela
+versão anterior espera recuperar o que ele guarda, não ser recusado por uma
+chave que não existe mais. A chave é lida e ignorada — e o cenário `Q06`, que
+grava um arquivo no formato antigo, já prendia esse contrato.
+
+### O que o cenário `V11` prendia antes, e o que prende agora
+
+`V11` dizia "ir para um ângulo respeita o modo Precisão". O modo não existe —
+mas o cenário não foi apagado, e sim **re-expresso** no contrato que ficou no
+lugar: *o mesmo número produz a mesma velocidade de junta nos dois caminhos*.
+
+Ele mede o eixo em uma janela fixa **já em regime**, 400 ms depois da largada.
+A primeira versão media desde a largada e passou com o defeito reintroduzido
+(`moverCoordenado(..., velAuto * 0.4f)`): nos primeiros instantes o que se mede
+é a rampa, não a velocidade, e a rampa faz o número depender de onde o eixo
+estava antes. Com a janela em regime o defeito aparece — 31 % de diferença
+entre os dois caminhos — e o cenário reprova.
+
+### §3 · Um campo por junta
+
+`#inMtSel` era um campo só, agindo na junta selecionada **em outro canto da
+tela**. Para levar as duas era preciso mandar uma, esperar, trocar a seleção e
+repetir — e quem esquecia de trocar mandava a junta errada para o ângulo certo.
+Virou `#inMt1` e `#inMt2`, rotulados. O firmware não mudou: `/api/mover` já
+recebia as duas juntas de uma vez.
+
+Campo vazio continua significando **não mexer nessa junta**: ela recebe a
+própria contagem do firmware, e a diferença é exatamente zero pulso.
+
+### §27 · A tira do rodapé, completa — e fina no telefone
+
+A tira nasceu na Etapa 2 com a calibração, e a §27 ficou pela metade à espera
+de a §25/§26 reduzirem velocidade e partida a um controle cada. Agora eles
+entraram nela.
+
+Só que três itens numa tira que quebra linha viram **142 px** de segundo
+rodapé sobre uma tela de 780 — exatamente a ressalva que o próprio pedido faz
+ao pedir a tira. Medindo (não adivinhando), a correção foram duas coisas:
+
+- no telefone a tira não quebra linha, a palavra "velocidade" some (o `mm/s` ao
+  lado já diz o que o campo é) e o `°/s` equivalente sai junto: **48 px**, uma
+  linha;
+- `min-width:0` na tira. Ela é item de uma **grade** (`#app`), e item de grade
+  nasce com `min-width:auto`: sem isso o conteúdo a empurrava para **519 px**
+  numa tela de 390, em vez de encolher.
+
+O guarda novo mede as duas coisas — altura e largura —, porque só a altura
+deixaria passar a tira que sai da tela.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **501 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **301 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **500 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **302 / 0** |
+
+> O firmware perdeu um: a varredura hostil tinha duas entradas de `/api/precisao`
+> e a rota não existe mais; `V11` ganhou uma no lugar.
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

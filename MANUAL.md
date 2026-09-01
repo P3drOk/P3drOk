@@ -225,12 +225,18 @@ A tela de trabalho tem cinco abas, e só elas:
 | **Programa** | editar a lista, ensaiar, soldar, produção |
 | **Encoder** | a leitura ao vivo, análise e diagnóstico da linha |
 
-Abaixo das abas há uma **tira fixa** com a calibração do braço e da área da
-mesa: era a tela mais procurada e a que morava mais fundo, e agora está a um
-toque de qualquer aba. Ela também diz de relance se a máquina já está
-calibrada. É uma tira, e não um cartão, porque no telefone a barra de abas já
-ocupa o rodapé — um segundo rodapé gordo comeria a altura mais escassa que a
-tela tem.
+Abaixo das abas há uma **tira fixa** com três coisas: a calibração do braço e
+da área da mesa, a **velocidade** e a **partida**. A calibração era a tela mais
+procurada e a que morava mais fundo, e agora está a um toque de qualquer aba —
+a tira também diz de relance se a máquina já está calibrada. A velocidade e a
+partida estão ali porque são os dois ajustes que se mexe **com a máquina
+andando**, olhando o braço: um morava dentro da aba Mover e o outro três toques
+dentro da gaveta.
+
+É uma tira, e não um cartão, porque no telefone a barra de abas já ocupa o
+rodapé — um segundo rodapé gordo comeria a altura mais escassa que a tela tem.
+No telefone os três cabem numa linha só: a palavra "velocidade" sai (o `mm/s`
+ao lado já diz o que o campo é) e o botão de calibrar encolhe com reticências.
 
 A **Mão livre** vem antes do Programa porque é ali que o trabalho começa:
 primeiro se ensina o caminho, depois ele roda. Quem **grava** é ela; quem
@@ -305,6 +311,30 @@ travar ou a tela apagar, **o eixo para sozinho**.
 **Passo a passo**: setas ↺ / ↻ por junta. O sentido de cada eixo é
 invertível (Ajustes, ou durante a etapa de referência da calibração):
 nem sempre o sentido das setas bate com o do motor.
+
+**Ir para um ângulo**: um campo **por junta**, e o botão leva as duas numa
+tacada. Preencher só um campo move só aquela junta — a outra recebe a própria
+contagem do firmware e não anda um pulso. Antes era um campo só, agindo na
+junta selecionada em outro canto da tela: quem esquecia de trocar a seleção
+mandava a junta errada para o ângulo certo.
+
+**Velocidade: um controle, em mm/s.** Ele está na tira do rodapé e vale para o
+jog *e* para o ir-para-ângulo — são o mesmo gesto para quem opera. A conversão
+é a do braço esticado (`R = elo1 + elo2`), então é exata com o braço aberto e
+conservadora quando dobrado: nunca mais rápido do que se pediu. O equivalente
+em `°/s` na junta fica ao lado, pequeno, para conferir.
+
+> Havia quatro maneiras de escolher esse mesmo número — cinco degraus, os
+> apelidos *lento/normal/rápido*, o botão **Precisão** e os perfis da aba
+> Máquina. Trocar de escala era o que fazia a velocidade parecer que "não
+> pegava". Ficou **uma**. O modo Precisão saiu inteiro, firmware incluído:
+> "precisão" agora é digitar um número menor, o que é mais direto do que
+> lembrar em que modo a máquina está.
+
+**Partida**: ao lado da velocidade, na mesma tira. Quanto maior, mais macia a
+partida e a parada. Vale na hora — é olhando o braço arrancar que se decide.
+As acelerações por junta continuam na página **Máquina** da gaveta, com o
+resto do ajuste direto.
 
 ### 5.2 Calibração
 

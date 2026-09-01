@@ -81,7 +81,6 @@ extern Junta J2;
 extern float velNormal;
 // Faixa que a barra de velocidade da interface percorre. Ver config.h.
 extern float velMinima, velMaxima;
-extern float velPrecisao;
 extern float velAuto;
 extern float velCordaoMmS;   // mm/s: o cordao ja e especificado assim
 
@@ -105,7 +104,6 @@ extern uint8_t  suavidadePartida;
 // ---------------------------------------------------------------------
 extern Modo         modoAtual;
 extern EstadoCalib  estadoCalib;
-extern bool         modoPrecisao;
 // AS DUAS JUNTAS habilitadas. E o que qualquer movimento coordenado
 // exige -- programa, trajetoria, ir ao zero: nao da para percorrer um
 // cordao com um eixo sem torque. Jog e outra coisa: ele e por eixo, e
@@ -181,7 +179,6 @@ struct Snapshot {
   // Velocidade instantanea, para a interface mostrar movimento real
   float    v1Hz, v2Hz;      // pulsos por segundo de cada junta
   float    vPontaMmS;       // velocidade da ponta no plano
-  bool     precisao;
   bool     solda;
   bool     servosLigados;
   bool     calibrada1, calibrada2;
@@ -207,7 +204,7 @@ void definirMensagem(const char* fmt, ...);
 // para as variaveis vivas num ponto seguro do ciclo.
 // ---------------------------------------------------------------------
 struct ConfigPendente {
-  float    velNormal, velPrecisao, velAuto;   // graus/s
+  float    velNormal, velAuto;                // graus/s
   float    velMinima, velMaxima;              // faixa da barra, graus/s
   float    velCordaoMmS;                      // mm/s
   float    acel1, acel2;                      // graus/s2
