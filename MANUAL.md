@@ -544,6 +544,7 @@ no meio de um cordão:
 | por **meio segundo** | a leitura vem a 20 Hz: menos que isso seria julgar com duas ou três amostras |
 | **sem leitura, se cala** | cabo solto no encoder não pode parar o braço no meio de um cordão |
 | **parar exige régua medida** | ele só corta o movimento quando a escala do encoder foi medida (a calibração mede). Sem ela, avisa e não encosta no braço — julgar por número digitado foi o que fazia a máquina travar do nada |
+| **silêncio não acusa** | meio segundo de suspeita só vale se tiver sido preenchido por leituras que **chegaram**. Leitura que falha tem a velocidade zerada de propósito (a tela não pode dizer que o eixo gira depois que o fio caiu), e um zero desses é o encoder calado, não o eixo parado. Num barramento ruim uma rajada de falhas enchia a janela sozinha e o braço parava no meio do cordão |
 
 ### 5.2.2 O desenho mostra onde o braço ESTÁ
 
@@ -804,6 +805,37 @@ Essas recusas aparecem como **saltos** junto das outras na tela do
 encoder. Saltos ocasionais são a proteção funcionando. Saltos constantes
 são o barramento pedindo cabo, terminação ou aterramento — e aí veja
 também a taxa de acerto em **Máquina → Saúde**.
+
+#### A máquina mede a própria engrenagem
+
+`passos por grau = pulsos por volta × redução / 360`. Os dois são **digitados**,
+e o mais errado dos dois costuma ser o primeiro: pulsos por volta é parâmetro do
+**drive**, muda quando alguém troca o drive ou refaz uma configuração, e nada na
+tela denuncia. O sintoma é o braço passar do ângulo pedido — sempre pelo mesmo
+fator.
+
+O encoder mede esse número sozinho, e a conta dispensa a redução:
+
+```
+pulsos por volta = |pulsos| × contagens por volta / |contagens|
+```
+
+Os dois lados são por volta do **motor**, que é justamente onde o encoder está.
+Entre o pulso e a contagem não há mecânica nenhuma, então nem folga nem redutor
+entram — e não é preciso ter calibrado a máquina, nem saber a redução.
+
+A medida acontece no fim de **todo movimento**, com o eixo parado e antes de
+qualquer retoque. A máquina exige um décimo de volta do motor e 200 pulsos para
+aceitar; abaixo disso a medida seria curta demais.
+
+> **O primeiro movimento depois de instalar ainda passa do ponto.** É ele que
+> carrega a medida — o assentamento traz o braço de volta e a régua fica certa.
+> Do segundo em diante o braço cai no ângulo pedido sozinho. Se isso se repetir
+> em todo movimento, o encoder não está sendo lido: veja a taxa de acerto em
+> **Máquina → Saúde**.
+
+A régua corrigida é gravada quando muda mais de meio por cento, então ela
+sobrevive ao desligamento e converge em dois ou três movimentos.
 
 ### 5.6 Correção de posição pelo encoder
 

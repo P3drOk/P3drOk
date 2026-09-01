@@ -4,6 +4,7 @@
 #include "cinematica.h"
 #include "solda.h"
 #include "encoder.h"
+#include "correcao.h"   // aferirEngrenagem(): a conta e a mesma dos dois lados
 #include <math.h>   // fabsf/lroundf das contas de curso
 
 bool calibAtiva() { return estadoCalib != CAL_INATIVO; }
@@ -153,41 +154,30 @@ static void marcarInicioDaVolta() {
   }
 }
 
+// A CONTA MORA EM aferirEngrenagem() (correcao.h).
+//
+// Ela nasceu aqui, presa a esta viagem -- e por isso so acontecia numa
+// calibracao guiada. Numa maquina que nunca calibrou, a regua do
+// movimento continuava sendo os dois numeros digitados, e o braco passava
+// do angulo pedido pelo mesmo fator para sempre. Agora a mesma medida e
+// feita tambem no fim de qualquer movimento comum; a viagem ao zero
+// continua sendo a melhor ocasiao dela, mas deixou de ser a unica.
 static void medirPassosPorVolta() {
-  bool mudou = false;
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
-    Junta& j = (k == 1) ? J1 : J2;
     if (!voltaValendo[i]) continue;
     voltaValendo[i] = false;
 
     const LeituraEncoder L = encoderLer(k);
     if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) continue;
 
-    const float cv = configEncoder.contagensPorVolta[i];
-    if (cv < 1.0f) continue;
-
-    const long dPasso = labs(((k == 1) ? posicaoJ1() : posicaoJ2()) - voltaPasso0[i]);
+    const long dPasso = ((k == 1) ? posicaoJ1() : posicaoJ2()) - voltaPasso0[i];
     // Complemento de dois: a volta do contador de 32 bits sai sozinha.
-    const int32_t dCont  = (int32_t)((uint32_t)L.bruto - (uint32_t)voltaEnc0[i]);
-    const float   voltas = fabsf((float)dCont) / cv;
-
-    // Medida curta mede ruido, nao engrenagem. Meia volta do motor ja poe
-    // o erro de uma contagem varias ordens abaixo do que se mede.
-    if (voltas < 0.5f || dPasso < 200) continue;
-
-    const long novo = lroundf((float)dPasso / voltas);
-    if (novo < 100 || novo > 2000000L) continue;
-    if ((uint32_t)novo == j.passosPorVolta) continue;
-
-    Serial.printf("[CAL] Junta %u: pulsos por volta medidos em %ld "
-                  "(estava %lu) -- %ld pulsos em %.3f voltas do motor\n",
-                  (unsigned)k, novo, (unsigned long)j.passosPorVolta,
-                  dPasso, (double)voltas);
-    j.passosPorVolta = (uint32_t)novo;
-    mudou = true;
+    const int32_t dCont = (int32_t)((uint32_t)L.bruto - (uint32_t)voltaEnc0[i]);
+    aferirEngrenagem(k, dPasso, dCont);
   }
-  if (mudou) recalcularResolucao();
+  // Quem grava aqui e o fim da calibracao (salvarConfiguracoes logo
+  // adiante), entao o aviso de "vale gravar" nao precisa ser atendido.
 }
 
 // ---------------------------------------------------------------------

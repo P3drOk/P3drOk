@@ -316,11 +316,50 @@ static const int32_t  ENC_PARADO_CONTAGENS = 3;
 // O piso existe para a amostra que chega logo depois da anterior: com dt
 // de poucos milissegundos, a conta proporcional daria uma tolerancia
 // menor que o proprio tremor do encoder.
+// O teto fixo virou PISO: ele cobre o braco empurrado a mao, que nao
+// aparece em frequencia de pulso nenhuma. Quando ha pulso saindo, o limite
+// e a propria velocidade comandada com esta margem -- num eixo rapido ela
+// e muito maior que tres voltas, e num eixo lento, muito menor.
 static const float ENC_SALTO_VOLTAS_POR_S = 3.0f;
 static const float ENC_SALTO_VOLTAS_MIN   = 0.10f;
+static const float ENC_SALTO_MARGEM       = 3.0f;
 
 static const float TRAV_HZ_MINIMO       = 200.0f;  // pulso claramente correndo
 static const float TRAV_CONTAGENS_QUIETO = 20.0f;  // contagens/s: ruido, nao movimento
+
+// AMOSTRAS BOAS que o vigia precisa ver antes de parar o braco.
+//
+// A janela de meio segundo so vale se ela estiver CHEIA DE MEDIDA. Leitura
+// que falhou tem a velocidade zerada de proposito (a tela nao pode dizer
+// que o eixo gira depois que o fio caiu), e um zero desses nao e o eixo
+// parado: e o encoder calado. Num barramento ruim uma rajada de falhas
+// enchia a janela sozinha e o braco parava com "Junta travada" no meio do
+// cordao. Exigindo amostras que chegaram, silencio nunca mais acusa.
+static const uint8_t TRAV_AMOSTRAS_MINIMAS = 3;
+
+// AFERICAO DA ENGRENAGEM ELETRONICA pelo proprio movimento.
+//
+// Medida curta mede ruido, nao engrenagem -- mas o que conta como "curta"
+// aqui e menos do que parece, e vale entender por que.
+//
+// O que se mede e a engrenagem ELETRONICA do drive: pulso entra, eixo do
+// motor gira. O encoder esta nesse mesmo eixo, antes do redutor. Entre o
+// pulso e a contagem nao ha mecanica nenhuma -- nem folga, nem correia,
+// nem redutor --, entao nao ha o erro que obrigaria uma medida longa. Sobra
+// a quantizacao, e um decimo de volta ja sao treze mil contagens num
+// encoder de 17 bits: o erro de uma contagem fica quatro ordens de
+// grandeza abaixo do que se mede.
+//
+// Meia volta era o minimo herdado da viagem ao zero da calibracao, onde o
+// motor dava voltas inteiras de qualquer jeito. Como minimo geral ele
+// EXCLUIA a maquina de acionamento direto: com reducao 1, meia volta do
+// motor e meia volta da junta, e uma maquina dessas nunca aferiria a regua
+// num movimento de trabalho.
+static const float    AFERIR_VOLTAS_MIN = 0.10f;
+static const long     AFERIR_PASSOS_MIN = 200;
+// Abaixo disto a diferenca nao paga uma escrita na flash. A regua converge
+// em dois ou tres movimentos e para de mudar.
+static const float    AFERIR_GRAVAR_REL = 0.005f;
 
 #ifndef PIN_SD_CS
 #define PIN_SD_CS    5

@@ -86,6 +86,21 @@ struct ResumoCorrecao {
 // vale para o novo, e a correcao roda uma vez so na vida da maquina.
 void correcaoNovoMovimento();
 
+// ---------------------------------------------------------------------
+// AFERIR A ENGRENAGEM ELETRONICA DO DRIVER a partir de um deslocamento que
+// ja aconteceu: sairam tantos pulsos, o encoder girou tantas contagens.
+//
+//     passosPorVolta = |pulsos| x contagensPorVolta / |contagens|
+//
+// Pulso e contagem estao os dois do lado do MOTOR, antes do redutor, entao
+// a reducao cancela e nao precisa estar certa -- nem precisa haver
+// calibracao guiada. Adota o valor e refaz a resolucao das juntas.
+//
+// Devolve true quando a mudanca foi grande o bastante para valer uma
+// gravacao na flash; quem chama decide quando gravar.
+// ---------------------------------------------------------------------
+bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
+
 void correcaoIniciar();                  // core 1: chegou, comeca a assentar
 void correcaoAtualizar();                // core 1: chamada do loop
 bool correcaoEmCurso();

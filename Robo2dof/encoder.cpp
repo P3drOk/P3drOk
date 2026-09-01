@@ -833,7 +833,33 @@ static void publicar(uint8_t i, bool ok, int32_t bruto, uint8_t motivo) {
   if (ok && encTinhaAntes[i] && cv > 0.5f) {
     const uint32_t dtSalto = agora - encUltimoMs[i];
     const int32_t  d       = (int32_t)((uint32_t)bruto - (uint32_t)encBrutoAntes[i]);
-    float voltas = ENC_SALTO_VOLTAS_POR_S * (float)dtSalto / 1000.0f;
+
+    // QUANTO O EIXO PODIA TER ANDADO, e nao um numero fixo.
+    //
+    // O teto era constante -- tres voltas de motor por segundo. Numa junta
+    // com reducao alta isso e pouco: a 20 graus/s de junta com reducao 50 o
+    // motor ja gira 2,8 voltas/s, e na velocidade maxima passa de oito.
+    // Movimento perfeitamente normal caia como salto, e cada recusa zera a
+    // velocidade -- alimentando justamente o vigia de travamento. Era
+    // regressao da guarda anterior.
+    //
+    // Mas nao ha por que adivinhar: o firmware SABE quanto mandou o eixo
+    // andar. A frequencia de pulso que esta saindo agora, dividida pelos
+    // pulsos por volta, da voltas do motor por segundo -- direto, sem
+    // reducao e sem escala medida. Com margem larga, porque a leitura e o
+    // pulso nao sao amostrados no mesmo instante.
+    //
+    // A frequencia vem do Snapshot, nao de velocidadeJ1Hz(): esta tarefa e
+    // do core 0 e motores.h e do core 1, como diz o comentario acima.
+    const float hz = fabsf((i == 0) ? s.v1Hz : s.v2Hz);
+    float voltasPorS = ENC_SALTO_VOLTAS_POR_S;
+    if (j.passosPorVolta > 0) {
+      const float comandado = hz / (float)j.passosPorVolta * ENC_SALTO_MARGEM;
+      // O teto fixo vira PISO: sem torque quem move o eixo e a mao do
+      // operador, e mao nao aparece na frequencia de pulso nenhuma.
+      if (comandado > voltasPorS) voltasPorS = comandado;
+    }
+    float voltas = voltasPorS * (float)dtSalto / 1000.0f;
     if (voltas < ENC_SALTO_VOLTAS_MIN) voltas = ENC_SALTO_VOLTAS_MIN;
     const float limite = voltas * cv;
     if (fabsf((float)d) > limite) {

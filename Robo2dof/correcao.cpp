@@ -15,7 +15,20 @@ static uint32_t esperaAte = 0;
 // Onde o movimento pediu para parar. O retoque anda ALEM disso para levar
 // o eixo ao lugar certo; no fim a contagem volta para ca, senao o desvio
 // nao some -- so muda de lugar.
-static long alvo1Original = 0, alvo2Original = 0;
+//
+// GUARDADO EM GRAUS, e nao so em passos. O alvo tem de significar a mesma
+// POSTURA do comeco ao fim do assentamento, e passo nao e uma unidade
+// estavel: a maquina afere a propria engrenagem (ver aferirEngrenagem
+// abaixo), e quando ela corrige a regua no meio do caminho, um mesmo
+// numero de passos passa a descrever outro angulo. Recalcular o alvo a
+// partir da contagem a cada ciclo movia o alvo junto com a regua -- o
+// braco perseguiria um destino que anda.
+//
+// A contagem original fica junto so como rede: com regua invalida
+// (passosPorGrau <= 0) nada se move mesmo, e devolver a contagem exata e
+// mais seguro do que converter por uma escala que nao existe.
+static long  alvo1Original = 0, alvo2Original = 0;
+static float alvoGraus1 = 0.0f, alvoGraus2 = 0.0f;
 
 // Depois que o eixo para, a ultima leitura do encoder ainda e de antes
 // da parada. O ciclo le a 20 Hz e o valor leva um tempo para assentar --
@@ -62,6 +75,9 @@ static const float GRAUS_VEL_CHEIA = 3.0f;
 // aproximaram. E o que separa "esta convergindo" de "esta martelando".
 static float   erroAnterior = 0.0f;
 static uint8_t semProgresso = 0;
+// Quanto o passo anterior tinha COMO fechar, em graus medidos. E a regua
+// contra a qual o progresso e julgado -- ver a Regra 6 la embaixo.
+static float   fechavelAnterior = 0.0f;
 
 // =====================================================================
 //  O RETOQUE APRENDE A ESCALA DA PROPRIA MAQUINA
@@ -112,12 +128,135 @@ static float comTeto(float v, float teto) {
   return v;
 }
 
+// =====================================================================
+//  A MAQUINA AFERE A PROPRIA ENGRENAGEM
+//
+//  `passosPorGrau = passosPorVolta x reducao / 360`. Os dois sao
+//  DIGITADOS, e o mais errado dos dois costuma ser o primeiro: pulsos por
+//  volta e parametro do DRIVER, muda quando alguem troca o drive ou refaz
+//  uma configuracao, e nada na tela denuncia. O sintoma e o braco andar
+//  mais (ou menos) do que a tela diz -- e, no fim de todo movimento,
+//  passar do angulo pedido pelo mesmo fator, sempre.
+//
+//  E POR QUE A REDUCAO NAO ENTRA NESTA CONTA: o encoder esta no eixo do
+//  MOTOR, antes do redutor. Pulso e contagem estao os dois do mesmo lado
+//  dele, entao a reducao cancela:
+//
+//      passosPorVolta = |pulsos| x contagensPorVolta / |contagens|
+//
+//  Isso importa mais do que parece. Quer dizer que a maquina consegue
+//  acertar a regua do movimento SEM calibracao guiada, sem transferidor e
+//  sem saber a reducao -- que e justamente a situacao de quem so ligou a
+//  maquina e mandou ir a um angulo. A reducao errada desloca as duas
+//  leituras JUNTO (o encoder tambem divide por ela), entao o braco
+//  continua chegando onde o operador pediu na escala que a tela mostra.
+//
+//  A conta nasceu na calibracao guiada, na viagem ao zero. So que essa
+//  viagem so acontece em uma calibracao -- e a maquina do relato nunca
+//  fez nenhuma. Agora ela e feita tambem no fim de qualquer movimento
+//  comum, que e a mesma medida com outro nome: pulso contado de um lado,
+//  voltas do motor do outro.
+// =====================================================================
+bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
+  if (junta != 1 && junta != 2) return false;
+  const uint8_t i = junta - 1;
+  Junta& j = (junta == 1) ? J1 : J2;
+
+  const float cv = configEncoder.contagensPorVolta[i];
+  if (cv < 1.0f) return false;
+
+  const long  passos = labs(dPasso);
+  const float voltas = fabsf((float)dCont) / cv;
+  if (voltas < AFERIR_VOLTAS_MIN || passos < AFERIR_PASSOS_MIN) return false;
+
+  const long novo = lroundf((float)passos / voltas);
+  // Fora desta faixa nao e engrenagem: e leitura estragada, e obedecer a
+  // ela reescreveria a regua da maquina inteira com lixo.
+  if (novo < 100 || novo > 2000000L) return false;
+  if ((uint32_t)novo == j.passosPorVolta) return false;
+
+  const uint32_t velho = j.passosPorVolta;
+  const float    rel   = velho ? fabsf((float)novo - (float)velho) / (float)velho
+                               : 1.0f;
+  j.passosPorVolta = (uint32_t)novo;
+  recalcularResolucao();
+  logEvento("junta %u: engrenagem aferida em %ld pulsos por volta "
+            "(estava %lu) -- %ld pulsos em %.3f voltas do motor",
+            (unsigned)junta, novo, (unsigned long)velho, passos, (double)voltas);
+  return rel > AFERIR_GRAVAR_REL;
+}
+
+// Instantaneo do inicio do movimento. A afericao compara o comeco com o
+// fim, entao ela precisa dos dois -- e de saber que nada estranho
+// aconteceu no meio.
+static long     engPasso0[2]  = {0, 0};
+static int32_t  engBruto0[2]  = {0, 0};
+static bool     engValendo[2] = {false, false};
+static uint32_t engTravAntes  = 0;
+
+static void esquecerAfericao() {
+  engValendo[0] = engValendo[1] = false;
+  engPasso0[0] = engPasso0[1] = 0;
+  engBruto0[0] = engBruto0[1] = 0;
+  engTravAntes = 0;
+}
+
+static void marcarInicioParaAfericao() {
+  engTravAntes = correcaoTravamento().total;
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    const Junta& j = (k == 1) ? J1 : J2;
+    engValendo[i] = false;
+    // Sem torque quem move o eixo e a mao, e mao nao sai em pulso: a
+    // divisao nao mediria engrenagem nenhuma.
+    if (!j.habilitado) continue;
+    if (configEncoder.reg[i] == 0) continue;
+    if (!leituraConfiavel(k)) continue;
+    engPasso0[i]  = (k == 1) ? posicaoJ1() : posicaoJ2();
+    engBruto0[i]  = encoderLer(k).bruto;
+    engValendo[i] = true;
+  }
+}
+
+// Chamada UMA vez por movimento, depois que o eixo parou e a leitura
+// assentou, e antes do primeiro retoque -- o retoque tambem sai em pulso e
+// misturaria a medida.
+static void aferirEngrenagemDoMovimento() {
+  // Travou no meio: o eixo nao andou o que foi mandado, e a divisao daria
+  // uma engrenagem inventada. Justamente o caso em que errar e mais caro.
+  const bool travou = (correcaoTravamento().total != engTravAntes);
+  bool gravar = false;
+
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    if (!engValendo[i]) continue;
+    engValendo[i] = false;
+    if (travou) continue;
+    const Junta& j = (k == 1) ? J1 : J2;
+    // O torque caiu no meio do caminho: dali para a frente o encoder viu
+    // o ferro, nao o pulso.
+    if (!j.habilitado) continue;
+    if (!leituraConfiavel(k)) continue;
+
+    const long    dP = ((k == 1) ? posicaoJ1() : posicaoJ2()) - engPasso0[i];
+    // Complemento de dois: a volta do contador de 32 bits sai sozinha.
+    const int32_t dC =
+        (int32_t)((uint32_t)encoderLer(k).bruto - (uint32_t)engBruto0[i]);
+    if (aferirEngrenagem(k, dP, dC)) gravar = true;
+  }
+  // Sobreviver ao desligamento importa: sem isto o primeiro movimento
+  // depois de cada boot repetiria o erro inteiro.
+  if (gravar) salvarConfiguracoes();
+}
+
 // ---------------------------------------------------------------------
 void correcaoNovoMovimento() {
   r.estado     = CORR_PARADA;
   r.tentativas = 0;
   erroAnterior = 0.0f;
   semProgresso = 0;
+  fechavelAnterior = 0.0f;
+  marcarInicioParaAfericao();
   dizer("");
 }
 
@@ -130,10 +269,14 @@ void correcaoIniciar() {
   r.tentativas = 0;
   erroAnterior = 0.0f;
   semProgresso = 0;
+  fechavelAnterior = 0.0f;
   r.erroInicial1 = r.erroInicial2 = 0.0f;
   r.erroFinal1   = r.erroFinal2   = 0.0f;
   alvo1Original = posicaoJ1();
   alvo2Original = posicaoJ2();
+  // Congelado agora, com a regua que valia quando o movimento foi pedido.
+  alvoGraus1    = passosParaGraus(J1, alvo1Original);
+  alvoGraus2    = passosParaGraus(J2, alvo2Original);
   esperaAte = millis() + ESPERA_ASSENTAR_MS;
   dizer("assentando");
 }
@@ -165,8 +308,16 @@ void correcaoAtualizar() {
   if (motoresEmMovimento()) return;
   if ((int32_t)(millis() - esperaAte) < 0) return;
 
-  const float alvoG1 = passosParaGraus(J1, alvo1Original);
-  const float alvoG2 = passosParaGraus(J2, alvo2Original);
+  // O MOVIMENTO QUE ACABOU DE ACONTECER MEDIU A ENGRENAGEM.
+  //
+  // Aqui, e so aqui: o eixo esta parado, a leitura ja assentou, e nenhum
+  // retoque saiu ainda para misturar pulso na conta. Se a regua mudar, o
+  // resto deste ciclo ja trabalha com a nova -- o alvo nao se mexe porque
+  // esta guardado em graus.
+  if (r.tentativas == 0) aferirEngrenagemDoMovimento();
+
+  const float alvoG1 = alvoGraus1;
+  const float alvoG2 = alvoGraus2;
 
   float e1 = 0.0f, e2 = 0.0f;
   const bool t1 = faltaPara(1, alvoG1, e1);
@@ -215,9 +366,16 @@ void correcaoAtualizar() {
     // resolver.
     //
     // Nenhum pulso sai no fio aqui: o eixo NAO se mexe.
+    //
+    // A contagem que representa o alvo se refaz da regua DE AGORA: se a
+    // engrenagem foi aferida durante este assentamento, o numero de passos
+    // que descreve aquele angulo mudou. Devolver o valor velho reporia na
+    // contagem justamente o erro que a afericao acabou de tirar.
     if (r.tentativas > 0) {
-      ajustarContagem(J1, alvo1Original);
-      ajustarContagem(J2, alvo2Original);
+      ajustarContagem(J1, (J1.passosPorGrau > 0.0f)
+                          ? grausParaPassos(J1, alvoGraus1) : alvo1Original);
+      ajustarContagem(J2, (J2.passosPorGrau > 0.0f)
+                          ? grausParaPassos(J2, alvoGraus2) : alvo2Original);
     }
     r.estado = CORR_PRONTA;
     r.totalOk++;
@@ -240,17 +398,31 @@ void correcaoAtualizar() {
   // braco nunca lunga varios graus de uma vez.
   const float teto = configCorrecao.maxCorrecaoGraus;
 
-  // REGRA 6, REFEITA: desiste de nao PROGREDIR, nao de tentar.
+  // REGRA 6, REFEITA DE NOVO: progresso se mede contra o PASSO, nunca
+  // contra o erro inteiro.
   //
-  // Contar tentativas absolutas desistia no meio de uma convergencia
-  // perfeitamente saudavel. O que de fato denuncia acoplamento solto ou
-  // reducao errada e o retoque NAO diminuir o erro -- ali insistir so
-  // martela o eixo. Enquanto cada passo aproxima, continua.
+  // Desistir de nao PROGREDIR (em vez de contar tentativas) foi acerto: o
+  // que denuncia acoplamento solto ou reducao errada e o retoque nao
+  // diminuir o erro. Mas cobrar 15% DO ERRO TOTAL por passo era um alvo
+  // que o proprio teto tornava inalcancavel: um passo de tres graus so
+  // consegue 15% enquanto o erro for menor que vinte. Acima disso a
+  // desistencia virava ARITMETICA -- o assentamento parava em tres
+  // retoques com dezenas de graus na peca, dissesse o que dissesse o
+  // encoder, e o operador via "comeca bem, da uns travamentos e nunca
+  // chega".
+  //
+  // A pergunta certa nao e "sobrou pouco?", e "o passo fez o que podia
+  // fazer?". Um passo que fechou o que tinha como fechar esta convergindo,
+  // por mais que ainda falte caminho.
   const float faltaMaior = (m1 > m2) ? m1 : m2;
   if (r.tentativas > 0) {
-    // Aproximou pelo menos 15%? Entao esta convergindo.
-    if (faltaMaior < erroAnterior * 0.85f) semProgresso = 0;
-    else                                   semProgresso++;
+    const float fechou = erroAnterior - faltaMaior;
+    // Sem referencia do passo anterior (primeiro ciclo apos um retoque que
+    // nao comandou nada), cai no criterio antigo.
+    const float podia = (fechavelAnterior > 0.0f) ? fechavelAnterior
+                                                  : erroAnterior;
+    if (fechou > podia * 0.15f) semProgresso = 0;
+    else                        semProgresso++;
   }
   erroAnterior = faltaMaior;
 
@@ -293,6 +465,24 @@ void correcaoAtualizar() {
     pedido2 = comTeto(passoDe(e2, 1), teto);
     alvo2 += lroundf(pedido2 * J2.passosPorGrau);
   }
+
+  // QUANTO ESTE PASSO TEM COMO FECHAR, em graus MEDIDOS -- que e a unidade
+  // em que o erro e contado. O passo sai em graus COMANDADOS; o eixo anda
+  // esses graus multiplicados pelo ganho da maquina. E ele nunca fecha
+  // mais do que o erro que existia.
+  //
+  // E contra este numero que o ciclo seguinte julga o progresso. Sem ele o
+  // criterio cobrava do passo mais do que o teto deixava o passo entregar.
+  const auto fechavelDe = [&](float erro, float pedido, uint8_t i) {
+    if (pedido == 0.0f) return 0.0f;
+    const float anda = fabsf(pedido) *
+                       (ganhoAprendido[i] ? ganhoRetoque[i] : 1.0f);
+    const float e    = fabsf(erro);
+    return (anda < e) ? anda : e;
+  };
+  const float f1 = fechavelDe(e1, pedido1, 0);
+  const float f2 = fechavelDe(e2, pedido2, 1);
+  fechavelAnterior = (f1 > f2) ? f1 : f2;
 
   // Regra 3: nunca para fora do curso, QUANDO o curso esta valendo.
   // Com o limite desligado o braco anda livre pela mesa (ver R143), e
@@ -766,6 +956,10 @@ static float esperadoContagensPorSeg(uint8_t k) {
 
 static void vigiarTravamento() {
   static uint32_t desde[2] = {0, 0};
+  // Quantas leituras boas o encoder ja tinha entregue quando a suspeita
+  // comecou. A diferenca ate agora diz se a janela foi preenchida por
+  // medida ou por silencio.
+  static uint32_t lidasAoArmar[2] = {0, 0};
   const uint32_t agora = millis();
 
   for (uint8_t k = 1; k <= 2; k++) {
@@ -825,10 +1019,26 @@ static void vigiarTravamento() {
       if (fabsf(L.velocidade) > esperado * 0.2f) { desde[i] = 0; continue; }
     }
 
-    if (!desde[i]) { desde[i] = agora; continue; }
+    if (!desde[i]) { desde[i] = agora; lidasAoArmar[i] = L.leituras; continue; }
     // Meio segundo dando pulso sem o eixo responder. A leitura vem a 20
     // Hz: menos que isso seria julgar com duas ou tres amostras.
-    if ((uint32_t)(agora - desde[i]) > 500) {
+    //
+    // E A JANELA TEM DE ESTAR CHEIA DE MEDIDA, nao so de tempo.
+    //
+    // Quando uma leitura falha, `velocidade` e zerada de proposito -- a
+    // tela nao pode dizer que o eixo gira depois que o fio caiu. Mas esse
+    // zero e o encoder CALADO, nao o eixo parado, e o teste acima nao
+    // distingue os dois. Como a leitura so deixa de ser confiavel depois
+    // de um segundo inteiro, sobrava meio segundo em que uma rajada de
+    // falhas enchia a janela sozinha: o braco parava com "Junta travada"
+    // no meio do cordao por causa do BARRAMENTO, nao do eixo. Num
+    // barramento ruim -- que e exatamente quando isso acontece -- bastavam
+    // tres respostas perdidas seguidas.
+    //
+    // Contando amostras que CHEGARAM, silencio nunca mais acusa: ou o
+    // encoder respondeu e disse "parado", ou nao ha o que julgar.
+    if ((uint32_t)(agora - desde[i]) > 500 &&
+        (uint32_t)(L.leituras - lidasAoArmar[i]) >= TRAV_AMOSTRAS_MINIMAS) {
       desde[i] = 0;
       {
         // Parar o eixo e a acao, nao o aviso: continuar forcando contra o
@@ -941,9 +1151,12 @@ void correcaoReiniciarTeste() {
   memset(&r, 0, sizeof(r));
   esperaAte = 0;
   alvo1Original = alvo2Original = 0;
+  alvoGraus1 = alvoGraus2 = 0.0f;
   erroAnterior = 0.0f;
   semProgresso = 0;
+  fechavelAnterior = 0.0f;
   esquecerGanho();
+  esquecerAfericao();
   alertas = 0;
   trav.ativo = false; trav.junta = 0; trav.total = 0;
   memset(&z, 0, sizeof(z));

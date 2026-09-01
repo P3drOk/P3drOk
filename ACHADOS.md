@@ -4336,11 +4336,124 @@ acusam, e mais nada no banco muda.
 O painel mostra a contagem de `saltos` junto das outras recusas: o
 operador vê a diferença entre um barramento que erra e um que teleporta.
 
+## R158 · O erro virou critério de parada em três lugares  `M11`–`M14`  ✅
+
+**Relato:** *"ainda está sendo considerado erro então ele nunca vai ao ponto
+corretamente, após uns 36 seg de operação o braço começa a travar e parar o
+movimento… parece que o erro calculado é um indicador de parada então acaba
+por estragar o sistema."*
+
+O diagnóstico do operador estava certo, e mais literal do que parecia. Em três
+lugares diferentes o sistema usava o erro — ou a **ausência de medida** — como
+motivo para desistir, em vez de usá-lo para chegar. E a raiz de tudo é uma
+régua **digitada**.
+
+### A álgebra, que decide o conserto
+
+Esta máquina nunca rodou a calibração guiada, então `contagensPorGrau` é 0. Aí
+os dois lados convertem assim:
+
+| | conversão |
+|---|---|
+| contagem → graus | `passos × 360 / (ppv_cfg × red)` |
+| encoder → graus | `(passos / ppv_real) × 360 / red` |
+
+**A redução cancela.** A razão entre as duas réguas é exatamente
+`ppv_cfg / ppv_real` — e nada mais. O `reducao` digitado pode estar errado à
+vontade: ele desloca as duas leituras juntas, e o braço continua chegando onde
+o operador pediu na escala que a tela mostra.
+
+O braço passava do ponto porque **`passosPorVolta` — a engrenagem eletrônica
+do driver — estava maior que a real**. Um número só, e o encoder mede sozinho:
+
+```
+passosPorVolta = |pulsos| × contagensPorVolta / |contagens|
+```
+
+Os dois lados são por volta do **motor**, que é onde o encoder está. Sem
+transferidor, sem redução, sem calibração.
+
+**A conta já existia** — `medirPassosPorVolta()`, na viagem ao zero da
+calibração guiada. Só que essa viagem só acontece numa calibração, e esta
+máquina nunca fez nenhuma: a régua ficava errada para sempre. Agora a mesma
+medida é feita no fim de **qualquer movimento comum**.
+
+Um detalhe que mudou junto: o mínimo de meia volta do motor era herança da
+viagem ao zero, onde o motor dava voltas inteiras de qualquer jeito. Como
+mínimo geral ele **excluía a máquina de acionamento direto** — com redução 1,
+meia volta do motor é meia volta da junta. Caiu para um décimo de volta, que
+num encoder de 17 bits ainda são treze mil contagens. Entre o pulso e a
+contagem não há mecânica nenhuma — nem folga, nem redutor —, então não existe o
+erro que obrigaria uma medida longa.
+
+`M11` mostra o ciclo inteiro: com o drive querendo metade dos pulsos, o
+primeiro movimento pede 45° e o braço vai a 90; o assentamento o traz de volta
+e a máquina mede a engrenagem; **o segundo movimento nasce com 0,04° de erro
+inicial, contra 45° do primeiro.** É a diferença entre remediar e prever.
+
+### As três desistências
+
+**1 — o assentamento desistia por aritmética.** O passo do retoque é limitado a
+`maxCorrecaoGraus` (3°), e o critério exigia que o erro caísse **15% a cada
+passo**. Um passo de 3° só consegue 15% enquanto o erro for menor que 20: acima
+disso a desistência estava decidida antes de começar. O assentamento parava em
+três retoques com dezenas de graus na peça, dissesse o que dissesse o encoder.
+
+A pergunta certa não é *"sobrou pouco?"*, é *"o passo fez o que tinha como
+fazer?"*. Agora o progresso é medido contra o que aquele passo podia fechar.
+
+> `M12` precisou de 40° de escorregão, não 25: com 25 o erro escapa por sorte
+> na terceira tentativa (16 < 19×0,85 e o contador zera). Um cenário tem de
+> cair do lado em que o defeito é **certo**, senão passa a verde sem o conserto.
+
+**2 — silêncio do barramento virava "eixo parado".** Quando uma leitura falha,
+`velocidade` é zerada de propósito: a tela não pode dizer que o eixo gira
+depois que o fio caiu. Só que o vigia de travamento lê esse mesmo campo. E a
+leitura só deixa de ser confiável depois de **um segundo**, enquanto o vigia
+dispara com **meio** — sobrava uma janela em que uma rajada de falhas a enchia
+sozinha. Neste barramento (4,5 leituras/s, 7% de falha) bastavam três respostas
+perdidas seguidas para o braço parar com *"Junta travada"* no meio de um
+cordão.
+
+Agora a janela só vale **cheia de amostras que chegaram**. Ou o encoder
+respondeu e disse "parado", ou não há o que julgar.
+
+**3 — a guarda de salto recusava movimento legítimo.** O teto era fixo em três
+voltas de motor por segundo. Numa junta com redução alta isso é pouco, e cada
+recusa zera a velocidade — alimentando exatamente o vigia acima. Um defeito
+criava o outro. Foi regressão da rodada passada (R157).
+
+O firmware **sabe** quanto mandou o eixo andar: a frequência de pulso dividida
+pelos pulsos por volta dá voltas por segundo, direto, sem redução e sem escala
+medida. Ela vem do `Snapshot`, não de `velocidadeJ1Hz()` — a tarefa do encoder
+é do core 0. O teto fixo virou **piso**, para o braço empurrado à mão, que não
+aparece em frequência de pulso nenhuma. Com o teto antigo, `M14` conta **72
+leituras recusadas** num único movimento.
+
+### O alvo do assentamento passou a ser guardado em graus
+
+Consequência necessária do resto: aferir a engrenagem no meio de um
+assentamento muda quantos passos descrevem um ângulo. Recalcular o alvo a
+partir da contagem a cada ciclo faria o braço perseguir um destino que anda.
+
+### O que o banco não conseguia ver
+
+`espelharUmEixo()` convertia pulso em contagem por `passosPorGrau × reducao`,
+que é algebricamente `pulsos / ppv_cfg`: o espelho **nunca conseguia discordar
+da régua configurada**, e nenhum cenário podia reproduzir o defeito do
+operador. Passou à forma física (`pulsos / ppv × cv` — no-op enquanto as duas
+réguas concordam), com `g_ppvReal[]` para a engrenagem de verdade do drive.
+
+Os quatro consertos foram conferidos **desligando cada um sozinho**: sem a
+aferição, `M11b`/`M11d` acusam; sem o progresso pelo passo, `M12` inteiro; sem
+a exigência de amostras, `M13b`/`M13c`; sem o limite pela velocidade comandada,
+`M14b`.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **480 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **494 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **290 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

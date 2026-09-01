@@ -89,15 +89,39 @@ static bool g_espelharEixo = false;
 static long g_perdaPassos2    = 0;
 static long g_eixoBasePassos2 = 0;
 
+// A ENGRENAGEM DE VERDADE DO DRIVER, quando ela nao e a configurada.
+//
+// `passosPorVolta` e um parametro do DRIVE: alguem troca o drive ou refaz
+// uma configuracao e ele muda, sem nada na tela denunciar. O firmware
+// continua acreditando no numero digitado, e o braco anda mais (ou menos)
+// do que a tela diz.
+//
+// Zero aqui quer dizer "o driver e o que o firmware pensa que e", que e o
+// caso de quase todo cenario. So quem estuda a discordancia entre as duas
+// reguas mexe nisto.
+static uint32_t g_ppvReal[2] = {0, 0};
+
+static uint32_t ppvFisico(uint8_t k, const Junta& j) {
+  return g_ppvReal[k - 1] ? g_ppvReal[k - 1] : j.passosPorVolta;
+}
+
 static void espelharUmEixo(uint8_t k, const Junta& j, long base, long perda) {
   if (!j.motor) return;
   if (k == 2 && configEncoder.reg[1] == 0) return;
   const long fisico = base + (long)j.motor->pulsosGerados - perda;
   const float cv  = configEncoder.contagensPorVolta[k - 1];
-  const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
-  // passos do motor -> voltas do motor -> contagens do encoder.
-  const float voltasMotor = (j.passosPorGrau > 0.0f)
-      ? ((float)fisico / j.passosPorGrau) * red / 360.0f : 0.0f;
+  // O ENCODER ESTA NO MOTOR, ANTES DO REDUTOR. Entao pulso vira contagem
+  // sem a reducao entrar na conta: passos / passos-por-volta = voltas do
+  // motor, e voltas x contagens-por-volta = contagem. So dois numeros, os
+  // dois do mesmo lado do redutor.
+  //
+  // A forma antiga passava por passosPorGrau x reducao, que da no mesmo
+  // ENQUANTO passosPorGrau = passosPorVolta x reducao / 360. Como e
+  // justamente essa igualdade que os cenarios de regua errada quebram, o
+  // espelho nao podia depender dela: ele descreve o FERRO, nao a conta que
+  // o firmware faz do ferro.
+  const uint32_t ppv = ppvFisico(k, j);
+  const float voltasMotor = ppv ? ((float)fisico / (float)ppv) : 0.0f;
   g_uart.escravo[k - 1].parar();
   g_uart.escravo[k - 1].posicao = encoderLer(k).referencia
                                 + (int32_t)lroundf(voltasMotor * cv);
@@ -280,6 +304,7 @@ static void reiniciarSistema() {
   g_perdaPassos2      = 0;
   g_eixoBasePassos2   = 0;
   g_espelharEixo      = false;
+  g_ppvReal[0] = g_ppvReal[1] = 0;
   g_millis = 1000;
   g_comandosDescartados = 0;
   setup();
@@ -3563,6 +3588,18 @@ static void teste_J04_teste_de_rede_do_sistema_operacional() {
          "rota de verdade inexistente continua 404, para o defeito aparecer");
 }
 
+// Manda o braco para um angulo e espera o movimento E o assentamento
+// terminarem, com paciencia dada pelo cenario. Quem tem um erro grande
+// para fechar em passos de tres graus precisa de mais que os oito segundos
+// do irComPerda.
+static void irEsperando(float t1, float t2, uint32_t limiteMs) {
+  webPost((std::string("/api/mover?t1=") + std::to_string((int)t1) +
+           "&t2=" + std::to_string((int)t2)).c_str());
+  rodarComWeb(60);
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < limiteMs) { rodarComWeb(20); t += 20; }
+}
+
 // Manda o braco para um angulo, encena a perda no meio do caminho, e
 // espera o movimento (e o assentamento) terminarem.
 static int irComPerda(float t1, float t2, float perdaGraus) {
@@ -4027,6 +4064,270 @@ static void teste_M10_salto_impossivel_nao_vira_posicao() {
   checar(fabsf(encoderLer(1).graus - longe) < 1.0f, "M10c",
          "movimento grande DE VERDADE passa: a amostra seguinte confirma, "
          "e o glitch e justamente o que nao se repete");
+}
+
+// ---------------------------------------------------------------------
+// M11: a maquina afere a propria engrenagem no movimento comum.
+//
+// `passosPorGrau = passosPorVolta x reducao / 360`, e os dois sao
+// DIGITADOS. Pulsos por volta e parametro do DRIVER: muda quando alguem
+// troca o drive ou refaz uma configuracao, e nada na tela denuncia. Com
+// ele errado, todo movimento passa do angulo pedido pelo MESMO fator,
+// sempre -- era o "esta passando do ponto de grau enviado".
+//
+// A conta que conserta ja existia, mas so rodava na viagem ao zero da
+// calibracao guiada. Numa maquina que nunca calibrou -- que e o caso do
+// relato -- ela nunca rodava, e a regua ficava errada para sempre.
+//
+// Repare que a REDUCAO nao entra: o encoder esta no eixo do motor, antes
+// do redutor, e pulso e contagem estao os dois do mesmo lado dele.
+// ---------------------------------------------------------------------
+static void teste_M11_maquina_afere_a_propria_engrenagem() {
+  secao("M11  A maquina mede a propria engrenagem no movimento comum");
+  reiniciarSistema();
+
+  // O DRIVE de verdade quer metade dos pulsos que o firmware acredita.
+  // Efeito: cada grau pedido sai com o dobro de pulso, e o braco anda o
+  // dobro. Sem calibracao guiada nenhuma -- contagensPorGrau segue zero,
+  // como na maquina do operador.
+  //
+  // A engrenagem se mexe ANTES do preparador: e dela que sai passosPorGrau,
+  // e e por passosPorGrau que o curso em graus e calculado. Mexer depois
+  // deixaria a maquina com metade do curso que o cenario pensa ter -- e o
+  // movimento seria recusado por limite, nao executado com a regua errada,
+  // que e o que se quer estudar aqui.
+  const uint32_t ppvReal = J1.passosPorVolta;
+  g_ppvReal[0] = ppvReal;
+  J1.passosPorVolta = ppvReal * 2;
+  recalcularResolucao();
+
+  prepararRoboCalibrado(180.0f);
+  // Como na maquina do operador: o limite de curso nasce desligado.
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+  rodarComWeb(200);
+  nota("drive quer %lu pulsos/volta, firmware acredita em %lu -- cada grau "
+       "pedido anda dois", (unsigned long)ppvReal,
+       (unsigned long)J1.passosPorVolta);
+
+  // Espera longa de proposito: o primeiro movimento chega ao DOBRO do
+  // angulo, e e o assentamento que traz o braco de volta, em passos de tres
+  // graus. Esse resgate demorado acontece uma vez na vida da maquina --
+  // depois dele a regua esta certa.
+  irEsperando(45, 0, 25000);
+  const float erroPrimeiro = fabsf(correcaoResumo().erroInicial1);
+  nota("1o movimento (pedi 45): o braco chegou em %.2f com erro inicial de "
+       "%.1f grau; engrenagem agora %lu pulsos/volta",
+       (double)encoderLer(1).graus, (double)erroPrimeiro,
+       (unsigned long)J1.passosPorVolta);
+
+  checar(erroPrimeiro > 10.0f, "M11a",
+         "o primeiro movimento REALMENTE passa do ponto -- e ele que carrega "
+         "a medida, e sem esse erro nao haveria o que aferir");
+  checar(J1.passosPorVolta > ppvReal * 9 / 10 &&
+         J1.passosPorVolta < ppvReal * 11 / 10, "M11b",
+         "e o proprio movimento mediu a engrenagem do drive, sem calibracao "
+         "guiada, sem transferidor e sem saber a reducao");
+  checar(fabsf(encoderLer(1).graus - 45.0f) < 0.3f, "M11c",
+         "o assentamento ainda leva este primeiro movimento ao ponto");
+
+  // O SEGUNDO movimento e o que o operador vai sentir: com a regua certa,
+  // ele nasce no lugar em vez de ser resgatado pelo assentamento.
+  irEsperando(20, 0, 25000);
+  const float erroSegundo = fabsf(correcaoResumo().erroInicial1);
+  nota("2o movimento (pedi 20): chegou em %.2f com erro inicial de %.2f grau "
+       "-- contra %.1f do primeiro",
+       (double)encoderLer(1).graus, (double)erroSegundo, (double)erroPrimeiro);
+  checar(erroSegundo < 1.0f, "M11d",
+         "o movimento seguinte ja cai no angulo pedido sozinho: e isto que "
+         "separa prever de remediar");
+  checar(fabsf(encoderLer(1).graus - 20.0f) < 0.3f, "M11e",
+         "e chega, medido pelo encoder");
+}
+
+// ---------------------------------------------------------------------
+// M12: o assentamento nao pode desistir por ARITMETICA.
+//
+// O passo do retoque e limitado a maxCorrecaoGraus (3 por padrao), e o
+// criterio de progresso exigia que o erro caisse 15% A CADA PASSO. Um
+// passo de 3 graus so consegue 15% enquanto o erro for menor que 20:
+// acima disso a desistencia estava decidida antes de comecar, e o
+// assentamento parava em tres retoques com dezenas de graus na peca,
+// dissesse o que dissesse o encoder.
+//
+// Era metade do "comeca bem, da alguns travamentos e nunca chega ao local
+// desejado". A pergunta certa nao e "sobrou pouco?", e "o passo fez o que
+// tinha como fazer?".
+// ---------------------------------------------------------------------
+static void teste_M12_nao_desiste_por_aritmetica() {
+  secao("M12  Erro grande fecha em varios passos, em vez de desistir");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  const float teto = configCorrecao.maxCorrecaoGraus;
+  // 40 graus, e nao 25, por um motivo aritmetico exato: com passos de 3 e
+  // 15% do erro TOTAL exigidos, um erro de 25 ainda escapa -- na terceira
+  // tentativa 16 < 19x0,85 e o contador zera por sorte. Acima de 28 nao ha
+  // escapatoria, e a desistencia acontece sempre. Um cenario tem de cair do
+  // lado em que o defeito e certo, senao ele passa a verde sem o conserto.
+  const float perda = 40.0f;
+  nota("teto do passo %.1f grau, %u sem-progresso permitidos: com 15%% do "
+       "ERRO INTEIRO exigidos, nada acima de %.0f graus conseguia progredir",
+       (double)teto, (unsigned)configCorrecao.tentativas, (double)(teto / 0.15f));
+
+  // Escorregao de 25 graus no meio do caminho: o assentamento tem de
+  // fechar isso em passos de tres.
+  webPost("/api/mover?t1=45&t2=0");
+  rodarComWeb(60);
+  perderPassos(perda);
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < 25000) { rodarComWeb(20); t += 20; }
+
+  const ResumoCorrecao rc = correcaoResumo();
+  nota("escorregao de %.0f graus: %u retoque(s), estado %u, encoder le %.2f "
+       "-- \"%s\"", (double)perda, (unsigned)rc.tentativas,
+       (unsigned)rc.estado, (double)encoderLer(1).graus, rc.motivo);
+
+  checar(rc.tentativas > (uint16_t)(perda / teto / 2.0f), "M12a",
+         "o assentamento insiste os passos que o erro exige, em vez de "
+         "desistir no terceiro");
+  checar(rc.estado != CORR_DESISTIU, "M12b",
+         "e nao desiste dizendo que nao aproxima -- ele estava aproximando "
+         "o tempo todo, so nao 15% de um erro grande por passo de tres graus");
+  checar(fabsf(encoderLer(1).graus - 45.0f) < 0.5f, "M12c",
+         "o braco chega ao angulo pedido, medido pelo encoder");
+}
+
+// ---------------------------------------------------------------------
+// M13: silencio do barramento nao e eixo parado.
+//
+// Quando uma leitura falha, `velocidade` e zerada de proposito: a tela nao
+// pode dizer que o eixo gira depois que o fio caiu. So que o vigia de
+// travamento le esse mesmo campo, e para ele um zero e "o eixo nao esta
+// respondendo ao pulso".
+//
+// A leitura so deixa de ser confiavel depois de UM SEGUNDO inteiro, e o
+// vigia dispara com MEIO. Sobrava uma janela em que uma rajada de falhas
+// enchia o criterio sozinha -- e o braco parava com "Junta travada" por
+// causa do barramento, no meio de um cordao. No barramento do relato (4,5
+// leituras/s, 7% de falha) bastavam tres respostas perdidas seguidas.
+// ---------------------------------------------------------------------
+static void teste_M13_silencio_nao_e_travamento() {
+  secao("M13  Rajada de falhas no barramento nao vira travamento");
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+
+  const uint32_t travAntes  = correcaoTravamento().total;
+  const uint32_t falhasAntes = encoderLer(1).falhas;
+
+  // Movimento longo, para o pulso estar claramente correndo.
+  webPost("/api/mover?t1=60&t2=0");
+  rodarComWeb(200);
+
+  // O DRIVER EMUDECE por 700 ms: mais que o meio segundo do vigia, menos
+  // que o segundo que derruba a leitura. E exatamente essa faixa que
+  // acusava travamento sem eixo nenhum ter travado.
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(700);
+  const uint32_t travDurante = correcaoTravamento().total;
+  const uint32_t falhas = encoderLer(1).falhas - falhasAntes;
+  g_uart.escravo[0].mudo = false;
+
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < 15000) { rodarComWeb(20); t += 20; }
+
+  nota("700 ms de barramento mudo com o pulso correndo: %lu falha(s), "
+       "travamentos %lu; encoder terminou em %.2f",
+       (unsigned long)falhas, (unsigned long)(travDurante - travAntes),
+       (double)encoderLer(1).graus);
+
+  checar(falhas > 0, "M13a",
+         "o barramento realmente emudeceu -- sem isso o cenario nao prova nada");
+  checar(travDurante == travAntes, "M13b",
+         "e ausencia de medida NAO acusa travamento: a janela do vigia so "
+         "vale cheia de amostras que chegaram");
+  checar(fabsf(encoderLer(1).graus - 60.0f) < 0.5f, "M13c",
+         "o movimento segue e chega, em vez de morrer no meio do cordao");
+}
+
+// ---------------------------------------------------------------------
+// M14: eixo rapido de verdade nao pode virar salto recusado.
+//
+// A guarda de salto tinha um teto FIXO de tres voltas de motor por
+// segundo. Numa junta com reducao alta isso e pouco: a 20 graus/s com
+// reducao 50 o motor ja gira 2,8 voltas/s. Movimento normal caia como
+// leitura impossivel -- e cada recusa zera a velocidade, alimentando o
+// vigia de travamento do M13. Um defeito criava o outro.
+//
+// O firmware SABE quanto mandou o eixo andar: a frequencia de pulso
+// dividida pelos pulsos por volta da voltas do motor por segundo. O teto
+// fixo virou piso, para o braco empurrado a mao, que nao aparece em
+// frequencia de pulso nenhuma.
+// ---------------------------------------------------------------------
+static void teste_M14_eixo_rapido_nao_e_salto() {
+  secao("M14  Eixo rapido de verdade passa pela guarda de salto");
+  reiniciarSistema();
+
+  // Reducao alta e velocidade cheia: o motor passa MUITO das tres voltas
+  // por segundo que o teto fixo permitia. A reducao entra antes do
+  // preparador porque o curso em graus e derivado dela.
+  J1.reducao = 100.0f;
+  recalcularResolucao();
+  velAuto = 60.0f;
+  // Aceleracao de bancada nao serve aqui: com os 60 graus/s2 padrao um
+  // movimento curto e todo rampa e o eixo nunca chega na velocidade de
+  // cruzeiro -- o pico ficava em 2,6 voltas/s, ABAIXO do teto antigo, e o
+  // cenario passava a verde sem exercitar nada.
+  J1.aceleracao = 400.0f;
+
+  prepararRoboCalibrado();
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+  rodarComWeb(200);
+
+  const float voltasPorS = velAuto * J1.reducao / 360.0f;
+  nota("junta a %.0f graus/s com reducao %.0f: o motor gira ate %.1f voltas/s, "
+       "contra o teto fixo de %.1f", (double)velAuto, (double)J1.reducao,
+       (double)voltasPorS, (double)ENC_SALTO_VOLTAS_POR_S);
+
+  const uint32_t saltosAntes = encoderLer(1).saltos;
+  irEsperando(80, 0, 25000);
+  const uint32_t saltos = encoderLer(1).saltos - saltosAntes;
+
+  const float cvM  = configEncoder.contagensPorVolta[0];
+  const float pico = encoderLer(1).velMax / cvM;
+  nota("depois do movimento: %lu salto(s) recusado(s), encoder le %.2f, "
+       "pico MEDIDO %.2f voltas/s do motor",
+       (unsigned long)saltos, (double)encoderLer(1).graus, (double)pico);
+  // O pico nominal nao prova nada: rampa e movimento curto podem deixar o
+  // eixo abaixo do teto antigo sem ninguem perceber, e o cenario passaria a
+  // verde sem exercitar a guarda. Quem tem de passar do teto e o eixo.
+  checar(pico > ENC_SALTO_VOLTAS_POR_S, "M14a",
+         "o eixo REALMENTE passou do teto fixo antigo -- senao a guarda nem "
+         "chega a ser consultada e o cenario nao prova nada");
+  checar(saltos == 0, "M14b",
+         "nenhuma leitura de eixo rapido foi recusada como impossivel: o "
+         "limite acompanha a velocidade comandada, nao um numero fixo");
+  checar(fabsf(encoderLer(1).graus - 80.0f) < 0.5f, "M14c",
+         "e o braco chega, em vez de ser parado por um vigia alimentado de "
+         "leituras recusadas");
 }
 
 static void teste_M03_desligado_e_parada() {
@@ -5788,8 +6089,11 @@ static void teste_V18_vigia_usa_a_escala_medida() {
   configEncoder.contagensPorGrau[0] = cpgReal;
 
   // E o catalogo esta errado: o driver precisa de dez vezes mais pulsos
-  // por volta do que esta escrito aqui.
+  // por volta do que esta escrito aqui. O FERRO continua sendo o de
+  // verdade -- e essa a discordancia inteira: o eixo obedece a engrenagem
+  // que o drive tem, e o firmware faz conta com a que alguem digitou.
   const uint32_t ppvVerdadeiro = J1.passosPorVolta;
+  g_ppvReal[0] = ppvVerdadeiro;
   J1.passosPorVolta = ppvVerdadeiro / 10;
   rodarComWeb(100);
 
@@ -7746,6 +8050,10 @@ int main() {
   teste_M08_regua_discordante_chega_mesmo_assim();
   teste_M09_regua_errada_nao_inventa_travamento();
   teste_M10_salto_impossivel_nao_vira_posicao();
+  teste_M11_maquina_afere_a_propria_engrenagem();
+  teste_M12_nao_desiste_por_aritmetica();
+  teste_M13_silencio_nao_e_travamento();
+  teste_M14_eixo_rapido_nao_e_salto();
   teste_M03_desligado_e_parada();
   teste_M04_travamento_nao_dispara_a_toa();
   teste_M05_seguir_o_eixo_solto();
