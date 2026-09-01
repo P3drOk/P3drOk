@@ -215,14 +215,20 @@ escreve registrador):
 
 ### 5.0 Onde fica cada coisa na tela
 
-A tela de trabalho tem quatro abas, e só elas:
+A tela de trabalho tem cinco abas, e só elas:
 
 | aba | para quê |
 |---|---|
 | **Mesa** | traçado, desenho e a vista 2D/3D do braço |
 | **Mover** | joystick, ir para ângulo, atalhos |
-| **Programa** | ensinar o caminho, ensaiar, soldar, produção |
+| **Mão livre** | **ensinar o caminho com a mão** — por pontos ou contínuo |
+| **Programa** | editar a lista, ensaiar, soldar, produção |
 | **Encoder** | a leitura ao vivo, análise e diagnóstico da linha |
+
+A **Mão livre** vem antes do Programa porque é ali que o trabalho começa:
+primeiro se ensina o caminho, depois ele roda. Quem **grava** é ela; quem
+**executa** continua sendo o Programa, e os pontos são os mesmos — uma
+lista só, vista dos dois lados.
 
 **Arquivos** saiu daqui: era um terço de coluna ao lado do braço, e ali
 uma lista de trabalhos nunca cabia. Virou **gaveta de tela cheia**, no
@@ -638,6 +644,44 @@ qual trecho e por quê — inclusive quando o ponto é alcançável mas o
 > O ramo do cotovelo é **travado por segmento**. Sem isso a cinemática
 > inversa reescolhia o cotovelo a cada 1,5 mm e o braço fazia uma
 > circunferência no meio da reta. Está em `ACHADOS.md`, achado A13.
+
+### 5.4.0 Mão livre: os dois modos de ensinar
+
+Aba **Mão livre**. A única função em que o operador **ensina** em vez de
+digitar: solta o braço, leva a ponta com a mão e a máquina guarda o
+caminho. Os dois modos não diferem em conforto, diferem em o que
+conseguem guardar.
+
+| modo | o que grava | quando usar |
+|---|---|---|
+| **Por pontos** | os vértices; entre eles a ponta anda em **reta** | o caminho que se edita depois, ponto a ponto |
+| **Contínuo** | o percurso inteiro, amostrado enquanto o botão está pressionado | curva, contorno, forma livre — o que não cabe em vértices |
+
+**A tecla `G` marca o ponto.** Com o braço solto as duas mãos estão nele,
+e alcançar o mouse é justamente o gesto que move a ponta que se acabou de
+posicionar. A tecla vale só com esta aba aberta, e nunca dentro de um
+campo de digitação.
+
+**No modo contínuo se SEGURA para gravar.** Com um botão para começar e
+outro para terminar, o operador tem de largar o braço para encerrar — e o
+último pedaço do caminho sai a mão dele voltando para a tela. Segurando, a
+gravação acaba onde a mão acaba.
+
+> **Reta precisa de dois eixos.** Entre dois pontos a ponta anda em linha
+> reta, com arco ou sem — num caminho ensinado à mão, quem levou o braço
+> quase sempre desviou de alguma coisa, e uma curva passaria por fora do
+> que ele mostrou. Um trecho cujo **meio** saia da área alcançável é
+> recusado na partida, em vez de o braço dar a volta por fora.
+>
+> Com **uma junta só**, porém, a ponta não tem como andar em reta: o único
+> caminho que existe é o arco que ela descreve. Ali o movimento volta a ser
+> a interpolação nas juntas — e é o mesmo critério que valida e que executa.
+
+**Com um eixo só funciona.** Uma junta que não está no barramento não tem
+peso próprio para cair nem contagem para desencontrar: o braço solta, os
+pontos gravam com 0 naquela junta, e a reprodução move o eixo que existe.
+A proteção continua inteira onde ela tem sentido — junta que **está** no
+barramento e ninguém mede segura o torque, e a tela diz qual é.
 
 ### 5.4.1 Modo aprendizado: ensinar o caminho com a mão
 

@@ -340,6 +340,23 @@ body[data-aba="prog"] #pnProg > .et.aberta{flex:1 1 auto;min-height:0;
 body[data-aba="prog"] #pnProg > .et.aberta > .dentro{flex:1 1 auto;
  min-height:170px;overflow-y:auto;overscroll-behavior:contain}
 
+/* A MAO LIVRE E QUADRO FIXO PELO MESMO MOTIVO, e com um a mais: aqui as
+   duas maos do operador estao no BRACO, nao na tela. Ele olha de relance
+   para achar "marcar ponto" -- se a lista crescer e empurrar o botao para
+   baixo, o relance nao acha, e ele tira a mao do braco que acabou de
+   posicionar. */
+body[data-aba="mao"] .coluna .rol{display:flex;flex-direction:column}
+body[data-aba="mao"] #pnMao{display:flex;flex-direction:column;
+ flex:1 1 auto;min-height:0}
+body[data-aba="mao"] #pnMao > .et{flex:0 0 auto}
+body[data-aba="mao"] #pnMao > .et.aberta{flex:1 1 auto;min-height:0;
+ display:flex;flex-direction:column}
+body[data-aba="mao"] #pnMao > .et.aberta > .dentro{flex:1 1 auto;
+ min-height:170px;overflow-y:auto;overscroll-behavior:contain}
+
+/* "Segure para gravar" acesa enquanto a mao esta em cima. */
+#btGravSeg.on{background:var(--arco);border-color:var(--arco);color:#fff}
+
 /* O PAINEL DE JOG E UM QUADRO FIXO.
    Aqui o dedo procura o mesmo botao no mesmo lugar, toda vez. Rolar
    significa que a seta que estava sob o dedo saiu dali -- entao o
@@ -371,6 +388,7 @@ body[data-aba="prog"] #pnProg > .et.aberta > .dentro{flex:1 1 auto;
    dentro -- que era o que a tarja mandava fazer. Nas outras abas ela
    fica, porque ali nao ha botao de torque a mao. */
 body[data-aba="mover"] #tira,
+body[data-aba="mao"]   #tira,
 body[data-aba="prog"]  #tira{display:none}
 .tira{position:sticky;top:0;z-index:6;
  padding:10px 12px;background:var(--painel);border:1px solid var(--linha);
@@ -1381,13 +1399,28 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
       </section>
 
       <!-- ========================== PROGRAMA ========================== -->
-      <section class="pane" id="pnProg">
-        <div class="et aberta" id="e2" data-e="2">
-          <div class="cab"><div class="mk">2</div>
-            <div class="tx"><div class="tt">Ensinar o caminho</div>
-            <span class="sb" id="sb2">nenhum ponto</span></div><div class="chv">&#9654;</div></div>
+      <!-- ====================== TRAJETORIA MAO LIVRE ======================
+           A funcao de destaque da maquina, e a unica em que o operador
+           ENSINA em vez de digitar: solta o braco, leva a ponta com a mao
+           e a maquina guarda o caminho.
+
+           Dois modos, e a diferenca entre eles nao e de conforto:
+
+             POR PONTOS  - o operador marca os vertices, e a maquina anda em
+                           RETA de um para o outro. E o caminho que se edita
+                           depois, ponto a ponto, na aba Programa.
+             CONTINUO    - a maquina amostra o percurso enquanto o botao
+                           estiver pressionado, e reproduz a curva como ela
+                           foi feita. E o caminho que nao cabe em vertices.
+
+           Quem EXECUTA continua sendo o Programa: aqui se grava. -->
+      <section class="pane" id="pnMao">
+
+        <div class="et aberta" id="eMaoPt">
+          <div class="cab"><div class="mk">1</div>
+            <div class="tx"><div class="tt">Por pontos, em reta</div>
+            <span class="sb" id="sbMaoPt">nenhum ponto</span></div><div class="chv">&#9654;</div></div>
           <div class="dentro">
-            <h4>Aprendizado guiado</h4>
             <div class="perigo">Solto, o braco desce pelo proprio peso. Apoie a
             ponta <b>antes</b> de soltar, e nada embaixo da ponteira.</div>
             <div class="guia" id="aprGuia"></div>
@@ -1395,10 +1428,63 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="pq2" id="qApr"></div>
             <button class="b ok" id="btAprMarcar">2 &middot; Marcar ponto aqui</button>
             <div class="pq2" id="qAprMarcar"></div>
+            <div class="nt">Com esta aba aberta, a tecla <b>G</b> marca o ponto
+            sem tirar a mao do braco.</div>
             <button class="b mini" id="btAprFim">3 &middot; Encerrar</button>
             <div class="pq2" id="qAprFim"></div>
             <div class="aprEst" id="aprEst">desligado</div>
-            <div class="nt">Solta so com o zero absoluto ensinado nas duas juntas.</div>
+            <div class="nt">Entre dois pontos a ponta anda em <b>linha reta</b>.
+            Um trecho cujo meio saia da area alcancavel e recusado na partida,
+            em vez de o braco dar a volta por fora.</div>
+          </div>
+        </div>
+
+        <div class="et" id="eTraj">
+          <div class="cab"><div class="mk">2</div>
+            <div class="tx"><div class="tt">Continuo, segurando</div>
+            <span class="sb" id="sbTraj">nenhuma gravada</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">Para curva, contorno e forma livre -- o que nao cabe
+            em vertices. A maquina amostra o percurso inteiro e reproduz a curva
+            como ela foi feita.</div>
+            <div class="gravBox" id="gravBox">
+              <div class="pt"></div>
+              <div class="tx"><b id="gravTit">--</b><br><span id="gravMsg">--</span></div>
+            </div>
+            <!-- SEGURAR E SOLTAR, e nao dois botoes.
+                 Com um botao para comecar e outro para terminar, o operador
+                 tem de largar o braco para encerrar -- e o ultimo pedaco do
+                 caminho sai a mao dele voltando para a tela. Segurando, a
+                 gravacao acaba onde a mao acaba. -->
+            <button class="b pri" id="btGravSeg" data-segurar="1">Segure para gravar</button>
+            <div class="pq2" id="qGravSeg"></div>
+            <button class="b mini" id="btGravIni">Iniciar gravacao</button>
+            <div class="pq2" id="qGravIni"></div>
+            <button class="b mini" id="btGravFim">Encerrar gravacao</button>
+            <div class="pq2" id="qGravFim"></div>
+            <h4>Arco durante a gravacao</h4>
+            <div class="perigo">Este botao abre o arco de verdade, agora. E o
+            que a gravacao registra em cada instante do percurso.</div>
+            <button class="b quente" id="btArco">Abrir arco</button>
+            <div class="pq2" id="qArco"></div>
+            <h4>Reproduzir</h4>
+            <div class="cp"><label>Velocidade da reproducao</label><input type="number" id="inEsc" min="10" max="200" step="5"><span class="un">%</span></div>
+            <button class="b pri" id="btRepro">Reproduzir</button>
+            <div class="pq2" id="qRepro"></div>
+            <button class="b mini" id="btTrajLimpar">Apagar trajetoria</button>
+            <div class="pq2" id="qTrajLimpar"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane" id="pnProg">
+        <div class="et aberta" id="e2" data-e="2">
+          <div class="cab"><div class="mk">2</div>
+            <div class="tx"><div class="tt">Ensinar o caminho</div>
+            <span class="sb" id="sb2">nenhum ponto</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="nt">Os pontos se gravam na aba <b>Mao livre</b>, levando
+            o braco com a mao. Aqui eles se editam e se executam.</div>
             <div id="lista"></div>
             <button class="b mini" id="btLimpar">Apagar programa</button>
             <button class="b mini" id="btDesf">Desfazer</button>
@@ -1459,33 +1545,6 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           </div>
         </div>
 
-        <div class="et" id="eTraj">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-caminho"/></svg></div>
-            <div class="tx"><div class="tt">Trajetoria a mao livre</div>
-            <span class="sb" id="sbTraj">nenhuma gravada</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-            
-            <div class="gravBox" id="gravBox">
-              <div class="pt"></div>
-              <div class="tx"><b id="gravTit">--</b><br><span id="gravMsg">--</span></div>
-            </div>
-            <button class="b" id="btGravIni">Iniciar gravacao</button>
-            <div class="pq2" id="qGravIni"></div>
-            <button class="b" id="btGravFim">Encerrar gravacao</button>
-            <div class="pq2" id="qGravFim"></div>
-            <h4>Arco durante a gravacao</h4>
-            <div class="perigo">Este botao abre o arco de verdade, agora. E o
-            que a gravacao registra em cada instante do percurso.</div>
-            <button class="b quente" id="btArco">Abrir arco</button>
-            <div class="pq2" id="qArco"></div>
-            <h4>Reproduzir</h4>
-            <div class="cp"><label>Velocidade da reproducao</label><input type="number" id="inEsc" min="10" max="200" step="5"><span class="un">%</span></div>
-            <button class="b pri" id="btRepro">Reproduzir</button>
-            <div class="pq2" id="qRepro"></div>
-            <button class="b mini" id="btTrajLimpar">Apagar trajetoria</button>
-            <div class="pq2" id="qTrajLimpar"></div>
-          </div>
-        </div>
       </section>
 
       <!-- ARQUIVOS SAIU DA COLUNA.
@@ -5441,6 +5500,9 @@ function aplicar(d){
   $("e2").classList.toggle("feita",d.progN>=2&&!nRuim);
   $("sb2").textContent=d.progN===0?"nenhum ponto":
     (d.progN+" pontos · "+nq+" cordao(oes)"+(nRuim?" · "+nRuim+" trecho(s) com problema":""));
+  /* A aba da mao livre GRAVA na mesma lista que o Programa executa: o
+     contador e o mesmo numero, visto do lado de quem esta gravando. */
+  $("sbMaoPt").textContent=d.progN===0?"nenhum ponto":(d.progN+" pontos");
   acao("Gravar", d.modo==="FALHA" ? "sistema em falha: rearme os servos primeiro"
        : d.modo!=="MANUAL" ? "grave pontos com o robo parado: "+(RM[d.modo]||d.modo) : "");
 
@@ -5884,6 +5946,10 @@ try{ if(localStorage.getItem("idioma")==="en")idioma="en"; }catch(e){}
 const ABAS=[
  ["mesa","Mesa","M4 19h16M6 19V9l6-5 6 5v10"],
  ["mover","Mover","M12 4v16M4 12h16M12 4l-3 3M12 4l3 3M12 20l-3-3M12 20l3-3M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3"],
+ /* MAO LIVRE: uma mao levando a ponta, e o rastro que ela deixa. E a
+    funcao de destaque da maquina -- fica antes do Programa porque e ali
+    que o trabalho comeca: primeiro se ensina o caminho, depois se roda. */
+ ["mao","Mao livre","M9 11V5.5a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V11m0-.5a1.5 1.5 0 013 0V15a6 6 0 01-6 6h-1a6 6 0 01-6-6v-3a1.5 1.5 0 013 0"],
  ["prog","Programa","M5 6h14M5 12h9M5 18h5M17 15l2 2 3-4"],
  ["enc","Encoder","M12 3a9 9 0 100 18 9 9 0 000-18zM12 12l5-3M12 12v-4"],
 ];
@@ -5893,7 +5959,7 @@ const ABAS=[
 /* Arquivos saiu daqui: virou gaveta de tela cheia, como a Configuracao.
    Guardar e abrir trabalho e uma biblioteca, e biblioteca quer largura --
    nao um terco de coluna ao lado do braco. */
-const PANES={mover:"pnMover",prog:"pnProg",enc:"pnEnc"};
+const PANES={mover:"pnMover",mao:"pnMao",prog:"pnProg",enc:"pnEnc"};
 
 (function montarAbas(){
   let h="",t="";
@@ -6181,6 +6247,26 @@ addEventListener("keydown", function(e){
   if($("veuCfg").classList.contains("on")) fecharCfg();
   else if(arqAberta()) fecharArq();
 });
+
+/* MARCAR PONTO PELO TECLADO.
+   Com o braco solto, as duas maos estao nele -- alcancar o mouse para
+   clicar "marcar" e justamente o gesto que move a ponta que se acabou de
+   posicionar. Uma tecla resolve, e o teclado sem fio fica no carrinho.
+
+   So com a aba da mao livre aberta, e so fora de campo de digitacao:
+   tecla que grava ponto de qualquer lugar da tela gravaria ponto no meio
+   de alguem preenchendo um numero. */
+addEventListener("keydown", function(e){
+  if(e.key !== "g" && e.key !== "G") return;
+  if(e.ctrlKey || e.altKey || e.metaKey) return;
+  if(abaAtual !== "mao") return;
+  if($("veuCfg").classList.contains("on") || arqAberta()) return;
+  const a = document.activeElement;
+  if(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" ||
+           a.isContentEditable)) return;
+  e.preventDefault();
+  post("/api/ponto/gravar","qAprMarcar").then(lerPontos);
+});
 try{ const g = localStorage.getItem("cfg"); if(g) cfgAtual = g; }catch(e){}
 irCfg(cfgAtual);
 
@@ -6213,6 +6299,10 @@ const AJUDA={
  mover:["Mover o braco na mao",
    "Use o joystick ou as setas de cada junta. A velocidade em mm/s e a da "+
    "PONTA. Se nada andar, a barra cinza acima diz o porque."],
+ mao:["Ensinar o caminho com a mao",
+   "Solte o braco, leve a ponta e marque cada ponto -- entre eles a ponta anda "+
+   "em reta. Para curva, use o modo continuo: segure e mova. Os pontos vao "+
+   "para o Programa, e e la que eles rodam."],
  prog:["Ensinar o caminho",
    "Leve o braco ate um lugar bom e grave o ponto. A lista vira o programa; "+
    "so depois de gravada e que ela roda."],
@@ -6565,6 +6655,34 @@ function sdLer(){
    que fazer em seguida e a tarja de estado logo acima do botao. */
 $("btGravIni").onclick   =function(){post("/api/gravar/iniciar");};
 $("btGravFim").onclick   =function(){post("/api/gravar/parar");};
+
+/* SEGURE PARA GRAVAR.
+   Mesma captura de ponteiro das setas de jog, e pelo mesmo motivo: o
+   botao muda de tamanho quando a barra de estado ganha uma linha, e sem
+   captura isso tirava o botao de baixo do dedo e encerrava a gravacao no
+   meio do percurso. Com captura, o pointerup chega sempre -- e a gravacao
+   acaba onde a mao acaba. */
+(function(){
+  const b=$("btGravSeg");
+  let idAtivo=null, gravando=false;
+  b.addEventListener("pointerdown",function(e){
+    e.preventDefault();
+    idAtivo=e.pointerId;
+    try{b.setPointerCapture(e.pointerId);}catch(x){}
+    gravando=true;
+    b.classList.add("on");
+    post("/api/gravar/iniciar","qGravSeg");
+  });
+  ["pointerup","pointercancel","lostpointercapture"].forEach(function(v){
+    b.addEventListener(v,function(e){
+      if(idAtivo!==null&&e.pointerId!==undefined&&e.pointerId!==idAtivo)return;
+      idAtivo=null;
+      if(!gravando)return;
+      gravando=false;
+      b.classList.remove("on");
+      post("/api/gravar/parar","qGravSeg");
+    });});
+})();
 $("btRepro").onclick     =function(){post("/api/reproduzir");};
 $("btTrajLimpar").onclick=function(){
   if(confirm("Apagar a trajetoria gravada?"))post("/api/traj/limpar");};

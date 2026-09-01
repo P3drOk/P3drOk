@@ -34,22 +34,39 @@ static void dizer(const char* m) {
 // ---------------------------------------------------------------------
 // Da para soltar o braco?
 //
-// So se TODA junta que se mexe for acompanhada pelo encoder. O SON e um
+// So se TODA JUNTA QUE SE MEXE for acompanhada pelo encoder. O SON e um
 // fio unico para os dois drivers: nao existe soltar so uma. Uma junta
 // solta e nao medida cai pelo proprio peso e a contagem dela nao anda --
 // o ponto gravado sairia certo num eixo e errado no outro, que e pior do
 // que sair errado nos dois, porque parece plausivel.
+//
+// A REGRA E SOBRE AS JUNTAS QUE EXISTEM, nao sobre o numero dois.
+//
+// A versao anterior exigia encoder e zero nas DUAS, e com isso uma
+// maquina de um eixo so -- ou com o segundo driver ainda na bancada --
+// nunca soltava o braco: o modo entrava com torque e o operador tinha de
+// posicionar pelas setas, para gravar um caminho a mao. Junta que nao
+// esta no barramento nao tem peso proprio para cair nem contagem para
+// desencontrar; recusar por causa dela era proteger uma junta que nao
+// existe.
+//
+// O que continua valendo, e e o que importa: junta PRESENTE tem de estar
+// medida. E tem de haver pelo menos uma -- sem nenhuma nao ha o que
+// gravar.
 // ---------------------------------------------------------------------
 static bool podeSoltarOBraco(uint8_t& culpada) {
   culpada = 0;
   if (!configEncoder.ativo) return false;
+  uint8_t presentes = 0;
   for (uint8_t k = 1; k <= 2; k++) {
-    if (configEncoder.reg[k - 1] == 0 || !configZero.ensinado[k - 1]) {
+    if (configEncoder.reg[k - 1] == 0) continue;   // junta ausente
+    presentes++;
+    if (!configZero.ensinado[k - 1]) {
       culpada = k;
       return false;
     }
   }
-  return true;
+  return presentes > 0;
 }
 
 // ---------------------------------------------------------------------

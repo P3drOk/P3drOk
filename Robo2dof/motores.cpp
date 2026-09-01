@@ -463,10 +463,14 @@ void jogAtualizar() {
 // MOVIMENTO COORDENADO
 // ---------------------------------------------------------------------
 void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
-  if (!J1.motor || !J2.motor) return;
+  // BASTA UM MOTOR. Exigir os dois fazia a maquina de um eixo so nao
+  // andar NADA -- nem o eixo que existe --, e sem uma palavra na tela.
+  // Coordenar dois movimentos e o caso comum, nao a condicao para haver
+  // movimento: com uma junta so, "chegar junto" e chegar.
+  if (!J1.motor && !J2.motor) return;
 
-  const long d1 = labs(alvo1 - posicaoJ1());
-  const long d2 = labs(alvo2 - posicaoJ2());
+  const long d1 = J1.motor ? labs(alvo1 - posicaoJ1()) : 0;
+  const long d2 = J2.motor ? labs(alvo2 - posicaoJ2()) : 0;
   if (d1 == 0 && d2 == 0) return;
 
   // Quem manda no tempo do movimento e a junta que tem mais GRAUS a
@@ -501,20 +505,22 @@ void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
   if (a1 < 100) a1 = 100;
   if (a2 < 100) a2 = 100;
 
-  J1.motor->setAcceleration(a1);
-  J2.motor->setAcceleration(a2);
-  programarVelocidade(J1, 0, v1);
-  programarVelocidade(J2, 1, v2);
-  J1.motor->moveTo(alvo1);
-  J2.motor->moveTo(alvo2);
+  if (J1.motor) {
+    J1.motor->setAcceleration(a1);
+    programarVelocidade(J1, 0, v1);
+    J1.motor->moveTo(alvo1);
+  }
+  if (J2.motor) {
+    J2.motor->setAcceleration(a2);
+    programarVelocidade(J2, 1, v2);
+    J2.motor->moveTo(alvo2);
+  }
 }
 
 void seguirSetpoint(long alvo1, long alvo2, uint32_t vel1, uint32_t vel2) {
-  if (!J1.motor || !J2.motor) return;
-  programarVelocidade(J1, 0, vel1);
-  programarVelocidade(J2, 1, vel2);
-  J1.motor->moveTo(alvo1);
-  J2.motor->moveTo(alvo2);
+  if (!J1.motor && !J2.motor) return;
+  if (J1.motor) { programarVelocidade(J1, 0, vel1); J1.motor->moveTo(alvo1); }
+  if (J2.motor) { programarVelocidade(J2, 1, vel2); J2.motor->moveTo(alvo2); }
 }
 
 // ---------------------------------------------------------------------

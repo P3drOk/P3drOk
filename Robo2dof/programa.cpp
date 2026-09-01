@@ -215,12 +215,42 @@ static bool retaPercorrivelDet(uint8_t i, Violacao& v) {
 }
 
 // ---------------------------------------------------------------------
+// RETA EXIGE DOIS GRAUS DE LIBERDADE.
+//
+// A ponta so descreve uma linha reta se as duas juntas puderem colaborar:
+// uma se encarrega da distancia, a outra da direcao. Com UMA junta so, o
+// unico caminho que existe e o arco que ela descreve -- pedir reta ali
+// nao e mais seguro, e simplesmente impossivel. Todo trecho seria
+// recusado ("1,5 mm de cordao exigiriam 5 graus da junta 2") e a maquina
+// de um eixo nao sairia do lugar.
+//
+// Entao a reta vale onde ela existe. Onde nao existe, o caminho e a
+// interpolacao nas juntas -- que com uma junta e o proprio arco dela, o
+// unico movimento que a maquina sabe fazer.
+// ---------------------------------------------------------------------
+static bool daParaFazerReta() {
+  return J1.motor != nullptr && J2.motor != nullptr;
+}
+
+// ---------------------------------------------------------------------
 bool progConferirTrecho(uint8_t i, char* aviso, size_t tam) {
   if (aviso && tam) aviso[0] = '\0';
   if (i + 1 >= nPontos) return true;
 
+  // RETA EM TODO TRECHO, com solda ou sem.
+  //
+  // O deslocamento era interpolado nas juntas -- mais rapido, e a ponta
+  // fazia uma curva. Isso e inofensivo num programa desenhado de cima,
+  // mas nao num caminho ENSINADO COM A MAO: quem levou o braco ponto a
+  // ponto quase sempre desviou de alguma coisa, e a curva passa por fora
+  // do que ele mostrou. O braco tem de ir por onde foi ensinado.
+  //
+  // O preco, e ele e real: um trecho cujo MEIO sai da area alcancavel
+  // passa a ser recusado aqui, em vez de o braco dar a volta sozinho. E o
+  // preco certo -- dar a volta sozinho era exatamente o que ninguem pediu.
   Violacao v;
-  const bool ok = pontos[i].soldaAteProximo
+  const bool reta = daParaFazerReta();
+  const bool ok = reta
                 ? retaPercorrivelDet(i, v)
                 : caminhoJuntasValidoDet(passosParaGraus(J1, pontos[i].p1),
                                          passosParaGraus(J2, pontos[i].p2),
@@ -320,12 +350,32 @@ bool progIniciar(bool modoEnsaio, const char** motivo) {
 }
 
 // ---------------------------------------------------------------------
-static void prepararReta() {
+// O CAMINHO E O MESMO nos dois casos -- uma reta no espaco. So o relogio
+// muda: o cordao anda no mm/s de solda, e o deslocamento anda no tempo que
+// a interpolacao nas juntas levaria, para o caminho ficar reto sem o ciclo
+// ficar mais lento do que era.
+static void prepararReta(bool comSolda) {
   pontoParaXY(pontos[idx],     xa, ya);
   pontoParaXY(pontos[idx + 1], xb, yb);
 
   const float dist = sqrtf((xb - xa) * (xb - xa) + (yb - ya) * (yb - ya));
-  const float vel  = (velCordaoMmS > 0.1f) ? velCordaoMmS : 1.0f;
+
+  float vel;
+  if (comSolda) {
+    vel = (velCordaoMmS > 0.1f) ? velCordaoMmS : 1.0f;
+  } else {
+    // Quantos segundos a interpolacao nas juntas gastaria: quem manda e a
+    // junta com mais GRAUS a percorrer, como em moverCoordenado().
+    const float g1 = fabsf(passosParaGraus(J1, pontos[idx + 1].p1) -
+                           passosParaGraus(J1, pontos[idx].p1));
+    const float g2 = fabsf(passosParaGraus(J2, pontos[idx + 1].p2) -
+                           passosParaGraus(J2, pontos[idx].p2));
+    const float gmax = (g1 > g2) ? g1 : g2;
+    const float v    = (velAuto > 0.01f) ? velAuto : 1.0f;
+    const float seg  = gmax / v;
+    vel = (seg > 0.001f) ? (dist / seg) : (dist * 20.0f);
+    if (vel < 0.1f) vel = 0.1f;
+  }
 
   tSegTotal = (uint32_t)(dist / vel * 1000.0f);
   if (tSegTotal < 50) tSegTotal = 50;
@@ -472,7 +522,7 @@ bool progRetomar(const char** motivo) {
     // prepararReta() aqui e so para recuperar xa/ya/xb/yb, o ramo do
     // cotovelo e as velocidades de seguimento do trecho. O relogio ela
     // zera, e por isso ele e readiantado logo em seguida.
-    prepararReta();
+    prepararReta(pontos[idx].soldaAteProximo);
     tSegIni = millis() - (uint32_t)(fracaoSeg * (float)tSegTotal);
     // Nao volta direto para FASE_SOLDANDO: o arco reabre com o mesmo
     // tempo de abertura de qualquer cordao, porque a poca esfriou na
@@ -528,13 +578,22 @@ void progAtualizar() {
         if (millis() - marcaTempo < DWELL_ABRE_ARCO_MS) return;
       }
 
-      if (comSolda) {
-        // Trecho de solda: RETA no espaco cartesiano.
-        prepararReta();
+      // RETA nos dois casos, cordao e deslocamento: num caminho ensinado
+      // com a mao, a curva da interpolacao passa por fora do que o
+      // operador mostrou. Ver progConferirTrecho().
+      //
+      // FASE_SOLDANDO e o nome da fase que SEGUE UMA RETA -- ela nao liga
+      // o arco, quem liga e o bloco acima. O deslocamento passa por ela
+      // com o arco desligado.
+      //
+      // Com uma junta so nao existe reta, so o arco dela: ali o caminho
+      // volta a ser a interpolacao nas juntas. A execucao tem de escolher
+      // pela MESMA regra da validacao, senao a maquina anda por um caminho
+      // que ninguem conferiu.
+      if (daParaFazerReta()) {
+        prepararReta(comSolda);
         fase = FASE_SOLDANDO;
       } else {
-        // Deslocamento: interpolacao nas juntas, mais rapida. O caminho
-        // sai curvo, e nao ha problema nenhum nisso.
         moverCoordenado(pontos[idx + 1].p1, pontos[idx + 1].p2, velAuto);
         fase = FASE_DESLOCANDO;
       }

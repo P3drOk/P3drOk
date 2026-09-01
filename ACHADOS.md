@@ -4449,12 +4449,96 @@ aferição, `M11b`/`M11d` acusam; sem o progresso pelo passo, `M12` inteiro; sem
 a exigência de amostras, `M13b`/`M13c`; sem o limite pela velocidade comandada,
 `M14b`.
 
+## R159 · A mão livre ganhou casa, e três travas caíram  `I04` `P04` `P08`  ✅
+
+O relatório técnico pede a **Trajetória Mão Livre** como uma das funções mais
+visíveis da máquina: aba própria, dois modos de gravação, reta entre pontos e
+funcionamento **com um eixo só**.
+
+**A exploração mudou o tamanho desta etapa.** Quase tudo já existia:
+
+| §  | pedido | onde já estava |
+|----|--------|----------------|
+| 9  | soltar os motores e gravar ponto com a mão | `aprender.cpp` |
+| 10 | lista de pontos com reta entre eles | `programa.cpp` |
+| 11 | gravação contínua preservando curvas | `trajetoria.cpp` |
+
+O firmware da mão livre nunca foi apagado quando a tela dela saiu. O trabalho
+real foi dar a esses três uma casa clara e derrubar o que ainda os impedia.
+
+### Reta em todo trecho, e não só no cordão
+
+O deslocamento era interpolado nas juntas — mais rápido, e a ponta fazia uma
+curva. Num programa desenhado de cima isso é inofensivo. Num caminho **ensinado
+com a mão**, não: quem levou o braço ponto a ponto quase sempre desviou de
+alguma coisa, e a curva passa por fora do que ele mostrou.
+
+`I04` mede a diferença: entre duas posturas típicas, o arco da interpolação
+passa a **142 mm** da reta. Depois da mudança a ponta não sai mais de **3,4 mm**.
+
+Preço aceito e declarado: um trecho cujo **meio** sai da área alcançável passa a
+ser recusado na partida, em vez de o braço dar a volta sozinho.
+
+### Reta exige dois graus de liberdade
+
+Foi o cenário de um eixo só que denunciou: com **uma** junta, a ponta só
+descreve o **arco** que ela traça. Pedir reta ali não é mais seguro — é
+impossível, e todo trecho era recusado com *"1,5 mm de cordão exigiriam 5 graus
+da junta 2"*. A máquina de um eixo não sairia do lugar.
+
+Então a reta vale onde ela existe. Onde não existe, o caminho é a interpolação
+nas juntas — que com uma junta é o próprio arco dela. **Validação e execução
+escolhem pela mesma regra**, senão a máquina andaria por um caminho que ninguém
+conferiu.
+
+### Três travas para um eixo só
+
+1. **`podeSoltarOBraco()`** exigia encoder e zero nas **duas** juntas. Uma junta
+   que não está no barramento não tem peso próprio para cair nem contagem para
+   desencontrar: recusar por causa dela era proteger o que não está lá. Agora a
+   regra é sobre as juntas **presentes** — e a proteção continua inteira onde
+   tem sentido, que `P04` prende nas duas metades.
+2. **`moverCoordenado()`** começava com `if (!J1.motor || !J2.motor) return;`.
+   Com um motor só a reprodução não movia **nada**, nem o eixo que existe, e
+   sem uma palavra na tela. Coordenar dois movimentos é o caso comum, não a
+   condição para haver movimento.
+3. **A posição do eixo ausente é 0**, como o relatório pede — e sai 0 sozinha,
+   porque `posicaoJ2()` já devolve 0 sem motor.
+
+> **Uma peça planejada não foi construída, e é melhor assim.** Eu havia previsto
+> uma máscara de "eixos ausentes" para a reprodução não levar a 0° uma junta
+> cujo 0 fosse inventado. Ao implementar ficou claro que o 0 nunca é inventado:
+> ele é a leitura real de um eixo que não existe. Forçar 0 é que criaria o
+> perigo — e ninguém força. A máscara protegeria contra um caso que o conserto
+> certo não produz.
+
+### O alvo do assentamento em graus
+
+Consequência da R158: aferir a engrenagem no meio de um assentamento muda
+quantos passos descrevem um ângulo. Recalcular o alvo a partir da contagem a
+cada ciclo faria o braço perseguir um destino que anda.
+
+### Na tela
+
+Aba própria, antes do Programa — é ali que o trabalho começa. Dois modos: **por
+pontos** (reta entre eles) e **contínuo** (segurar e mover). Quadro fixo, pelo
+motivo de sempre e um a mais: aqui as duas mãos do operador estão no **braço**.
+
+- **A tecla G marca o ponto.** Alcançar o mouse é justamente o gesto que move a
+  ponta recém-posicionada. Só nesta aba, e nunca dentro de um campo.
+- **Segurar para gravar**, com captura de ponteiro como as setas de jog: a
+  gravação acaba onde a mão acaba, em vez de o operador ter de largar o braço
+  para clicar "encerrar".
+
+O guarda de "todo botão com id tem ação" aprendeu que existe botão de **segurar**
+— declarado com `data-segurar`, em vez de o guarda ser afrouxado.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **494 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **290 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **501 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **295 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

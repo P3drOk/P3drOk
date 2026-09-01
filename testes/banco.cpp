@@ -669,10 +669,9 @@ static void teste_A07_deslocamento_atravessa_mesa() {
   checar(!aceitou, "A07",
          "programa cujo deslocamento atravessa zona proibida deve ser recusado");
   nota("progIniciar(ensaio) -> %s", aceitou ? "ACEITO" : motivo);
-  nota("progIniciar() agora valida cada trecho pelo que ele realmente");
-  nota("percorre: reta cartesiana quando ha solda, interpolacao nas juntas");
-  nota("quando e deslocamento. Validar so as pontas deixava o braco raspar");
-  nota("a mesa no meio do caminho.");
+  nota("progIniciar() valida cada trecho pelo que ele realmente percorre --");
+  nota("hoje uma RETA no espaco, com solda ou sem. Validar so as pontas");
+  nota("deixava o braco raspar a mesa no meio do caminho.");
   if (aceitou) progParar();
 }
 
@@ -2788,6 +2787,83 @@ static void teste_I02_ziguezague_na_borda() {
   checar(!progRodando(), "I02b", "o programa termina em vez de travar");
 }
 
+// ---------------------------------------------------------------------
+// I04: o DESLOCAMENTO tambem anda em linha reta.
+//
+// O trecho sem solda era interpolado nas juntas -- mais rapido, e a ponta
+// fazia uma curva. Num programa desenhado de cima isso e inofensivo. Num
+// caminho ENSINADO COM A MAO, nao: quem levou o braco ponto a ponto quase
+// sempre desviou de alguma coisa, e a curva passa por fora do que ele
+// mostrou. O braco tem de ir por onde foi ensinado, com arco ou sem.
+//
+// A diferenca entre os dois caminhos e grande e facil de medir: a corda e
+// o arco de uma junta que gira dezenas de graus ficam a dezenas de
+// milimetros um do outro.
+// ---------------------------------------------------------------------
+static void teste_I04_deslocamento_tambem_e_reta() {
+  secao("I04  O deslocamento sem solda tambem segue a reta");
+  reiniciarSistema();
+  prepararRoboCalibrado(170.0f);
+  webPost("/api/geometria?l1=400&l2=300");
+  rodarComWeb(120);
+
+  // Duas posturas cuja interpolacao nas juntas descreve uma curva bem
+  // aberta: a junta 1 gira muito e a 2 quase nada.
+  const float A1 = -40.0f, A2 = 60.0f;
+  const float B1 =  40.0f, B2 = 60.0f;
+  PontoXY v[2];
+  float xc, yc;
+  cinematicaDireta(A1, A2, xc, yc, v[0].x, v[0].y);
+  cinematicaDireta(B1, B2, xc, yc, v[1].x, v[1].y);
+  nota("A=(%.0f, %.0f) mm  B=(%.0f, %.0f) mm",
+       (double)v[0].x, (double)v[0].y, (double)v[1].x, (double)v[1].y);
+
+  // Quanto a interpolacao NAS JUNTAS sairia da reta: o meio do arco.
+  float mx, my;
+  cinematicaDireta((A1 + B1) / 2.0f, (A2 + B2) / 2.0f, xc, yc, mx, my);
+  const float desvioDoArco = distSegmento(mx, my, v[0].x, v[0].y, v[1].x, v[1].y);
+  nota("o meio do arco das juntas fica a %.0f mm da reta A-B",
+       (double)desvioDoArco);
+  checar(desvioDoArco > 20.0f, "I04a",
+         "os dois caminhos sao mesmo diferentes aqui -- senao o cenario "
+         "passaria a verde sem distinguir coisa nenhuma");
+
+  progLimpar();
+  const char* m = nullptr;
+  progAdicionarPonto(grausParaPassos(J1, A1), grausParaPassos(J2, A2), &m);
+  progAdicionarPonto(grausParaPassos(J1, B1), grausParaPassos(J2, B2), &m);
+  progDefinirSolda(0, false);          // DESLOCAMENTO, sem arco
+
+  J1.motor->setCurrentPosition(grausParaPassos(J1, A1));
+  J2.motor->setCurrentPosition(grausParaPassos(J2, A2));
+  rodarComWeb(20);
+
+  enviarComando(CMD_PROG_EXECUTAR, 1);   // ensaio
+  rodarComWeb(60);
+  checar(progRodando(), "I04b", "o programa de deslocamento parte");
+
+  float pior = 0.0f;
+  uint32_t t = 0;
+  while (progRodando() && t < 60000) {
+    if (t % 200 == 0) registrarContatoOperador();
+    rodar(1); t++;
+    float x, y; pontaAgora(x, y);
+    const float d = distPolilinha(x, y, v, 2);
+    if (d > pior) pior = d;
+  }
+  nota("desvio maximo da reta durante o deslocamento: %.1f mm "
+       "(o arco das juntas passaria a %.0f mm)", (double)pior,
+       (double)desvioDoArco);
+  // A folga e maior que a do cordao (I01 cobra 2 mm) porque o deslocamento
+  // anda mais rapido e o seguidor atrasa mais -- e nao ha arco aberto para
+  // marcar a peca. O que este cenario separa nao e 3 mm de 5: e RETA de
+  // ARCO, e entre os dois ha duas ordens de grandeza.
+  checar(pior < desvioDoArco / 10.0f, "I04c",
+         "a ponta segue a RETA no trecho sem solda, em vez de descrever o "
+         "arco da interpolacao nas juntas");
+  if (progRodando()) progParar();
+}
+
 static void teste_I03_velocidade_entre_trechos() {
   secao("I03  A velocidade programada nao pode ficar velha entre trechos");
   reiniciarSistema();
@@ -4859,8 +4935,22 @@ static void teste_P03_toque_fora_do_modo() {
   g_pinEntrada[PIN_APRENDER] = HIGH;
 }
 
-static void teste_P04_sem_encoder_nao_solta_o_braco() {
-  secao("P04  Sem encoder acompanhando, o braco NAO e solto");
+// ---------------------------------------------------------------------
+// P04: a regra de soltar o braco e sobre AS JUNTAS QUE EXISTEM.
+//
+// Junta solta e nao medida cai pelo proprio peso e a contagem dela nao
+// anda: o ponto sairia certo num eixo e errado no outro, que e pior do
+// que errado nos dois porque parece plausivel. Essa protecao continua.
+//
+// Mas ela era cobrada das DUAS juntas sempre, e uma junta que nao esta no
+// barramento nao tem peso proprio para cair nem contagem para
+// desencontrar. Numa maquina de um eixo so -- ou com o segundo driver
+// ainda na bancada -- o modo entrava com torque e o operador tinha de
+// posicionar pelas setas para gravar um caminho A MAO. Recusar por causa
+// de uma junta que nao existe e proteger o que nao esta la.
+// ---------------------------------------------------------------------
+static void teste_P04_soltar_olha_as_juntas_que_existem() {
+  secao("P04  Soltar o braco depende das juntas presentes, nao do numero dois");
   reiniciarSistema();
   prepararRoboCalibrado();
   // A bancada do operador hoje: so a junta 1 no barramento.
@@ -4874,17 +4964,105 @@ static void teste_P04_sem_encoder_nao_solta_o_braco() {
   nota("junta 2 fora do barramento: ativo=%d solto=%d servos=%d -- \"%s\"",
        (int)a.ativo, (int)a.bracoSolto, (int)servosLigados, ultimaMensagem);
   checar(a.ativo, "P04a",
-         "o modo entra assim mesmo: com torque ele funciona igual, so muda quem carrega o braco");
-  checar(!a.bracoSolto && servosLigados, "P04b",
-         "mas o torque NAO cai: junta que ninguem mede cairia e gravaria ponto torto");
-  checar(strstr(ultimaMensagem, "torque") != nullptr, "P04c",
-         "e a tela diz por que, em vez de o operador achar que o botao falhou");
+         "o modo entra");
+  checar(a.bracoSolto && !servosLigados, "P04b",
+         "e o braco SOLTA com um eixo so: a junta ausente nao cai nem "
+         "desencontra contagem, e gravar a mao e o proposito do modo");
 
-  // Gravar continua funcionando -- e essa e a razao de nao recusar.
   botao(150);
-  nota("toque com torque: %u ponto(s)", (unsigned)progQuantidade());
-  checar(progQuantidade() == 1, "P04d",
-         "e o toque grava ponto do mesmo jeito");
+  nota("toque com o braco solto: %u ponto(s)", (unsigned)progQuantidade());
+  checar(progQuantidade() == 1, "P04c",
+         "e o toque grava ponto");
+
+  // A PROTECAO CONTINUA onde ela tem sentido: junta PRESENTE no
+  // barramento e sem zero ensinado. Essa cai mesmo, e a contagem dela
+  // mente.
+  reiniciarSistema();
+  prepararRoboCalibrado();
+  prepararEncoderDasDuasJuntas();   // ensina o zero das duas
+  rodarComWeb(300);
+  webPost("/api/zero/esquecer?j=2"); // e a junta 2 perde o dela
+  rodarComWeb(200);
+
+  botao(APRENDER_SEGURAR_MS + 300);
+  const ResumoAprender b = aprenderResumo();
+  nota("junta 2 presente e sem zero: solto=%d servos=%d -- \"%s\"",
+       (int)b.bracoSolto, (int)servosLigados, ultimaMensagem);
+  checar(b.ativo && !b.bracoSolto && servosLigados, "P04d",
+         "junta que ESTA no barramento e ninguem mede segura o torque: e "
+         "ela que cairia e gravaria ponto torto");
+  checar(strstr(ultimaMensagem, "junta 2") != nullptr, "P04e",
+         "e a tela nomeia a junta que esta segurando, em vez de o operador "
+         "achar que o botao falhou");
+}
+
+// ---------------------------------------------------------------------
+// P06: um eixo so grava E REPRODUZ.
+//
+// Gravar a mao com um motor so ja era metade do pedido; a outra metade e
+// o caminho gravado voltar a andar. E ali havia uma trava calada:
+// moverCoordenado() comecava com
+//
+//     if (!J1.motor || !J2.motor) return;
+//
+// -- com um motor so, a reproducao nao movia NADA, nem o eixo que existe,
+// e sem uma palavra na tela. Coordenar dois movimentos e o caso comum,
+// nao a condicao para haver movimento.
+//
+// A posicao do eixo ausente e 0, como o relatorio pede -- e ela sai 0
+// sozinha, porque posicaoJ2() devolve 0 quando nao ha motor. Ninguem
+// precisa forcar, e por isso ninguem corre o risco de forcar errado.
+// ---------------------------------------------------------------------
+static void teste_P08_um_eixo_so_grava_e_reproduz() {
+  secao("P08  Com um eixo so, o caminho grava e volta a andar");
+  reiniciarSistema();
+  prepararRoboCalibrado(170.0f);
+  prepararEncoder(90, true, 500000);   // so a junta 1 no barramento
+  rodarComWeb(300);
+  webPost("/api/zero/ensinar?j=1&g=0");
+  rodarComWeb(200);
+
+  // A maquina de um eixo so: o segundo driver nem existe.
+  J2.motor = nullptr;
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  // O encoder segue o eixo de verdade. Sem isto ele fica congelado
+  // enquanto o pulso corre, e o vigia de travamento para o braco -- com
+  // razao. O cenario mediria a protecao, nao a maquina de um eixo.
+  g_espelharEixo = true;
+  rodarComWeb(50);
+
+  progLimpar();
+  const char* m = nullptr;
+  const bool p1ok = progAdicionarPonto(grausParaPassos(J1, 10.0f), 0, &m);
+  const bool p2ok = progAdicionarPonto(grausParaPassos(J1, 40.0f), 0, &m);
+  nota("dois pontos com a junta 2 ausente: %d e %d -- %s",
+       (int)p1ok, (int)p2ok, m ? m : "sem recusa");
+  checar(p1ok && p2ok, "P08a",
+         "os pontos entram com a junta ausente valendo 0, em vez de a "
+         "gravacao recusar por causa de um eixo que nao esta la");
+
+  const long antes = posicaoJ1();   // o braco comeca em zero
+
+  // Pela fila de comandos, como a interface faz: progIniciar() sozinho nao
+  // poe o robo em MODO_EXECUTANDO, e sem isso o laco nunca chama
+  // progAtualizar().
+  enviarComando(CMD_PROG_EXECUTAR, 1);   // ensaio, sem arco
+  rodarComWeb(60);
+  nota("modo=%d progRodando=%d -- \"%s\"", (int)modoAtual,
+       (int)progRodando(), ultimaMensagem);
+  checar(progRodando() && modoAtual == MODO_EXECUTANDO, "P08b",
+         "e o programa parte");
+
+  uint32_t t = 0;
+  while (progRodando() && t < 20000) { rodarComWeb(20); t += 20; }
+  const float andou = fabsf((float)(posicaoJ1() - antes)) / J1.passosPorGrau;
+  nota("depois da reproducao: a junta 1 andou %.1f grau(s), e parou em %.1f",
+       (double)andou, (double)passosParaGraus(J1, posicaoJ1()));
+  checar(andou > 30.0f, "P08c",
+         "a junta que existe percorre o caminho: exigir os dois motores "
+         "fazia a maquina de um eixo nao andar nada, e calada");
+  if (progRodando()) progParar();
 }
 
 static void teste_P05_o_que_encerra_o_aprendizado() {
@@ -6604,7 +6782,7 @@ static void teste_P06_pela_tela_tambem() {
   rodarComWeb(200);
   nota("POST /api/aprender?on=1 -> HTTP %d; ativo=%d solto=%d",
        cod, (int)aprenderResumo().ativo, (int)aprenderResumo().bracoSolto);
-  checar(cod == 200 && aprenderResumo().ativo, "P06a",
+  checar(cod == 200 && aprenderResumo().ativo, "P07a",
          "da para entrar no aprendizado pela tela, sem botao fisico nenhum");
 
   webGet("/api/status");
@@ -6612,7 +6790,7 @@ static void teste_P06_pela_tela_tambem() {
   const size_t onde = js.find("\"aprBotao\"");
   nota("status: %s", js.substr(onde == std::string::npos ? 0 : onde, 62).c_str());
   checar(js.find("\"apr\":true") != std::string::npos &&
-         js.find("\"aprSolto\":true") != std::string::npos, "P06b",
+         js.find("\"aprSolto\":true") != std::string::npos, "P07b",
          "e o status diz que o braco esta solto -- a tela nao precisa adivinhar");
 
   // Gravar pela tela dentro do modo conta na sessao, igual ao botao.
@@ -6621,7 +6799,7 @@ static void teste_P06_pela_tela_tambem() {
   rodarComWeb(200);
   nota("gravar pela tela: sessao=%u ponto(s), programa=%u",
        (unsigned)aprenderResumo().gravados, (unsigned)progQuantidade());
-  checar(aprenderResumo().gravados == 1 && progQuantidade() == 1, "P06c",
+  checar(aprenderResumo().gravados == 1 && progQuantidade() == 1, "P07c",
          "gravar pela tela dentro do modo passa pelo mesmo caminho do botao");
 
   webPost("/api/aprender?on=0");
@@ -8028,6 +8206,7 @@ int main() {
   teste_I01_ziguezague_reto();
   teste_I02_ziguezague_na_borda();
   teste_I03_velocidade_entre_trechos();
+  teste_I04_deslocamento_tambem_e_reta();
 
   teste_L01_le_o_encoder();
   teste_L02_ordem_das_palavras();
@@ -8063,8 +8242,9 @@ int main() {
   teste_P01_ensinar_com_a_mao();
   teste_P02_um_toque_e_um_ponto();
   teste_P03_toque_fora_do_modo();
-  teste_P04_sem_encoder_nao_solta_o_braco();
+  teste_P04_soltar_olha_as_juntas_que_existem();
   teste_P05_o_que_encerra_o_aprendizado();
+  teste_P08_um_eixo_so_grava_e_reproduz();
   teste_P06_pela_tela_tambem();
   teste_V01_habilita_pelo_barramento();
   teste_V02_escrita_que_nao_confirma();

@@ -108,12 +108,16 @@ async function fecharGaveta(pag) {
          'Content-Encoding: ' + cab['content-encoding'] + ', ' + bytesRede +
          ' bytes na rede');
 
-  // Barra de abas presente e com as cinco abas
-  // Arquivos saiu da barra: virou gaveta de tela cheia, como a
-  // Configuracao, e se abre pelo atalho do cabecalho.
+  // Barra de abas de trabalho: Mesa, Mover, Mao livre, Programa, Encoder.
+  // Arquivos saiu da barra -- virou gaveta de tela cheia, como a
+  // Configuracao, e se abre pelo atalho do cabecalho. A Mao livre entrou:
+  // e onde o caminho se ensina, e ela vem ANTES do Programa porque e ali
+  // que o trabalho comeca.
   const nAbas = await p.locator('#abas button').count();
-  checar(nAbas === 4, 'barra de abas inferior com 4 abas de trabalho',
+  checar(nAbas === 5, 'barra de abas inferior com 5 abas de trabalho',
          nAbas + ' abas encontradas');
+  const temMao = await p.locator('#abas button[data-aba="mao"]').count();
+  checar(temMao === 1, 'a Mao livre tem aba propria, como funcao de destaque');
 
   // Aba inicial = Mover, com o joystick visivel
   const joyVis = await p.locator('#joy').isVisible();
@@ -1003,8 +1007,14 @@ async function fecharGaveta(pag) {
          JSON.stringify(eng));
 
   // Todo botao com id tem handler.
+  //
+  // Botao de SEGURAR nao tem onclick, e nao deveria ter: ele age no
+  // pointerdown e encerra no pointerup, para a acao acabar onde a mao
+  // acaba. Quem e assim se declara com data-segurar, e o guarda continua
+  // valendo para todos os outros -- botao mudo e o defeito mais caro.
   const semH = await t.evaluate(() =>
-    [...document.querySelectorAll('button[id]')].filter(e => !e.onclick).map(e => e.id));
+    [...document.querySelectorAll('button[id]')]
+      .filter(e => !e.onclick && !e.dataset.segurar).map(e => e.id));
   checar(semH.length === 0, 'todo botao identificado tem acao ligada',
          semH.length ? 'sem handler: ' + semH.join(', ') : 'nenhum botao orfao');
 
@@ -1152,6 +1162,11 @@ async function fecharGaveta(pag) {
   // nao pode depender de o operador estar olhando para a letra miuda,
   // nem sumir da tela de quem nao instalou o botao da ponteira.
   // ------------------------------------------------------------------
+  // Os controles de GRAVAR mudaram de casa: saíram do Programa e viraram a
+  // aba Mao livre, que e a funcao de destaque da maquina. O Programa ficou
+  // com a lista -- editar e executar. Por isso a navegacao vem antes.
+  await t.evaluate(() => irAba('mao'));
+  await t.waitForTimeout(250);
   rotas = [];
   await t.locator('#btApr').click();
   await t.waitForTimeout(350);
@@ -2775,7 +2790,9 @@ async function fecharGaveta(pag) {
   // cordao obrigava a trocar de aba entre cada ponto, com a mao no braco.
   // ------------------------------------------------------------------
   await t.request.post(BASE + '/teste/estado', { data: { apr: false, aprSolto: false, aprN: 0 } });
-  await t.evaluate(() => irAba('prog'));
+  // Os tres passos moram na aba Mao livre desde que ela virou funcao de
+  // destaque: e ali que se GRAVA. O Programa ficou com a lista.
+  await t.evaluate(() => irAba('mao'));
   await t.waitForTimeout(700);
   await t.evaluate(() => {
     const a = document.getElementById('btApr');
@@ -2823,12 +2840,74 @@ async function fecharGaveta(pag) {
   checar(!!marcou, 'Aprendizado: marcar grava o ponto onde a ponta esta',
          marcou || rotas.join(' '));
 
+  // A TECLA G MARCA O PONTO.
+  //
+  // Com o braco solto as duas maos estao NELE. Alcancar o mouse para
+  // clicar "marcar" e justamente o gesto que move a ponta que se acabou
+  // de posicionar -- e o ponto sai um pedaco adiante do que o operador
+  // viu. Uma tecla resolve, e o teclado sem fio fica no carrinho.
+  rotas = [];
+  await t.keyboard.press('g');
+  await t.waitForTimeout(400);
+  const teclaMarcou = rotas.find(x => x.split('?')[0] === '/api/ponto/gravar');
+  checar(!!teclaMarcou,
+         'Mao livre: a tecla G marca o ponto sem tirar a mao do braco',
+         teclaMarcou || rotas.join(' '));
+
+  // E ela SO vale nesta aba: tecla que grava ponto de qualquer lugar
+  // gravaria ponto no meio de alguem preenchendo um numero noutra tela.
+  await t.evaluate(() => irAba('mover'));
+  await t.waitForTimeout(300);
+  rotas = [];
+  await t.keyboard.press('g');
+  await t.waitForTimeout(400);
+  checar(!rotas.some(x => x.split('?')[0] === '/api/ponto/gravar'),
+         'Mao livre: fora da aba, a tecla G nao grava nada',
+         rotas.join(' ') || 'nenhuma rota');
+  await t.evaluate(() => irAba('mao'));
+  await t.waitForTimeout(300);
+  await t.evaluate(() => {
+    const a = document.getElementById('btApr');
+    if (a) a.closest('.et').classList.add('aberta');
+  });
+  await t.waitForTimeout(200);
+
   rotas = [];
   await t.locator('#btAprFim').click();
   await t.waitForTimeout(500);
   const aprSaiu = rotas.find(x => x.split('?')[0] === '/api/aprender');
   checar(!!aprSaiu && /on=0/.test(aprSaiu),
          'Aprendizado: e o passo 3 encerra', aprSaiu || rotas.join(' '));
+
+  // ------------------------------------------------------------------
+  // MODO CONTINUO: segurar e soltar.
+  //
+  // Com um botao para comecar e outro para terminar, o operador tem de
+  // largar o braco para encerrar -- e o ultimo pedaco do caminho sai a
+  // mao dele voltando para a tela. Segurando, a gravacao acaba onde a mao
+  // acaba.
+  // ------------------------------------------------------------------
+  await t.evaluate(() => {
+    const b = document.getElementById('btGravSeg');
+    if (b) b.closest('.et').classList.add('aberta');
+  });
+  await t.waitForTimeout(300);
+  rotas = [];
+  const cxSeg = await t.locator('#btGravSeg').boundingBox();
+  await t.mouse.move(cxSeg.x + cxSeg.width / 2, cxSeg.y + cxSeg.height / 2);
+  await t.mouse.down();
+  await t.waitForTimeout(350);
+  const comecou = rotas.find(x => x.split('?')[0] === '/api/gravar/iniciar');
+  const aindaNaoParou = !rotas.some(x => x.split('?')[0] === '/api/gravar/parar');
+  await t.mouse.up();
+  await t.waitForTimeout(400);
+  const parou = rotas.find(x => x.split('?')[0] === '/api/gravar/parar');
+  checar(!!comecou && aindaNaoParou,
+         'Continuo: apertar comeca a gravar, e enquanto a mao esta em cima nao encerra',
+         rotas.join(' '));
+  checar(!!parou,
+         'Continuo: soltar encerra -- a gravacao acaba onde a mao acaba',
+         parou || rotas.join(' '));
 
   await t.request.post(BASE + '/teste/estado', { data: { apr: false, aprSolto: false, aprN: 0 } });
   await t.waitForTimeout(600);
