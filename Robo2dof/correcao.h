@@ -94,10 +94,18 @@ void correcaoNovoMovimento();
 //
 // Pulso e contagem estao os dois do lado do MOTOR, antes do redutor, entao
 // a reducao cancela e nao precisa estar certa -- nem precisa haver
-// calibracao guiada. Adota o valor e refaz a resolucao das juntas.
+// calibracao guiada.
 //
-// Devolve true quando a mudanca foi grande o bastante para valer uma
-// gravacao na flash; quem chama decide quando gravar.
+// ELA NAO ADOTA O VALOR. Guarda em Junta.ppvMedido, para a tela mostrar
+// ao lado do campo. A versao que escrevia passosPorVolta sozinha, no fim
+// de cada movimento, fazia o braco passar do ponto e nunca chegar: o
+// alvo do assentamento e congelado em GRAUS, e mudar a regua depois
+// disso muda o lugar que aquele numero descreve. Ver o comentario longo
+// na propria funcao.
+//
+// Devolve sempre false hoje (nada a gravar). O retorno fica porque quem
+// chama ja decide gravar por ele, e um dia a adocao pode voltar -- por
+// pedido explicito de quem opera, nunca sozinha.
 // ---------------------------------------------------------------------
 bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 

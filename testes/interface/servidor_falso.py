@@ -53,6 +53,8 @@ estado = {
     "velN": 20.0, "velP": 2.0, "velA": 12.0, "velMn": 2.0, "velMx": 60.0,
     "acel1": 60.0, "acel2": 60.0,
     "ppv1": 10000, "red1": 16.5, "ppv2": 10000, "red2": 4.0,
+    # O que o encoder mediu de pulsos por volta. 0 = nada medido ainda.
+    "ppvM1": 0, "ppvM2": 0,
     "inv1": False, "inv2": True,
     "suav": 120, "afer1": 0, "afer2": 0,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 458.33, "ppg2": 111.11,

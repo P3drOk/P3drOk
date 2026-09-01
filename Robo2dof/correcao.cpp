@@ -178,12 +178,34 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
   const uint32_t velho = j.passosPorVolta;
   const float    rel   = velho ? fabsf((float)novo - (float)velho) / (float)velho
                                : 1.0f;
-  j.passosPorVolta = (uint32_t)novo;
-  recalcularResolucao();
-  logEvento("junta %u: engrenagem aferida em %ld pulsos por volta "
-            "(estava %lu) -- %ld pulsos em %.3f voltas do motor",
+
+  // ELA MEDE E CONTA. NAO REESCREVE A REGUA.
+  //
+  // Escrevia: `j.passosPorVolta = novo; recalcularResolucao();` no fim de
+  // CADA movimento. E dai vinha o "passa do ponto e nunca chega".
+  //
+  // O alvo do assentamento e congelado EM GRAUS quando o movimento
+  // comeca (alvoGraus1/2, la em cima). Trocar passosPorGrau depois disso
+  // nao move o numero -- move o LUGAR que aquele numero descreve. O
+  // retoque entao levava o braco para um angulo que ninguem pediu, o
+  // movimento seguinte media de novo, a regua andava de novo, e o erro
+  // se somava a cada viagem. Com o barramento a 4,5 leituras por segundo
+  // e 7% de falha, cada medida sai um pouco diferente da anterior: a
+  // regua nunca parava quieta.
+  //
+  // Regua que se mexe sozinha dentro de uma malha fechada que persegue
+  // um alvo e instavel -- e o operador estava vendo exatamente isso.
+  //
+  // A medida continua valendo: ela e a resposta para "os pulsos por
+  // volta digitados estao errados?". So que fica GUARDADA como sugestao
+  // e aparece na tela, ao lado do campo, para quem monta a maquina
+  // decidir. Quem escreve a regua da maquina e uma pessoa.
+  j.ppvMedido = (uint32_t)novo;
+  logEvento("junta %u: engrenagem MEDIDA em %ld pulsos por volta "
+            "(configurada %lu) -- %ld pulsos em %.3f voltas do motor",
             (unsigned)junta, novo, (unsigned long)velho, passos, (double)voltas);
-  return rel > AFERIR_GRAVAR_REL;
+  (void)rel;
+  return false;   // nada a gravar: a configuracao nao mudou
 }
 
 // Instantaneo do inicio do movimento. A afericao compara o comeco com o

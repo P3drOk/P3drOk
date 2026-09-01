@@ -371,6 +371,24 @@ async function fecharGaveta(pag) {
          'Arquivos: uma lista so, com os dois tipos dentro',
          bib.prog + ' programa(s) e ' + bib.traj + ' trajetoria(s) em '
          + bib.linhas + ' linhas; "' + bib.titulo + '"');
+  // AS DUAS AREAS NO TELEFONE: empilhadas, numa coluna so, e a entrada
+  // primeiro -- e a ordem em que se usa (por o trabalho na maquina, e
+  // depois procurar o que ja esta guardado). Lado a lado numa tela de
+  // 390 px nao caberia nenhuma das duas.
+  const areasTel = await p.evaluate(() => {
+    const e = document.querySelector('#pnArq .arqEnt');
+    const b = document.querySelector('#pnArq .arqBib');
+    if (!e || !b) return { falta: true };
+    const re = e.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    return { entTopo: Math.round(re.top), bibTopo: Math.round(rb.top),
+             entLarg: Math.round(re.width), bibLarg: Math.round(rb.width),
+             cabe: rb.right <= document.documentElement.clientWidth + 1 };
+  });
+  checar(!areasTel.falta && areasTel.bibTopo > areasTel.entTopo &&
+         areasTel.cabe,
+         'Arquivos: no telefone as duas areas empilham, com a entrada em cima',
+         JSON.stringify(areasTel));
+
   checar(bib.etiquetas.includes('programa') && bib.etiquetas.includes('trajetoria'),
          'Arquivos: o tipo vira etiqueta na linha, depois de salvo',
          bib.etiquetas.join(' '));
@@ -955,7 +973,11 @@ async function fecharGaveta(pag) {
              mioloRola: !!dentro && dentro.scrollHeight > dentro.clientHeight,
              cabecalhos: document.querySelectorAll('#pnProg > .et > .cab').length };
   });
-  checar(quadroProg.sobra <= 1 && quadroProg.cabecalhos >= 4,
+  // Eram quatro cartoes; o de importar DXF mudou para a gaveta de
+  // Arquivos e sobraram tres. O que este cenario prende continua sendo o
+  // MESMO -- o painel nao rola --, e a contagem e so a ancora de que os
+  // cartoes continuam ali em vez de terem sumido junto.
+  checar(quadroProg.sobra <= 1 && quadroProg.cabecalhos >= 3,
          'Programa: o painel nao rola -- quem rola e o miolo do cartao aberto',
          JSON.stringify(quadroProg));
 
@@ -1424,15 +1446,19 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(500);
   await t.screenshot({ path: SAIDA + '/celular-6-curso.png' });
 
-  // CALIBRAR SAO QUATRO MARCAS, e nenhuma delas pede numero.
+  // CALIBRAR SAO DUAS MARCAS COM NOME: negativo e positivo.
   //
-  // A tela antiga tinha campo de medida em duas etapas: o angulo real na
-  // referencia e o curso medido com transferidor. Os dois sairam -- o
-  // zero e o meio do curso, e a escala do encoder sai das proprias
-  // marcas.
-  for (const [calib, passo, espera] of [
-    ['INDO_A', 1, true], ['LADO_A', 1, false],
-    ['VOLTANDO', 2, true], ['LADO_B', 2, false],
+  // Eram "um lado" e "o outro lado", numerados A e B. Com nome, a recusa
+  // "o positivo caiu no mesmo lugar do negativo" quer dizer alguma
+  // coisa, e o operador sabe qual dos dois ja guardou.
+  //
+  // As viagens ao zero (INDO_A, VOLTANDO, CONCLUIDO) sairam: a primeira
+  // delas LIGAVA o torque no instante em que o operador pedia para
+  // soltar o braco, e era nelas que a maquina remedia a propria escala e
+  // reescrevia os angulos por baixo dos limites recem-marcados.
+  for (const [calib, passo, espera, nome] of [
+    ['SOLTANDO', 1, true, 'NEGATIVO'], ['LADO_A', 1, false, 'NEGATIVO'],
+    ['LADO_B', 2, false, 'POSITIVO'], ['RELIGANDO', 2, true, 'POSITIVO'],
   ]) {
     await t.request.post(BASE + '/teste/estado', { data: { calib, calibEixo: 3 } });
     await t.waitForTimeout(500);
@@ -1441,13 +1467,20 @@ async function fecharGaveta(pag) {
       passo: document.getElementById('cPasso').textContent,
       instr: document.getElementById('cInstr').textContent,
       onde: document.getElementById('cOnde').textContent,
+      dica: document.getElementById('cDica').textContent,
       trancado: document.getElementById('cOk').disabled,
       campos: document.querySelectorAll('#veu input[type=number]').length,
     }));
-    checar(est.veu && new RegExp('EXTREMO ' + passo + ' DE 2').test(est.passo) &&
-           est.campos === 0,
-           'Calibracao: ' + calib + ' e o extremo ' + passo + ' de 2, sem campo a digitar',
+    checar(est.veu && new RegExp(passo + ' DE 2').test(est.passo) &&
+           new RegExp(nome).test(est.passo) && est.campos === 0,
+           'Calibracao: ' + calib + ' e o extremo ' + nome + ', sem campo a digitar',
            est.passo + ' | ' + est.instr);
+    // A maquina so descobre qual extremo e o negativo depois de medir os
+    // dois. Mandar "va ao negativo" sem dizer para que lado isso fica
+    // seria pedir para o operador adivinhar.
+    checar(new RegExp(nome).test(est.dica) &&
+           /junta 1/.test(est.dica) && /junta 2/.test(est.dica),
+           'Calibracao: e a tela diz qual seta leva para esse lado', est.dica);
     // Enquanto a MAQUINA anda, o botao nao tem o que guardar. Botao que
     // existe sem fazer nada e pior que botao ausente.
     checar(est.trancado === espera,
@@ -1613,11 +1646,26 @@ async function fecharGaveta(pag) {
   await t.request.post(BASE + '/teste/estado',
     { data: { j1min: -150, j1max: 150, j2min: -150, j2max: 150, protEnv: false } });
   await t.waitForTimeout(400);
-  await t.locator('#abas button[data-aba="prog"]').click();
-  await t.waitForTimeout(250);
-  await t.evaluate(() => document.querySelectorAll('#pnProg .et')
-    .forEach(x => x.classList.toggle('aberta', x.id === 'eDxf')));
-  await t.waitForTimeout(150);
+  // O DXF MUDOU DE ABA: importar um desenho e importar um arquivo, e o
+  // lugar disso e a gaveta de Arquivos, ao lado do cartao. No painel do
+  // Programa ele disputava espaco com a lista de pontos, que e o que se
+  // olha enquanto se produz.
+  const ondeDxf = await t.evaluate(() => ({
+    naEntrada: !!document.querySelector('#pnArq .arqEnt #eDxf'),
+    noPrograma: !!document.querySelector('#pnProg #eDxf'),
+  }));
+  checar(ondeDxf.naEntrada && !ondeDxf.noPrograma,
+         'DXF: o bloco esta na area de entrada de Arquivos, e nao sobrou no Programa',
+         JSON.stringify(ondeDxf));
+
+  await t.evaluate(() => abrirArq());
+  // A varredura de botoes mudos, la atras, deixa aberto so o ULTIMO
+  // cartao de cada painel -- e agora Arquivos tem tres. Reabrir o do DXF
+  // e arrumar o banco, nao o produto: na maquina ele nasce aberto e nao
+  // tem seta para recolher.
+  await t.evaluate(() => document.querySelectorAll('#pnArq .et')
+    .forEach(x => x.classList.add('aberta')));
+  await t.waitForTimeout(400);
   checar(await t.locator('#btDxfPos').isDisabled(),
          'DXF: sem arquivo, "Posicionar na mesa" fica travado com motivo');
 
@@ -1636,6 +1684,13 @@ async function fecharGaveta(pag) {
 
   await t.locator('#btDxfPos').click();
   await t.waitForTimeout(400);
+  // A GAVETA TEM DE FECHAR. posModo() troca para a aba Mesa, mas a
+  // gaveta e de tela cheia: sem fechar, o operador aperta "Posicionar" e
+  // continua vendo a mesma tela -- botao que parece nao fazer nada.
+  const gavetaDepois = await t.evaluate(() =>
+    document.getElementById('veuArq').classList.contains('on'));
+  checar(!gavetaDepois,
+         'DXF: "Posicionar" fecha a gaveta de Arquivos antes de ir para a mesa');
   checar(await t.locator('#barraPos').isVisible(),
          'DXF: "Posicionar" leva para a mesa com a barra de posicionamento');
   const cnt0 = await t.locator('#pCnt').textContent();

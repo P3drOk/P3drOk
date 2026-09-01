@@ -20,7 +20,7 @@ static const char* const NOMES_MODO[] = {
   "POSICIONANDO", "CALIBRANDO", "FALHA"
 };
 static const char* const NOMES_CALIB[] = {
-  "INATIVO", "INDO_A", "LADO_A", "VOLTANDO", "LADO_B", "CONCLUIDO"
+  "INATIVO", "SOLTANDO", "LADO_A", "LADO_B", "RELIGANDO"
 };
 
 // ---------------------------------------------------------------------
@@ -194,6 +194,7 @@ static void handleStatus() {
     "\"velN\":%.1f,\"velA\":%.1f,\"velMn\":%.1f,\"velMx\":%.1f,"
     "\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
+    "\"ppvM1\":%lu,\"ppvM2\":%lu,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -225,6 +226,9 @@ static void handleStatus() {
     J1.aceleracao, J2.aceleracao,
     (unsigned long)J1.passosPorVolta, J1.reducao,
     (unsigned long)J2.passosPorVolta, J2.reducao,
+    // O que o encoder MEDIU de pulsos por volta. Sugestao, nao regua:
+    // a tela mostra ao lado do campo e quem decide e uma pessoa.
+    (unsigned long)J1.ppvMedido, (unsigned long)J2.ppvMedido,
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
     (unsigned)suavidadePartida,
     (unsigned)MAX_PONTOS,

@@ -31,6 +31,12 @@ struct Junta {
   // reducao mecanica diferentes da outra.
   uint32_t passosPorVolta = PASSOS_POR_VOLTA_PADRAO;
   float    reducao        = REDUCAO_PADRAO;
+  // O que o ENCODER mediu de pulsos por volta no ultimo movimento bom.
+  // E sugestao, nao regua: quem escreve passosPorVolta e uma pessoa, na
+  // tela. Ver aferirEngrenagem() em correcao.cpp -- a versao que escrevia
+  // sozinha fazia o braco perseguir um alvo que andava junto com ela.
+  // 0 = nada medido ainda nesta sessao.
+  uint32_t ppvMedido      = 0;
   long  passosMin     = 0;      // limite de curso negativo, em passos
   long  passosMax     = 0;      // limite de curso positivo, em passos
   float grausMin      = -90.0f;

@@ -4711,15 +4711,112 @@ ao pedir a tira. Medindo (não adivinhando), a correção foram duas coisas:
 O guarda novo mede as duas coisas — altura e largura —, porque só a altura
 deixaria passar a tira que sai da tela.
 
+## R162 · Três defeitos da bancada, e uma régua que andava  `M11` `V19` `V26`  ✅
+
+Relato do operador, em três partes:
+
+1. *"peço para o braço ir até tal ângulo, ele vai acumulando erro e passa
+   do ponto, nunca chega no ponto exato"*;
+2. *"o modo calibração não está desativando o braço mas sim ativando no
+   momento de calibrar"*;
+3. *"os ângulos quando calibrados ficam todos errados… o ponto max de um
+   lado é em 90 e no outro 270, se eu pedir 0 ele consegue mas um 91 já é
+   fora do limite"*.
+
+São três sintomas de **duas** causas, e as duas são a mesma ideia levada
+longe demais: **a máquina reescrevendo a própria régua sozinha.**
+
+### O alvo estava parado; o que andava era o significado dele
+
+`correcaoIniciar()` congela o destino **em graus** — foi a correção da
+Etapa 0, e está certa. Logo depois, `correcaoAtualizar()` chamava
+`aferirEngrenagemDoMovimento()`, que escrevia `passosPorVolta` e refazia
+`passosPorGrau`.
+
+O comentário dizia *"o alvo não se mexe porque está guardado em graus"*.
+Era justamente o contrário: manter o **número** de graus enquanto se muda
+**quanto vale um grau** move o lugar físico. O retoque então levava o
+braço para um ângulo que ninguém pediu, o movimento seguinte media de
+novo, e o erro se somava a cada viagem.
+
+Com o barramento a 4,5 leituras/s e 7 % de falha, cada medida sai um
+pouco diferente da anterior — a régua nunca parava quieta. **Régua que se
+mexe sozinha dentro de uma malha fechada que persegue um alvo é
+instável**, e era isso que o operador estava vendo.
+
+`aferirEngrenagem()` continua medindo, e a medida continua valendo: ela é
+a resposta para *"os pulsos por volta digitados estão errados?"*. Só que
+agora ela **guarda** (`Junta.ppvMedido`) e a tela mostra ao lado do
+campo, com a diferença em porcentagem. Quem escreve a régua da máquina é
+uma pessoa.
+
+> Isso não desfaz a Etapa 0. O que fazia o braço **chegar** ali era o
+> critério de progresso e o cão-de-guarda de travamento, e os dois
+> continuam. `M11c` e `M11e` seguem verdes: mesmo com a régua digitada
+> errada por um fator de dois, o assentamento leva o braço ao ângulo
+> pedido — porque agora o alvo fica parado.
+
+### A calibração ligava o torque no instante em que se pedia para soltar
+
+`calibIniciar()` chamava `pedirTorque(true)` e mandava o braço ao zero,
+para só então soltar. O operador tocava em *Calibrar* para poder empurrar
+o braço, e a máquina o segurava.
+
+As três viagens ao zero saíram. Elas não eram só desconfortáveis: eram a
+ocasião em que a máquina remedia a engrenagem e re-ancorava o encoder —
+a segunda causa. O braço agora fica onde está, solta, e o operador vai de
+um batente ao outro **sem passar pelo zero**; a única viagem que sobra é
+a do fim, com o torque religado.
+
+### 90 e 270, e o 91 recusado
+
+Duas coisas erradas ao mesmo tempo, e o relato pegou as duas:
+
+- `fecharJunta()` **esticava** o intervalo até incluir o zero
+  (`if (lo > 0) lo = 0`). Com os dois batentes do mesmo lado ela inventava
+  todo o percurso entre o zero e o primeiro batente. Era por isso que
+  "pedir 0" era aceito.
+- a mesma função adotava a escala do encoder medida entre os extremos, e
+  `concluir()` zerava `grausHome`. Como `grausMin`/`grausMax` saem dos
+  **passos divididos pela régua**, mexer nela logo depois de gravar os
+  limites muda o ângulo que esses limites descrevem — e 91 caía fora de
+  um máximo que tinha acabado de encolher.
+
+Agora a calibração grava **os dois batentes, e nada mais**. Se o zero
+ficar fora do curso, quem diz isso é a ida ao zero, que já recusava com
+todas as letras. `V26` é o exemplo da bancada, número por número: curso
+90–170, **91 aceito** e **0 recusado com motivo**.
+
+### O que cada cenário prende, e o defeito que o derruba
+
+| cenário | contrato | defeito reintroduzido que o derruba |
+|---|---|---|
+| `M11f` | a régua não é reescrita por um movimento | voltar `passosPorVolta = novo` |
+| `M11d` | e não muda entre dois movimentos | idem |
+| `V19a` | um toque **solta** os motores, sem sair do lugar | `pedirTorque(true)` |
+| `V19g` | calibrar não mexe em régua, escala nem origem | readotar `contagensPorGrau` |
+| `V19h` | a mesma contagem vale o mesmo ângulo depois de calibrar | idem |
+| `V26a` | os limites são os dois batentes | devolver `if (lo>0) lo=0` |
+
+Cinco cenários que prendiam os contratos antigos foram **re-expressos**,
+não apagados: `M11b`, `M11d`, `V19a`, `V19c`, `V19e`, `V19g`. O que era
+*"o movimento mediu a engrenagem e adotou"* virou *"mediu e guardou"*; o
+que era *"a escala sai de graça"* virou *"a régua não muda"*.
+
+### O que ficou por fazer, e é honesto dizer
+
+A bancada não consegue encenar o **ruído** do RS485 — 7 % de falha e 4,5
+leituras/s. Por isso não há cenário que reproduza a deriva acumulando ao
+longo de dezenas de movimentos; o que se prende é a **causa** (a régua
+não se mexe) e não o sintoma. O sintoma some porque a causa sumiu, mas
+isso quem confirma é a máquina.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **500 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **302 / 0** |
-
-> O firmware perdeu um: a varredura hostil tinha duas entradas de `/api/precisao`
-> e a rota não existe mais; `V11` ganhou uma no lugar.
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **506 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

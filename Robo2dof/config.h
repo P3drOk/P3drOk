@@ -491,6 +491,14 @@ static const float MARGEM_LIMITE_GRAUS = 0.5f;
 // intervalo util negativo e tranca o eixo.
 static const float CURSO_MINIMO_GRAUS = 5.0f;
 
+// Depois de gravar os limites a maquina religa o torque e volta ao zero.
+// Entre uma coisa e outra ela ESPERA: o driver confirma o habilita pelo
+// barramento e o rotor leva um instante para segurar de verdade. Mandar
+// pulso nesse intervalo e mandar pulso para um eixo que ainda esta solto
+// -- a contagem anda e o braco nao. Era um numero solto no meio do
+// switch; agora tem nome e mora aqui.
+static const uint32_t CAL_ESPERA_RELIGAR_MS = 400;
+
 // Resolucao da validacao de um caminho interpolado nas juntas.
 // Os limites de curso sao caixas no espaco das juntas (a reta entre dois
 // pontos validos fica valida), mas o envelope cartesiano NAO e convexo
@@ -603,11 +611,15 @@ enum Modo : uint8_t {
 // unico ponto que ele conhece da maquina.
 enum EstadoCalib : uint8_t {
   CAL_INATIVO,
-  CAL_INDO_A,     // maquina levando os dois eixos ao zero, antes do lado A
-  CAL_LADO_A,     // motores soltos: o operador leva os dois a um extremo
-  CAL_VOLTANDO,   // maquina trazendo os dois de volta ao zero
-  CAL_LADO_B,     // motores soltos de novo: o outro extremo
-  CAL_CONCLUIDO
+  // AS VIAGENS AO ZERO SAIRAM. Eram tres, e a primeira delas LIGAVA o
+  // torque assim que o operador tocava em "Calibrar" -- o contrario do
+  // que a tela promete e do que a mao dele espera. Elas tambem eram a
+  // ocasiao em que a maquina remedia a propria escala e reescrevia os
+  // angulos por baixo dos limites recem-marcados.
+  CAL_SOLTANDO,   // pedido de SOLTAR o torque, esperando o barramento
+  CAL_LADO_A,     // motores soltos: os dois eixos ao extremo NEGATIVO
+  CAL_LADO_B,     // motores soltos: agora o extremo POSITIVO
+  CAL_RELIGANDO   // limites gravados: torque de volta, espera, e ao zero
 };
 
 // Copia da configuracao no cartao: nome fixo e intervalo minimo entre

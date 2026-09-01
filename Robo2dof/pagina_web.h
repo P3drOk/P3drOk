@@ -670,6 +670,20 @@ body.semNotasCfg .cfgRol .nt{display:none}
    fica estreita o bastante para caberem duas por cartao, e as catorze
    linhas da saude ocupam metade da altura. O vao morreu junto.
    auto-fill resolve sem media query: no telefone da uma coluna sozinho. */
+/* AS DUAS AREAS DA GAVETA DE ARQUIVOS.
+   Entrada estreita, biblioteca larga -- uma lista de trabalhos e o que
+   precisa de largura, e era ela que estava espremida numa coluna de
+   telefone no meio de uma tela cheia.
+   O ponto de quebra e o mesmo da Configuracao em colunas (1000 px): as
+   duas gavetas tem a mesma forma, e passar a duas colunas em larguras
+   diferentes seria duas coisas de aprender. */
+.arqAreas{display:grid;gap:12px;align-items:start}
+@media(min-width:1000px){
+  .arqAreas{grid-template-columns:minmax(280px,1fr) minmax(0,2fr)}
+}
+.arqEnt,.arqBib{min-width:0;display:flex;flex-direction:column;gap:12px}
+.arqBib .dentro{padding-bottom:8px}
+
 .grelha{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
  gap:1px;background:var(--linha);
  border:1px solid var(--linha);border-radius:3px;overflow:hidden;margin-bottom:10px}
@@ -769,6 +783,14 @@ input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:1
   .cfgRol .pane{column-width:410px;column-gap:20px}
   .cfgRol .pane>.et{break-inside:avoid;-webkit-column-break-inside:avoid;
    display:inline-block;width:100%;margin:0 0 14px}
+  /* ARQUIVOS MANDA NO PROPRIO ARRANJO.
+     A coluna automatica acima serve para uma pilha de cartoes do mesmo
+     tamanho, que e o caso da Configuracao. Arquivos tem DUAS areas de
+     larguras diferentes de proposito -- entrada estreita, biblioteca
+     larga -- e a coluna de 410 px fatiava as duas em pedacos iguais,
+     que e o contrario do que a area larga existe para fazer. */
+  .cfgRol #pnArq{columns:auto;column-width:auto}
+  .cfgRol #pnArq .et{display:block;margin:0 0 12px}
 }
 @media(min-width:1500px){
   .cfgRol .pane{column-width:440px}
@@ -1601,24 +1623,11 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           </div>
         </div>
 
-        <div class="et" id="eDxf">
-          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-arquivo"/></svg></div>
-            <div class="tx"><div class="tt">Importar desenho DXF</div>
-            <span class="sb" id="sbDxf">nenhum arquivo</span></div><div class="chv">&#9654;</div></div>
-          <div class="dentro">
-
-            <input type="file" id="dxfArq" accept=".dxf,text/plain" hidden>
-            <button class="b pri" id="btDxfAbrir">Escolher arquivo DXF</button>
-            <div class="res" id="dxfInfo">--</div>
-            <div class="cp"><label>1 unidade do arquivo vale</label>
-              <input type="number" id="dxfEsc" value="1" min="0.001" step="0.1"><span class="un">mm</span></div>
-            <div class="nt">Deixe em 1 se o CAD estava em milimetros. Use 25,4
-            para arquivo em polegadas.</div>
-            <button class="b" id="btDxfPos">Posicionar na mesa</button>
-            <div class="pq2" id="qDxfPos"></div>
-            
-          </div>
-        </div>
+        <!-- O DXF MUDOU DE ABA: foi para Arquivos, junto do cartao.
+             Abrir um desenho e abrir um arquivo -- a mesma coisa que
+             carregar uma peca do cartao --, e aqui ele disputava espaco
+             com a lista de pontos, que e o que se olha enquanto se
+             produz. -->
 
       </section>
 
@@ -1699,6 +1708,16 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
   </div>
   <div class="cfgRol">
     <div class="pane on" id="pnArq">
+      <!-- DUAS AREAS, nao um cartao empilhado.
+           A gaveta virou tela cheia na rodada 32 e continuou usando uma
+           coluna de telefone no meio dela: estado do cartao, salvar e a
+           lista, um debaixo do outro, com dois tercos da largura em
+           branco. Agora a ENTRADA (o que entra na maquina: cartao,
+           salvar, DXF) fica numa coluna estreita, e a BIBLIOTECA -- que
+           e uma lista de trabalhos, e lista quer largura -- fica com o
+           resto. No telefone as duas empilham, na ordem em que se usa. -->
+      <div class="arqAreas">
+        <div class="arqEnt">
         <div class="et aberta">
           <div class="cab"><div class="mk"><svg class="ic"><use href="#i-cartao"/></svg></div>
             <div class="tx"><div class="tt">Cartao de memoria</div>
@@ -1733,14 +1752,47 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <button class="b mini" id="btSdSalvar" style="width:auto;margin:0">Salvar</button>
             </div>
             <div class="pq2" id="qSdSalvar"></div>
+          </div>
+        </div>
 
-            <h4>No cartao</h4>
+        <!-- O DXF VEIO DO PAINEL DO PROGRAMA.
+             E entrada de arquivo, como carregar uma peca do cartao: o
+             lugar dele e aqui, ao lado das outras maneiras de por
+             trabalho na maquina. O leitor continua sendo o do navegador
+             -- um DXF de 300 kB nao cabe na RAM do ESP32 --, entao o que
+             mudou foi a tela, nao a responsabilidade. -->
+        <div class="et aberta" id="eDxf">
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-arquivo"/></svg></div>
+            <div class="tx"><div class="tt">Importar desenho DXF</div>
+            <span class="sb" id="sbDxf">nenhum arquivo</span></div></div>
+          <div class="dentro">
+            <input type="file" id="dxfArq" accept=".dxf,text/plain" hidden>
+            <button class="b pri" id="btDxfAbrir">Escolher arquivo DXF</button>
+            <div class="res" id="dxfInfo">--</div>
+            <div class="cp"><label>1 unidade do arquivo vale</label>
+              <input type="number" id="dxfEsc" value="1" min="0.001" step="0.1"><span class="un">mm</span></div>
+            <div class="nt">Deixe em 1 se o CAD estava em milimetros. Use 25,4
+            para arquivo em polegadas.</div>
+            <button class="b" id="btDxfPos">Posicionar na mesa</button>
+            <div class="pq2" id="qDxfPos"></div>
+          </div>
+        </div>
+        </div>
+
+        <div class="arqBib">
+        <div class="et aberta">
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-lista"/></svg></div>
+            <div class="tx"><div class="tt">Biblioteca</div>
+            <span class="sb" id="sbBib">--</span></div></div>
+          <div class="dentro">
             <div id="sdLista"></div>
             <div class="nt">Os desenhos, os programas de ponto e as gravacoes
             a mao livre que voce fez na maquina. <b>Apagar tudo nao mexe
             neles</b> &mdash; so na memoria interna.</div>
           </div>
         </div>
+        </div>
+      </div>
     </div>
   </div>
 </div></div>
@@ -1883,6 +1935,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="cp"><label>Junta 1</label><input type="number" id="inPv1" min="1"></div>
               <div class="cp"><label>Junta 2</label><input type="number" id="inPv2" min="1"></div>
               <div class="res" id="resumoRes">--</div>
+              <!-- O QUE O ENCODER MEDIU, ao lado do que esta digitado.
+                   A maquina ja sabe este numero: ela conta pulso de um
+                   lado e voltas do motor do outro em todo movimento, e o
+                   redutor cancela na divisao. Ela SO NAO O ADOTA sozinha
+                   -- adotar no meio de um movimento fazia o braco
+                   perseguir um destino que andava junto com a regua, e
+                   era o "passa do ponto e nunca chega". Aqui o numero
+                   fica a vista e quem decide e quem monta a maquina. -->
+              <div class="res" id="ppvMedido">--</div>
 
               <h4>Sentido dos eixos</h4>
               <div class="tr"><div class="ch" id="sInv1"><i></i></div>
@@ -1908,13 +1969,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           <div class="tx"><div class="tt">Calibrar o braco</div>
           <span class="sb" id="sbCurso">--</span></div><div class="chv">&#9654;</div></div>
         <div class="dentro">
-          <div class="nt"><b>Dois gestos.</b> Toque em Calibrar: a maquina
-          leva o braco ao zero e solta os motores. Empurre com a mao ate o
-          extremo de um lado &mdash; os dois eixos de uma vez &mdash; e
-          toque de novo. Ela volta ao zero sozinha e solta outra vez; voce
-          vai ao outro extremo e toca. Acabou.</div>
-          <div class="nt">Dali sai o curso de cada junta, a escala do encoder
-          e os pulsos por volta de cada driver. Nada a digitar.</div>
+          <div class="nt"><b>Dois gestos.</b> Toque em Calibrar: os motores
+          soltam na hora, e o braco fica onde esta. Leve-o com a mao ate o
+          extremo <b>negativo</b> &mdash; os dois eixos de uma vez &mdash; e
+          toque em Salvar. Leve dali mesmo ate o extremo <b>positivo</b> e
+          toque de novo. Acabou: ela religa o torque e volta ao zero.</div>
+          <div class="nt">Daqui sai <b>uma coisa so</b>: at&eacute; onde cada
+          junta pode ir. O &acirc;ngulo n&atilde;o muda, a escala do encoder
+          n&atilde;o muda e a origem n&atilde;o muda &mdash; desenho, programa
+          e cord&atilde;o continuam com a mesma r&eacute;gua de antes.</div>
           <button class="b pri" id="btCalIni2">Calibrar agora</button>
           <div class="pq2" id="qCalIni2"></div>
           <div class="res" id="calVivo">--</div>
@@ -2237,6 +2300,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
   <div class="pp" id="cPasso">--</div>
   <div class="pgr"><i id="cBarra"></i></div>
   <div class="ins" id="cInstr"></div>
+  <div class="res" id="cDica">--</div>
 
   <!-- Onde as DUAS juntas estao agora. Sao os unicos numeros da tela, e
        nenhum se digita: se le. -->
@@ -4601,7 +4665,13 @@ $("dxfArq").onchange=function(){
   fr.onerror=function(){erro="nao consegui abrir o arquivo";};
   fr.readAsText(f);
 };
-$("btDxfPos").onclick=function(){posModo(true);};
+/* O DXF ENTRA POR UMA GAVETA E SAI NA MESA.
+   posModo() leva para a aba Mesa, que e onde se posiciona o desenho
+   olhando o braco. Com o bloco dentro da gaveta de tela cheia, trocar
+   de aba por baixo dela nao aparece: o operador aperta "Posicionar" e
+   ve a mesma gaveta. Fechar primeiro e o que faz o botao ter efeito
+   visivel. */
+$("btDxfPos").onclick=function(){ fecharArq(); posModo(true); };
 acao("DxfPos","escolha um arquivo DXF primeiro");
 $("pSolda").classList.add("quente");
 $("pCancel").onclick =function(){posModo(false);};
@@ -5330,15 +5400,19 @@ const RM={MANUAL:"manual",GRAVANDO:"gravando",REPRODUZINDO:"repetindo",
 /* Dois gestos do operador; o resto e da maquina. Os estados de viagem
    nao pedem nada: eles so contam o que esta acontecendo, para ninguem
    achar que a tela travou enquanto o braco anda. */
+/* OS PASSOS TEM NOME: negativo e positivo.
+   Eram "um lado" e "o outro lado", e A e B na barra. Com nome, a recusa
+   de "o positivo caiu no mesmo lugar do negativo" quer dizer alguma
+   coisa -- e o operador sabe qual dos dois ele ja guardou. */
 const PC={
- INDO_A:   [1,"A maquina esta levando o braco ao zero. Espere."],
- LADO_A:   [1,"Motores soltos. Empurre o braco ate o extremo de UM lado -- os "+
-              "dois eixos de uma vez -- e toque em Guardar."],
- VOLTANDO: [2,"Extremo guardado. A maquina esta voltando ao zero."],
- LADO_B:   [2,"Motores soltos de novo. Agora o extremo do OUTRO lado."],
- CONCLUIDO:[2,"Medido. A maquina esta voltando ao zero para terminar."]};
-/* Nas viagens quem anda e a maquina: o botao nao tem o que guardar. */
-const PC_ESPERA={INDO_A:1,VOLTANDO:1,CONCLUIDO:1};
+ SOLTANDO: [1,"Soltando os motores. Espere um instante."],
+ LADO_A:   [1,"Motores soltos. Leve o braco ate o extremo NEGATIVO -- os "+
+              "dois eixos de uma vez -- e toque em Salvar."],
+ LADO_B:   [2,"Extremo negativo guardado. Agora o extremo POSITIVO, a "+
+              "partir de onde o braco esta."],
+ RELIGANDO:[2,"Limites gravados. Religando o torque e voltando ao zero."]};
+/* Enquanto a maquina mexe no torque o botao nao tem o que guardar. */
+const PC_ESPERA={SOLTANDO:1,RELIGANDO:1};
 
 let quedas=0,ultN=-1,ultCal="";
 /* Um botao fora de acao tem que dizer por que. Desabilitar em silencio e
@@ -5624,6 +5698,30 @@ function aplicar(d){
   $("pDob").className="ch"+(d.protDobra?" on":"");
   $("pEnv").className="ch"+(d.protEnv?" on":"");
 
+  /* A MEDIDA DO ENCODER, ao lado do que esta digitado. So aparece
+     quando ha medida e quando ela DISCORDA do campo: numero que
+     concorda nao pede decisao nenhuma. */
+  {
+    const cx=$("ppvMedido");
+    if(cx){
+      const lin=[];
+      [[1,d.ppvM1,d.ppv1],[2,d.ppvM2,d.ppv2]].forEach(function(k){
+        if(!k[1]||!k[2])return;
+        const dif=Math.abs(k[1]-k[2])/k[2];
+        if(dif<0.005)return;
+        lin.push("J"+k[0]+" · o encoder mediu "+k[1]+
+                 " pulsos por volta, e aqui esta "+k[2]+
+                 " ("+(dif*100).toFixed(0)+"% de diferenca)");
+      });
+      cx.textContent = lin.length
+        ? (lin.join("\n")+
+           "\nA maquina nao troca sozinha: se a medida estiver certa, "+
+           "escreva-a no campo acima e salve.")
+        : "";
+      cx.style.display = lin.length ? "" : "none";
+    }
+  }
+
   $("resumoRes").textContent=
     "J1 · "+d.ppg1.toFixed(2)+" pulsos por grau"+
     "\nJ2 · "+d.ppg2.toFixed(2)+" pulsos por grau"+
@@ -5679,7 +5777,8 @@ function aplicar(d){
   }else{
     veu.classList.add("on");
     const p=PC[d.calib]||[0,""];
-    $("cPasso").textContent="EXTREMO "+p[0]+" DE 2";
+    $("cPasso").textContent=(p[0]===1?"1 DE 2 · EXTREMO NEGATIVO"
+                                      :"2 DE 2 · EXTREMO POSITIVO");
     $("cInstr").textContent=p[1];
     $("cBarra").style.width=(p[0]/2*100)+"%";
     /* Nas viagens quem anda e a maquina: o botao nao tem o que guardar,
@@ -5698,6 +5797,18 @@ function aplicar(d){
        diante ja ha extremo guardado, e trocar o sinal do eixo inverteria
        o significado dele. */
     $("cSent").style.display=(d.calib==="LADO_A")?"block":"none";
+    /* QUAL SETA VAI PARA O LADO NEGATIVO.
+       A maquina so descobre qual extremo e o negativo depois de medir os
+       dois -- ela ordena no fim. Mas o passo agora TEM nome, e mandar
+       "va ao extremo negativo" sem dizer para que lado isso fica seria
+       pedir para o operador adivinhar. O sentido esta no proprio botao
+       de jog: anti-horario soma graus, horario subtrai, e a chave de
+       inversao de cada eixo troca os dois de lugar. */
+    const seta=function(inv){ return inv ? "\u21ba (ANTI-HOR)" : "\u21bb (HORARIO)"; };
+    const dica=$("cDica");
+    if(dica) dica.textContent = (p[0]===1)
+      ? ("Para o NEGATIVO: junta 1 "+seta(d.inv1)+", junta 2 "+seta(d.inv2))
+      : ("Para o POSITIVO: junta 1 "+seta(!d.inv1)+", junta 2 "+seta(!d.inv2));
   }
   ultCal=d.calib;
 
@@ -6469,6 +6580,12 @@ function sdPintar(){
     BIB[tipo].arqs.forEach(function(a){
       tudo.push({tipo:tipo,n:a.n,b:a.b});});
   });
+  /* O cabecalho da area conta o que ha dentro: e a resposta de relance
+     para quem abriu a gaveta procurando um trabalho salvo. */
+  const sb=$("sbBib");
+  if(sb)sb.textContent = tudo.length
+    ? (tudo.length+" arquivo"+(tudo.length===1?"":"s")+" no cartao")
+    : "nenhum arquivo";
   if(!tudo.length){
     cx.innerHTML='<div class="nulo">Nenhum arquivo salvo ainda.</div>';return;}
   let h='<div class="lista arqs">';

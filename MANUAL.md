@@ -462,7 +462,7 @@ energia. No cartão, o backup em **Arquivos → ajustes** leva a calibração e
 a mesa **junto**. Backup gravado por uma versão anterior não apaga
 nenhuma das duas: o que o arquivo não traz, ele não mexe.
 
-### 5.2.1 Calibração: quatro marcas, e é opcional
+### 5.2.1 Calibração: dois batentes, e é opcional
 
 O braço tem **limite físico**: sem saber onde ele está, o firmware não
 tem como impedir uma batida. A calibração ensina isso — e **só isso**.
@@ -472,24 +472,54 @@ ir para um ângulo, ponto gravado, programa, trajetória, aprendizado e
 área da mesa, tudo funciona. O que falta é a proteção de curso. Nada é
 recusado por falta de calibração.
 
-**São quatro marcas:** junta 1 no limite **positivo**, junta 1 no
-**negativo**, e o mesmo na junta 2. Nada a digitar. Chegue no batente do
-jeito que preferir — com as setas do jog, ou **soltando o motor daquele
-eixo** e empurrando o braço com a mão. Nos dois casos o que se grava é
-onde a junta está.
+**São dois gestos, e nada a digitar:**
 
-Do que foi marcado sai tudo:
+1. Toque em **Calibrar**. Os motores **soltam na hora**, e o braço fica
+   onde está — ele não sai do lugar.
+2. Leve o braço com a mão até o extremo **negativo** — os dois eixos de
+   uma vez, que com o braço solto os dois estão soltos — e toque em
+   **Salvar**.
+3. Dali mesmo, leve até o extremo **positivo** e toque de novo.
+4. A máquina grava, religa o torque, espera o rotor segurar
+   (`CAL_ESPERA_RELIGAR_MS`) e volta ao zero.
+
+Com o motor solto o operador **sente** o batente. Com torque ele empurra
+o eixo contra o ferro e só descobre pelo barulho.
+
+> **Qual lado é o negativo?** A tela diz, por junta, qual seta vai para
+> lá — o sentido depende da chave de inversão de cada eixo, e adivinhar
+> isso não é trabalho de quem opera.
+
+#### O que a calibração grava — e o que ela não toca
+
+Ela grava **uma coisa só**: até onde cada junta pode ir.
 
 | | |
 |---|---|
-| **curso** de cada junta | a distância entre as duas marcas |
-| **zero** | o **meio do curso** — a única escolha que não pede número, e a que deixa a área útil centrada |
-| **escala do encoder** | contagens por grau: entre as duas marcas há um tanto de contagens e um tanto de graus, e a divisão é a escala, com sinal |
+| **limites** | exatamente os dois batentes marcados |
+| **ângulo** | **não muda** |
+| **escala do encoder** | **não muda** |
+| **origem (zero)** | **não muda** |
+| **pulsos por volta** | **não muda** |
+
+Isso é o conserto de um defeito real de bancada: *"os ângulos quando
+calibrados ficam todos errados"*. A versão anterior media a escala do
+encoder entre os dois extremos e a adotava, remedia os pulsos por volta
+nas viagens ao zero e zerava a origem. Como `grausMin`/`grausMax` saem
+dos **passos divididos pela régua**, mexer na régua logo depois de gravar
+os limites muda o ângulo que esses limites descrevem — marcar 90 e 270 e
+depois ver **91 ser recusado como fora de curso** era exatamente isso.
+Cenário **V26**.
+
+> **Os limites são os dois batentes, e ponto.** A versão anterior
+> esticava o intervalo até incluir o zero. Com os dois batentes do mesmo
+> lado — 90 e 270 — ela inventava 90° de percurso que o ferro não tem. Se
+> o zero ficar fora do curso, quem diz isso é a ida ao zero, com todas as
+> letras: *"o zero está fora do curso calibrado"*.
 
 O único número que continua declarado é a **redução do redutor**. Ela é
 mecânica, está escrita no que você comprou, e com um sensor só antes do
-redutor nenhuma medida a revela. Se o curso medido sair em graus que não
-batem com a máquina, é ali que se conserta — sem refazer a calibração.
+redutor nenhuma medida a revela.
 
 > A proteção de curso é **por software**. Ela vale enquanto a calibração
 > corresponder à máquina. Trocar a montagem, afrouxar o acoplamento ou

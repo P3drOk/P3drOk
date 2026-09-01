@@ -10,52 +10,63 @@
 bool calibAtiva() { return estadoCalib != CAL_INATIVO; }
 
 // =====================================================================
-//  CALIBRAR SAO DOIS GESTOS
+//  CALIBRAR E MARCAR DOIS LIMITES. SO ISSO.
 //
-//   1. Toca em Calibrar -> a maquina leva os dois eixos ao ZERO e SOLTA
-//      os motores.
-//   2. O operador empurra o braco com a mao ate o extremo de um lado --
-//      os dois eixos de uma vez -- e toca de novo.
-//   3. A maquina liga os motores, volta os dois ao zero e solta outra vez.
-//   4. Ele empurra para o outro extremo e toca. A maquina calcula, volta
-//      ao zero uma ultima vez e fica com torque, pronta para trabalhar.
+//   1. Toca em Calibrar -> a maquina SOLTA os motores. Na hora.
+//   2. O operador empurra o braco com a mao ate o extremo NEGATIVO --
+//      os dois eixos de uma vez -- e toca em Salvar.
+//   3. Empurra ate o extremo POSITIVO e toca em Salvar.
+//   4. A maquina grava os limites, religa o torque, espera, e volta ao
+//      zero (se o zero estiver dentro do que foi medido).
+//
+//  O QUE ESTA CALIBRACAO NAO FAZ MAIS, e por que:
+//
+//  * NAO leva o braco ao zero antes de comecar. Aquela viagem LIGAVA o
+//    torque no instante em que o operador tocava em "Calibrar" -- ele
+//    pedia para soltar o braco e a maquina o segurava. Era o oposto do
+//    que a tela promete.
+//
+//  * NAO mexe na ESCALA DO ENCODER (contagensPorGrau). Ela media a
+//    escala entre os dois extremos e a adotava. Como grausMin/grausMax
+//    saem dos passos DIVIDIDOS pela escala, os limites recem-marcados
+//    passavam a descrever outros angulos: marcar 90 e 270 e depois ver
+//    91 ser recusado como fora de curso e exatamente isso.
+//
+//  * NAO mede os PULSOS POR VOLTA. Mesma historia, mesma regua.
+//
+//  * NAO mexe no grausHome. Ele e o deslocamento entre a contagem e o
+//    angulo que a maquina informa; zera-lo desloca TODOS os angulos de
+//    uma vez.
+//
+//  * NAO estica o intervalo para incluir o zero. Se o curso vai de 90 a
+//    270, o curso e 90 a 270 -- e o zero fica fora, o que a ida ao zero
+//    ja sabe dizer com todas as letras. Esticar inventava 90 graus de
+//    percurso que o ferro nao tem.
+//
+//  O que ela grava, e so isto: passosMin e passosMax de cada junta.
+//  Angulo, escala e origem ficam como estavam. Desenho, programa e
+//  cordao continuam trabalhando com a mesma regua de antes.
 //
 //  Por que soltar em vez de mandar de jog: batente se alcanca melhor com
 //  a mao. Com o motor solto o operador SENTE o fim do curso; com torque
 //  ele empurra o eixo contra o ferro e so descobre pelo barulho.
 //
 //  Por que os dois eixos juntos: com o braco solto, os dois estao soltos.
-//  Fazer um de cada vez seria pedir quatro viagens onde cabem duas.
-//
-//  Do que foi marcado sai:
-//    - o CURSO de cada junta (os dois extremos);
-//    - a ESCALA DO ENCODER em contagens por grau -- entre os extremos ha
-//      um tanto de contagens e um tanto de graus, e a divisao e a escala;
-//    - os PULSOS POR VOLTA de cada driver, medidos de graca durante as
-//      voltas ao zero, que sao movimentos com pulso contado e encoder
-//      olhando.
-//
-//  O ZERO nao se move. Ele e o ponto ao qual o operador voltou duas vezes
-//  e viu o braco parar -- deslocar isso no fim seria trocar debaixo dele
-//  o unico ponto que ele conhece da maquina.
-//
-//  O que continua declarado, e so isto: a REDUCAO do redutor. Com um
-//  sensor so, antes dele, nenhuma medida a revela -- e isso e fisica, nao
-//  limitacao de software.
 // =====================================================================
 static long    marcaA[2] = {0, 0}, marcaB[2] = {0, 0};
 static bool    temA[2]   = {false, false}, temB[2] = {false, false};
-static int32_t encA[2]   = {0, 0}, encB[2] = {0, 0};
-static bool    encAok[2] = {false, false}, encBok[2] = {false, false};
-
-// Medida dos PULSOS POR VOLTA, colhida durante as voltas ao zero.
-static long    voltaPasso0[2]  = {0, 0};
-static int32_t voltaEnc0[2]    = {0, 0};
-static bool    voltaValendo[2] = {false, false};
+// A leitura crua do encoder em cada marca SAIU. Ela existia para medir
+// contagensPorGrau entre os dois extremos -- a medida que reescrevia os
+// angulos por baixo dos limites. Sem ela, nada aqui le o encoder para
+// mudar escala: a calibracao grava passo, e so.
 
 // true quando as marcas viraram curso: quem le e o passo final, que so
 // leva o braco de volta ao zero se houve o que medir.
 static bool medido = false;
+
+// A viagem final ja foi mandada. Sem isto, cada ciclo em que o motor
+// ainda nao arrancou mandaria moveTo() de novo e a rampa recomecaria.
+static bool voltandoAoZero = false;
 
 // Ultima leitura vista pelo seguimento a mao (puxarPelaMao, la embaixo).
 //
@@ -127,58 +138,18 @@ static bool irAoZero() {
 }
 
 // ---------------------------------------------------------------------
-// PULSOS POR VOLTA, DE GRACA.
+// A MEDIDA DE PULSOS POR VOLTA SAIU DAQUI.
 //
-// `passosPorGrau = passosPorVolta x reducao / 360`. Sao dois numeros
-// digitados, e o mais errado dos dois costuma ser o primeiro: e um
-// parametro do DRIVER, muda quando alguem troca o drive ou refaz uma
-// configuracao, e nada na tela denuncia. O sintoma e o braco andar menos
-// (ou mais) do que a tela diz.
+// Ela era colhida durante as voltas ao zero -- e as voltas ao zero
+// sairam. Mas o motivo de fundo e outro, e vale escrever: a medida
+// ADOTAVA o valor e refazia a resolucao, e refazer a resolucao no fim de
+// uma calibracao muda o angulo que os limites recem-marcados descrevem.
+// Marcar 90 e 270 e depois ver 91 recusado como fora de curso era isso.
 //
-// Este o encoder mede sozinho, e a volta ao zero e o movimento ideal:
-// pulso contado de um lado, voltas do MOTOR do outro.
-//
-//     passosPorVolta = |pulsos| x contagensPorVolta / |contagens|
-//
-// A reducao cancela: os dois lados sao por volta do motor. O que este
-// numero NAO da e a reducao -- para isso faltaria uma referencia do lado
-// da JUNTA, e com um sensor so antes do redutor ela nao existe.
+// A conta continua existindo em aferirEngrenagem() (correcao.h), onde
+// hoje ela MEDE e guarda como sugestao, sem escrever a regua. Quem
+// escreve a regua da maquina e uma pessoa, no campo de Ajustes.
 // ---------------------------------------------------------------------
-static void marcarInicioDaVolta() {
-  for (uint8_t k = 1; k <= 2; k++) {
-    const uint8_t i = k - 1;
-    const LeituraEncoder L = encoderLer(k);
-    voltaPasso0[i]  = (k == 1) ? posicaoJ1() : posicaoJ2();
-    voltaEnc0[i]    = L.bruto;
-    voltaValendo[i] = L.valido && L.idadeMs <= ENC_IDADE_MAX_MS;
-  }
-}
-
-// A CONTA MORA EM aferirEngrenagem() (correcao.h).
-//
-// Ela nasceu aqui, presa a esta viagem -- e por isso so acontecia numa
-// calibracao guiada. Numa maquina que nunca calibrou, a regua do
-// movimento continuava sendo os dois numeros digitados, e o braco passava
-// do angulo pedido pelo mesmo fator para sempre. Agora a mesma medida e
-// feita tambem no fim de qualquer movimento comum; a viagem ao zero
-// continua sendo a melhor ocasiao dela, mas deixou de ser a unica.
-static void medirPassosPorVolta() {
-  for (uint8_t k = 1; k <= 2; k++) {
-    const uint8_t i = k - 1;
-    if (!voltaValendo[i]) continue;
-    voltaValendo[i] = false;
-
-    const LeituraEncoder L = encoderLer(k);
-    if (!L.valido || L.idadeMs > ENC_IDADE_MAX_MS) continue;
-
-    const long dPasso = ((k == 1) ? posicaoJ1() : posicaoJ2()) - voltaPasso0[i];
-    // Complemento de dois: a volta do contador de 32 bits sai sozinha.
-    const int32_t dCont = (int32_t)((uint32_t)L.bruto - (uint32_t)voltaEnc0[i]);
-    aferirEngrenagem(k, dPasso, dCont);
-  }
-  // Quem grava aqui e o fim da calibracao (salvarConfiguracoes logo
-  // adiante), entao o aviso de "vale gravar" nao precisa ser atendido.
-}
 
 // ---------------------------------------------------------------------
 void calibIniciar() {
@@ -190,10 +161,9 @@ void calibIniciar() {
   medido       = false;
   for (uint8_t i = 0; i < 2; i++) {
     temA[i] = temB[i] = false;
-    encAok[i] = encBok[i] = false;
-    voltaValendo[i] = false;
     temUltimo[i] = false;
   }
+  voltandoAoZero = false;
 
   // Enquanto nao houver calibracao nova, a protecao de curso fica
   // desativada de proposito: e o operador que esta definindo os limites,
@@ -202,16 +172,22 @@ void calibIniciar() {
   J2.calibrada = false;
 
   modoAtual   = MODO_CALIBRANDO;
-  estadoCalib = CAL_INDO_A;
-  pedirTorque(true);
+  estadoCalib = CAL_SOLTANDO;
+  // SOLTAR, e nao ligar. O operador tocou em Calibrar para poder empurrar
+  // o braco com a mao: ligar o torque aqui era segurar o braco na cara
+  // dele. A viagem ao zero que existia antes deste ponto e o que fazia
+  // isso -- e ela nao volta.
+  pedirTorque(false);
   aplicarVelocidadeManual();
-  definirMensagem("Levando o braco ao zero. Depois os motores soltam");
+  definirMensagem("Soltando os motores. Leve o braco ao extremo NEGATIVO "
+                  "e toque em Salvar");
 }
 
 void calibCancelar() {
   pararSuave();
   jogZerar();
-  esperandoSon = false;
+  esperandoSon   = false;
+  voltandoAoZero = false;
   estadoCalib  = CAL_INATIVO;
   modoAtual    = MODO_MANUAL;
 
@@ -244,7 +220,6 @@ void calibApagar() {
     js[i]->passosMax = 0;
     js[i]->grausHome = 0.0f;
     temA[i] = temB[i] = false;
-    encAok[i] = encBok[i] = false;
   }
   estadoCalib = CAL_INATIVO;
   if (modoAtual == MODO_CALIBRANDO) modoAtual = MODO_MANUAL;
@@ -268,86 +243,103 @@ static void gravarLado(bool ladoA) {
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
     const long pos = (k == 1) ? posicaoJ1() : posicaoJ2();
-    const LeituraEncoder L = encoderLer(k);
-    const bool lendo = L.valido && L.idadeMs <= ENC_IDADE_MAX_MS;
-    if (ladoA) { marcaA[i] = pos; temA[i] = true; encA[i] = L.bruto; encAok[i] = lendo; }
-    else       { marcaB[i] = pos; temB[i] = true; encB[i] = L.bruto; encBok[i] = lendo; }
+    if (ladoA) { marcaA[i] = pos; temA[i] = true; }
+    else       { marcaB[i] = pos; temB[i] = true; }
   }
 }
 
 // ---------------------------------------------------------------------
 // Fecha uma junta a partir dos dois extremos dela.
 // ---------------------------------------------------------------------
-static bool fecharJunta(Junta& j, uint8_t k) {
+// Por que a junta nao fechou. Cada uma vira uma frase propria na tela:
+// "nao deu" sem dizer o que fazer manda o operador tentar de novo do
+// mesmo jeito.
+enum MotivoCurso : uint8_t {
+  CURSO_OK = 0,
+  CURSO_SEM_MARCA,    // faltou salvar um dos dois extremos
+  CURSO_SEM_REGUA,    // resolucao invalida: nem da para converter em graus
+  CURSO_IGUAL,        // o positivo caiu no mesmo lugar do negativo
+  CURSO_CURTO         // andou, mas menos que o minimo
+};
+
+static MotivoCurso fecharJunta(Junta& j, uint8_t k) {
   const uint8_t i = k - 1;
-  if (!temA[i] || !temB[i]) return false;
-  if (j.passosPorGrau <= 0.0f) return false;
+  if (!temA[i] || !temB[i])   return CURSO_SEM_MARCA;
+  if (j.passosPorGrau <= 0.0f) return CURSO_SEM_REGUA;
 
   long lo = marcaA[i], hi = marcaB[i];
   if (lo > hi) { const long t = lo; lo = hi; hi = t; }
 
+  // Os dois extremos no mesmo lugar: o operador salvou duas vezes sem
+  // mover o braco. Merece frase propria -- "curso curto" mandaria ele
+  // empurrar mais, quando o que faltou foi empurrar.
+  if (hi == lo) return CURSO_IGUAL;
+
   const float curso = (float)(hi - lo) / j.passosPorGrau;
-  if (curso < CURSO_MINIMO_GRAUS) return false;
+  if (curso < CURSO_MINIMO_GRAUS) return CURSO_CURTO;
 
-  // O zero tem de caber dentro do curso: e dali que os limites sao
-  // contados, e e onde o braco para toda vez que alguem manda ele para
-  // casa. Se os dois extremos cairam do mesmo lado, o intervalo e
-  // esticado ate incluir o zero em vez de deixar a maquina travada.
-  if (lo > 0) lo = 0;
-  if (hi < 0) hi = 0;
-
+  // OS LIMITES SAO OS DOIS EXTREMOS. Nada mais se escreve aqui.
+  //
+  // A versao anterior esticava o intervalo ate o zero (`if (lo>0) lo=0`),
+  // zerava grausHome e adotava a escala do encoder medida entre as duas
+  // marcas. As tres coisas mexiam no ANGULO -- e o operador que acabou de
+  // marcar 90 e 270 via 91 ser recusado como fora de curso.
+  //
+  // Se o zero cair fora do curso, quem sabe dizer isso e a ida ao zero,
+  // que ja recusa com todas as letras. Inventar percurso que o ferro nao
+  // tem e pior do que uma recusa clara.
   j.passosMin = lo;
   j.passosMax = hi;
-  j.grausHome = 0.0f;
   j.calibrada = true;
+  return CURSO_OK;
+}
 
-  // A ESCALA DO ENCODER SAI DE GRACA.
-  //
-  // Entre os dois extremos ha um tanto de contagens (o encoder viu) e um
-  // tanto de graus (a contagem de passos, dividida pela resolucao). A
-  // divisao das duas E a escala, com sinal: encoder que conta para tras
-  // enquanto a junta avanca da escala negativa, e o angulo sai certo sem
-  // chave de inversao nenhuma.
-  if (encAok[i] && encBok[i]) {
-    // Complemento de dois: a volta do contador de 32 bits sai sozinha.
-    const int32_t dCont = (int32_t)((uint32_t)encB[i] - (uint32_t)encA[i]);
-    const float dGraus  = (float)(marcaB[i] - marcaA[i]) / j.passosPorGrau;
-    if (fabsf(dGraus) >= CURSO_MINIMO_GRAUS && labs((long)dCont) >= 50) {
-      configEncoder.contagensPorGrau[i] = (float)dCont / dGraus;
-      Serial.printf("[CAL] Junta %u: escala do encoder medida em %.2f "
-                    "contagens por grau (%ld contagens em %.1f graus)\n",
-                    (unsigned)k, (double)configEncoder.contagensPorGrau[i],
-                    (long)dCont, (double)dGraus);
-    }
+// A frase de cada recusa, com o que fazer. Uma junta que nao fechou NAO
+// perde o que ja tinha: fecharJunta() sai antes de escrever qualquer
+// coisa, entao a calibracao boa que estava la continua valendo.
+static const char* frasePorque(MotivoCurso m) {
+  switch (m) {
+    case CURSO_SEM_MARCA:
+      return "faltou salvar um dos dois extremos";
+    case CURSO_SEM_REGUA:
+      return "a resolucao desta junta e invalida: confira pulsos por volta "
+             "e reducao em Ajustes";
+    case CURSO_IGUAL:
+      return "o extremo positivo caiu no mesmo lugar do negativo: mova o "
+             "braco antes de salvar o segundo";
+    case CURSO_CURTO:
+      return "o curso ficou curto demais: leve o braco ate os batentes de "
+             "verdade";
+    default:
+      return "";
   }
-  return true;
 }
 
 static void concluir() {
   medido = false;
-  const bool ok1 = fecharJunta(J1, 1);
-  const bool ok2 = fecharJunta(J2, 2);
+  const MotivoCurso m1 = fecharJunta(J1, 1);
+  const MotivoCurso m2 = fecharJunta(J2, 2);
+  const bool ok1 = (m1 == CURSO_OK), ok2 = (m2 == CURSO_OK);
 
   if (!ok1 && !ok2) {
     estadoCalib = CAL_INATIVO;
     modoAtual   = MODO_MANUAL;
     aplicarVelocidadeManual();
     aplicarAceleracao();
-    definirMensagem("Nada medido: o curso ficou menor que %.0f graus nas duas "
-                    "juntas. Leve o braco ate os batentes de verdade",
-                    (double)CURSO_MINIMO_GRAUS);
+    // As duas falharam: se foi pelo mesmo motivo, uma frase basta.
+    if (m1 == m2)
+      definirMensagem("Nada gravado nas duas juntas -- %s", frasePorque(m1));
+    else
+      definirMensagem("Nada gravado. Junta 1: %s. Junta 2: %s",
+                      frasePorque(m1), frasePorque(m2));
     return;
   }
   medido = true;
 
-  recalcularResolucao();   // converte o curso medido para graus
-
-  // O encoder passa a ler o mesmo angulo que a contagem: a referencia
-  // dele e reancorada na posicao atual, ja com a escala nova.
-  encoderPendente = configEncoder;
-  encoderReconfigurar();
-  encoderDefinirZero(1, passosParaGraus(J1, posicaoJ1()));
-  encoderDefinirZero(2, passosParaGraus(J2, posicaoJ2()));
+  // Converte os limites em graus pela regua QUE JA ESTAVA VALENDO.
+  // recalcularResolucao() nao mexe em passosPorVolta nem em reducao: ela
+  // so refaz passosPorGrau e projeta passosMin/Max em grausMin/Max.
+  recalcularResolucao();
 
   salvarConfiguracoes();
   aplicarVelocidadeManual();
@@ -356,15 +348,17 @@ static void concluir() {
   // O que a calibracao mede NAO liga a protecao sozinha: o braco continua
   // livre, e o limite e coisa que o operador liga quando quiser.
   if (ok1 && ok2)
-    definirMensagem("Curso medido: J1 %.1f a %.1f, J2 %.1f a %.1f graus. "
-                    "Voltando ao zero",
+    definirMensagem("Limites gravados: J1 %.1f a %.1f, J2 %.1f a %.1f graus. "
+                    "Os angulos nao mudaram",
                     J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
   else
-    definirMensagem("Junta %u medida: %.1f a %.1f graus. A outra nao teve "
-                    "curso suficiente e ficou sem limite. Voltando ao zero",
+    definirMensagem("Junta %u gravada: %.1f a %.1f graus. A junta %u ficou "
+                    "como estava -- %s",
                     ok1 ? 1u : 2u,
                     ok1 ? J1.grausMin : J2.grausMin,
-                    ok1 ? J1.grausMax : J2.grausMax);
+                    ok1 ? J1.grausMax : J2.grausMax,
+                    ok1 ? 2u : 1u,
+                    frasePorque(ok1 ? m2 : m1));
 }
 
 // ---------------------------------------------------------------------
@@ -376,9 +370,13 @@ void calibConfirmar(float, float) {
     case CAL_LADO_A:
       jogZerar(); pararSuave();
       gravarLado(true);
-      estadoCalib = CAL_VOLTANDO;
-      pedirTorque(true);
-      definirMensagem("Extremo gravado. Voltando ao zero");
+      // SEGUE SOLTO, e sem viagem nenhuma. O braco ja esta num extremo;
+      // levar de volta ao zero para depois pedir o outro extremo era uma
+      // viagem inteira sem nada para medir. O operador empurra dali
+      // mesmo para o outro lado.
+      estadoCalib = CAL_LADO_B;
+      definirMensagem("Extremo negativo gravado. Agora leve o braco ao "
+                      "extremo POSITIVO e toque em Salvar");
       break;
 
     case CAL_LADO_B:
@@ -386,17 +384,17 @@ void calibConfirmar(float, float) {
       gravarLado(false);
       concluir();
       if (medido) {
-        // Terceira e ultima viagem: o braco volta ao zero e FICA com
-        // torque. Terminar a calibracao com a maquina largada no batente
-        // e sem torque seria devolve-la pior do que se pegou.
-        estadoCalib = CAL_CONCLUIDO;
+        // Religa o torque e volta ao zero. Terminar a calibracao com a
+        // maquina largada no batente e sem torque seria devolve-la pior
+        // do que se pegou.
+        estadoCalib = CAL_RELIGANDO;
         pedirTorque(true);
       }
       break;
 
     default:
-      // Durante as idas ao zero o botao nao faz nada: quem esta andando e
-      // a maquina, e interromper no meio deixaria a marca no lugar errado.
+      // Enquanto o torque esta assentando o botao nao faz nada: a marca
+      // sairia de uma contagem que ainda esta se acertando.
       break;
   }
 }
@@ -462,69 +460,78 @@ static void puxarPelaMao(uint8_t k) {
 void calibAtualizar() {
   if (modoAtual != MODO_CALIBRANDO) { temUltimo[0] = temUltimo[1] = false; return; }
 
-  const bool viajando = (estadoCalib == CAL_INDO_A ||
-                         estadoCalib == CAL_VOLTANDO ||
-                         estadoCalib == CAL_CONCLUIDO);
-  if (viajando) {
-    const bool primeira = (estadoCalib == CAL_INDO_A);
-    const bool ultima   = (estadoCalib == CAL_CONCLUIDO);
-    // Enquanto a MAQUINA dirige, a memoria do seguimento a mao nao vale:
-    // guardar a leitura de antes da viagem e, ao soltar, descontar a
-    // viagem inteira da contagem de uma vez.
+  // ---- soltando os motores, logo depois do toque em Calibrar ----
+  if (estadoCalib == CAL_SOLTANDO) {
+    temUltimo[0] = temUltimo[1] = false;
+    const int8_t r = torqueAssentou();
+    if (r == 0) return;                       // ainda escrevendo no barramento
+    // Mesmo sem confirmacao do barramento a calibracao segue: o operador
+    // ainda pode levar o braco ao batente com a mao, e recusar aqui o
+    // deixaria sem nenhum caminho para calibrar.
+    estadoCalib = CAL_LADO_A;
+    definirMensagem(r == 1
+        ? "Motores soltos. Leve o braco ao extremo NEGATIVO e toque em Salvar"
+        : "Sem confirmacao de torque no barramento. Se o braco estiver "
+          "solto, leve-o ao extremo NEGATIVO e toque em Salvar");
+    return;
+  }
+
+  // ---- limites gravados: religa, espera, e vai ao zero ----
+  if (estadoCalib == CAL_RELIGANDO) {
     temUltimo[0] = temUltimo[1] = false;
 
     if (esperandoSon) {
       const int8_t r = torqueAssentou();
-      if (r == 0) return;                     // ainda escrevendo no barramento
-
-      if (esperandoLigar) {
-        if (r == 1 && irAoZero()) { marcarInicioDaVolta(); return; }
-        // Nao deu para ir sozinho: o operador leva com a mao.
-        if (ultima) {
-          estadoCalib = CAL_INATIVO;
-          modoAtual   = MODO_MANUAL;
-          definirMensagem("Curso gravado. O braco ficou no batente: leve-o de "
-                          "volta quando puder");
-          return;
-        }
-        estadoCalib = primeira ? CAL_LADO_A : CAL_LADO_B;
-        definirMensagem("Sem torque confirmado no barramento. Leve o braco ao "
-                        "%s extremo com a mao e toque",
-                        primeira ? "primeiro" : "outro");
+      if (r == 0) return;
+      if (r != 1) {
+        estadoCalib = CAL_INATIVO;
+        modoAtual   = MODO_MANUAL;
+        definirMensagem("Limites gravados. Sem torque confirmado: leve o "
+                        "braco de volta quando puder");
         return;
       }
+      // O DRIVER CONFIRMOU, O ROTOR AINDA NAO SEGUROU.
+      // Entre uma coisa e outra ha um intervalo, e mandar pulso dentro
+      // dele e mandar pulso para um eixo solto: a contagem anda e o
+      // braco nao. Ver CAL_ESPERA_RELIGAR_MS em config.h.
+      prazoSon = millis() + CAL_ESPERA_RELIGAR_MS;
+      esperandoSon = false;
+      esperandoLigar = false;
+      return;
+    }
 
-      // Era o pedido de SOLTAR: assentou, segue para a parada manual.
-      estadoCalib = primeira ? CAL_LADO_A : CAL_LADO_B;
-      definirMensagem(primeira
-          ? "No zero, motores soltos. Empurre o braco ate o extremo de UM "
-            "lado e toque de novo"
-          : "De volta ao zero, motores soltos. Agora o extremo do OUTRO "
-            "lado, e toque");
+    // Ainda dentro da espera nomeada.
+    if ((int32_t)(millis() - prazoSon) < 0) return;
+
+    if (!motoresEmMovimento() && !voltandoAoZero) {
+      if (!irAoZero()) {
+        estadoCalib = CAL_INATIVO;
+        modoAtual   = MODO_MANUAL;
+        aplicarVelocidadeManual();
+        aplicarAceleracao();
+        definirMensagem("Limites gravados. Nao consegui voltar ao zero: "
+                        "leve o braco quando puder");
+        return;
+      }
+      voltandoAoZero = true;
       return;
     }
 
     if (motoresEmMovimento()) return;
 
-    // Chegou ao zero. Mede os pulsos por volta com o que acabou de andar.
-    medirPassosPorVolta();
-
-    if (ultima) {
-      // Fim: a maquina fica no zero, com torque, pronta.
-      estadoCalib = CAL_INATIVO;
-      modoAtual   = MODO_MANUAL;
-      aplicarVelocidadeManual();
-      aplicarAceleracao();
-      definirMensagem("Calibrado. J1 %.1f a %.1f, J2 %.1f a %.1f graus -- "
-                      "ligue o limite em Ajustes para ele valer",
-                      J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
-      return;
-    }
-
-    pedirTorque(false);   // solta para a mao do operador
+    // Chegou.
+    voltandoAoZero = false;
+    estadoCalib = CAL_INATIVO;
+    modoAtual   = MODO_MANUAL;
+    aplicarVelocidadeManual();
+    aplicarAceleracao();
+    definirMensagem("Calibrado. J1 %.1f a %.1f, J2 %.1f a %.1f graus -- "
+                    "ligue o limite em Ajustes para ele valer",
+                    J1.grausMin, J1.grausMax, J2.grausMin, J2.grausMax);
     return;
   }
 
+  // ---- parado num extremo, motores soltos: a mao e que anda ----
   if (motoresEmMovimento()) return;
   puxarPelaMao(1);
   puxarPelaMao(2);

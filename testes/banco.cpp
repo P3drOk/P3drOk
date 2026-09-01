@@ -819,6 +819,7 @@ static void teste_A10_json_status() {
     "\"velN\":%lu,\"velA\":%lu,\"velMn\":%lu,\"velMx\":%lu,"
     "\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
+    "\"ppvM1\":%lu,\"ppvM2\":%lu,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -840,6 +841,7 @@ static void teste_A10_json_status() {
     999.9f, "false","false","false",
     180000UL, 180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
     999999UL, 999.999f, 999999UL, 999.999f,
+    999999UL, 999999UL,
     "false","false", 255u,
     40u,
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
@@ -4143,23 +4145,33 @@ static void teste_M10_salto_impossivel_nao_vira_posicao() {
 }
 
 // ---------------------------------------------------------------------
-// M11: a maquina afere a propria engrenagem no movimento comum.
+// M11: a maquina MEDE a propria engrenagem -- e nao a adota sozinha.
 //
 // `passosPorGrau = passosPorVolta x reducao / 360`, e os dois sao
 // DIGITADOS. Pulsos por volta e parametro do DRIVER: muda quando alguem
 // troca o drive ou refaz uma configuracao, e nada na tela denuncia. Com
-// ele errado, todo movimento passa do angulo pedido pelo MESMO fator,
-// sempre -- era o "esta passando do ponto de grau enviado".
+// ele errado, todo movimento passa do angulo pedido pelo MESMO fator.
 //
-// A conta que conserta ja existia, mas so rodava na viagem ao zero da
-// calibracao guiada. Numa maquina que nunca calibrou -- que e o caso do
-// relato -- ela nunca rodava, e a regua ficava errada para sempre.
+// Este cenario prendia a ADOCAO automatica: o movimento media e escrevia
+// a regua, e o movimento seguinte ja nascia certo. A bancada mostrou o
+// preco disso -- "vai acumulando erro e passa do ponto, nunca chega no
+// ponto exato".
+//
+// Por que: o alvo do assentamento e congelado em GRAUS quando o
+// movimento comeca. Trocar passosPorGrau depois disso nao muda o numero,
+// muda o LUGAR que o numero descreve -- e com o barramento a 4,5
+// leituras/s e 7% de falha cada medida sai um pouco diferente. Regua que
+// anda dentro de uma malha fechada que persegue um alvo e instavel.
+//
+// O contrato agora: o movimento MEDE e GUARDA a medida (Junta.ppvMedido,
+// que a tela mostra ao lado do campo), a regua fica parada, e quem
+// chega ao angulo e o assentamento -- que fecha porque o alvo nao anda.
 //
 // Repare que a REDUCAO nao entra: o encoder esta no eixo do motor, antes
 // do redutor, e pulso e contagem estao os dois do mesmo lado dele.
 // ---------------------------------------------------------------------
 static void teste_M11_maquina_afere_a_propria_engrenagem() {
-  secao("M11  A maquina mede a propria engrenagem no movimento comum");
+  secao("M11  A maquina MEDE a engrenagem, e a regua so muda por uma pessoa");
   reiniciarSistema();
 
   // O DRIVE de verdade quer metade dos pulsos que o firmware acredita.
@@ -4204,23 +4216,30 @@ static void teste_M11_maquina_afere_a_propria_engrenagem() {
   checar(erroPrimeiro > 10.0f, "M11a",
          "o primeiro movimento REALMENTE passa do ponto -- e ele que carrega "
          "a medida, e sem esse erro nao haveria o que aferir");
-  checar(J1.passosPorVolta > ppvReal * 9 / 10 &&
-         J1.passosPorVolta < ppvReal * 11 / 10, "M11b",
-         "e o proprio movimento mediu a engrenagem do drive, sem calibracao "
+  checar(J1.ppvMedido > ppvReal * 9 / 10 &&
+         J1.ppvMedido < ppvReal * 11 / 10, "M11b",
+         "o proprio movimento MEDIU a engrenagem do drive, sem calibracao "
          "guiada, sem transferidor e sem saber a reducao");
+  checar(J1.passosPorVolta == ppvReal * 2, "M11f",
+         "e NAO reescreveu a regua com ela: quem escreve passosPorVolta e "
+         "uma pessoa, olhando a medida na tela");
   checar(fabsf(encoderLer(1).graus - 45.0f) < 0.3f, "M11c",
          "o assentamento ainda leva este primeiro movimento ao ponto");
 
-  // O SEGUNDO movimento e o que o operador vai sentir: com a regua certa,
-  // ele nasce no lugar em vez de ser resgatado pelo assentamento.
+  // O SEGUNDO movimento: com a regua digitada ainda errada ele torna a
+  // passar do ponto -- e o assentamento torna a traze-lo. O que NAO pode
+  // acontecer e a regua ter mudado entre um e outro: e isso que faria o
+  // destino andar debaixo do braco.
+  const float ppgAntes = J1.passosPorGrau;
   irEsperando(20, 0, 25000);
   const float erroSegundo = fabsf(correcaoResumo().erroInicial1);
-  nota("2o movimento (pedi 20): chegou em %.2f com erro inicial de %.2f grau "
-       "-- contra %.1f do primeiro",
-       (double)encoderLer(1).graus, (double)erroSegundo, (double)erroPrimeiro);
-  checar(erroSegundo < 1.0f, "M11d",
-         "o movimento seguinte ja cai no angulo pedido sozinho: e isto que "
-         "separa prever de remediar");
+  nota("2o movimento (pedi 20): chegou em %.2f com erro inicial de %.2f grau; "
+       "passosPorGrau %.4f antes e %.4f depois",
+       (double)encoderLer(1).graus, (double)erroSegundo,
+       (double)ppgAntes, (double)J1.passosPorGrau);
+  checar(fabsf(J1.passosPorGrau - ppgAntes) < 0.0001f, "M11d",
+         "a regua NAO se mexeu entre um movimento e o outro -- e por isso "
+         "que o alvo fica parado e o assentamento consegue fechar nele");
   checar(fabsf(encoderLer(1).graus - 20.0f) < 0.3f, "M11e",
          "e chega, medido pelo encoder");
 }
@@ -5772,6 +5791,102 @@ static void teste_V12_leitura_absurda_nao_e_confiavel() {
 // eixo solto, nem assentamento -- e o desenho na tela, que so obedece ao
 // encoder, congelava.
 // ---------------------------------------------------------------------
+// V26: os dois batentes do MESMO lado, com o zero fora do curso.
+//
+// Da bancada, com estas palavras: "o ponto max de um lado e em 90 e no
+// outro 270, se eu pedir 0 ele consegue mas um 91 ja e fora do limite".
+//
+// Duas coisas estavam erradas ao mesmo tempo, e as duas somem aqui:
+//
+//  1. fecharJunta() ESTICAVA o intervalo ate incluir o zero
+//     (`if (lo > 0) lo = 0`). Com os dois batentes do mesmo lado ela
+//     inventava todo o percurso entre o zero e o primeiro batente --
+//     percurso que o ferro nao tem. Era por isso que "pedir 0" era
+//     aceito.
+//  2. a mesma funcao adotava a escala do encoder medida entre os
+//     extremos, e concluir() remedia os pulsos por volta na viagem de
+//     volta. Como grausMin/grausMax saem dos PASSOS divididos pela
+//     regua, mexer nela logo depois de gravar os limites muda o angulo
+//     que esses limites descrevem -- e 91 caia fora de um maximo que
+//     tinha acabado de encolher.
+//
+// O contrato agora: os limites sao os dois batentes, o zero fica fora se
+// e que ele esta fora, e o angulo de tudo continua o mesmo.
+// ---------------------------------------------------------------------
+static void teste_V26_batentes_do_mesmo_lado() {
+  secao("V26  Dois batentes do mesmo lado: o zero fica fora, e o angulo fica");
+  reiniciarSistema();
+  prepararEncoderDasDuasJuntas();
+  prepararConfigPendente();
+  configPendente.red1 = 16.5f; configPendente.red2 = 16.5f;
+  enviarComando(CMD_APLICAR_CONFIG);
+  rodarComWeb(300);
+  g_espelharEixo = false;
+  enviarComando(CMD_SERVOS, 1, 0);
+  rodarComWeb(300);
+
+  const float ppgAntes = J1.passosPorGrau;
+  const float escAntes = configEncoder.contagensPorGrau[0];
+
+  auto ateEtapa = [&](EstadoCalib alvo) {
+    uint32_t t = 0;
+    while (estadoCalib != alvo && t < 40000) {
+      colarEncoderNaContagem();
+      rodarComWeb(10); t += 10;
+    }
+    return estadoCalib == alvo;
+  };
+  const float cv = configEncoder.contagensPorVolta[0];
+  auto empurrar = [&](uint8_t k, float graus) {
+    const Junta& j = (k == 1) ? J1 : J2;
+    const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+    g_uart.escravo[k - 1].parar();
+    g_uart.escravo[k - 1].posicao +=
+        (int32_t)lroundf((graus * red / 360.0f) * cv);
+    rodarComWeb(400);
+  };
+
+  // O braco comeca no zero e o operador o leva para LONGE dele: os dois
+  // batentes ficam do mesmo lado, com o zero de fora.
+  enviarComando(CMD_CALIB_INICIAR);
+  if (!ateEtapa(CAL_LADO_A)) { checar(false, "V26a", "a calibracao nao soltou"); return; }
+  empurrar(1, +90.0f);  empurrar(2, +90.0f);
+  enviarComando(CMD_CALIB_CONFIRMAR);
+  if (!ateEtapa(CAL_LADO_B)) { checar(false, "V26a", "nao guardou o primeiro extremo"); return; }
+  empurrar(1, +80.0f);  empurrar(2, +80.0f);   // agora em 170
+  enviarComando(CMD_CALIB_CONFIRMAR);
+  ateEtapa(CAL_INATIVO);
+
+  nota("limites gravados: J1 de %.1f a %.1f graus", (double)J1.grausMin,
+       (double)J1.grausMax);
+  checar(J1.grausMin > 80.0f && J1.grausMax < 180.0f, "V26a",
+         "os limites sao os dois batentes: o intervalo NAO e esticado ate "
+         "o zero");
+
+  nota("regua: passosPorGrau %.4f antes e %.4f depois; escala do encoder "
+       "%.3f antes e %.3f depois", (double)ppgAntes, (double)J1.passosPorGrau,
+       (double)escAntes, (double)configEncoder.contagensPorGrau[0]);
+  checar(fabsf(J1.passosPorGrau - ppgAntes) < 0.0001f &&
+         fabsf(configEncoder.contagensPorGrau[0] - escAntes) < 0.001f, "V26b",
+         "e calibrar nao mexeu na regua: o angulo de tudo continua o mesmo");
+
+  // Agora a pergunta da bancada, com o limite LIGADO.
+  protCurso = true;
+  const char* m91 = nullptr; const char* m0 = nullptr;
+  const bool ok91 = posturaValida(91.0f, 91.0f, &m91);
+  const bool ok0  = posturaValida(0.0f, 0.0f, &m0);
+  nota("com o limite ligado: 91 graus -> %s; 0 grau -> %s",
+       ok91 ? "aceito" : (m91 ? m91 : "recusado"),
+       ok0  ? "aceito" : (m0  ? m0  : "recusado"));
+  checar(ok91, "V26c",
+         "91 graus esta DENTRO do curso 90..170 e tem de ser aceito -- era "
+         "exatamente o que a bancada via ser recusado");
+  checar(!ok0, "V26d",
+         "e o zero, que ficou fora dos batentes, e recusado com motivo em "
+         "vez de aceito por um intervalo inventado");
+}
+
+// ---------------------------------------------------------------------
 static void teste_V24_curso_medido_nao_cala_o_encoder() {
   secao("V24  Curso medido nao cala o encoder com o limite desligado");
   reiniciarSistema();
@@ -6451,7 +6566,12 @@ static void teste_V19_calibrar_em_dois_gestos() {
   if (J2.motor) J2.motor->setCurrentPosition(grausParaPassos(J2, 25.0f));
   colarEncoderNaContagem();
   rodarComWeb(50);
-  const uint32_t ppvAntes = J1.passosPorVolta;
+  const uint32_t ppvAntes    = J1.passosPorVolta;
+  const float    escalaAntes = configEncoder.contagensPorGrau[0];
+  const float    homeAntes   = J1.grausHome;
+  // O angulo que uma contagem qualquer vale hoje. Se a calibracao mexer
+  // na regua, este numero muda -- e com ele todo angulo da maquina.
+  const float    anguloAntes = passosParaGraus(J1, 1000);
 
   // Espera uma etapa com o encoder colado na contagem: e o que um encoder
   // de verdade faz enquanto a MAQUINA anda.
@@ -6470,9 +6590,17 @@ static void teste_V19_calibrar_em_dois_gestos() {
   nota("depois do primeiro toque: etapa=%d, J1 em %.2f graus, torque 1=%d 2=%d",
        (int)estadoCalib, (double)passosParaGraus(J1, posicaoJ1()),
        (int)J1.habilitado, (int)J2.habilitado);
-  checar(parou1 && fabsf(passosParaGraus(J1, posicaoJ1())) < 1.5f &&
-         !J1.habilitado && !J2.habilitado, "V19a",
-         "um toque: a maquina leva os dois eixos ao zero e SOLTA os motores");
+  // ELE PEDIU PARA SOLTAR, ENTAO SOLTA -- E NAO SAI DO LUGAR.
+  //
+  // A versao anterior LEVAVA os dois eixos ao zero antes de soltar, e
+  // para isso LIGAVA o torque no instante do toque. Da bancada: "o modo
+  // calibracao nao esta desativando o braco mas sim ativando no momento
+  // de calibrar". O braco fica onde estava; quem anda dali em diante e a
+  // mao do operador.
+  checar(parou1 && !J1.habilitado && !J2.habilitado &&
+         fabsf(passosParaGraus(J1, posicaoJ1()) - 40.0f) < 1.5f, "V19a",
+         "um toque SOLTA os dois motores na hora, sem levar o braco a "
+         "lugar nenhum");
 
   // O operador empurra os DOIS eixos ate um extremo, com a mao. Com o
   // motor solto, quem manda e o encoder: a contagem vai atras.
@@ -6485,29 +6613,42 @@ static void teste_V19_calibrar_em_dois_gestos() {
         (int32_t)lroundf((graus * red / 360.0f) * cv);
     rodarComWeb(400);
   };
-  empurrar(1, +70.0f);
-  empurrar(2, +45.0f);
-  nota("empurrado com a mao: J1 em %.1f, J2 em %.1f graus",
-       (double)passosParaGraus(J1, posicaoJ1()),
-       (double)passosParaGraus(J2, posicaoJ2()));
-  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - 70.0f) < 4.0f &&
-         fabsf(passosParaGraus(J2, posicaoJ2()) - 45.0f) < 4.0f, "V19b",
+  // O braco NAO passa mais pelo zero entre as marcas: ele fica onde a
+  // mao o deixou. Entao a conta e sempre a partir de onde ele estava.
+  const float partiu1 = passosParaGraus(J1, posicaoJ1());
+  const float partiu2 = passosParaGraus(J2, posicaoJ2());
+  empurrar(1, -90.0f);            // ate o extremo NEGATIVO
+  empurrar(2, -70.0f);
+  nota("empurrado com a mao: J1 de %.1f para %.1f, J2 de %.1f para %.1f graus",
+       (double)partiu1, (double)passosParaGraus(J1, posicaoJ1()),
+       (double)partiu2, (double)passosParaGraus(J2, posicaoJ2()));
+  checar(fabsf(passosParaGraus(J1, posicaoJ1()) - (partiu1 - 90.0f)) < 4.0f &&
+         fabsf(passosParaGraus(J2, posicaoJ2()) - (partiu2 - 70.0f)) < 4.0f,
+         "V19b",
          "com os motores soltos a contagem dos DOIS eixos e puxada pelo "
          "encoder: da para calibrar os dois na mesma ida");
+  const float negJ1 = passosParaGraus(J1, posicaoJ1());
+  const float negJ2 = passosParaGraus(J2, posicaoJ2());
 
-  // GESTO 2: tocar. Ela energiza, volta os dois ao zero e solta de novo.
+  // GESTO 2: guardar o extremo. Ela NAO viaja: o braco ja esta num
+  // limite, e leva-lo de volta ao zero so para pedir o outro limite era
+  // uma viagem inteira sem nada para medir -- e era nela que a maquina
+  // remedia a propria escala.
+  const long ondeJ1 = posicaoJ1();
   enviarComando(CMD_CALIB_CONFIRMAR);
   const bool parou2 = ateEtapa(CAL_LADO_B);
   nota("depois do segundo toque: etapa=%d, J1 em %.2f graus, torque 1=%d",
        (int)estadoCalib, (double)passosParaGraus(J1, posicaoJ1()),
        (int)J1.habilitado);
-  checar(parou2 && fabsf(passosParaGraus(J1, posicaoJ1())) < 1.5f &&
-         !J1.habilitado, "V19c",
-         "o segundo toque energiza, volta os dois ao zero e solta de novo");
+  checar(parou2 && !J1.habilitado && labs(posicaoJ1() - ondeJ1) < 50, "V19c",
+         "o segundo toque guarda o extremo e segue SOLTO para o outro, sem "
+         "viagem no meio");
 
   // O outro extremo, tambem com a mao.
-  empurrar(1, -50.0f);
-  empurrar(2, -35.0f);
+  empurrar(1, +160.0f);
+  empurrar(2, +115.0f);
+  const float posJ1 = passosParaGraus(J1, posicaoJ1());
+  const float posJ2 = passosParaGraus(J2, posicaoJ2());
   enviarComando(CMD_CALIB_CONFIRMAR);
   const bool fim = ateEtapa(CAL_INATIVO);
 
@@ -6517,9 +6658,25 @@ static void teste_V19_calibrar_em_dois_gestos() {
   checar(fim && modoAtual == MODO_MANUAL, "V19d",
          "dois gestos e acabou: nada digitado, nenhuma etapa a mais");
   checar(J1.calibrada && J2.calibrada &&
-         fabsf((J1.grausMax - J1.grausMin) - 120.0f) < 8.0f &&
-         fabsf((J2.grausMax - J2.grausMin) - 80.0f) < 8.0f, "V19e",
+         fabsf((J1.grausMax - J1.grausMin) - 160.0f) < 8.0f &&
+         fabsf((J2.grausMax - J2.grausMin) - 115.0f) < 8.0f, "V19e",
          "o curso das DUAS juntas sai dos batentes, na mesma calibracao");
+
+  // OS LIMITES SAO OS DOIS EXTREMOS, e nada mais.
+  //
+  // A versao anterior esticava o intervalo ate incluir o zero. Com os
+  // dois batentes do mesmo lado -- 90 e 270, como na bancada -- ela
+  // inventava 90 graus de percurso que o ferro nao tem.
+  nota("limites de J1: %.1f a %.1f graus; extremos marcados: %.1f e %.1f",
+       (double)J1.grausMin, (double)J1.grausMax, (double)negJ1, (double)posJ1);
+  nota("limites de J2: %.1f a %.1f graus; extremos marcados: %.1f e %.1f",
+       (double)J2.grausMin, (double)J2.grausMax, (double)negJ2, (double)posJ2);
+  checar(fabsf(J1.grausMin - negJ1) < 1.5f &&
+         fabsf(J1.grausMax - posJ1) < 1.5f &&
+         fabsf(J2.grausMin - negJ2) < 1.5f &&
+         fabsf(J2.grausMax - posJ2) < 1.5f, "V19i",
+         "e os limites sao exatamente os dois extremos marcados, sem "
+         "esticar o intervalo ate o zero");
 
   nota("terminou em %.2f graus, torque 1=%d 2=%d",
        (double)passosParaGraus(J1, posicaoJ1()),
@@ -6527,23 +6684,36 @@ static void teste_V19_calibrar_em_dois_gestos() {
   checar(fabsf(passosParaGraus(J1, posicaoJ1())) < 1.5f && J1.habilitado, "V19f",
          "e a maquina termina no zero, COM torque -- pronta para trabalhar");
 
-  // Os PULSOS POR VOLTA sao medidos nas viagens: pulso contado de um
-  // lado, voltas do motor do outro, e o redutor cancela.
-  nota("pulsos por volta: declarado %lu -> medido %lu",
-       (unsigned long)ppvAntes, (unsigned long)J1.passosPorVolta);
-  checar(labs((long)J1.passosPorVolta - (long)ppvAntes) <
-         (long)(ppvAntes / 20), "V19h",
-         "as viagens ao zero medem os pulsos por volta de cada driver, sem "
-         "ninguem pedir -- e o numero bate com o que o driver faz");
+  // CALIBRAR NAO MEXE NO ANGULO. Este e o contrato que a bancada pediu:
+  // "quando mexo o braco ate tal ponto limite e no outro lado ate tal
+  // ponto limite, o braco continua entendendo os angulos mas tratando os
+  // limites apenas".
+  //
+  // A versao anterior media a escala do encoder entre os dois extremos e
+  // a adotava, media os pulsos por volta nas viagens e a adotava, e
+  // zerava grausHome. As tres mexiam na regua -- e como grausMin/grausMax
+  // saem dos PASSOS divididos por ela, os limites recem-marcados passavam
+  // a descrever outros angulos. Marcar 90 e 270 e depois ver 91 ser
+  // recusado como fora de curso era exatamente isso.
+  nota("regua depois de calibrar: ppv %lu (era %lu), escala %.2f (era %.2f), "
+       "home %.2f (era %.2f)",
+       (unsigned long)J1.passosPorVolta, (unsigned long)ppvAntes,
+       (double)configEncoder.contagensPorGrau[0], (double)escalaAntes,
+       (double)J1.grausHome, (double)homeAntes);
+  checar(J1.passosPorVolta == ppvAntes &&
+         fabsf(configEncoder.contagensPorGrau[0] - escalaAntes) < 0.01f &&
+         fabsf(J1.grausHome - homeAntes) < 0.001f, "V19g",
+         "e calibrar NAO mexe na regua: pulsos por volta, escala do encoder "
+         "e origem ficam como estavam -- so os limites foram gravados");
 
-  // A escala do encoder sai da propria medida.
-  nota("escala medida na junta 1: %.2f contagens por grau",
-       (double)configEncoder.contagensPorGrau[0]);
-  const float esperada = cv * J1.reducao / 360.0f;
-  checar(fabsf(configEncoder.contagensPorGrau[0] - esperada) < esperada * 0.08f,
-         "V19g",
-         "e a escala do encoder sai de graca: entre os dois extremos ha um "
-         "tanto de contagens e um tanto de graus");
+  // O angulo que a maquina informa para uma mesma contagem tem de ser o
+  // mesmo de antes. E a prova direta de "nao tem alteracao de angulo".
+  const float depoisDe1000 = passosParaGraus(J1, 1000);
+  nota("mesma contagem (1000 passos): %.3f graus antes, %.3f depois",
+       (double)anguloAntes, (double)depoisDe1000);
+  checar(fabsf(depoisDe1000 - anguloAntes) < 0.001f, "V19h",
+         "a mesma contagem de passos continua valendo o mesmo angulo depois "
+         "de calibrar");
 }
 
 // ---------------------------------------------------------------------
@@ -8306,6 +8476,7 @@ int main() {
   teste_V11_um_controle_manda_nos_dois();
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V24_curso_medido_nao_cala_o_encoder();
+  teste_V26_batentes_do_mesmo_lado();
   teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta();
   teste_V26_diz_em_que_conta_o_movimento_saiu();
   teste_V27_saude_diz_qual_firmware_esta_rodando();
