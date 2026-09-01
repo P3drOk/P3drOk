@@ -30,6 +30,15 @@ static uint32_t esperaAte = 0;
 static long  alvo1Original = 0, alvo2Original = 0;
 static float alvoGraus1 = 0.0f, alvoGraus2 = 0.0f;
 
+// O ANGULO QUE O OPERADOR PEDIU, guardado quando o movimento comeca.
+//
+// Nao e a mesma coisa que converter a contagem de destino pela regua:
+// com a regua errada os dois divergem, e quem manda e o que foi pedido.
+// E dele que sai o freio do encoder.
+static float  alvoPedido[2]  = {0.0f, 0.0f};
+static int8_t alvoSentido[2] = {0, 0};   // +1 subindo, -1 descendo
+static bool   temAlvoPedido  = false;
+
 // Depois que o eixo para, a ultima leitura do encoder ainda e de antes
 // da parada. O ciclo le a 20 Hz e o valor leva um tempo para assentar --
 // retocar em cima de leitura de meio segundo atras e mover o braco
@@ -179,8 +188,7 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
   const float    rel   = velho ? fabsf((float)novo - (float)velho) / (float)velho
                                : 1.0f;
 
-  // ELA MEDE E GUARDA. QUEM ADOTA E adotarEngrenagemMedida(), COM A
-  // MAQUINA PARADA.
+  // ELA MEDE E GUARDA. NINGUEM ADOTA SOZINHO.
   //
   // Aqui ela escrevia `j.passosPorVolta = novo; recalcularResolucao();`
   // -- no fim de cada movimento, DENTRO do ciclo de assentamento. E dai
@@ -196,64 +204,92 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
   // calculado. Ai a regua e o destino nascem juntos e valem o movimento
   // inteiro.
   //
-  // DUAS MEDIDAS TEM DE CONCORDAR antes de a regua mudar. Uma leitura
-  // ruim nao pode reescrever sozinha a regua da maquina -- ela vai para
-  // a flash e vale para todo movimento seguinte.
-  if (j.ppvMedido > 0 &&
-      fabsf((float)novo - (float)j.ppvMedido) < (float)j.ppvMedido * 0.01f) {
-    if (j.ppvAcordo < 250) j.ppvAcordo++;
-  } else {
-    j.ppvAcordo = 1;
-  }
   j.ppvMedido = (uint32_t)novo;
   logEvento("junta %u: engrenagem MEDIDA em %ld pulsos por volta "
-            "(configurada %lu, %u medida(s) de acordo) -- %ld pulsos em "
-            "%.3f voltas do motor",
-            (unsigned)junta, novo, (unsigned long)velho,
-            (unsigned)j.ppvAcordo, passos, (double)voltas);
+            "(configurada %lu) -- %ld pulsos em %.3f voltas do motor",
+            (unsigned)junta, novo, (unsigned long)velho, passos, (double)voltas);
   (void)rel;
   return false;   // adotar nao e aqui
 }
 
-// ---------------------------------------------------------------------
-// ADOTAR A MEDIDA -- com o braco parado, antes de calcular um destino.
+// =====================================================================
+//  O FREIO DO ENCODER
 //
-// Sem isto o operador pede 3 graus, a maquina anda 6 (a regua digitada
-// esta errada por um fator) e o assentamento traz o braco de volta em
-// passos de no maximo tres graus, cada um custando uma espera e uma
-// leitura num barramento de 4,5 leituras por segundo. Da bancada isso se
-// ve como o braco indo, voltando e hesitando para fechar tres graus --
-// "enrosco". Medido no cenario V27: SETE retoques para um pedido de 3.
+//  "Se o encoder diz 3 graus, ele esta em 3 graus." Entao o movimento
+//  nao tem por que continuar depois que o encoder diz que chegou --
+//  qualquer que seja a regua com que os pulsos foram calculados.
 //
-// Com a regua certa o mesmo pedido e um tiro so.
-// ---------------------------------------------------------------------
-bool adotarEngrenagemMedida() {
-  bool mudou = false;
+//  Isto NAO e malha fechada de servo: nao se corrige o eixo enquanto ele
+//  anda (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
+//  disso faria o braco oscilar). E um FIM DE CURSO por medida: enquanto
+//  o movimento acontece, so se olha se ja passou do alvo, e se passou,
+//  para. Um teste, uma decisao, sem ganho nenhum no meio.
+//
+//  E o que torna impossivel "dar voltas sem parar": por pior que esteja
+//  passosPorGrau, o braco anda no maximo ate o angulo pedido mais o
+//  atraso da leitura. O resto quem fecha e o assentamento.
+// =====================================================================
+void correcaoAlvoPedido(float t1, float t2, bool valido) {
+  temAlvoPedido = valido;
+  if (!valido) { alvoSentido[0] = alvoSentido[1] = 0; return; }
+  alvoPedido[0] = t1;
+  alvoPedido[1] = t2;
   for (uint8_t k = 1; k <= 2; k++) {
-    Junta& j = (k == 1) ? J1 : J2;
-    if (j.ppvMedido == 0 || j.ppvAcordo < AFERIR_ACORDOS_MIN) continue;
-    if (j.passosPorVolta == j.ppvMedido) continue;
-    const uint32_t velho = j.passosPorVolta;
-    const float rel = velho ? fabsf((float)j.ppvMedido - (float)velho) / (float)velho
-                            : 1.0f;
-    // Diferenca pequena nao paga o custo de reescrever a flash, e nao e o
-    // que faz o braco passar do ponto de forma visivel.
-    if (rel <= AFERIR_GRAVAR_REL) continue;
-    j.passosPorVolta = j.ppvMedido;
-    mudou = true;
-    logEvento("junta %u: engrenagem ADOTADA -- %lu pulsos por volta no lugar "
-              "de %lu (%.1f%% de diferenca, %u medidas de acordo)",
-              (unsigned)k, (unsigned long)j.ppvMedido, (unsigned long)velho,
-              (double)(rel * 100.0f), (unsigned)j.ppvAcordo);
+    const uint8_t i = k - 1;
+    alvoSentido[i] = 0;
+    if (!leituraConfiavel(k)) continue;   // sem medida nao ha freio
+    const float agora = encoderLer(k).graus;
+    const float d = alvoPedido[i] - agora;
+    // Movimento curto demais para ter sentido definido: sem freio, o
+    // assentamento resolve.
+    if (d > FREIO_ENC_MINIMO_GRAUS)       alvoSentido[i] = +1;
+    else if (d < -FREIO_ENC_MINIMO_GRAUS) alvoSentido[i] = -1;
   }
-  if (mudou) {
-    recalcularResolucao();
-    // Sobreviver ao desligamento importa: sem isto o primeiro movimento
-    // depois de cada boot repetiria o erro inteiro.
-    salvarConfiguracoes();
-  }
-  return mudou;
 }
+
+void correcaoFrearNoAlvo() {
+  if (!temAlvoPedido) return;
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    if (alvoSentido[i] == 0) continue;
+    Junta& j = (k == 1) ? J1 : J2;
+    if (!j.motor || !j.motor->isRunning()) continue;
+    if (!leituraConfiavel(k)) continue;
+
+    const float agora = encoderLer(k).graus;
+    // Chegou ou passou, no sentido em que estava indo.
+    if ((float)alvoSentido[i] * (agora - alvoPedido[i]) < 0.0f) continue;
+
+    alvoSentido[i] = 0;
+    j.motor->stopMove();       // parada com rampa, nao tranco
+    logEvento("junta %u: o encoder chegou a %.2f graus (pedido %.2f) -- "
+              "movimento freado pela medida", (unsigned)k,
+              (double)agora, (double)alvoPedido[i]);
+  }
+}
+
+// ---------------------------------------------------------------------
+// A ADOCAO AUTOMATICA FOI TENTADA E RETIRADA.
+//
+// Ela durou uma rodada. O resultado na bancada foi o pior de todos:
+// "quando peco para ir a um angulo ele fica dando voltas sem parar".
+//
+// A medida e uma divisao entre pulsos contados e voltas lidas. Num
+// barramento com 7% de falha e 4,5 leituras por segundo, uma leitura
+// PARADA enquanto o eixo anda deixa o divisor pequeno demais e a
+// engrenagem sai enorme. Regua enorme transforma um pedido de tres graus
+// em centenas de voltas. O teto que existia -- 2 milhoes de pulsos por
+// volta -- e duzentas vezes o valor real: nao segurava nada. E exigir
+// que duas medidas concordem tambem nao salva, porque se a causa e
+// leitura parada as duas concordam no mesmo numero errado.
+//
+// A medida continua sendo feita e continua aparecendo na tela, ao lado
+// do campo. Quem escreve a regua da maquina e uma pessoa.
+//
+// O que faz o braco chegar sem depender da regua e o FREIO DO ENCODER:
+// o alvo pedido fica guardado em graus e o movimento para quando o
+// encoder diz que chegou. Ver correcaoAlvoPedido() logo abaixo.
+// ---------------------------------------------------------------------
 
 // Instantaneo do inicio do movimento. A afericao compara o comeco com o
 // fim, entao ela precisa dos dois -- e de saber que nada estranho
@@ -320,6 +356,15 @@ static void aferirEngrenagemDoMovimento() {
 
 // ---------------------------------------------------------------------
 void correcaoNovoMovimento() {
+  // TODO MOVIMENTO NOVO DESARMA O FREIO.
+  //
+  // Aqui, e nao em irParaPassos(): a ida automatica ao zero absoluto
+  // move o braco por moverCoordenado() direto, sem passar por la. Sem
+  // desarmar, ela herdava o alvo do movimento ANTERIOR e o freio a
+  // parava no meio do caminho. Quem tem angulo pedido e irParaAngulos(),
+  // que arma o freio logo depois de chamar esta funcao.
+  correcaoAlvoPedido(0.0f, 0.0f, false);
+
   r.estado     = CORR_PARADA;
   r.tentativas = 0;
   erroAnterior = 0.0f;
@@ -346,6 +391,16 @@ void correcaoIniciar() {
   // Congelado agora, com a regua que valia quando o movimento foi pedido.
   alvoGraus1    = passosParaGraus(J1, alvo1Original);
   alvoGraus2    = passosParaGraus(J2, alvo2Original);
+  // MAS SE HOUVE UM ANGULO PEDIDO, e ele que manda.
+  //
+  // Com o freio do encoder o movimento pode ter parado ANTES da contagem
+  // de destino -- e ai converter a contagem daria um alvo que ninguem
+  // pediu, e o assentamento levaria o braco de volta para o lugar errado.
+  // O que o operador quer e o numero que ele digitou.
+  if (temAlvoPedido) {
+    alvoGraus1 = alvoPedido[0];
+    alvoGraus2 = alvoPedido[1];
+  }
   esperaAte = millis() + ESPERA_ASSENTAR_MS;
   dizer("assentando");
 }

@@ -4796,8 +4796,9 @@ todas as letras. `V26` é o exemplo da bancada, número por número: curso
 | cenário | contrato | defeito reintroduzido que o derruba |
 |---|---|---|
 | `M11f` | uma medida sozinha não reescreve a régua | voltar `passosPorVolta = novo` |
-| `M11d` | e a régua não muda **dentro** de um movimento | `AFERIR_ACORDOS_MIN = 1` |
-| `V27b` | ir a 3° é **um tiro**, não sete retoques | tirar `adotarEngrenagemMedida()` |
+| `M11d` | e a régua não muda **dentro** de um movimento | voltar a adoção automática |
+| `M11a` | o freio corta o excesso de uma régua errada | tirar `correcaoFrearNoAlvo()` |
+| `V28a` | e o braço para no ângulo **pedido** | usar a contagem no lugar do ângulo digitado |
 | `V19a` | um toque **solta** os motores, sem sair do lugar | `pedirTorque(true)` |
 | `V19g` | calibrar não mexe em régua, escala nem origem | readotar `contagensPorGrau` |
 | `V19h` | a mesma contagem vale o mesmo ângulo depois de calibrar | idem |
@@ -4808,7 +4809,7 @@ não apagados: `M11b`, `M11d`, `V19a`, `V19c`, `V19e`, `V19g`. O que era
 *"o movimento mediu a engrenagem e adotou"* virou *"mediu e guardou"*; o
 que era *"a escala sai de graça"* virou *"a régua não muda"*.
 
-### "Ir ao ângulo 3 sem enrosco" — o número que faltava
+### "Ir ao ângulo 3 sem enrosco" — e a tentativa que deu pior
 
 Segundo retorno da bancada, e ele mudou o desenho: *"anteriormente o
 braço ia bem até tal ângulo, só preciso que ao colocar para ir ao ângulo
@@ -4826,15 +4827,56 @@ braço indo, voltando e hesitando para fechar três graus.
 um pedido de 3°, com a máquina já sabendo a engrenagem certa (10 000)
 enquanto obedecia à digitada (20 000).
 
-O que faltava não era medir — era **o momento de adotar**. Adotar no meio
-do voo desestabiliza; adotar com o braço parado, em `irParaAngulos()`,
-antes de o destino ser calculado, faz régua e alvo nascerem juntos.
+Minha primeira resposta foi mover a adoção para um momento
+"seguro" — com o braço parado, em `irParaAngulos()`, antes de o destino
+ser calculado. No banco funcionou: sete retoques viraram zero.
 
-**Sete retoques viraram zero.** O braço chega em 2,99° num tiro.
+**Na máquina deu o pior resultado de todos:** *"quando peço para ir a um
+ângulo ele fica dando voltas sem parar."*
 
-Duas medidas têm de concordar antes de a régua mudar
-(`AFERIR_ACORDOS_MIN`): uma leitura ruim não pode reescrever sozinha um
-número que vai para a flash e vale para todo movimento seguinte.
+Por quê: a medida é uma divisão entre pulsos contados e voltas lidas. Num
+barramento com 7 % de falha e 4,5 leituras por segundo, uma leitura
+**parada** enquanto o eixo anda deixa o divisor pequeno demais e a
+engrenagem sai enorme. Régua enorme transforma um pedido de 3° em
+centenas de voltas. O teto que existia — 2 000 000 pulsos por volta — é
+**duzentas vezes** o valor real: não segurava nada. E exigir que duas
+medidas concordem também não salva, porque se a causa é leitura parada as
+duas concordam no mesmo número errado.
+
+**A adoção automática saiu, e não volta.** Foi tentada de duas maneiras e
+as duas machucaram a máquina. A medida continua sendo feita e continua
+aparecendo na tela, ao lado do campo, com a diferença em porcentagem.
+
+### O freio do encoder — o que resolve sem depender da régua
+
+A lição que ficou é a frase do próprio operador: *"o braço do 2D é
+justamente o desenho do encoder; se o encoder diz 3 graus, ele está em 3
+graus"*. Então o movimento não tem por que continuar depois que a medida
+diz que chegou — **qualquer que seja a régua com que os pulsos foram
+calculados**.
+
+`correcaoAlvoPedido()` guarda o ângulo que o operador digitou, em graus, e
+o sentido da viagem. `correcaoFrearNoAlvo()` roda a cada ciclo enquanto o
+braço anda: se o encoder diz que a junta chegou ou passou, ela para o
+motor com rampa.
+
+Isso **não** é malha fechada de servo — não há ganho nem correção durante
+o movimento, o que faria o braço oscilar com leituras de 5 a 20 ms de
+jitter. É um **fim de curso por medida**: um teste, uma decisão.
+
+E o alvo do assentamento passou a ser **o ângulo pedido**, não a contagem
+de destino convertida pela régua. Com o freio, o movimento pode parar
+antes da contagem — converter a contagem daria um alvo que ninguém pediu.
+
+| situação | antes | agora |
+|---|---|---|
+| régua errada por 2×, pedido de 45° | ia a 90° | para perto de 45° (`M11a`) |
+| régua errada por 2×, pedido de 3° | 7 retoques | 2 retoques curtos (`V28b`) |
+| régua certa, pedido de 3° | — | **0 retoques, um tiro** (`V28c`) |
+
+Ou seja: o freio torna impossível dar voltas, e escrever os pulsos por
+volta certos — que a tela agora mostra medidos — faz o movimento acertar
+de primeira.
 
 ### O que ficou por fazer, e é honesto dizer
 
@@ -4848,7 +4890,7 @@ causa sumiu, mas isso quem confirma é a máquina.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **508 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **509 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

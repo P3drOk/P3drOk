@@ -4163,14 +4163,18 @@ static void teste_M10_salto_impossivel_nao_vira_posicao() {
 // leituras/s e 7% de falha cada medida sai um pouco diferente. Regua que
 // anda dentro de uma malha fechada que persegue um alvo e instavel.
 //
-// O contrato agora: o movimento MEDE e GUARDA (Junta.ppvMedido), e a
-// regua so muda em adotarEngrenagemMedida() -- com o braco PARADO, antes
-// de o proximo destino ser calculado, e so quando duas medidas
-// concordam. Dentro do movimento a regua fica imovel, e por isso o
-// assentamento consegue fechar num alvo que nao anda.
+// Adotar sozinha tambem foi tentado, num momento supostamente seguro (com
+// o braco parado, antes do proximo destino). Deu pior: numa bancada com
+// 7% de falha no barramento, uma leitura parada enquanto o eixo anda
+// produz uma engrenagem enorme, e a regua enorme faz o braco DAR VOLTAS
+// para um pedido de tres graus. Duas medidas concordando nao salvam --
+// se a causa e leitura parada, as duas concordam no mesmo numero errado.
 //
-// Ver V27: e a adocao no momento certo que faz "ir ao angulo 3" ser um
-// tiro so em vez de sete retoques.
+// O contrato final: o movimento MEDE e GUARDA (Junta.ppvMedido), a tela
+// mostra ao lado do campo, e quem escreve a regua e uma pessoa.
+//
+// O que faz o braco CHEGAR sem depender da regua e o freio do encoder --
+// ver M11a aqui e V28 ("ir ao angulo 3 sem enrosco").
 //
 // Repare que a REDUCAO nao entra: o encoder esta no eixo do motor, antes
 // do redutor, e pulso e contagem estao os dois do mesmo lado dele.
@@ -4218,16 +4222,25 @@ static void teste_M11_maquina_afere_a_propria_engrenagem() {
        (double)encoderLer(1).graus, (double)erroPrimeiro,
        (unsigned long)J1.passosPorVolta);
 
-  checar(erroPrimeiro > 10.0f, "M11a",
-         "o primeiro movimento REALMENTE passa do ponto -- e ele que carrega "
-         "a medida, e sem esse erro nao haveria o que aferir");
+  // COM A REGUA DOBRADA O MOVIMENTO SAIRIA PARA O DOBRO DO ANGULO -- 90
+  // graus onde se pediu 45. Quem corta isso e o FREIO DO ENCODER: o alvo
+  // pedido esta guardado em graus, e o eixo para quando a medida diz que
+  // chegou. O que sobra e a rampa de desaceleracao, poucos graus.
+  //
+  // Este cenario prendia o contrario: que o braco passava MESMO do ponto,
+  // porque era desse erro que a medida da engrenagem nascia. A medida
+  // continua nascendo (M11b logo abaixo) -- ela vem da razao entre pulsos
+  // e voltas, e essa razao independe de o movimento ter sido freado.
+  checar(erroPrimeiro < 10.0f, "M11a",
+         "o freio do encoder corta o excesso: com a regua dobrada o braco "
+         "pararia a 90 graus, e para perto dos 45 pedidos");
   checar(J1.ppvMedido > ppvReal * 9 / 10 &&
          J1.ppvMedido < ppvReal * 11 / 10, "M11b",
          "o proprio movimento MEDIU a engrenagem do drive, sem calibracao "
          "guiada, sem transferidor e sem saber a reducao");
   checar(J1.passosPorVolta == ppvReal * 2, "M11f",
-         "e UMA medida sozinha nao reescreve a regua: e preciso que duas "
-         "concordem, e a troca acontece com o braco parado");
+         "e nao reescreveu a regua com ela: quem escreve passosPorVolta e "
+         "uma pessoa, olhando a medida na tela");
   checar(fabsf(encoderLer(1).graus - 45.0f) < 0.3f, "M11c",
          "o assentamento ainda leva este primeiro movimento ao ponto");
 
@@ -5892,7 +5905,7 @@ static void teste_V26_batentes_do_mesmo_lado() {
 }
 
 // ---------------------------------------------------------------------
-// V27: "ir ao angulo 3" tem de ser UM TIRO, sem enrosco.
+// V28: "ir ao angulo 3" tem de ser UM TIRO, sem enrosco.
 //
 // Da bancada: "anteriormente em codigos passados o braco ia bem ate tal
 // angulo, so preciso que ao eu colocar para ele ir por exemplo ao angulo
@@ -5912,8 +5925,8 @@ static void teste_V26_batentes_do_mesmo_lado() {
 //
 // Este cenario mede o enrosco: quantos retoques o movimento precisou.
 // ---------------------------------------------------------------------
-static void teste_V27_ir_a_tres_graus_sem_enrosco() {
-  secao("V27  Ir ao angulo 3: um tiro so, sem enrosco");
+static void teste_V28_ir_a_tres_graus_sem_enrosco() {
+  secao("V28  Ir ao angulo 3: um tiro so, sem enrosco");
   reiniciarSistema();
 
   // A regua digitada esta errada por um fator de dois -- o caso do
@@ -5937,9 +5950,8 @@ static void teste_V27_ir_a_tres_graus_sem_enrosco() {
   // calibra para depois pedir 3 graus, ja se mexeu no braco antes.
   irEsperando(40, 0, 25000);
   irEsperando(15, 0, 25000);
-  nota("depois de dois movimentos: engrenagem medida %lu (%u de acordo), "
-       "configurada %lu", (unsigned long)J1.ppvMedido,
-       (unsigned)J1.ppvAcordo, (unsigned long)J1.passosPorVolta);
+  nota("depois de dois movimentos: engrenagem medida %lu, configurada %lu",
+       (unsigned long)J1.ppvMedido, (unsigned long)J1.passosPorVolta);
 
   // AGORA O PEDIDO DA BANCADA: ir ao angulo 3.
   irEsperando(3, 0, 25000);
@@ -5948,12 +5960,29 @@ static void teste_V27_ir_a_tres_graus_sem_enrosco() {
   nota("pedi 3 graus: o encoder diz %.2f, com %u retoque(s) de assentamento",
        (double)onde, (unsigned)retoques);
 
-  checar(fabsf(onde - 3.0f) < 0.3f, "V27a",
+  checar(fabsf(onde - 3.0f) < 0.3f, "V28a",
          "o braco chega aos 3 graus, medido pelo encoder -- que e o que o "
          "desenho 2D mostra");
-  checar(retoques <= 1, "V27b",
-         "e chega num tiro so: nada de ir, voltar e hesitar para fechar tres "
-         "graus");
+  // ANTES DO FREIO ERAM SETE. O freio para o eixo quando a medida diz que
+  // chegou, entao o que sobra e so o tanto que a rampa de desaceleracao
+  // ainda carrega -- fracao de grau, um ou dois retoques curtos. Nao e
+  // mais o braco indo, voltando e hesitando.
+  checar(retoques <= 2, "V28b",
+         "e sem enrosco: o freio do encoder corta o excesso, e sobra so a "
+         "rampa -- eram sete retoques antes dele");
+
+  // COM A REGUA CERTA o mesmo pedido nao precisa de retoque nenhum. E a
+  // medida de quanto do enrosco era a regua e quanto era o resto.
+  J1.passosPorVolta = ppvReal;
+  recalcularResolucao();
+  rodarComWeb(200);
+  irEsperando(20, 0, 25000);
+  irEsperando(3, 0, 25000);
+  nota("com a regua certa, pedi 3 graus: encoder %.2f, %u retoque(s)",
+       (double)encoderLer(1).graus, (unsigned)correcaoResumo().tentativas);
+  checar(fabsf(encoderLer(1).graus - 3.0f) < 0.3f &&
+         correcaoResumo().tentativas == 0, "V28c",
+         "com os pulsos por volta certos e um tiro so, sem retoque nenhum");
 }
 
 // ---------------------------------------------------------------------
@@ -8547,7 +8576,7 @@ int main() {
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
-  teste_V27_ir_a_tres_graus_sem_enrosco();
+  teste_V28_ir_a_tres_graus_sem_enrosco();
   teste_V25_ir_ao_angulo_parte_de_onde_o_braco_esta();
   teste_V26_diz_em_que_conta_o_movimento_saiu();
   teste_V27_saude_diz_qual_firmware_esta_rodando();

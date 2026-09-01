@@ -37,10 +37,6 @@ struct Junta {
   // sozinha fazia o braco perseguir um alvo que andava junto com ela.
   // 0 = nada medido ainda nesta sessao.
   uint32_t ppvMedido      = 0;
-  // Quantas medidas seguidas concordaram com ela. A regua so muda quando
-  // duas concordam: uma leitura ruim nao pode reescrever sozinha a regua
-  // da maquina, que vai para a flash e vale para todo movimento seguinte.
-  uint8_t  ppvAcordo      = 0;
   long  passosMin     = 0;      // limite de curso negativo, em passos
   long  passosMax     = 0;      // limite de curso positivo, em passos
   float grausMin      = -90.0f;

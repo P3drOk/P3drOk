@@ -970,14 +970,35 @@ três graus.
 **A máquina mede esse número sozinha.** Todo movimento tem pulso contado
 de um lado e voltas do motor do outro; a redução cancela na divisão. A
 medida aparece na página Máquina, ao lado do campo, sempre que discorda
-dele.
+dele — e **quem escreve a régua é você**.
 
-> **Quando a régua muda.** Só com o braço **parado**, no começo do próximo
-> movimento, e só quando **duas medidas concordam**. Nunca no meio de um
-> movimento: o destino é congelado em graus quando ele começa, e trocar
-> quanto vale um grau depois disso não move o número — move o **lugar**
-> que o número descreve. Era isso que fazia o braço passar do ponto e
-> nunca chegar. Cenários **M11**, **V27**.
+> **Por que ela não adota sozinha.** Foi tentado duas vezes. No fim de
+> cada movimento, fazia o braço perseguir um destino que andava junto com
+> a régua — *passa do ponto e nunca chega*. Com o braço parado, antes do
+> movimento seguinte, foi pior: numa bancada com 7 % de falha no
+> barramento, uma leitura **parada** enquanto o eixo anda produz uma
+> engrenagem enorme, e régua enorme faz o braço **dar voltas** para um
+> pedido de três graus. Duas medidas concordando não salvam: se a causa é
+> leitura parada, as duas concordam no mesmo número errado.
+
+#### O freio do encoder
+
+O que faz o braço chegar **sem depender da régua**: o ângulo que você
+digitou fica guardado em graus, e enquanto o braço anda a máquina olha a
+medida. Chegou ou passou — **para**.
+
+Não é malha fechada de servo: não há ganho nem correção durante o
+movimento (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
+disso faria o braço oscilar). É um **fim de curso por medida** — um
+teste, uma decisão.
+
+| situação | o que acontece |
+|---|---|
+| régua errada por 2×, pedido de 45° | pararia a 90°; o freio para perto de 45° |
+| régua errada por 2×, pedido de 3° | 2 retoques curtos — eram 7 |
+| **régua certa**, pedido de 3° | **um tiro, sem retoque** |
+
+Cenários **M11a**, **V28**.
 
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o
 sistema dá um retoque curto.

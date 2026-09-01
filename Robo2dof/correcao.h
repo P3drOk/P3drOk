@@ -96,28 +96,38 @@ void correcaoNovoMovimento();
 // a reducao cancela e nao precisa estar certa -- nem precisa haver
 // calibracao guiada.
 //
-// ELA NAO ADOTA O VALOR AQUI. Guarda em Junta.ppvMedido e conta quantas
-// medidas seguidas concordaram (Junta.ppvAcordo). Quem adota e
-// adotarEngrenagemMedida(), com o braco parado.
+// ELA NAO ADOTA O VALOR. Guarda em Junta.ppvMedido, e a tela mostra ao
+// lado do campo. Quem escreve passosPorVolta e uma pessoa.
 //
-// A versao que escrevia passosPorVolta no fim de cada movimento -- ou
-// seja, DENTRO do ciclo de assentamento -- fazia o braco passar do ponto
-// e nunca chegar: o alvo e congelado em GRAUS, e mudar a regua depois
-// disso muda o lugar que aquele numero descreve.
+// Adotar sozinha foi tentado duas vezes e as duas deram errado na
+// bancada: no fim de cada movimento fazia o braco perseguir um destino
+// que andava junto com a regua; com o braco parado, uma leitura parada
+// num barramento com falhas produzia uma engrenagem enorme e o braco
+// dava voltas. Ver o comentario na propria funcao.
 //
 // Devolve sempre false: gravar nao e assunto desta funcao.
 // ---------------------------------------------------------------------
 bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 
 // ---------------------------------------------------------------------
-// Adota a engrenagem medida, se houver medida estavel e ela discordar do
-// que esta configurado. Devolve true quando mudou alguma coisa.
+// O FREIO DO ENCODER.
 //
-// CHAME COM O BRACO PARADO E ANTES DE CALCULAR UM DESTINO. Adotar no
-// meio de um movimento move o lugar que o alvo congelado descreve; adotar
-// antes dele faz a regua e o destino nascerem juntos.
+// correcaoAlvoPedido() guarda o angulo que o operador pediu, em GRAUS, e
+// o sentido em que o braco vai andar para chegar nele. Chame ao iniciar
+// um movimento por ANGULO; chame com valido=false em qualquer outro
+// movimento (ponto gravado, programa, trajetoria), que se dao em passos
+// e nao tem angulo pedido.
+//
+// correcaoFrearNoAlvo() e chamada a cada ciclo enquanto o braco anda: se
+// o encoder diz que a junta chegou ou passou do alvo, ela para o motor.
+//
+// Nao e malha fechada de servo -- nao ha ganho nem correcao durante o
+// movimento. E um fim de curso por MEDIDA, e e o que torna impossivel o
+// braco dar voltas por causa de uma regua errada: "se o encoder diz 3
+// graus, ele esta em 3 graus".
 // ---------------------------------------------------------------------
-bool adotarEngrenagemMedida();
+void correcaoAlvoPedido(float t1, float t2, bool valido);
+void correcaoFrearNoAlvo();
 
 void correcaoIniciar();                  // core 1: chegou, comeca a assentar
 void correcaoAtualizar();                // core 1: chamada do loop

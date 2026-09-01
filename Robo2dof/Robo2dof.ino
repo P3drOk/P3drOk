@@ -111,23 +111,33 @@ static bool irParaPassos(long p1, long p2) {
 // tracejado chegava ao angulo pedido e o braco desenhado nao. Ver
 // ancorarNoEncoder() em correcao.h.
 static void irParaAngulos(float t1, float t2) {
-  // A REGUA SE ACERTA AQUI, COM O BRACO PARADO -- e nao no meio do
-  // movimento.
+  // A ADOCAO AUTOMATICA DA ENGRENAGEM SAIU DAQUI, E NAO VOLTA.
   //
-  // `passosPorGrau` sai de dois numeros digitados. Com eles errados por
-  // um fator, pedir 3 graus manda o braco a 6, e o assentamento o traz de
-  // volta em passos de no maximo tres, cada um custando uma espera e uma
-  // leitura. Da bancada isso se ve como o braco indo, voltando e
-  // hesitando para fechar tres graus -- e o cenario V27 media SETE
-  // retoques para esse pedido.
+  // Ela existiu por uma rodada e o resultado na bancada foi o pior de
+  // todos: "quando peco para ir a um angulo ele fica dando voltas sem
+  // parar". A medida vem de uma divisao entre pulsos contados e voltas
+  // lidas; num barramento com 7% de falha e 4,5 leituras por segundo,
+  // uma leitura parada enquanto o eixo anda produz uma engrenagem
+  // enorme, e a regua enorme transforma um pedido de 3 graus em
+  // centenas de voltas. O teto que havia (2 milhoes de pulsos por volta)
+  // e duzentas vezes o valor real: nao segurava nada.
   //
-  // A maquina ja sabia a engrenagem certa: ela a mede em todo movimento.
-  // O que faltava era o momento de adotar. Aqui e ele: nada esta andando,
-  // nenhum alvo esta congelado, e a regua e o destino nascem juntos.
-  adotarEngrenagemMedida();
-
+  // Duas medidas concordando tambem nao salvam: se a causa e leitura
+  // parada, as duas concordam no mesmo numero errado.
+  //
+  // A medida continua sendo feita e continua aparecendo na tela, ao lado
+  // do campo. Quem escreve a regua da maquina e uma pessoa.
+  //
+  // O que faz o braco CHEGAR sem depender da regua e o freio do encoder,
+  // logo abaixo: o alvo pedido fica guardado em GRAUS e o movimento para
+  // quando o encoder diz que chegou. Se o encoder diz 3 graus, o braco
+  // esta em 3 graus -- e nenhuma regua errada faz ele dar voltas.
   const Ancoragem anc = ancorarNoEncoder();
   if (!irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) return;
+
+  // O FREIO. O alvo em graus e o que o operador digitou, e o movimento
+  // para quando o encoder disser que chegou nele.
+  correcaoAlvoPedido(t1, t2, true);
 
   // A MENSAGEM DIZ EM QUE CONTA O MOVIMENTO SAIU.
   //
@@ -998,6 +1008,11 @@ void loop() {
       break;
 
     case MODO_POSICIONANDO:
+      // O FREIO DO ENCODER, antes de tudo: enquanto o braco anda, se a
+      // medida disser que a junta chegou ao angulo pedido, ela para.
+      // Uma regua errada faz o movimento sair grande demais -- este
+      // teste e o que impede isso de virar voltas sem fim.
+      correcaoFrearNoAlvo();
       if (!motoresEmMovimento()) {
         // Chegou pela conta de passos. Antes de liberar o jog, o encoder
         // diz onde o braco REALMENTE parou, e o sistema da um retoque se
