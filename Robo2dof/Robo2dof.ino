@@ -111,6 +111,21 @@ static bool irParaPassos(long p1, long p2) {
 // tracejado chegava ao angulo pedido e o braco desenhado nao. Ver
 // ancorarNoEncoder() em correcao.h.
 static void irParaAngulos(float t1, float t2) {
+  // A REGUA SE ACERTA AQUI, COM O BRACO PARADO -- e nao no meio do
+  // movimento.
+  //
+  // `passosPorGrau` sai de dois numeros digitados. Com eles errados por
+  // um fator, pedir 3 graus manda o braco a 6, e o assentamento o traz de
+  // volta em passos de no maximo tres, cada um custando uma espera e uma
+  // leitura. Da bancada isso se ve como o braco indo, voltando e
+  // hesitando para fechar tres graus -- e o cenario V27 media SETE
+  // retoques para esse pedido.
+  //
+  // A maquina ja sabia a engrenagem certa: ela a mede em todo movimento.
+  // O que faltava era o momento de adotar. Aqui e ele: nada esta andando,
+  // nenhum alvo esta congelado, e a regua e o destino nascem juntos.
+  adotarEngrenagemMedida();
+
   const Ancoragem anc = ancorarNoEncoder();
   if (!irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) return;
 

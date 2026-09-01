@@ -96,18 +96,28 @@ void correcaoNovoMovimento();
 // a reducao cancela e nao precisa estar certa -- nem precisa haver
 // calibracao guiada.
 //
-// ELA NAO ADOTA O VALOR. Guarda em Junta.ppvMedido, para a tela mostrar
-// ao lado do campo. A versao que escrevia passosPorVolta sozinha, no fim
-// de cada movimento, fazia o braco passar do ponto e nunca chegar: o
-// alvo do assentamento e congelado em GRAUS, e mudar a regua depois
-// disso muda o lugar que aquele numero descreve. Ver o comentario longo
-// na propria funcao.
+// ELA NAO ADOTA O VALOR AQUI. Guarda em Junta.ppvMedido e conta quantas
+// medidas seguidas concordaram (Junta.ppvAcordo). Quem adota e
+// adotarEngrenagemMedida(), com o braco parado.
 //
-// Devolve sempre false hoje (nada a gravar). O retorno fica porque quem
-// chama ja decide gravar por ele, e um dia a adocao pode voltar -- por
-// pedido explicito de quem opera, nunca sozinha.
+// A versao que escrevia passosPorVolta no fim de cada movimento -- ou
+// seja, DENTRO do ciclo de assentamento -- fazia o braco passar do ponto
+// e nunca chegar: o alvo e congelado em GRAUS, e mudar a regua depois
+// disso muda o lugar que aquele numero descreve.
+//
+// Devolve sempre false: gravar nao e assunto desta funcao.
 // ---------------------------------------------------------------------
 bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
+
+// ---------------------------------------------------------------------
+// Adota a engrenagem medida, se houver medida estavel e ela discordar do
+// que esta configurado. Devolve true quando mudou alguma coisa.
+//
+// CHAME COM O BRACO PARADO E ANTES DE CALCULAR UM DESTINO. Adotar no
+// meio de um movimento move o lugar que o alvo congelado descreve; adotar
+// antes dele faz a regua e o destino nascerem juntos.
+// ---------------------------------------------------------------------
+bool adotarEngrenagemMedida();
 
 void correcaoIniciar();                  // core 1: chegou, comeca a assentar
 void correcaoAtualizar();                // core 1: chamada do loop

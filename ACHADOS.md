@@ -4739,16 +4739,20 @@ Era justamente o contrário: manter o **número** de graus enquanto se muda
 braço para um ângulo que ninguém pediu, o movimento seguinte media de
 novo, e o erro se somava a cada viagem.
 
-Com o barramento a 4,5 leituras/s e 7 % de falha, cada medida sai um
-pouco diferente da anterior — a régua nunca parava quieta. **Régua que se
-mexe sozinha dentro de uma malha fechada que persegue um alvo é
+**Régua que se mexe dentro de uma malha fechada que persegue um alvo é
 instável**, e era isso que o operador estava vendo.
 
-`aferirEngrenagem()` continua medindo, e a medida continua valendo: ela é
-a resposta para *"os pulsos por volta digitados estão errados?"*. Só que
-agora ela **guarda** (`Junta.ppvMedido`) e a tela mostra ao lado do
-campo, com a diferença em porcentagem. Quem escreve a régua da máquina é
-uma pessoa.
+> **Correção do que escrevi antes.** Numa primeira versão deste registro
+> eu atribuí a deriva ao *ruído* do barramento — cada medida saindo um
+> pouco diferente. Isso era inferência minha, não medida: o mecanismo que
+> os cenários realmente demonstram é a troca **no meio do voo**, com o
+> alvo já congelado. O ruído pode piorar, mas não é o que se provou.
+
+`aferirEngrenagem()` continua medindo. O que mudou foi **quando** a
+medida vale: ela guarda em `Junta.ppvMedido`, conta quantas medidas
+seguidas concordam, e a régua só muda em `adotarEngrenagemMedida()` —
+**com o braço parado**, antes de o próximo destino ser calculado. Aí a
+régua e o alvo nascem juntos e valem o movimento inteiro.
 
 > Isso não desfaz a Etapa 0. O que fazia o braço **chegar** ali era o
 > critério de progresso e o cão-de-guarda de travamento, e os dois
@@ -4791,8 +4795,9 @@ todas as letras. `V26` é o exemplo da bancada, número por número: curso
 
 | cenário | contrato | defeito reintroduzido que o derruba |
 |---|---|---|
-| `M11f` | a régua não é reescrita por um movimento | voltar `passosPorVolta = novo` |
-| `M11d` | e não muda entre dois movimentos | idem |
+| `M11f` | uma medida sozinha não reescreve a régua | voltar `passosPorVolta = novo` |
+| `M11d` | e a régua não muda **dentro** de um movimento | `AFERIR_ACORDOS_MIN = 1` |
+| `V27b` | ir a 3° é **um tiro**, não sete retoques | tirar `adotarEngrenagemMedida()` |
 | `V19a` | um toque **solta** os motores, sem sair do lugar | `pedirTorque(true)` |
 | `V19g` | calibrar não mexe em régua, escala nem origem | readotar `contagensPorGrau` |
 | `V19h` | a mesma contagem vale o mesmo ângulo depois de calibrar | idem |
@@ -4803,19 +4808,47 @@ não apagados: `M11b`, `M11d`, `V19a`, `V19c`, `V19e`, `V19g`. O que era
 *"o movimento mediu a engrenagem e adotou"* virou *"mediu e guardou"*; o
 que era *"a escala sai de graça"* virou *"a régua não muda"*.
 
+### "Ir ao ângulo 3 sem enrosco" — o número que faltava
+
+Segundo retorno da bancada, e ele mudou o desenho: *"anteriormente o
+braço ia bem até tal ângulo, só preciso que ao colocar para ir ao ângulo
+3 ele vá sem enrosco. O braço do 2D é justamente o desenho do encoder: se
+o encoder diz 3 graus, ele está em 3 graus."*
+
+Congelar a régua consertou a deriva, mas **não** fez o primeiro tiro
+acertar. Com `passosPorVolta` digitado errado por um fator de dois, pedir
+3° manda o braço a 6°, e o assentamento o traz de volta em passos de no
+máximo 3° — cada um custando uma espera de 250 ms e uma leitura num
+barramento de 4,5 leituras por segundo. Da bancada isso se vê como o
+braço indo, voltando e hesitando para fechar três graus.
+
+`V27` mediu o enrosco antes de eu mexer em nada: **sete retoques** para
+um pedido de 3°, com a máquina já sabendo a engrenagem certa (10 000)
+enquanto obedecia à digitada (20 000).
+
+O que faltava não era medir — era **o momento de adotar**. Adotar no meio
+do voo desestabiliza; adotar com o braço parado, em `irParaAngulos()`,
+antes de o destino ser calculado, faz régua e alvo nascerem juntos.
+
+**Sete retoques viraram zero.** O braço chega em 2,99° num tiro.
+
+Duas medidas têm de concordar antes de a régua mudar
+(`AFERIR_ACORDOS_MIN`): uma leitura ruim não pode reescrever sozinha um
+número que vai para a flash e vale para todo movimento seguinte.
+
 ### O que ficou por fazer, e é honesto dizer
 
 A bancada não consegue encenar o **ruído** do RS485 — 7 % de falha e 4,5
 leituras/s. Por isso não há cenário que reproduza a deriva acumulando ao
 longo de dezenas de movimentos; o que se prende é a **causa** (a régua
-não se mexe) e não o sintoma. O sintoma some porque a causa sumiu, mas
-isso quem confirma é a máquina.
+não se mexe dentro do movimento) e não o sintoma. O sintoma some porque a
+causa sumiu, mas isso quem confirma é a máquina.
 
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **506 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **508 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

@@ -179,33 +179,80 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
   const float    rel   = velho ? fabsf((float)novo - (float)velho) / (float)velho
                                : 1.0f;
 
-  // ELA MEDE E CONTA. NAO REESCREVE A REGUA.
+  // ELA MEDE E GUARDA. QUEM ADOTA E adotarEngrenagemMedida(), COM A
+  // MAQUINA PARADA.
   //
-  // Escrevia: `j.passosPorVolta = novo; recalcularResolucao();` no fim de
-  // CADA movimento. E dai vinha o "passa do ponto e nunca chega".
+  // Aqui ela escrevia `j.passosPorVolta = novo; recalcularResolucao();`
+  // -- no fim de cada movimento, DENTRO do ciclo de assentamento. E dai
+  // vinha o "passa do ponto e nunca chega".
   //
   // O alvo do assentamento e congelado EM GRAUS quando o movimento
   // comeca (alvoGraus1/2, la em cima). Trocar passosPorGrau depois disso
   // nao move o numero -- move o LUGAR que aquele numero descreve. O
-  // retoque entao levava o braco para um angulo que ninguem pediu, o
-  // movimento seguinte media de novo, a regua andava de novo, e o erro
-  // se somava a cada viagem. Com o barramento a 4,5 leituras por segundo
-  // e 7% de falha, cada medida sai um pouco diferente da anterior: a
-  // regua nunca parava quieta.
+  // retoque entao levava o braco para um angulo que ninguem pediu.
   //
-  // Regua que se mexe sozinha dentro de uma malha fechada que persegue
-  // um alvo e instavel -- e o operador estava vendo exatamente isso.
+  // O momento certo de adotar e o contrario deste: com o braco parado e
+  // NENHUM alvo congelado, logo antes de o proximo movimento ser
+  // calculado. Ai a regua e o destino nascem juntos e valem o movimento
+  // inteiro.
   //
-  // A medida continua valendo: ela e a resposta para "os pulsos por
-  // volta digitados estao errados?". So que fica GUARDADA como sugestao
-  // e aparece na tela, ao lado do campo, para quem monta a maquina
-  // decidir. Quem escreve a regua da maquina e uma pessoa.
+  // DUAS MEDIDAS TEM DE CONCORDAR antes de a regua mudar. Uma leitura
+  // ruim nao pode reescrever sozinha a regua da maquina -- ela vai para
+  // a flash e vale para todo movimento seguinte.
+  if (j.ppvMedido > 0 &&
+      fabsf((float)novo - (float)j.ppvMedido) < (float)j.ppvMedido * 0.01f) {
+    if (j.ppvAcordo < 250) j.ppvAcordo++;
+  } else {
+    j.ppvAcordo = 1;
+  }
   j.ppvMedido = (uint32_t)novo;
   logEvento("junta %u: engrenagem MEDIDA em %ld pulsos por volta "
-            "(configurada %lu) -- %ld pulsos em %.3f voltas do motor",
-            (unsigned)junta, novo, (unsigned long)velho, passos, (double)voltas);
+            "(configurada %lu, %u medida(s) de acordo) -- %ld pulsos em "
+            "%.3f voltas do motor",
+            (unsigned)junta, novo, (unsigned long)velho,
+            (unsigned)j.ppvAcordo, passos, (double)voltas);
   (void)rel;
-  return false;   // nada a gravar: a configuracao nao mudou
+  return false;   // adotar nao e aqui
+}
+
+// ---------------------------------------------------------------------
+// ADOTAR A MEDIDA -- com o braco parado, antes de calcular um destino.
+//
+// Sem isto o operador pede 3 graus, a maquina anda 6 (a regua digitada
+// esta errada por um fator) e o assentamento traz o braco de volta em
+// passos de no maximo tres graus, cada um custando uma espera e uma
+// leitura num barramento de 4,5 leituras por segundo. Da bancada isso se
+// ve como o braco indo, voltando e hesitando para fechar tres graus --
+// "enrosco". Medido no cenario V27: SETE retoques para um pedido de 3.
+//
+// Com a regua certa o mesmo pedido e um tiro so.
+// ---------------------------------------------------------------------
+bool adotarEngrenagemMedida() {
+  bool mudou = false;
+  for (uint8_t k = 1; k <= 2; k++) {
+    Junta& j = (k == 1) ? J1 : J2;
+    if (j.ppvMedido == 0 || j.ppvAcordo < AFERIR_ACORDOS_MIN) continue;
+    if (j.passosPorVolta == j.ppvMedido) continue;
+    const uint32_t velho = j.passosPorVolta;
+    const float rel = velho ? fabsf((float)j.ppvMedido - (float)velho) / (float)velho
+                            : 1.0f;
+    // Diferenca pequena nao paga o custo de reescrever a flash, e nao e o
+    // que faz o braco passar do ponto de forma visivel.
+    if (rel <= AFERIR_GRAVAR_REL) continue;
+    j.passosPorVolta = j.ppvMedido;
+    mudou = true;
+    logEvento("junta %u: engrenagem ADOTADA -- %lu pulsos por volta no lugar "
+              "de %lu (%.1f%% de diferenca, %u medidas de acordo)",
+              (unsigned)k, (unsigned long)j.ppvMedido, (unsigned long)velho,
+              (double)(rel * 100.0f), (unsigned)j.ppvAcordo);
+  }
+  if (mudou) {
+    recalcularResolucao();
+    // Sobreviver ao desligamento importa: sem isto o primeiro movimento
+    // depois de cada boot repetiria o erro inteiro.
+    salvarConfiguracoes();
+  }
+  return mudou;
 }
 
 // Instantaneo do inicio do movimento. A afericao compara o comeco com o

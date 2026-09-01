@@ -955,6 +955,30 @@ sobrevive ao desligamento e converge em dois ou três movimentos.
 
 ### 5.6 Correção de posição pelo encoder
 
+**O encoder é a posição.** O braço desenhado na tela é o desenho do
+encoder: se ele diz 3°, o braço está em 3°. Pedir "ir para 3°" é ler onde
+o braço está, andar a diferença e parar — **um tiro**.
+
+Para o tiro acertar, `passosPorGrau` tem de bater com o ferro. Ele sai de
+dois números digitados (`passosPorVolta × redução ÷ 360`), e o mais
+errado dos dois costuma ser o primeiro: é parâmetro do **driver**, muda
+quando alguém troca o drive, e nada na tela denuncia. Com ele errado por
+um fator de dois, pedir 3° manda o braço a 6° e o assentamento o traz de
+volta em passos de no máximo 3° — o braço vai, volta e hesita para fechar
+três graus.
+
+**A máquina mede esse número sozinha.** Todo movimento tem pulso contado
+de um lado e voltas do motor do outro; a redução cancela na divisão. A
+medida aparece na página Máquina, ao lado do campo, sempre que discorda
+dele.
+
+> **Quando a régua muda.** Só com o braço **parado**, no começo do próximo
+> movimento, e só quando **duas medidas concordam**. Nunca no meio de um
+> movimento: o destino é congelado em graus quando ele começa, e trocar
+> quanto vale um grau depois disso não move o número — move o **lugar**
+> que o número descreve. Era isso que fazia o braço passar do ponto e
+> nunca chegar. Cenários **M11**, **V27**.
+
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o
 sistema dá um retoque curto.
 

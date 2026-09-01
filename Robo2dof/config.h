@@ -489,6 +489,9 @@ static const float MARGEM_LIMITE_GRAUS = 0.5f;
 // Curso minimo que a calibracao aceita por junta. Precisa ser bem maior
 // que 2 x MARGEM_LIMITE_GRAUS, senao a calibracao "valida" produz um
 // intervalo util negativo e tranca o eixo.
+// Quantas medidas de engrenagem tem de concordar antes de a regua mudar.
+static const uint8_t AFERIR_ACORDOS_MIN = 2;
+
 static const float CURSO_MINIMO_GRAUS = 5.0f;
 
 // Depois de gravar os limites a maquina religa o torque e volta ao zero.

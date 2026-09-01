@@ -1936,13 +1936,14 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="cp"><label>Junta 2</label><input type="number" id="inPv2" min="1"></div>
               <div class="res" id="resumoRes">--</div>
               <!-- O QUE O ENCODER MEDIU, ao lado do que esta digitado.
-                   A maquina ja sabe este numero: ela conta pulso de um
-                   lado e voltas do motor do outro em todo movimento, e o
-                   redutor cancela na divisao. Ela SO NAO O ADOTA sozinha
-                   -- adotar no meio de um movimento fazia o braco
-                   perseguir um destino que andava junto com a regua, e
-                   era o "passa do ponto e nunca chega". Aqui o numero
-                   fica a vista e quem decide e quem monta a maquina. -->
+                   A maquina conta pulso de um lado e voltas do motor do
+                   outro em todo movimento, e o redutor cancela na
+                   divisao. Quando duas medidas concordam ela adota o
+                   numero sozinha -- mas com o braco PARADO, antes do
+                   proximo movimento. Adotar no meio de um movimento
+                   fazia o braco perseguir um destino que andava junto
+                   com a regua. Aqui o numero fica a vista enquanto os
+                   dois discordam. -->
               <div class="res" id="ppvMedido">--</div>
 
               <h4>Sentido dos eixos</h4>
@@ -5715,8 +5716,8 @@ function aplicar(d){
       });
       cx.textContent = lin.length
         ? (lin.join("\n")+
-           "\nA maquina nao troca sozinha: se a medida estiver certa, "+
-           "escreva-a no campo acima e salve.")
+           "\nCom o braco parado, no proximo movimento a maquina adota a "+
+           "medida -- desde que duas concordem.")
         : "";
       cx.style.display = lin.length ? "" : "none";
     }
