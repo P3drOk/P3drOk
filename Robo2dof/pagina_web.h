@@ -60,7 +60,7 @@ button,input{font:inherit;color:inherit}
 .rot{font-family:var(--mono);font-size:9.5px;letter-spacing:.17em;
  text-transform:uppercase;color:var(--letra2)}
 
-.app{display:grid;grid-template-rows:auto 1fr;height:100%;min-width:0;overflow:hidden}
+.app{display:grid;grid-template-rows:auto 1fr auto;height:100%;min-width:0;overflow:hidden}
 .corpo{display:grid;grid-template-columns:1fr 400px;gap:10px;padding:10px;
  min-height:0;overflow:hidden}
 
@@ -245,6 +245,32 @@ button,input{font:inherit;color:inherit}
    e o estado NORMAL, e normal nao gasta cor. Verde ali competia com o
    vermelho do eixo que falta ligar, que e o que precisa ser visto. O
    ambar continua sendo "o barramento ainda nao confirmou". */
+/* O RELE COMO LAMPADA, NAO COMO BOTAO DE TEXTO.
+   Ele nao configura nada: aperta e o rele pulsa, agora. Um retangulo com
+   frase pedia leitura para uma acao instantanea. Redondo, com a lampada
+   dentro, ele se le pelo formato -- e acende enquanto o pulso dura, que e
+   a unica resposta que interessa. */
+.lamp{display:inline-flex;flex-direction:column;align-items:center;gap:3px;
+ background:none;border:none;padding:2px;cursor:pointer;color:var(--letra3);
+ font-family:var(--mono);font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+.lamp .ic{width:34px;height:34px;padding:6px;border-radius:50%;
+ border:1px solid var(--linha2);background:var(--face);
+ stroke:currentColor;fill:none;stroke-width:1.6;
+ stroke-linecap:round;stroke-linejoin:round;
+ transition:background .12s,color .12s,border-color .12s}
+.lamp:hover .ic{border-color:var(--letra3)}
+.lamp:focus-visible .ic{outline:2px solid var(--arco);outline-offset:2px}
+.lamp.on{color:var(--quente)}
+.lamp.on .ic{background:var(--quente);border-color:var(--quente);color:#fff}
+.lamp:active .ic{transform:translateY(1px)}
+@media (prefers-reduced-motion:reduce){ .lamp .ic{transition:none} }
+
+/* O icone dos comandos acompanha o rotulo, sem empurra-lo. */
+.comandos .ic{width:15px;height:15px;stroke:currentColor;fill:none;
+ stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+ display:block;margin:0 auto 2px}
+.estop .ic{fill:currentColor;stroke:none}
+
 .motor{flex:0 0 auto;border:1px solid var(--linha2);font-family:var(--mono);
  font-size:12px;font-weight:700;
  letter-spacing:.08em;padding:12px 14px;border-radius:4px;cursor:pointer;color:#fff;
@@ -659,12 +685,33 @@ body.semNotasCfg .cfgRol .nt{display:none}
  padding:7px 10px;text-align:center}
 .pvTela{display:block;width:100%;max-width:340px;height:auto;background:var(--face);
  border:1px solid var(--linha);border-radius:3px;margin-bottom:10px}
-.grelha{display:flex;flex-direction:column;gap:1px;background:var(--linha);
+/* OS QUADROS DE SUPERVISAO SAO GRADE, NAO PILHA.
+   Eram uma coluna so: uma linha por informacao, e a saude da maquina
+   virava uma tira comprida que so cabia rolando. Como esta area existe
+   para ser OLHADA de relance -- nao operada --, o que importa e quanto se
+   ve de uma vez.
+   auto-fill com minimo de 230 px resolve sem media query: no telefone da
+   uma coluna sozinho, na gaveta larga da duas ou tres. O fundo continua
+   sendo a linha aparecendo pelos vaos de 1 px, entao a grade mantem as
+   divisorias sem uma borda a mais. */
+/* OS QUADROS DE SUPERVISAO SAO GRADE, E A CELULA E EMPILHADA.
+   Eram uma coluna so, uma linha por informacao, com o rotulo na esquerda
+   e o valor la na direita: a saude da maquina virava uma tira comprida
+   que so cabia rolando, e no meio dela sobrava um vao enorme entre o
+   nome e o numero.
+   Esta area existe para ser OLHADA de relance, nao operada -- o que
+   importa e quanto se ve de uma vez. Empilhando rotulo e valor, a celula
+   fica estreita o bastante para caberem duas por cartao, e as catorze
+   linhas da saude ocupam metade da altura. O vao morreu junto.
+   auto-fill resolve sem media query: no telefone da uma coluna sozinho. */
+.grelha{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+ gap:1px;background:var(--linha);
  border:1px solid var(--linha);border-radius:3px;overflow:hidden;margin-bottom:10px}
-.sl{display:flex;justify-content:space-between;gap:10px;background:var(--face);
- padding:7px 10px;font-size:11.5px}
-.sl span{color:var(--fraca)}
-.sl b{font-family:var(--mono);font-size:11px;color:var(--letra);text-align:right}
+.sl{display:flex;flex-direction:column;gap:1px;background:var(--face);
+ padding:5px 9px;font-size:11.5px;min-width:0}
+.sl span{color:var(--fraca);font-size:10.5px;line-height:1.25}
+.sl b{font-family:var(--mono);font-size:11.5px;color:var(--letra);
+ line-height:1.3;overflow-wrap:anywhere}
 .sb.alerta{color:var(--quente)}
 /* Os dois QR lado a lado, e fundo branco fixo: leitor espera escuro
    sobre claro, e no tema escuro um codigo invertido nao abre. */
@@ -805,35 +852,34 @@ body.cfgProcurando .cfgAbas{opacity:.35;pointer-events:none}
 body.cfgProcurando .cfgRol .pane{display:block}
 body.cfgProcurando .et.foraDaBusca{display:none}
 
-/* O roteiro: uma linha por passo, numero, nome, estado e o atalho. */
-.roteiro{border:1px solid var(--linha);border-radius:3px;overflow:hidden;
- margin-bottom:9px}
-.rtItem{display:flex;align-items:center;gap:9px;padding:9px 10px;
- background:var(--painel);border-bottom:1px solid var(--linha)}
-.rtItem:last-child{border-bottom:none}
-.rtItem .n{font-family:var(--mono);font-size:11px;color:var(--letra3);
- width:14px;flex:0 0 auto;text-align:center}
-.rtItem .tx{flex:1;min-width:0}
-.rtItem .tt2{font-size:12.5px;color:var(--letra)}
-.rtItem .st{display:block;font-size:10.5px;color:var(--letra3);margin-top:1px}
-.rtItem.ok .n{color:var(--pronto)}
-.rtItem.ok .st{color:var(--pronto)}
-.cfgAbas{display:flex;gap:4px;padding:10px 16px 0;border-bottom:1px solid var(--linha)}
-.cfgAbas button{flex:1;background:none;border:none;border-bottom:2px solid transparent;
- color:var(--fraca);font:inherit;font-size:12px;padding:8px 4px 9px;cursor:pointer;
- border-radius:3px 3px 0 0}
-.cfgAbas button:hover{color:var(--letra)}
-.cfgAbas button.on{color:var(--arco);border-bottom-color:var(--arco)}
-.cfgRol{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px 18px;overscroll-behavior:contain;
- scrollbar-width:thin;min-width:0}
-/* A engrenagem gira devagar ao passar o dedo: e a unica animacao da tela
-   e existe para dizer que ali se MEXE em coisa, em vez de operar. */
-.ajd.eng{padding:0;display:inline-flex;align-items:center;justify-content:center}
-.ajd.eng svg{transition:transform .4s ease}
-.ajd.eng:hover svg{transform:rotate(45deg)}
-.ajd.eng.on{background:var(--arco);border-color:var(--arco);color:#fff}
-/* No modo operador some o que e instalacao; sobra o painel Sistema, que
-   e por onde ele sai do modo. */
+
+/* A FAIXA FIXA DO RODAPE.
+   Uma tira baixa, acima das abas nas duas larguras. Ela e navegacao de um
+   toque, entao nao pode rolar com o conteudo nem cobri-lo -- fica na
+   grade do app, como linha propria, e nao flutuando por cima. */
+/* Rotulo de conjunto: dois cartoes que sao a mesma acao com uma chave
+   diferente. Ele nao e um cartao -- e a linha que diz que os de baixo
+   andam juntos. */
+.grupoTt{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;
+ text-transform:uppercase;color:var(--letra3);
+ margin:14px 2px 6px;padding-bottom:4px;border-bottom:1px solid var(--linha)}
+.grupoTt:first-child{margin-top:2px}
+
+.faixa{display:flex;gap:6px;padding:5px 8px;background:var(--painel);
+ border-top:1px solid var(--linha);position:relative;z-index:80}
+.fx{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;
+ background:var(--face);border:1px solid var(--linha);border-radius:3px;
+ padding:7px 10px;cursor:pointer;color:var(--letra);text-align:left;
+ font-family:inherit;font-size:12.5px}
+.fx:hover{border-color:var(--linha2)}
+.fx:focus-visible{outline:2px solid var(--arco);outline-offset:1px}
+.fx .ic{width:17px;height:17px;flex:0 0 auto;stroke:currentColor;fill:none;
+ stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;color:var(--letra3)}
+.fxT{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap}
+.fxE{flex:0 0 auto;font-family:var(--mono);font-size:10.5px;
+ color:var(--letra3);letter-spacing:.04em}
+.fxE.ok{color:var(--pronto,var(--letra2))}
 
 /* Botao de parada sempre alcancavel, em qualquer aba. */
 .estop{flex:0 0 auto}
@@ -1006,7 +1052,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
   body[data-aba="mesa"] .coluna{display:none}
   .coluna{max-height:none}
 
-  .app{grid-template-rows:auto minmax(0,1fr) auto}
+  .app{grid-template-rows:auto minmax(0,1fr) auto auto}
   /* A barra de abas fica ACIMA da gaveta, como o cabecalho: tocar numa
      aba de trabalho com a configuracao aberta e o gesto natural de
      "voltar ao trabalho", e nao pode esbarrar num veu. */
@@ -1045,8 +1091,28 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 @media(min-width:1021px){
   /* No computador a mesa nunca some; as abas comandam so a coluna. */
   .quadro{display:flex}
+  /* A TIRA DE ABAS NAO ENCOLHE.
+     As abas de quadro fixo (Mover, Mao livre, Programa) transformam o .rol
+     em coluna flex para o miolo poder rolar por dentro. Nessas abas esta
+     tira vira ITEM FLEX -- e com o flex-shrink padrao ela era a primeira
+     coisa a ser espremida quando o conteudo pedia mais altura do que a
+     coluna tinha: caia de 34 px para 18, os rotulos ficavam cortados ao
+     meio e o painel parecia estar por cima do topo da coluna. Era o
+     "conteudo sobrepondo a parte superior".
+     Nada aqui pode encolher: a navegacao da coluna e a ultima coisa a
+     ceder espaco, nao a primeira. */
+  /* A TIRA DE ABAS NAO ENCOLHE.
+     As abas de quadro fixo (Mover, Mao livre, Programa) transformam o .rol
+     em coluna flex, para o miolo rolar por dentro. Nessas abas esta tira
+     vira ITEM FLEX -- e com o flex-shrink padrao ela era a primeira coisa
+     espremida quando o conteudo pedia mais altura do que a coluna tinha:
+     caia de 34 px para 18, os rotulos ficavam cortados ao meio e o painel
+     parecia estar por cima do topo da coluna. Era o "conteudo sobrepondo a
+     parte superior", e so na tela larga, porque so ali esta tira existe.
+     A navegacao da coluna e a ultima coisa a ceder espaco, nao a primeira. */
   .abasTopo{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;
    border:1px solid var(--linha);border-radius:3px;overflow:hidden;
+   flex:0 0 auto;
    margin-bottom:9px}
   .abasTopo button{background:var(--painel);border:none;border-right:1px solid var(--linha);
    padding:9px 4px;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
@@ -1095,6 +1161,9 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 <symbol id="i-cima" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/><path d="M4 21h16"/></symbol>
 <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></symbol>
 <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol>
+<symbol id="i-junta" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.6"/><path d="M6 18L13 8"/><circle cx="15" cy="6" r="2.2"/><path d="M15 6h4"/></symbol>
+<symbol id="i-parar" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+<symbol id="i-lampada" viewBox="0 0 24 24"><path d="M9.5 18h5"/><path d="M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.6.5.9 1.1.9 1.8v.3h5.2v-.3c0-.7.3-1.3.9-1.8A6 6 0 0012 3z"/></symbol>
 <symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
 </defs></svg>
 
@@ -1324,10 +1393,16 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
                  sairam: o eixo se escolhe tocando no elo do desenho ou
                  na propria seta, e o angulo ja esta na regua do rodape,
                  em corpo 28, comandado e medido lado a lado. -->
+            <!-- ICONE E ROTULO JUNTOS.
+                 So o texto obrigava a LER para achar o botao; so o icone
+                 obrigava a adivinhar. Os dois juntos: o desenho da junta
+                 acha o botao de relance, o rotulo confirma qual eixo. O
+                 quadrado cheio do PARAR e o simbolo de parada de toda
+                 maquina -- e o unico que nao precisa de leitura. -->
             <div class="comandos">
-              <button class="motor" id="btMotor1"><span id="btMotor1T">EIXO 1</span></button>
-              <button class="motor" id="btMotor2"><span id="btMotor2T">EIXO 2</span></button>
-              <button class="estop" id="btParar">PARAR</button>
+              <button class="motor" id="btMotor1"><svg class="ic"><use href="#i-junta"/></svg><span id="btMotor1T">EIXO 1</span></button>
+              <button class="motor" id="btMotor2"><svg class="ic"><use href="#i-junta"/></svg><span id="btMotor2T">EIXO 2</span></button>
+              <button class="estop" id="btParar"><svg class="ic"><use href="#i-parar"/></svg><span>PARAR</span></button>
             </div>
 
             <div class="eixo">
@@ -1368,7 +1443,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
                 <button class="mb" id="btPrec">precisao</button>
               </span></div>
             <div class="linhaBt">
-              <button class="b mini" id="btTesteMov">Testar rele</button>
+              <button class="lamp" id="btTesteMov" title="Pulsar o rele de solda"><svg class="ic"><use href="#i-lampada"/></svg><span>rele</span></button>
             </div>
             <h4>Ir para um angulo</h4>
             <div class="irAng">
@@ -1492,6 +1567,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
           </div>
         </div>
 
+        <!-- EXECUTAR: ENSAIAR E SOLDAR SAO O MESMO CONJUNTO.
+             Sao a mesma acao com o arco travado ou aberto -- e a diferenca
+             entre as duas e a chapa queimada. Soltos entre os outros
+             cartoes, o dedo podia cair no de baixo pensando no de cima.
+             Juntos, sob um rotulo so, a escolha entre ensaio e arco
+             aparece como o que ela e: uma escolha, nao dois botoes que
+             calharam de ficar perto. -->
+        <div class="grupoTt">Executar o programa</div>
+
         <div class="et" id="e3" data-e="3">
           <div class="cab"><div class="mk">3</div>
             <div class="tx"><div class="tt">Ensaiar sem arco</div>
@@ -1557,6 +1641,22 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
 
       <!-- ========================== MAQUINA =========================== -->
     </div></aside>
+  </div>
+
+  <!-- FAIXA FIXA DO RODAPE.
+       Calibrar e a coisa que mais se procura e que morava mais fundo: tres
+       toques dentro de uma gaveta. Aqui ela fica a um toque, de qualquer
+       aba, sem abrir nada.
+       E uma TIRA, nao um cartao: no telefone a barra de abas ja ocupa o
+       rodape, e um segundo rodape gordo comeria a altura mais escassa que
+       a tela tem. Fina, ela custa uns 40 px e nao cobre conteudo -- que e
+       a ressalva que o proprio pedido faz. -->
+  <div class="faixa" id="faixa">
+    <button class="fx" id="btFaixaCal">
+      <svg class="ic"><use href="#i-alvo"/></svg>
+      <span class="fxT">Calibrar braco e area da mesa</span>
+      <b class="fxE" id="fxCalEst">--</b>
+    </button>
   </div>
 
   <nav class="abas" id="abas"></nav>
@@ -1663,25 +1763,11 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
   </nav>
   <div class="cfgRol">
     <div class="pane on" id="cfgMaquina">
-      <!-- O ROTEIRO.
-           A gaveta tinha quinze cartoes e nenhuma ordem. Quem monta a
-           maquina pela primeira vez nao sabe o que vem antes do que, e
-           nada na tela dizia -- descobria-se abrindo cartao por cartao.
-           Aqui estao os cinco passos, na ordem, cada um dizendo se ja
-           esta feito e levando ao lugar onde se faz. Quem ja instalou
-           fecha e nunca mais abre. -->
-      <div class="et aberta" id="etRoteiro">
-        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-lista"/></svg></div>
-          <div class="tx"><div class="tt">Por onde comecar</div>
-          <span class="sb" id="sbRoteiro">--</span></div><div class="chv">&#9654;</div></div>
-        <div class="dentro">
-          <div class="roteiro" id="roteiro"></div>
-          <div class="nt">Nenhum destes passos e obrigatorio para mover o
-          braco na mao. Eles sao o que faz a maquina saber ONDE ela esta
-          &mdash; e sem isso um programa nao cai no mesmo lugar duas vezes.</div>
-        </div>
-      </div>
-
+      <!-- "POR ONDE COMECAR" SAIU.
+           Ele listava cinco passos e dizia em que aba cada um se faz --
+           ou seja, era NAVEGACAO, e navegacao ja esta nas abas. Ocupava o
+           topo da gaveta com uma explicacao de onde ficam as coisas, no
+           lugar de coisa que se opera. -->
         <div class="et aberta" id="e1" data-e="1">
           <div class="cab"><div class="mk">1</div>
             <div class="tx"><div class="tt">Preparar a maquina</div>
@@ -1702,7 +1788,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="nt">Estas medidas mudam o desenho e a area util na mesma proporcao. Meca do centro de um eixo ao centro do outro.</div>
             <button class="b mini" id="btSalvarElos">Aplicar medidas</button>
             <h4>Bancada</h4>
-            <button class="b mini" id="btTeste">Pulsar rele por 2 segundos</button>
+            <button class="lamp" id="btTeste" title="Pulsar o rele por 2 segundos"><svg class="ic"><use href="#i-lampada"/></svg><span>rele · 2 s</span></button>
           </div>
         </div>
 
@@ -1845,14 +1931,11 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
         </div>
       </div>
 
-      <div class="et aberta">
-        <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
-          <div class="tx"><div class="tt">Como a maquina esta agora</div>
-          <span class="sb" id="sbCalib">--</span></div><div class="chv">&#9654;</div></div>
-        <div class="dentro">
-          <div class="grelha" id="calResumo"></div>
-        </div>
-      </div>
+      <!-- "COMO A MAQUINA ESTA AGORA" SAIU DAQUI.
+           Estado atual nao e assunto de calibracao: calibrar e uma
+           tarefa, com comeco e fim, e o cartao ficava no meio dela
+           dizendo coisa de outro assunto. Foi para Sistema, ao lado da
+           Saude -- que e onde se acompanha o estado da maquina. -->
 
       <div class="et">
         <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
@@ -2040,6 +2123,15 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
             <div class="pq2" id="qManut"></div>
             <div class="nt">Zera o contador de ciclos desde a ultima
             manutencao. O total da maquina continua contando.</div>
+          </div>
+        </div>
+
+        <div class="et aberta">
+          <div class="cab"><div class="mk"><svg class="ic"><use href="#i-alvo"/></svg></div>
+            <div class="tx"><div class="tt">Como a maquina esta agora</div>
+            <span class="sb" id="sbCalib">--</span></div><div class="chv">&#9654;</div></div>
+          <div class="dentro">
+            <div class="grelha" id="calResumo"></div>
           </div>
         </div>
 
@@ -2382,7 +2474,22 @@ $("inVelMm").onchange=function(){
 document.querySelectorAll("[data-vel]").forEach(function(b){
   b.onclick=function(){ velEnviar(velDoNivel(+b.dataset.vel)); };
 });
-$("btTesteMov").onclick=function(){post("/api/teste/rele","qMoverSel");};
+/* A lampada ACENDE enquanto o pulso dura -- 2 s, que e o que a rota faz.
+   Sem isso o unico retorno seria o clique, e rele que nao se ouve da
+   bancada parece nao ter disparado. */
+function pulsarLampada(id){
+  const b=$(id); if(!b)return;
+  b.classList.add("on");
+  setTimeout(function(){b.classList.remove("on");},2000);
+}
+/* A faixa leva direto a pagina de calibracao da gaveta -- um toque, de
+   qualquer aba. E diz de relance se a maquina ja esta calibrada, que e a
+   pergunta que faz alguem procurar essa tela. */
+$("btFaixaCal").onclick=function(){ abrirCfg(); irCfg("calib"); };
+
+$("btTesteMov").onclick=function(){
+  pulsarLampada("btTesteMov");
+  post("/api/teste/rele","qMoverSel");};
 
 $("btMoverSel").onclick=function(){
   const j=juntaSel;
@@ -2485,7 +2592,9 @@ $("btParar").onclick =function(){post("/api/parar");};
   };
 });
 $("btPrec").onclick  =function(){post("/api/precisao?v=-1");};
-$("btTeste").onclick =function(){post("/api/teste/rele");};
+$("btTeste").onclick =function(){
+  pulsarLampada("btTeste");
+  post("/api/teste/rele");};
 /* Sentido do eixo: uma rota so, chamada dos dois lugares onde o assunto
    aparece -- Ajustes e a etapa de referencia da calibracao. Duas telas,
    um conceito, um caminho. */
@@ -2771,10 +2880,7 @@ function calibAtualizar(){
    girando o eixo precisa ver a contagem andar. */
 setInterval(function(){
   if(!$("veuCfg")||!$("veuCfg").classList.contains("on"))return;
-  if(cfgAtual==="calib")calibAtualizar();
-  /* O roteiro le o estado real: calibrar ou ensinar a mesa noutra aba
-     tem que riscar o passo aqui sem ninguem reabrir a gaveta. */
-  if(cfgAtual==="maquina"&&typeof roteiroPintar==="function")roteiroPintar();
+  if(cfgAtual==="calib"||cfgAtual==="sistema")calibAtualizar();
 }, 500);
 
 $("btMesaCanto").onclick=function(){
@@ -5472,6 +5578,15 @@ function aplicar(d){
   const rodando=(d.modo==="EXECUTANDO");
   const movendo=d.movendo;
 
+  /* A faixa do rodape responde de relance a pergunta que faz alguem
+     procurar a tela de calibracao: ja esta calibrada? */
+  const fxe=$("fxCalEst");
+  if(fxe){
+    const cal=d.cal1&&d.cal2;
+    fxe.textContent = cal ? "calibrada" : (d.cal1||d.cal2 ? "pela metade" : "nao calibrada");
+    fxe.classList.toggle("ok", !!cal);
+  }
+
   lamp($("lModo"),d.modo==="FALHA"?"er":(d.modo==="MANUAL"?"on":"at"),RM[d.modo]||d.modo);
   lamp($("lServo"),d.servos?"on":"");
   lamp($("lArco"),d.solda?"hot":"");
@@ -6007,16 +6122,30 @@ function irCfg(qual){
     b.classList.toggle("on", b.dataset.cfg === qual);});
   /* A tela de saude e o registro so sao buscados quando aparecem: sao
      duas requisicoes que nao fazem falta enquanto ninguem olha. */
-  if(qual === "sistema"){ saudeAtualizar(); pintarQR(); }
+  /* "Como a maquina esta agora" mora no Sistema desde que saiu da
+     Calibracao, mas quem o preenche continua sendo calibAtualizar() --
+     e a mesma leitura, so mudou de cartao. Sem chamar aqui, o cartao
+     ficaria em "--" para sempre no lugar novo. */
+  if(qual === "sistema"){ saudeAtualizar(); pintarQR(); calibAtualizar(); }
   if(qual === "calib"){ calibAtualizar(); }
-  if(qual === "maquina"){ roteiroPintar(); }
-  /* Em coluna larga a aba abre com TUDO a vista: sao poucos cartoes por
-     assunto, eles cabem lado a lado, e assim ninguem precisa clicar para
-     descobrir se o ajuste que procura existe. Fechar continua sendo um
-     clique, para quem quer so um assunto na frente. */
-  if(cfgEmColunas())
-    $(validas[qual]).querySelectorAll(".et").forEach(function(x){
-      if(x.querySelector(".cab .chv")) x.classList.add("aberta");});
+  /* SO O PRIMEIRO CARTAO NASCE ABERTO.
+     Antes a coluna larga abria TUDO a vista, com o argumento de que assim
+     ninguem precisava clicar para descobrir se um ajuste existia. Na
+     pratica virou uma parede: quatro ou cinco cartoes escancarados por
+     assunto, e quem procurava uma coisa lia todas. Numa tela de maquina
+     isso cansa mais do que ajuda.
+     Quem quer varrer os ajustes tem a BUSCA, que varre o texto inteiro de
+     todos os cartoes de todas as paginas -- e ela e melhor nisso do que o
+     olho passando por tudo aberto. */
+  {
+    const cartoes = $(validas[qual]).querySelectorAll(":scope > .et");
+    let primeiro = true;
+    cartoes.forEach(function(x){
+      if(!x.querySelector(".cab .chv")) return;   /* secao fixa, nao recolhe */
+      x.classList.toggle("aberta", primeiro);
+      primeiro = false;
+    });
+  }
   cfgColunas();
   try{localStorage.setItem("cfg", qual);}catch(e){}
 }
@@ -6061,83 +6190,24 @@ function cfgColunas(){
 function medirCabecalho(){
   const h = document.querySelector("header.placa");
   if(h) document.documentElement.style.setProperty("--altCab", h.offsetHeight + "px");
-  const a = document.getElementById("abas");
+  // TUDO O QUE MORA ABAIXO DA GAVETA ENTRA NA CONTA.
+  //
+  // A gaveta se dimensiona descontando o que esta em cima e embaixo dela.
+  // Quando a faixa fixa do rodape entrou, ela nao estava nesta soma -- e o
+  // fundo da gaveta passou a ficar ESCONDIDO atras dela: os ultimos botoes
+  // de cada pagina viravam inalcancaveis, sem nada na tela dizendo por
+  // que. Era exatamente o "controles fixos cobrindo conteudo".
+  //
   // No computador a barra de abas nao existe (display:none) e offsetHeight
-  // e zero -- que e exatamente o valor certo para a conta.
+  // e zero -- que e o valor certo para a conta. A faixa existe nas duas
+  // larguras, entao ela sempre soma.
+  const a = document.getElementById("abas");
+  const f = document.getElementById("faixa");
   document.documentElement.style.setProperty("--altAbas",
-    (a ? a.offsetHeight : 0) + "px");
+    ((a ? a.offsetHeight : 0) + (f ? f.offsetHeight : 0)) + "px");
 }
 addEventListener("resize", function(){ medirCabecalho(); cfgColunas(); });
 medirCabecalho();
-
-/* =====================================================================
-   O ROTEIRO DE INSTALACAO
-   Cinco passos, na ordem em que se faz. Cada um diz se ja esta feito --
-   lido do estado real da maquina, nao de um "ja marquei essa" guardado
-   no navegador -- e leva ao cartao onde se faz.
-   ===================================================================== */
-const ROTEIRO=[
- {t:"Medidas do braco",
-  q:function(){return null;},   /* nao da para saber: so mostra o valor */
-  v:function(){return "elo 1 "+Math.round(D.l1||0)+" mm · elo 2 "+
-                      Math.round(D.l2||0)+" mm";},
-  ir:function(){irCfg("maquina");abrirEt($("e1"));}},
- {t:"Torque nos motores",
-  q:function(){return !!(D.srv1&&D.srv2);},
-  v:function(){return D.srv1&&D.srv2 ? "os dois eixos com torque"
-             : (D.srv1||D.srv2) ? "so um eixo com torque"
-             : "os dois soltos";},
-  ir:function(){irCfg("maquina");abrirEt($("e1"));}},
- {t:"Calibrar o braco",
-  q:function(){return !!(D.cal1&&D.cal2);},
-  v:function(){return D.cal1&&D.cal2 ? "curso medido nas duas juntas"
-             : (D.cal1||D.cal2) ? "so uma junta medida"
-             : "nao medido — a maquina opera assim mesmo";},
-  ir:function(){irCfg("calib");}},
- {t:"Area da mesa",
-  q:function(){return !!D.mesaOn;},
-  v:function(){return D.mesaOn ? "cantos ensinados" : "nao ensinada";},
-  ir:function(){irCfg("calib");abrirEt($("btMesaCanto").closest(".et"));}},
- {t:"Zero absoluto",
-  q:function(){return !!(D.zEn1&&D.zEn2);},
-  v:function(){return (D.zEn1&&D.zEn2) ? "as duas juntas se localizam ao ligar"
-             : (D.zEn1||D.zEn2) ? "so uma junta ensinada"
-             : "a maquina nao sabe onde esta ao ligar";},
-  ir:function(){irCfg("maquina");}}
-];
-function abrirEt(et){
-  if(!et)return;
-  const painel=et.closest(".pane")||document;
-  painel.querySelectorAll(".et").forEach(function(x){
-    if(x.querySelector(".cab .chv"))x.classList.remove("aberta");});
-  et.classList.add("aberta");
-  et.scrollIntoView({block:"start"});
-}
-let roteiroAssim="";
-function roteiroPintar(){
-  const cx=$("roteiro"); if(!cx)return;
-  let feitos=0,total=0,h="";
-  ROTEIRO.forEach(function(r,i){
-    const ok=r.q();
-    if(ok!==null){ total++; if(ok)feitos++; }
-    h+='<div class="rtItem'+(ok?" ok":"")+'">'+
-       '<div class="n">'+(ok?"\u2713":(i+1))+'</div>'+
-       '<div class="tx"><div class="tt2">'+r.t+'</div>'+
-       '<span class="st">'+r.v()+'</span></div>'+
-       '<button class="mb" data-rt="'+i+'">abrir</button></div>';
-  });
-  /* Redesenhar de meio em meio segundo trocaria os botoes por outros
-     iguais o tempo todo -- e um clique que cai entre a destruicao e a
-     criacao se perde. So mexe no DOM quando alguma coisa mudou de
-     verdade. */
-  if(h===roteiroAssim){ $("sbRoteiro").textContent=feitos+" de "+total+" passos feitos"; return; }
-  roteiroAssim=h;
-  cx.innerHTML=h;
-  traduzirDom(cx);
-  cx.querySelectorAll("[data-rt]").forEach(function(b){
-    b.onclick=function(){ROTEIRO[+b.dataset.rt].ir();};});
-  $("sbRoteiro").textContent=feitos+" de "+total+" passos feitos";
-}
 
 /* =====================================================================
    PROCURAR UM AJUSTE

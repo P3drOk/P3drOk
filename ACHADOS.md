@@ -4533,12 +4533,110 @@ motivo de sempre e um a mais: aqui as duas mãos do operador estão no **braço*
 O guarda de "todo botão com id tem ação" aprendeu que existe botão de **segurar**
 — declarado com `data-segurar`, em vez de o guarda ser afrouxado.
 
+## R160 · A tela de trabalho enxuta, e a tira esmagada  ✅
+
+Prioridade 2 do relatório: a interface fica mais limpa e mais adequada à
+operação de uma máquina. Nada de lógica mudou — nenhum `.cpp` foi tocado, e as
+funções protegidas da §30 ficaram intactas.
+
+### §6 · A sobreposição era uma tira sendo espremida
+
+O relato dizia que abrir uma seção no Programa punha conteúdo por cima da parte
+superior. Li o CSS e não achei culpado: o cabeçalho é `z-index:80` e nada da
+coluna sobe acima dele. Chutar correção para defeito visual não visto é como se
+entrega não-correção — então rodei a tela larga e **olhei**.
+
+Estava na captura, e é medível: a tira de abas da coluna
+(`MOVER | MÃO LIVRE | PROGRAMA | ENCODER`) aparecia **cortada ao meio**.
+
+| aba | `.rol` | altura da tira |
+|---|---|---|
+| Mover, Encoder | `block` | 34,3 px |
+| Mão livre, Programa | `flex` | **20 e 18,3 px** |
+
+As abas de quadro fixo transformam o `.rol` em coluna flex, para o miolo rolar
+por dentro. Ali a tira vira **item flex** — e com o `flex-shrink` padrão ela era
+a primeira coisa espremida quando o conteúdo pedia mais altura do que a coluna
+tinha. Rótulos cortados ao meio leem como um painel montado por cima do topo.
+
+Uma linha: `flex: 0 0 auto`. A navegação da coluna é a última coisa a ceder
+espaço, não a primeira.
+
+> A Etapa 1 tinha **herdado** o defeito: ao dar quadro fixo à Mão livre eu
+> copiei o `display:flex` e com ele o problema. A mesma linha conserta as duas.
+
+O guarda afirma o contrato — *não encolhe* — em vez de medir altura. Medir
+dependeria de quanta coisa o painel tem naquele instante: com o programa vazio
+o defeito nem aparece, e o teste passaria a verde sem guardar nada. Foi o que
+aconteceu na primeira tentativa, e por isso ela foi trocada.
+
+### §21 · Supervisão em grade, com a célula empilhada
+
+`.grelha` era uma coluna só, rótulo à esquerda e valor lá na direita: a saúde
+da máquina virava uma tira comprida com um vão enorme no meio de cada linha.
+Empilhando rótulo e valor, a célula fica estreita o bastante para caberem duas
+por cartão:
+
+| quadro | antes | depois |
+|---|---|---|
+| Saúde da máquina | 397 px | **296 px** |
+| Como a máquina está agora | 284 px | **216 px** |
+
+`auto-fill` resolve sem media query: no telefone dá uma coluna sozinho.
+
+### §22 e §24 · Estado atual não é assunto de calibração
+
+Calibrar é uma tarefa, com começo e fim, e o cartão ficava no meio dela falando
+de outro assunto. Foi para **Sistema**, ao lado da Saúde. Quem o preenche
+continua sendo a mesma leitura — e por isso ela passou a ser chamada também com
+o Sistema aberto, senão o cartão ficaria em "--" para sempre no lugar novo.
+
+### §23 e §27 · Uma tira, não um segundo rodapé
+
+Calibrar era a coisa mais procurada e a que morava mais fundo. Agora está a um
+toque, de qualquer aba, e diz de relance se a máquina já está calibrada.
+
+É uma **tira**: no telefone a barra de abas já ocupa o rodapé, e um segundo
+rodapé gordo comeria a altura mais escassa que a tela tem.
+
+E ela cobriu conteúdo na primeira tentativa — exatamente o risco de que a §27
+avisa. A gaveta se dimensiona descontando o que está acima e abaixo dela; a
+tira não estava nessa soma, e o fim de cada página ficou inalcançável. Quem
+pegou foi o banco, com dois botões "não clicáveis". A altura da tira entrou no
+desconto, e um guarda novo prende isso.
+
+> A §27 entra pela metade nesta etapa, de propósito: a tira existe agora, e os
+> controles de velocidade e partida se mudam para ela na Etapa 3, depois que a
+> §25/§26 os reduzirem a um "Ajustar" só. Construir a tira duas vezes seria
+> desperdício.
+
+### §17 · Só o primeiro cartão nasce aberto
+
+A coluna larga abria **todos**, com o argumento de que assim ninguém precisava
+clicar para descobrir se um ajuste existia. Na prática virou uma parede. Quem
+quer varrer os ajustes tem a **busca**, que lê o texto inteiro de todas as
+páginas e é melhor nisso do que o olho passando por tudo aberto.
+
+### §2, §5 e §13
+
+Os comandos dos eixos ganharam **ícone e rótulo**: só o texto obrigava a ler,
+só o ícone obrigava a adivinhar. O relé virou **lâmpada redonda** que acende
+durante o pulso — relé que não se ouve da bancada parece não ter disparado.
+Ensaiar e Soldar ganharam um rótulo de conjunto: são a mesma ação com o arco
+travado ou aberto, e a diferença entre as duas é a chapa queimada.
+
+### §28 · "Por onde começar" saiu
+
+Ele listava cinco passos e dizia em que aba cada um se faz — ou seja, era
+navegação, e navegação já está nas abas. Saiu inteiro: cartão, dados, pintura,
+chamadas e CSS.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
 | firmware | 229 / 0 | 241 / 0 | 367 / 0 | **501 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **295 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **301 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

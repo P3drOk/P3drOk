@@ -274,7 +274,7 @@ async function fecharGaveta(pag) {
          gaveta.abas.join(' | '));
   for (const [cfg, alvo, nome] of [
     ['maquina', '#e1',        'Maquina'],
-    ['calib',   '#calResumo', 'Calibracao'],
+    ['calib',   '#calVivo',   'Calibracao'],
     ['encoder', '#sbCorr',    'Encoder'],
     ['sistema', '#saudeG',    'Sistema'],
   ]) {
@@ -590,27 +590,38 @@ async function fecharGaveta(pag) {
   checar(cfgCol.colunas > 1 && cfgCol.colunas <= cfgCol.cartoes,
          'Configuracao: em tela larga os cartoes entram em colunas, sem sobrar coluna vazia',
          cfgCol.colunas + ' coluna(s) para ' + cfgCol.cartoes + ' cartao(oes)');
-  checar(cfgCol.abertos === cfgCol.cartoes,
-         'Configuracao: e nascem todos abertos -- nada escondido atras de um clique',
+  // SO O PRIMEIRO CARTAO NASCE ABERTO.
+  //
+  // Antes abriam todos, com o argumento de que assim ninguem precisava
+  // clicar para descobrir se um ajuste existia. Na pratica virou uma
+  // parede: quatro ou cinco cartoes escancarados por assunto, e quem
+  // procurava uma coisa lia todas. Quem quer varrer os ajustes tem a
+  // BUSCA, que le o texto inteiro de todas as paginas e e melhor nisso do
+  // que o olho passando por tudo aberto.
+  checar(cfgCol.abertos === 1,
+         'Configuracao: so o primeiro cartao nasce aberto, em vez de todos',
          cfgCol.abertos + ' de ' + cfgCol.cartoes + ' abertos');
   // Sem teto de largura a coluna se estica e a linha vira um nome na
   // esquerda com o campo la longe, na direita.
   checar(cfgCol.largura < cfgCol.rolo,
          'Configuracao: o bloco tem teto de largura e fica centrado, em vez de esticar',
          Math.round(cfgCol.largura) + ' px de ' + Math.round(cfgCol.rolo));
-  // E fechar continua sendo um clique: a alternancia nao pode ter virado
-  // exclusividade ao contrario.
-  await q.locator('#cfgMaquina .et .cab .chv').first().click();
+  // ABRIR UM NAO FECHA OS OUTROS, na coluna larga.
+  //
+  // Aqui ha espaco para comparar dois assuntos lado a lado, entao a
+  // exclusividade do celular -- abrir um fecha o resto -- nao vale. O
+  // teste abre um SEGUNDO cartao e confere que o primeiro continua la.
+  await q.locator('#cfgMaquina .et:nth-of-type(2) .cab .chv').click();
   await q.waitForTimeout(200);
   const cfgFecha = await q.evaluate(() => {
     const cartoes = [...document.querySelector('#cfgMaquina').children]
       .filter(x => x.classList.contains('et'));
     return { primeiro: cartoes[0].classList.contains('aberta'),
-             resto: cartoes.slice(1).filter(x => x.classList.contains('aberta')).length };
+             abertos: cartoes.filter(x => x.classList.contains('aberta')).length };
   });
-  checar(!cfgFecha.primeiro && cfgFecha.resto > 0,
-         'Configuracao: fechar um cartao nao fecha os outros junto',
-         'restaram ' + cfgFecha.resto + ' aberto(s)');
+  checar(cfgFecha.primeiro && cfgFecha.abertos === 2,
+         'Configuracao: em tela larga abrir um cartao nao fecha o outro',
+         cfgFecha.abertos + ' aberto(s), primeiro segue aberto: ' + cfgFecha.primeiro);
 
   await fecharGaveta(q);
   const botaoEnc = await q.evaluate(() => {
@@ -621,6 +632,129 @@ async function fecharGaveta(pag) {
          'Encoder: com a coluna aberta, o botao de aba some -- ela ja esta na tela');
   await q.screenshot({ path: SAIDA + '/computador-4-encoder-fixo.png' });
   await q.locator('#abasTopo button[data-aba="mover"]').click();
+  await q.waitForTimeout(200);
+
+  // ICONE NOS COMANDOS, E O RELE COMO LAMPADA.
+  //
+  // So o texto obrigava a LER para achar o botao; so o icone obrigava a
+  // adivinhar. Os dois juntos: o desenho acha o botao de relance, o
+  // rotulo confirma qual eixo. O rele nao configura nada -- aperta e
+  // pulsa, agora --, entao ele e redondo com a lampada dentro, e acende
+  // enquanto o pulso dura: rele que nao se ouve da bancada parece nao ter
+  // disparado.
+  await q.evaluate(() => irAba('mover'));
+  await q.waitForTimeout(250);
+  const forma = await q.evaluate(() => {
+    const usa = id => {
+      const b = document.getElementById(id);
+      const u = b && b.querySelector('svg use');
+      return u ? u.getAttribute('href') : '';
+    };
+    const temTexto = id => {
+      const b = document.getElementById(id);
+      return b ? /EIXO|PARAR|rele/i.test(b.textContent) : false;
+    };
+    const l = document.getElementById('btTesteMov');
+    const ic = l && l.querySelector('.ic');
+    const r = ic ? getComputedStyle(ic) : null;
+    return {
+      eixo1: usa('btMotor1'), eixo2: usa('btMotor2'), parar: usa('btParar'),
+      rele: usa('btTesteMov'),
+      rotulos: temTexto('btMotor1') && temTexto('btParar') && temTexto('btTesteMov'),
+      redondo: r ? r.borderRadius : '',
+      acende: !!l && l.className.indexOf('lamp') >= 0,
+    };
+  });
+  checar(/i-junta/.test(forma.eixo1) && /i-junta/.test(forma.eixo2) &&
+         /i-parar/.test(forma.parar) && forma.rotulos,
+         'os comandos dos eixos tem icone E rotulo -- nem so ler, nem so adivinhar',
+         JSON.stringify(forma));
+  checar(/i-lampada/.test(forma.rele) && forma.acende && /50%/.test(forma.redondo),
+         'e o rele e uma lampada redonda, nao um botao de texto',
+         'raio ' + forma.redondo + ', href ' + forma.rele);
+
+  // Acender e o unico retorno que existe para um pulso de 2 s.
+  await q.locator('#btTesteMov').click();
+  await q.waitForTimeout(150);
+  const acesa = await q.evaluate(() =>
+    document.getElementById('btTesteMov').classList.contains('on'));
+  checar(acesa, 'a lampada acende enquanto o pulso dura');
+
+  // A FAIXA FIXA DO RODAPE NAO COBRE NADA.
+  //
+  // Controle fixo tem um risco proprio, e o pedido avisa dele: cobrir
+  // conteudo. A gaveta se dimensiona descontando o que esta em cima e
+  // embaixo dela -- quando a faixa entrou sem estar nessa soma, o fundo
+  // de cada pagina ficou escondido atras dela e os ultimos botoes viraram
+  // inalcancaveis, sem nada na tela dizendo por que.
+  const barraFixa = await q.evaluate(() => {
+    const f = document.getElementById('faixa');
+    const a = document.getElementById('abas');
+    const r = f.getBoundingClientRect();
+    const ra = a ? a.getBoundingClientRect() : null;
+    return { existe: !!f, alt: Math.round(r.height),
+             dentroDaTela: r.bottom <= innerHeight + 1 && r.top >= 0,
+             acimaDasAbas: !ra || ra.height === 0 || r.bottom <= ra.top + 1,
+             desconto: getComputedStyle(document.documentElement)
+                         .getPropertyValue('--altAbas').trim() };
+  });
+  checar(barraFixa.existe && barraFixa.dentroDaTela && barraFixa.acimaDasAbas,
+         'a faixa fixa fica visivel no rodape, acima das abas, sem sair da tela',
+         JSON.stringify(barraFixa));
+  checar(parseFloat(barraFixa.desconto) >= barraFixa.alt,
+         'e a altura dela entra no desconto da gaveta, para nao cobrir o fim das paginas',
+         'faixa ' + barraFixa.alt + ' px, desconto ' + barraFixa.desconto);
+
+  // A faixa leva a calibracao num toque, de qualquer aba.
+  await q.locator('#btFaixaCal').click();
+  await q.waitForTimeout(400);
+  const foiCal = await q.evaluate(() => ({
+    gaveta: document.getElementById('veuCfg').classList.contains('on'),
+    pagina: document.getElementById('cfgCalib').classList.contains('on'),
+  }));
+  checar(foiCal.gaveta && foiCal.pagina,
+         'e ela abre a calibracao direto, sem passar por outra tela',
+         JSON.stringify(foiCal));
+  await fecharGaveta(q);
+
+  // A TIRA DE ABAS DA COLUNA NAO PODE ENCOLHER.
+  //
+  // As abas de quadro fixo (Mover, Mao livre, Programa) transformam o .rol
+  // em coluna flex, para o miolo rolar por dentro em vez de a coluna
+  // inteira rolar. Ali esta tira vira ITEM FLEX -- e com o flex-shrink
+  // padrao ela era a primeira coisa espremida quando o conteudo pedia mais
+  // altura do que a coluna tinha: caia de 34 px para 18, os rotulos
+  // ficavam cortados ao meio e o painel parecia estar POR CIMA do topo da
+  // coluna. Era o "conteudo sobrepondo a parte superior", e so na tela
+  // larga, porque so ali esta tira existe.
+  //
+  // O CONTRATO E "NAO ENCOLHE", e e ele que se afirma. Medir altura
+  // dependeria de quanta coisa o painel tem naquele instante -- com o
+  // programa vazio o defeito nem aparece, e o guarda passaria a verde sem
+  // guardar nada. A altura entra junto so como conferencia extra.
+  const encolhe = await q.evaluate(() =>
+    getComputedStyle(document.querySelector('#abasTopo')).flexShrink);
+  checar(encolhe === '0',
+         'a tira de abas da coluna nao encolhe: e a navegacao, nao a folga',
+         'flex-shrink: ' + encolhe);
+
+  const alturas = {};
+  for (const aba of ['mover', 'mao', 'prog', 'enc']) {
+    await q.evaluate(a => irAba(a), aba);
+    await q.waitForTimeout(200);
+    await q.evaluate(() => {
+      const pn = document.querySelector('.pane.on');
+      if (pn) pn.querySelectorAll('.et').forEach(e => e.classList.add('aberta'));
+    });
+    await q.waitForTimeout(250);
+    alturas[aba] = await q.evaluate(() =>
+      +document.querySelector('#abasTopo').getBoundingClientRect().height.toFixed(1));
+  }
+  const hs = Object.values(alturas);
+  checar(Math.max(...hs) - Math.min(...hs) < 1.5,
+         'e ela tem a mesma altura em toda aba, com as secoes abertas',
+         JSON.stringify(alturas));
+  await q.evaluate(() => irAba('mover'));
   await q.waitForTimeout(200);
 
   // Zero absoluto: a secao nasce TRANCADA em toda visita. O tranco existe
@@ -1930,43 +2064,30 @@ async function fecharGaveta(pag) {
   await t.waitForTimeout(250);
 
   // ------------------------------------------------------------------
-  // A GAVETA GANHOU UM COMECO E UMA BUSCA.
+  // "POR ONDE COMECAR" SAIU DA GAVETA, E A BUSCA FICOU.
   //
-  // Eram quinze cartoes sem ordem nenhuma: quem monta a maquina pela
-  // primeira vez descobria a sequencia abrindo cartao por cartao. O
-  // roteiro poe os cinco passos em ordem, cada um lendo do estado REAL
-  // da maquina se ja esta feito.
+  // O roteiro listava cinco passos e dizia em que aba cada um se faz --
+  // ou seja, era NAVEGACAO, e navegacao ja esta nas abas. Ocupava o topo
+  // da gaveta com uma explicacao de onde ficam as coisas, no lugar de
+  // coisa que se opera.
+  //
+  // Sair de verdade quer dizer nao sobrar nem o cartao, nem o resumo, nem
+  // o CSS orfao -- e nenhum erro de JavaScript de quem chamava a funcao
+  // que pintava tudo isso (o guarda de console limpo cobre esse lado).
   // ------------------------------------------------------------------
   await abrirGaveta(t, 'maquina');
   await t.waitForTimeout(500);
-  const rot = await t.evaluate(() => ({
-    passos: [...document.querySelectorAll('#roteiro .rtItem')]
-              .map(e => e.querySelector('.tt2').textContent.trim()),
-    feitos: [...document.querySelectorAll('#roteiro .rtItem.ok')]
-              .map(e => e.querySelector('.tt2').textContent.trim()),
-    resumo: document.getElementById('sbRoteiro').textContent.trim(),
+  const semRoteiro = await t.evaluate(() => ({
+    cartao: !!document.getElementById('etRoteiro'),
+    lista:  !!document.getElementById('roteiro'),
+    resumo: !!document.getElementById('sbRoteiro'),
+    itens:  document.querySelectorAll('.rtItem').length,
+    texto:  /por onde comecar/i.test(document.body.innerText),
   }));
-  checar(rot.passos.length === 5 && /Calibrar o braco/.test(rot.passos.join('|')),
-         'Gaveta: o roteiro lista os cinco passos da instalacao, em ordem',
-         rot.passos.join(' > '));
-  checar(/\d+ de \d+ passos feitos/.test(rot.resumo),
-         'Gaveta: e o cabecalho do roteiro conta quantos ja estao feitos',
-         rot.resumo);
-  checar(rot.feitos.length > 0,
-         'Gaveta: os passos ja feitos vem riscados, lidos do estado da maquina',
-         rot.feitos.join(', ') || 'nenhum');
-
-  // O atalho de cada passo tem que LEVAR ao lugar. "Calibrar o braco"
-  // mora noutra pagina da gaveta: se o botao so abrisse o cartao, quem
-  // clicasse ficaria olhando para uma tela que nao mudou.
-  await t.evaluate(() => document.getElementById('etRoteiro').classList.add('aberta'));
-  await t.waitForTimeout(200);
-  await t.locator('#roteiro .rtItem:nth-child(3) [data-rt]').click();
-  await t.waitForTimeout(350);
-  const foiParaCalib = await t.evaluate(() =>
-    document.getElementById('cfgCalib').classList.contains('on'));
-  checar(foiParaCalib,
-         'Gaveta: o atalho do roteiro troca de pagina, nao so abre o cartao');
+  checar(!semRoteiro.cartao && !semRoteiro.lista && !semRoteiro.resumo &&
+         semRoteiro.itens === 0 && !semRoteiro.texto,
+         'Gaveta: "Por onde comecar" saiu inteiro -- cartao, lista e resumo',
+         JSON.stringify(semRoteiro));
 
   // A busca varre o TEXTO INTEIRO do cartao, de todas as paginas: quem
   // procura "aceleracao" nao sabe (nem tem de saber) que ela mora em
@@ -2013,20 +2134,33 @@ async function fecharGaveta(pag) {
   // mede a reducao mecanica (o encoder nao ve o redutor, entao precisa de
   // uma referencia).
   // ------------------------------------------------------------------
-  await abrirGaveta(t, 'calib');
-  await t.waitForTimeout(600);
-
+  // "COMO A MAQUINA ESTA AGORA" MORA NO SISTEMA.
+  //
+  // Estado atual nao e assunto de calibracao: calibrar e uma tarefa, com
+  // comeco e fim, e o cartao ficava no meio dela falando de outro
+  // assunto. Foi para Sistema, ao lado da Saude -- e quem o preenche
+  // continua sendo a mesma leitura, entao ele tem de estar VIVO ali, nao
+  // parado em "--".
+  await abrirGaveta(t, 'sistema');
+  await t.waitForTimeout(700);
   const resumo = await t.evaluate(() => ({
+    ondeEsta: !!document.querySelector('#cfgSistema #calResumo'),
+    naCalib:  !!document.querySelector('#cfgCalib #calResumo'),
     n: document.querySelectorAll('#calResumo .sl').length,
     txt: document.getElementById('calResumo').textContent,
-    vivo: document.getElementById('calVivo').textContent,
   }));
+  checar(resumo.ondeEsta && !resumo.naCalib,
+         'Sistema: "Como a maquina esta agora" saiu da Calibracao e mora aqui',
+         JSON.stringify({ sistema: resumo.ondeEsta, calib: resumo.naCalib }));
   checar(resumo.n >= 9,
-         'Calibracao: o quadro resume resolucao, reducao, curso e mesa',
+         'Sistema: o quadro resume resolucao, reducao, curso e mesa',
          resumo.n + ' linhas');
   checar(/16\.500|16,500/.test(resumo.txt) && /458/.test(resumo.txt),
-         'Calibracao: com a reducao e a resolucao de cada junta',
+         'Sistema: e ele se preenche no lugar novo, em vez de ficar em "--"',
          resumo.txt.slice(0, 70));
+
+  await abrirGaveta(t, 'calib');
+  await t.waitForTimeout(600);
 
   // O REDUTOR mudou de lugar: mora embaixo da medicao do encoder daquela
   // junta. O encoder conta no eixo do MOTOR, antes do redutor -- a

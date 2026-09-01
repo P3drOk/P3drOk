@@ -225,10 +225,22 @@ A tela de trabalho tem cinco abas, e só elas:
 | **Programa** | editar a lista, ensaiar, soldar, produção |
 | **Encoder** | a leitura ao vivo, análise e diagnóstico da linha |
 
+Abaixo das abas há uma **tira fixa** com a calibração do braço e da área da
+mesa: era a tela mais procurada e a que morava mais fundo, e agora está a um
+toque de qualquer aba. Ela também diz de relance se a máquina já está
+calibrada. É uma tira, e não um cartão, porque no telefone a barra de abas já
+ocupa o rodapé — um segundo rodapé gordo comeria a altura mais escassa que a
+tela tem.
+
 A **Mão livre** vem antes do Programa porque é ali que o trabalho começa:
 primeiro se ensina o caminho, depois ele roda. Quem **grava** é ela; quem
 **executa** continua sendo o Programa, e os pontos são os mesmos — uma
 lista só, vista dos dois lados.
+
+> **Configuração:** cada página da gaveta abre com o **primeiro cartão** à
+> vista, e só ele. Antes abriam todos na tela larga, e quem procurava uma coisa
+> lia todas. Para varrer os ajustes existe a **busca**, que lê o texto inteiro
+> de todos os cartões de todas as páginas.
 
 **Arquivos** saiu daqui: era um terço de coluna ao lado do braço, e ali
 uma lista de trabalhos nunca cabia. Virou **gaveta de tela cheia**, no
