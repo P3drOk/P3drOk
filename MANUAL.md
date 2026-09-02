@@ -1098,6 +1098,8 @@ chegue a medida: freio tardio ainda é freio. A separação é essa:
 | afinar ao chegar, freio no alvo, governador | só **reduz** e **para** | **continua valendo** |
 | assentamento no fim | retoca nos **dois** sentidos | **desligado** |
 
+E o assentamento só olha o que a medida **não** confirmou — ver adiante.
+
 O ritmo do barramento gateia **só o assentamento**. Abaixo de 10 leituras
 por segundo a máquina diz, ao chegar: *"cheguei pela rampa; o encoder
 está a uma leitura cada N ms — lento demais para acertar o ponto sem
@@ -1121,8 +1123,40 @@ média.
 
 Cenário **V30**.
 
-Quando o braço chega, o encoder diz onde ele **realmente** parou e o
-sistema dá um retoque curto.
+### E o que a medida já confirmou não se retoca
+
+O freio para o eixo quando o encoder diz que ele chegou ao ângulo pedido.
+Depois disso o que sobra é o escorrego da rampa de parada mais o ruído da
+leitura — décimos de grau, abaixo do que a máquina repete.
+
+**Isso não vira retoque.** O driver é servo: ele segura a posição
+sozinho. Perseguir o último décimo é mandar o braço atrás de um número
+que muda a cada leitura, e da bancada se vê assim:
+
+> *"Quando chega ao objetivo fica oscilando até acertar o grau certo, e
+> como se trata de um servo motor isso não é necessário."*
+
+Medido no cenário `V34`, com a régua digitada errada por 2× (que é o que
+deixa um resto de verdade) e o barramento a 77 ms:
+
+| | o braço andou depois de chegar | retoques |
+|---|---|---|
+| retocando o que a medida confirmou | **0,252°** | 1 |
+| sem retocar | **0,000°** | **0** |
+
+O assentamento **não** foi removido. Ele continua inteiro para o caso em
+que a medida *não* confirmou nada — perda de passo, acoplamento solto,
+leitura ruim durante o movimento inteiro. Ali o erro é de graus, não de
+décimos, e nenhum servo conserta sozinho o que o eixo deixou de andar:
+`V34d` prende essa metade, com 7° de perda fechando em três retoques.
+
+> O freio só consegue **parar** o eixo mais cedo; ele nunca estende um
+> movimento. Por isso a perda de passo continua precisando do
+> assentamento: o eixo chega ao destino em passos com o ângulo ainda
+> faltando, e não há mais movimento para o freio interromper.
+
+Quando o braço chega sem a medida confirmar, o encoder diz onde ele
+**realmente** parou e o sistema dá um retoque curto.
 
 **Não é malha fechada de servo.** Cada leitura Modbus custa 5 a 20 ms com
 jitter — corrigir o eixo *enquanto ele anda* faria o braço oscilar. É

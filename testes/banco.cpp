@@ -6040,6 +6040,7 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
     float piorErro = 0.0f, piorExcesso = 0.0f;
     int   piorInv = 0;
     float primeiroExcesso = 0.0f;
+    float primeiroErro    = 0.0f;
     for (int p = 0; p < 5; p++) {
       const float alvo = pedidos[p];
       char rota[64];
@@ -6066,8 +6067,17 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
       rodarComWeb(200);
       const float onde = encoderLer(1).graus;
       const float erro = fabsf(onde - alvo);
-      if (erro > piorErro)       piorErro = erro;
+      // O ERRO TAMBEM SE CONTA A PARTIR DA SEGUNDA VIAGEM.
+      //
+      // Mesma razao das inversoes, logo abaixo: na primeira ida a
+      // maquina ainda acredita na regua digitada. E, desde que o
+      // assentamento parou de retocar o que a medida ja confirmou, o
+      // decimo de grau que sobra da parada FICA -- que e o que foi
+      // pedido da bancada: com servo, perseguir esse decimo e o que
+      // fazia o braco oscilar no fim.
+      if (p > 0 && erro > piorErro) piorErro = erro;
       if (excesso > piorExcesso) piorExcesso = excesso;
+      if (p == 0) primeiroErro = erro;
       // A PRIMEIRA VIAGEM DA MAQUINA E CONTADA A PARTE.
       //
       // O vai-e-vem se conta de p=1 em diante porque antes de andar a
@@ -6111,9 +6121,10 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
     // E a primeira viagem, aquela em que a maquina ainda acredita na
     // regua digitada, tem excesso LIMITADO. Sem esta linha o cenario
     // deixaria de olhar justamente o movimento mais exposto.
-    nota("  primeira viagem (a maquina ainda nao se mediu): excesso %.3f grau",
-         (double)primeiroExcesso);
-    checar(primeiroExcesso < 0.50f, (caso == 0) ? "V29g" : "V29h",
+    nota("  primeira viagem (a maquina ainda nao se mediu): erro %.3f grau, "
+         "excesso %.3f grau", (double)primeiroErro, (double)primeiroExcesso);
+    checar(primeiroExcesso < 0.50f && primeiroErro < 0.50f,
+           (caso == 0) ? "V29g" : "V29h",
            (caso == 0)
              ? "e a primeira viagem tambem para no ponto, que com a regua "
                "certa nao ha o que descobrir"
@@ -6552,6 +6563,126 @@ static void teste_V33_tres_comandos_por_viagem() {
          "nenhuma mudanca do setpoint do gerador acontece por fora de "
          "programarVelocidade(): e ele que guarda o que foi realmente "
          "programado, e quem escreve por fora deixa esse registro mentindo");
+}
+
+// ---------------------------------------------------------------------
+// V34: chegou, para de mexer. O driver e servo.
+//
+// "O movimento parece estar suave, mas quando chega ao objetivo fica
+// oscilando ate acertar o grau certo. Como se trata de um servo motor
+// isso nao e necessario."
+//
+// Esta certo. O freio ja para o eixo quando o ENCODER diz que ele chegou
+// ao angulo pedido. O que sobra depois disso e o escorrego da rampa de
+// parada mais o ruido da leitura -- decimos de grau, abaixo do que a
+// maquina repete. O assentamento perseguia esse resto: cada retoque
+// errava para o outro lado e pedia o proximo.
+//
+// O assentamento NAO foi removido. Ele continua inteiro para o caso em
+// que a medida nao confirmou nada -- perda de passo, acoplamento solto
+// --, onde o erro e de graus e nenhum servo conserta sozinho o que o
+// eixo deixou de andar. As duas metades estao aqui, e e o par que
+// importa: quem "consertar" isto apagando o assentamento derruba V34d.
+// ---------------------------------------------------------------------
+static void teste_V34_chegou_para_de_mexer() {
+  secao("V34  Chegou ao angulo: para de mexer, que o driver e servo");
+  reiniciarSistema();
+  // A REGUA DIGITADA ERRADA, que e o que deixa um RESTO de verdade.
+  //
+  // Com a regua certa e barramento bom a chegada sai exata e nao ha o
+  // que retocar -- o cenario passaria sem provar nada. Com a regua
+  // errada o eixo escorrega alem do ponto onde a medida mandou parar, e
+  // esse resto e maior que a tolerancia do assentamento. Era ele que
+  // virava retoque, e retoque com regua errada anda o dobro do pedido e
+  // erra para o outro lado: o vai-e-vem que a bancada viu.
+  const uint32_t ppvReal = J1.passosPorVolta;
+  g_ppvReal[0] = ppvReal;
+  J1.passosPorVolta = ppvReal * 2;
+  recalcularResolucao();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  // O BARRAMENTO DA BANCADA, NA FAIXA QUE IMPORTA.
+  //
+  // Lento o bastante para o eixo escorregar um tanto depois que a medida
+  // manda parar -- que e de onde vem o resto que sobra --, e rapido o
+  // bastante para o assentamento NAO ser recusado pelo ritmo. Com o
+  // barramento otimo a chegada sai exata e o cenario passaria sem provar
+  // nada; com ele pessimo o portao do ritmo faria o trabalho e o cenario
+  // tambem nao provaria nada. O defeito mora nesta faixa do meio.
+  configEncoder.periodoMs = 80;
+  g_espelharEixo = true;
+  rodarComWeb(900);
+
+  nota("barramento a uma leitura cada %lu ms -- o assentamento ESTA "
+       "habilitado; se ele fosse retocar, seria agora",
+       (unsigned long)correcaoRitmoMs(1));
+  checar(encoderGuiaOMovimento(1), "V34a",
+         "o ritmo do barramento permite assentar: o que vem abaixo e "
+         "escolha, e nao o portao do barramento fazendo o trabalho");
+
+  webPost("/api/mover?t1=45&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  // Corre ate o eixo parar pela primeira vez -- e a chegada.
+  { uint32_t e = 0; while (motoresEmMovimento() && e < 40000) { rodarComWeb(20); e += 20; } }
+
+  const float grausNaChegada = encoderLer(1).graus;
+
+  // O QUE SE MEDE E O ENCODER, E NAO A CONTAGEM DE PASSOS.
+  //
+  // O assentamento, ao concluir, devolve a contagem ao alvo com
+  // ajustarContagem() -- e ali NENHUM pulso sai no fio: o eixo nao se
+  // mexe. Medindo posicaoJ1() eu contava essa reescrita como se fosse
+  // movimento e lia 22 graus de vai-e-vem onde o braco tinha andado uma
+  // frac,ao de grau. O encoder segue o ferro; ele so muda quando o braco
+  // anda.
+  float encBaixo = grausNaChegada, encAlto = grausNaChegada;
+  { uint32_t e = 0;
+    while (modoAtual != MODO_MANUAL && e < 40000) {
+      rodarComWeb(20); e += 20;
+      const float g = encoderLer(1).graus;
+      if (g < encBaixo) encBaixo = g;
+      if (g > encAlto)  encAlto  = g;
+    } }
+  const float vaiVem = encAlto - encBaixo;
+
+  nota("chegou em %.3f graus; depois disso o eixo andou %.3f grau no total "
+       "e o assentamento fez %u retoque(s) -- \"%s\"",
+       (double)grausNaChegada, (double)vaiVem,
+       (unsigned)correcaoResumo().tentativas, correcaoResumo().motivo);
+
+  checar(vaiVem < 0.02f, "V34b",
+         "depois de chegar o eixo NAO se mexe mais: e o que a bancada via "
+         "como \"fica oscilando ate acertar o grau certo\"");
+  checar(correcaoResumo().tentativas == 0, "V34c",
+         "e nenhum retoque foi pedido: a medida ja tinha confirmado a "
+         "chegada, e o driver segura a posicao sozinho");
+
+  // A OUTRA METADE. Perda de passo: aqui a medida nao confirma nada, o
+  // erro e de graus, e o assentamento tem de continuar existindo.
+  //
+  // COM A REGUA CERTA, e nao por conveniencia. O freio so consegue PARAR
+  // o eixo mais cedo; ele nunca estende um movimento. Com a regua
+  // dobrada o destino em passos cai no dobro do angulo pedido, entao
+  // sobra caminho e o proprio freio absorve o escorregao antes de parar
+  // -- e ai nao ha o que assentar. E com a regua certa que o eixo para
+  // no destino em passos com o angulo ainda faltando, que e o caso em
+  // que o assentamento e a unica coisa que faz o braco chegar.
+  J1.passosPorVolta = ppvReal;
+  recalcularResolucao();
+  g_ppvReal[0] = 0;
+  irComPerda(0, 0, 0.0f);
+  irComPerda(30, 0, 7.0f);
+  nota("com 7 graus de perda: eixo em %.3f com %u retoque(s)",
+       (double)eixoFisicoGraus(), (unsigned)correcaoResumo().tentativas);
+  checar(fabsf(eixoFisicoGraus() - 30.0f) < 0.15f &&
+         correcaoResumo().tentativas > 0, "V34d",
+         "mas o assentamento continua inteiro para quando a medida NAO "
+         "confirma: com perda de passo ele retoca e o braco chega -- e o "
+         "que nao pode e retocar o que ja esta certo");
 }
 
 // ---------------------------------------------------------------------
@@ -9154,6 +9285,7 @@ int main() {
   teste_V31_regua_ruim_e_barramento_lento();
   teste_V32_largada_com_o_barramento_calado();
   teste_V33_tres_comandos_por_viagem();
+  teste_V34_chegou_para_de_mexer();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
   teste_V28_ir_a_tres_graus_sem_enrosco();

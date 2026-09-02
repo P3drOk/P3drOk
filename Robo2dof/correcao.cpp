@@ -91,6 +91,24 @@ static uint32_t prazoAprender[2]   = {0, 0};
 // MAQUINA, nao do movimento. Guardado, a largada seguinte ja sai no
 // ritmo certo -- inclusive quando a primeira leitura do movimento falha,
 // que num barramento com 4% de falhas acontece.
+// A MEDIDA CONFIRMOU A CHEGADA DESTA JUNTA.
+//
+// Verdadeiro quando o freio parou o eixo porque o encoder disse que ele
+// chegou ao angulo pedido -- ou quando ele ja estava la ao pedir.
+//
+// E o que dispensa o assentamento. O driver e servo: ele segura a
+// posicao sozinho. Se a MEDIDA ja disse que a junta esta no angulo, o
+// que sobra e ruido de leitura e o tanto que o eixo escorregou na rampa
+// de parada -- decimos de grau. Retocar isso e mandar o braco atras de
+// um numero que muda a cada leitura, e da bancada se ve como "chega ao
+// objetivo e fica oscilando ate acertar o grau certo".
+//
+// O assentamento continua existindo para o caso em que a medida NAO
+// confirmou nada: perda de passo, acoplamento solto, leitura ruim
+// durante o movimento inteiro. Ali o erro e de graus, nao de decimos, e
+// nenhum servo conserta sozinho o que o eixo deixou de andar.
+static bool chegouPelaMedida[2] = {false, false};
+
 static float govFator[2] = {1.0f, 1.0f};
 // Se ja houve uma viagem longa o bastante para medir. Antes dela o 1,0
 // acima nao e conhecimento, e so a suposicao de que a regua digitada
@@ -294,6 +312,7 @@ void correcaoAlvoPedido(float t1, float t2, bool valido) {
   temAlvoPedido = valido;
   largou[0]    = largou[1]    = false;
   aproximou[0] = aproximou[1] = false;
+  chegouPelaMedida[0] = chegouPelaMedida[1] = false;
   // O FATOR NAO ZERA ENTRE MOVIMENTOS -- ver a declaracao. Se a regua
   // for corrigida, a viagem seguinte o traz de volta para 1 sozinha.
   if (!valido) { alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO; return; }
@@ -490,7 +509,13 @@ void correcaoFrearNoAlvo() {
       const float d = alvoPedido[i] - agora;
       if (d > FREIO_ENC_MINIMO_GRAUS)       alvoSentido[i] = +1;
       else if (d < -FREIO_ENC_MINIMO_GRAUS) alvoSentido[i] = -1;
-      else { alvoSentido[i] = SENTIDO_SEM_FREIO; continue; }
+      else {
+        // Ja estava la. Isto tambem e a medida confirmando: nao ha
+        // movimento para assentar depois.
+        alvoSentido[i] = SENTIDO_SEM_FREIO;
+        chegouPelaMedida[i] = true;
+        continue;
+      }
     }
 
     const float falta = fabsf(alvoPedido[i] - agora);
@@ -513,6 +538,7 @@ void correcaoFrearNoAlvo() {
     if ((float)alvoSentido[i] * (agora - alvoPedido[i]) < 0.0f) continue;
 
     alvoSentido[i] = SENTIDO_SEM_FREIO;
+    chegouPelaMedida[i] = true;
     j.motor->stopMove();       // parada com rampa, nao tranco
     logEvento("junta %u: o encoder chegou a %.2f graus (pedido %.2f) -- "
               "movimento freado pela medida", (unsigned)k,
@@ -884,8 +910,21 @@ void correcaoAtualizar() {
   const float m1 = fabsf(e1), m2 = fabsf(e2);
   const float tol = configCorrecao.toleranciaGraus;
 
+  // JUNTA QUE A MEDIDA CONFIRMOU NAO ENTRA NO RETOQUE.
+  //
+  // O freio parou o eixo quando o encoder disse que ele chegou. O que
+  // resta e o escorrego da rampa de parada mais o ruido da leitura --
+  // decimos de grau, abaixo do que a maquina consegue repetir. Perseguir
+  // isso e o "fica oscilando ate acertar o grau certo": cada retoque
+  // erra o alvo para o outro lado e pede o proximo.
+  //
+  // O erro medido continua sendo CALCULADO e mostrado; o que muda e que
+  // ele nao vira comando.
+  const bool ok1 = !t1 || m1 <= tol || chegouPelaMedida[0];
+  const bool ok2 = !t2 || m2 <= tol || chegouPelaMedida[1];
+
   // Chegou.
-  if ((!t1 || m1 <= tol) && (!t2 || m2 <= tol)) {
+  if (ok1 && ok2) {
     // O eixo esta fisicamente no lugar certo. A contagem, porem, ficou
     // adiantada pelo tanto que o retoque andou -- e e ela que o proximo
     // movimento absoluto usa como ponto de partida. Sem devolver a
@@ -942,7 +981,8 @@ void correcaoAtualizar() {
   // A pergunta certa nao e "sobrou pouco?", e "o passo fez o que podia
   // fazer?". Um passo que fechou o que tinha como fechar esta convergindo,
   // por mais que ainda falte caminho.
-  const float faltaMaior = (m1 > m2) ? m1 : m2;
+  const float faltaMaior = ((ok1 ? 0.0f : m1) > (ok2 ? 0.0f : m2))
+                             ? (ok1 ? 0.0f : m1) : (ok2 ? 0.0f : m2);
   if (r.tentativas > 0) {
     const float fechou = erroAnterior - faltaMaior;
     // Sem referencia do passo anterior (primeiro ciclo apos um retoque que
@@ -985,11 +1025,11 @@ void correcaoAtualizar() {
   long alvo1 = posicaoJ1();
   long alvo2 = posicaoJ2();
   float pedido1 = 0.0f, pedido2 = 0.0f;
-  if (t1 && m1 > tol) {
+  if (!ok1) {
     pedido1 = comTeto(passoDe(e1, 0), teto);
     alvo1 += lroundf(pedido1 * J1.passosPorGrau);
   }
-  if (t2 && m2 > tol) {
+  if (!ok2) {
     pedido2 = comTeto(passoDe(e2, 1), teto);
     alvo2 += lroundf(pedido2 * J2.passosPorGrau);
   }
@@ -1759,6 +1799,7 @@ void correcaoReiniciarTeste() {
   govAprendeu[0] = govAprendeu[1] = false;
   largou[0]    = largou[1]    = false;
   aproximou[0] = aproximou[1] = false;
+  chegouPelaMedida[0] = chegouPelaMedida[1] = false;
   largadaValida[0] = largadaValida[1] = false;
   alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO;
   temAlvoPedido = false;

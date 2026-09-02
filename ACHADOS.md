@@ -5299,11 +5299,77 @@ Aspereza de trem de pulso não aparece num mock de gerador. O banco prende
 a **causa** — quantas vezes a rampa é reprogramada; quem julga o
 resultado é a máquina na bancada.
 
+## R167 · Chegou, para de mexer — o driver é servo  `V34`  ✅
+
+> "O movimento parece estar suave, mas quando chega ao objetivo fica
+> oscilando até acertar o grau certo. Como se trata de um servo motor
+> isso não é necessário."
+
+Está certo, e a razão é estrutural: **o freio já para o eixo quando o
+encoder diz que ele chegou**. Depois disso o que resta é o escorrego da
+rampa de parada mais o ruído da leitura — décimos de grau. O
+assentamento perseguia esse resto contra uma tolerância de 0,10°, e com
+a régua digitada errada cada retoque anda o dobro do pedido e erra para
+o outro lado. Daí o vai-e-vem.
+
+### A regra nova, em uma linha
+
+**Junta que a medida confirmou não entra no retoque.**
+
+Duas situações marcam a confirmação, as duas dentro de
+`correcaoFrearNoAlvo()`: o freio parou o eixo porque o encoder chegou ao
+ângulo, ou a junta já estava lá quando o movimento foi pedido. O erro
+medido continua sendo calculado e mostrado; o que muda é que ele não
+vira comando.
+
+Medido com a régua 2× errada e o barramento a 77 ms:
+
+| | o braço andou depois de chegar | retoques |
+|---|---|---|
+| retocando o que a medida confirmou | **0,252°** | 1 |
+| sem retocar | **0,000°** | **0** |
+
+### O que NÃO foi removido, e por quê
+
+O assentamento continua inteiro para quando a medida **não** confirmou
+nada. E a razão é geométrica, não de gosto:
+
+> **O freio só consegue parar o eixo mais cedo; ele nunca estende um
+> movimento.**
+
+Com perda de passo, o eixo chega ao destino em passos com o ângulo ainda
+faltando — não há mais movimento para o freio interromper, e o
+assentamento é a única coisa que faz o braço chegar. `V34d` prende essa
+metade: 7° de perda fechando em três retoques.
+
+Isso também explica um detalhe do cenário que parece arbitrário e não é:
+a metade do escorregão **precisa da régua certa**. Com a régua dobrada o
+destino em passos cai no dobro do ângulo pedido, sobra caminho, e o
+próprio freio absorve a perda antes de parar — não haveria o que
+assentar, e o cenário passaria sem provar nada.
+
+### O instrumento mentiu pela terceira vez
+
+Eu media o vai-e-vem por `posicaoJ1()` e lia **22,5 graus** onde o braço
+tinha andado um quarto de grau. O assentamento, ao concluir, devolve a
+contagem ao alvo com `ajustarContagem()` — e ali **nenhum pulso sai no
+fio**: o eixo não se mexe. Eu estava contando uma reescrita de contagem
+como se fosse movimento.
+
+O encoder segue o ferro; ele só muda quando o braço anda. É por ele que
+se mede.
+
+> Três rodadas seguidas, três instrumentos errados: contagem de voltas
+> em vez de relógio, relógio em vez de comando, contagem de passos em vez
+> de encoder. **Toda vez que um número surpreende, o primeiro suspeito é
+> quem o mediu.**
+
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **532 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **536 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **311 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
