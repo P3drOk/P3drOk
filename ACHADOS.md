@@ -4970,11 +4970,87 @@ erro final abaixo de 0,15°, excesso abaixo de 0,3° e **zero inversões**.
 Confirmado reintroduzindo os dois defeitos separadamente — sem a margem,
 1,37° de excesso; sem a afinação inteira, 2,52°.
 
+## R164 · A micro variação era o ritmo do barramento  `V30`  ✅
+
+Da bancada, com a captura do painel junto: *"o sistema está apresentando
+micro variação e nunca fica no ponto setado. A velocidade parece não
+influenciar em nada, pois o sistema funcionava bem antes — ele ia ao
+ponto, ia desacelerando com rampa e parava exatamente. Agora ele fica
+tentando acertar."*
+
+### O número estava na captura
+
+| | |
+|---|---|
+| leituras por segundo | **4,6** |
+| falhas | **213 em 4955** (4,3 %) |
+| idade da leitura | 42 ms |
+
+Não era o alvo, não era a velocidade, não era a rampa. Era o **ritmo da
+medida**.
+
+Corrigir o eixo a partir de uma leitura só converge se a **próxima**
+leitura chegar a tempo de mostrar o resultado da correção. A 4,6 por
+segundo a máquina age, o eixo anda, e só ~217 ms depois ela vê onde
+parou — e age de novo em cima de um número velho. É a definição de
+ciclo-limite: oscila em torno do ponto sem nunca declarar chegada.
+
+E o operador estava certo em dizer que **funcionava antes**: antes de
+existir correção pelo encoder, quem levava o eixo era a rampa do gerador
+de pulso, que desacelera e para exatamente onde foi mandada. Tudo o que
+adicionamos nas últimas rodadas — o freio, a afinação, o assentamento —
+depende de uma medida que aquele barramento não entrega.
+
+### O ritmo decide quem leva o eixo
+
+```
+rápido (≥ 10 leituras/s) → o encoder guia: afina, freia, assenta
+lento  (< 10 leituras/s) → a rampa leva, desacelera e para
+```
+
+Abaixo do limite o encoder **continua valendo** para tudo o mais: dizer
+onde o braço está, ancorar a partida, calibrar, avisar de travamento. Ele
+só não manda no motor. E a máquina diz por quê, com o número: *"cheguei
+pela rampa; o encoder está a uma leitura cada 217 ms — lento demais para
+acertar o ponto sem ficar caçando"*.
+
+O ritmo é o **medido**, com as falhas incluídas — não o período
+configurado. O que conta é o que chega.
+
+> **Lacuna não é ritmo.** Um intervalo acima de 2 s (cabo que caiu e
+> voltou, reconfiguração, máquina parada num véu) não entra na média — só
+> reinicia a contagem. Sem isso qualquer pausa deixava o encoder marcado
+> como lento por segundos depois; medido no cenário, a média chegou a
+> 25 813 ms antes dessa guarda e caía devagar demais.
+
+### Por que isto não é desistir do encoder
+
+É o contrário: é reconhecer o que o sensor sustenta. Fechar malha a 4,6
+Hz num eixo que anda dezenas de graus por segundo não é controle, é
+adivinhação com atraso. Um barramento nesse estado é problema de bancada
+— cabo, terminação de 120 Ω nas duas pontas, aterramento. O que o
+firmware pode fazer é **não piorar**.
+
+Quando o cabo melhorar, o portão abre sozinho: ele lê o ritmo, não uma
+chave que alguém esqueceu ligada (`V30e`).
+
+### O que o cenário prende, e o que ele não prende
+
+`V30` põe o barramento a 220 ms e verifica: a máquina reconhece que não
+dá para guiar (`V30a`), o braço vai com a rampa e para sem inversão
+(`V30b`), sem retoque (`V30c`), no ângulo (`V30d`), e o barramento normal
+reabre o portão (`V30e`).
+
+**Só `V30a` discrimina.** O encoder do banco é lento mas perfeito — não
+tem as 4,3 % de falhas nem o ruído da bancada —, então `V30b` e `V30c`
+passariam com o portão removido também. Está escrito no cenário, para
+ninguém confundir documentação com guarda.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **515 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **520 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

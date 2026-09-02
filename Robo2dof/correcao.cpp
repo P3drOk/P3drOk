@@ -258,6 +258,9 @@ void correcaoFrearNoAlvo() {
     if (alvoSentido[i] == 0) continue;
     Junta& j = (k == 1) ? J1 : J2;
     if (!j.motor || !j.motor->isRunning()) continue;
+    // Barramento lento: quem leva o eixo e a rampa. Ver
+    // encoderGuiaOMovimento().
+    if (!encoderGuiaOMovimento(k)) continue;
     if (!leituraConfiavel(k)) continue;
 
     const float agora = encoderLer(k).graus;
@@ -416,6 +419,30 @@ void correcaoNovoMovimento() {
 void correcaoIniciar() {
   if (!configCorrecao.ativa) return;
   if (soldaLigada()) return;     // retoque no meio do cordao estraga o cordao
+
+  // BARRAMENTO LENTO NAO ASSENTA.
+  //
+  // Cada retoque anda e so muito depois a maquina ve onde parou; o
+  // seguinte sai em cima de um numero velho. Da bancada, a 4,6 leituras
+  // por segundo: "fica tentando acertar". Sem assentamento o braco para
+  // onde a rampa o deixou -- que e onde ele parava antes de existir
+  // correcao, e exatamente o que o operador pediu de volta.
+  //
+  // Maquina SEM encoder nenhum nao entra aqui: ali operar pela contagem e
+  // escolha da instalacao, nao falha, e nao ha o que avisar. Quem leva
+  // aviso e quem TEM encoder e ele nao esta dando conta.
+  if (!encoderGuiaOMovimento(1) && !encoderGuiaOMovimento(2)) {
+    const uint32_t m = correcaoRitmoMs(1) ? correcaoRitmoMs(1)
+                                          : correcaoRitmoMs(2);
+    if (m > 0) {
+      r.estado = CORR_RECUSADA;
+      dizer("barramento lento: sem assentamento");
+      definirMensagem("Cheguei pela rampa. O encoder esta a uma leitura cada "
+                      "%lu ms -- lento demais para acertar o ponto sem ficar "
+                      "cacando", (unsigned long)m);
+    }
+    return;
+  }
 
   r.estado     = CORR_ESPERANDO;
   r.tentativas = 0;
@@ -801,6 +828,71 @@ static bool leituraPlausivel(uint8_t k, float graus) {
   if (!j.calibrada) return true;
   return graus >= j.grausMin - FOLGA_PLAUSIVEL_GRAUS &&
          graus <= j.grausMax + FOLGA_PLAUSIVEL_GRAUS;
+}
+
+// =====================================================================
+//  O ENCODER CHEGA A TEMPO DE GUIAR O MOVIMENTO?
+//
+//  Corrigir o eixo a partir de uma medida so funciona se a PROXIMA
+//  medida chegar a tempo de mostrar o resultado da correcao. Num
+//  barramento lento a maquina age, o eixo anda, e so muito depois ela ve
+//  onde parou -- e age de novo em cima de um numero velho. Isso nao
+//  converge: fica cacando o ponto.
+//
+//  Da bancada, com 4,6 leituras por segundo: "micro variacao e nunca
+//  fica no ponto setado, ele fica tentando acertar. Antes ele ia
+//  desacelerando com rampa e parava exatamente."
+//
+//  Entao o ritmo do barramento decide QUEM leva o eixo:
+//
+//    rapido  -> o encoder guia: afina ao chegar, freia no alvo, assenta.
+//    lento   -> a rampa do gerador de pulso leva, desacelera e para. O
+//               encoder segue valendo para dizer onde o braco esta,
+//               ancorar a partida, calibrar e avisar de travamento --
+//               so nao manda no motor.
+//
+//  Mede-se o intervalo entre leituras BOAS, suavizado, e nao a taxa
+//  nominal configurada: o que importa e o que chega, com as falhas
+//  incluidas.
+// =====================================================================
+static uint32_t ritmoMs[2]     = {0, 0};   // intervalo medio entre leituras
+static uint32_t ritmoUlt[2]    = {0, 0};   // instante da ultima leitura nova
+static uint32_t ritmoConta[2]  = {0, 0};   // contador visto por ultimo
+
+void correcaoMedirRitmo() {
+  const uint32_t agora = millis();
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    if (configEncoder.reg[i] == 0) { ritmoMs[i] = 0; continue; }
+    const LeituraEncoder L = encoderLer(k);
+    if (L.leituras == ritmoConta[i]) continue;   // nada novo
+    ritmoConta[i] = L.leituras;
+    if (ritmoUlt[i] != 0) {
+      const uint32_t dt = agora - ritmoUlt[i];
+      // LACUNA NAO E RITMO. Cabo que caiu e voltou, reconfiguracao, a
+      // maquina parada num veu de calibracao -- tudo isso produz um
+      // intervalo enorme que nao diz nada sobre o barramento. Contar
+      // esse numero na media deixaria o encoder "lento" por segundos
+      // depois de qualquer pausa. Acima do teto, so recomeca a contar.
+      if (dt <= CORR_LACUNA_MS) {
+        // Media exponencial: uma leitura atrasada isolada nao decide, e
+        // uma degradacao que dura aparece em poucos ciclos.
+        ritmoMs[i] = ritmoMs[i] ? (ritmoMs[i] * 3 + dt) / 4 : dt;
+      }
+    }
+    ritmoUlt[i] = agora;
+  }
+}
+
+bool encoderGuiaOMovimento(uint8_t junta) {
+  if (junta != 1 && junta != 2) return false;
+  const uint32_t m = ritmoMs[junta - 1];
+  if (m == 0) return false;            // ainda nao ha ritmo medido
+  return m <= CORR_INTERVALO_MAX_MS;
+}
+
+uint32_t correcaoRitmoMs(uint8_t junta) {
+  return (junta == 1 || junta == 2) ? ritmoMs[junta - 1] : 0;
 }
 
 bool leituraConfiavel(uint8_t junta) {

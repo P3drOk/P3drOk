@@ -6095,6 +6095,104 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
 }
 
 // ---------------------------------------------------------------------
+// V30: barramento lento nao fica cacando o ponto.
+//
+// Da bancada, com o painel mostrando 4,6 leituras por segundo: "o sistema
+// esta apresentando micro variacao e nunca fica no ponto setado; ele fica
+// tentando acertar. Antes ele ia desacelerando com rampa e parava
+// exatamente."
+//
+// A causa nao e o alvo nem a velocidade: e o RITMO da medida. Corrigir o
+// eixo a partir de uma leitura so converge se a proxima leitura chegar a
+// tempo de mostrar o resultado da correcao. A 4,6 por segundo a maquina
+// age, o eixo anda, e so 200 ms depois ela ve onde parou -- e age de novo
+// em cima de um numero velho. Isso e a definicao de ciclo-limite: fica
+// oscilando em torno do ponto sem nunca declarar chegada.
+//
+// Entao o ritmo decide quem leva o eixo. Lento, quem leva e a rampa do
+// gerador de pulso -- que desacelera e para exatamente onde foi mandada,
+// que e como a maquina se comportava antes de existir correcao nenhuma.
+// O encoder segue valendo para tudo o mais.
+// ---------------------------------------------------------------------
+static void teste_V30_barramento_lento_nao_caca_o_ponto() {
+  secao("V30  Barramento lento: a rampa leva, e o braco para de uma vez");
+  reiniciarSistema();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  // O barramento da bancada: uma leitura a cada 220 ms (4,5 por segundo).
+  // Escrito direto em configEncoder porque e ele que o ciclo de leitura
+  // consulta -- encoderPendente so vira valendo pelo CMD_APLICAR_ENCODER.
+  configEncoder.periodoMs = 220;
+  rodarComWeb(1200);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(220);
+  g_espelharEixo = true;
+  rodarComWeb(1200);        // deixa o ritmo ser medido
+
+  nota("ritmo medido na junta 1: uma leitura cada %lu ms",
+       (unsigned long)correcaoRitmoMs(1));
+  checar(!encoderGuiaOMovimento(1), "V30a",
+         "a maquina reconhece que o barramento nao da conta de guiar o "
+         "movimento -- e a decisao sai do ritmo medido, nao do configurado");
+
+  // Vai a 45 graus e observa o CAMINHO.
+  webPost("/api/mover?t1=45&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  float ant = encoderLer(1).graus;
+  int inv = 0; int8_t sent = 0;
+  uint32_t t = 0;
+  while (modoAtual != MODO_MANUAL && t < 40000) {
+    rodarComWeb(20); t += 20;
+    const float g = encoderLer(1).graus, d = g - ant;
+    if (fabsf(d) > 0.08f) {
+      const int8_t sg = (d > 0) ? 1 : -1;
+      if (sent != 0 && sg != sent) inv++;
+      sent = sg; ant = g;
+    }
+  }
+  const float onde = encoderLer(1).graus;
+  nota("pedi 45 com o barramento lento: parou em %.3f, %d inversao(oes), "
+       "%u retoque(s), %u ms -- \"%s\"",
+       (double)onde, inv, (unsigned)correcaoResumo().tentativas,
+       (unsigned)t, ultimaMensagem);
+
+  // HONESTIDADE SOBRE O QUE ESTES DOIS PROVAM.
+  //
+  // O encoder do banco e LENTO mas perfeito: nao tem as 4,3% de falhas
+  // nem o ruido da bancada. Sem eles, mesmo com a malha fechada o
+  // assentamento fecharia de primeira -- entao V30b e V30c passariam com
+  // o portao removido tambem. Quem prende o conserto e V30a: a decisao
+  // de nao fechar a malha. Estes dois documentam o comportamento que sai
+  // dela, e denunciariam uma regressao que voltasse a retocar sempre.
+  checar(inv == 0, "V30b",
+         "o braco vai, desacelera pela rampa e para de uma vez: nenhuma "
+         "inversao de sentido, nenhuma micro variacao");
+  checar(correcaoResumo().tentativas == 0, "V30c",
+         "e nao ha retoque nenhum -- retocar com medida que chega tarde e "
+         "o que fazia a maquina ficar tentando acertar");
+  checar(fabsf(onde - 45.0f) < 1.0f, "V30d",
+         "e mesmo assim ele para no angulo pedido: a rampa e exata quando a "
+         "regua esta certa");
+
+  // O barramento rapido continua fechando a malha, como antes.
+  reiniciarSistema();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+  rodarComWeb(600);
+  nota("com o barramento normal: uma leitura cada %lu ms",
+       (unsigned long)correcaoRitmoMs(1));
+  checar(encoderGuiaOMovimento(1), "V30e",
+         "com o barramento normal o encoder volta a guiar o movimento: o "
+         "portao e o ritmo, nao uma chave que alguem esqueceu ligada");
+}
+
+// ---------------------------------------------------------------------
 static void teste_V24_curso_medido_nao_cala_o_encoder() {
   secao("V24  Curso medido nao cala o encoder com o limite desligado");
   reiniciarSistema();
@@ -6348,8 +6446,14 @@ static void teste_V26_diz_em_que_conta_o_movimento_saiu() {
   enviarComando(CMD_IR_HOME);
   rodarComWeb(40);
   nota("maquina sem encoder: \"%s\"", ultimaMensagem);
+  // A ancora aceita as duas mensagens porque o movimento agora pode ja
+  // ter TERMINADO em 40 ms: sem encoder o assentamento nem comeca -- ele
+  // dependia de uma leitura que nao existe --, e a maquina volta a MANUAL
+  // na hora em vez de esperar 250 ms fingindo assentar. O contrato deste
+  // cenario e o AVISO, e ele continua o mesmo: nao ha o que avisar.
   checar(strstr(ultimaMensagem, "PELA CONTAGEM") == nullptr &&
-         strstr(ultimaMensagem, "Indo para") != nullptr, "V26d",
+         (strstr(ultimaMensagem, "Indo para") != nullptr ||
+          strstr(ultimaMensagem, "Posicionamento concluido") != nullptr), "V26d",
          "maquina sem encoder nenhum nao leva aviso: operar pela contagem "
          "ali e escolha da instalacao, nao falha");
 }
@@ -8684,6 +8788,7 @@ int main() {
   teste_V11_um_controle_manda_nos_dois();
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V29_ir_a_um_angulo_e_fluido();
+  teste_V30_barramento_lento_nao_caca_o_ponto();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
   teste_V28_ir_a_tres_graus_sem_enrosco();

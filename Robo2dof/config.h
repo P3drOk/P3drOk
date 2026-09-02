@@ -498,6 +498,33 @@ static const float FREIO_ENC_MINIMO_GRAUS = 0.5f;
 // entre duas leituras do barramento, e a chegada ficaria eterna.
 static const float FREIO_ENC_VEL_MINIMA = 1.5f;   // graus/s
 
+// ATE QUE RITMO DE LEITURA VALE FECHAR A MALHA NO ENCODER.
+//
+// Corrigir o eixo a partir de uma medida so funciona se a proxima medida
+// chegar a tempo de mostrar o resultado da correcao. Abaixo desse ritmo
+// a maquina age, o eixo anda, e so muito depois ela ve onde parou -- e
+// age de novo em cima de um numero velho. Isso nao converge: fica
+// caçando. Da bancada, com 4,6 leituras por segundo: "micro variacao e
+// nunca fica no ponto setado, ele fica tentando acertar".
+//
+// Acima do limite o encoder guia o movimento (afina ao chegar, freia no
+// alvo, assenta no fim). Abaixo dele o encoder continua VALENDO para
+// tudo o mais -- dizer onde o braco esta, ancorar a partida, calibrar,
+// avisar de travamento --, mas quem leva o eixo e a rampa do gerador de
+// pulso, que desacelera e para exatamente onde foi mandada. Que e como a
+// maquina se comportava antes de existir correcao nenhuma.
+//
+// 100 ms = 10 leituras por segundo. Com passos de retoque de ate 3 graus
+// a uns 10 graus/s, cada retoque dura ~300 ms: com 10 Hz ainda chegam
+// tres medidas por retoque, o bastante para enxergar o resultado.
+static const uint32_t CORR_INTERVALO_MAX_MS = 100;
+
+// Acima disto o intervalo nao e ritmo, e LACUNA: cabo que caiu e voltou,
+// reconfiguracao, a maquina parada. Nao entra na media -- so recomeca a
+// contagem. Sem isso qualquer pausa deixava o encoder marcado como lento
+// por segundos depois.
+static const uint32_t CORR_LACUNA_MS = 2000;
+
 // MARGEM DA DESACELERACAO.
 //
 // A conta raiz(2.a.falta) usa a aceleracao em graus DA REGUA. Se a regua

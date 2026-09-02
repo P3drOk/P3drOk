@@ -1066,6 +1066,11 @@ void loop() {
   // Invertida, o primeiro ponto de cada toque sairia da contagem velha.
   seguirEixoSolto();
   aprenderAtualizar();
+  // O ritmo do barramento decide quem leva o eixo: ver
+  // encoderGuiaOMovimento() em correcao.h. Medido a cada ciclo, sempre --
+  // inclusive parado, para a decisao ja estar tomada quando o proximo
+  // movimento comecar.
+  correcaoMedirRitmo();
   correcaoVigiar();
 
   // ---------------------------------------------------------------------

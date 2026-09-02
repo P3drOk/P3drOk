@@ -1015,6 +1015,39 @@ Medido no banco, cinco ângulos seguidos (3, 45, −30, 0 e 12,5):
 
 Cenário **V29**.
 
+#### Quando o encoder NÃO guia o movimento
+
+Corrigir o eixo a partir de uma medida só converge se a **próxima** medida
+chegar a tempo de mostrar o resultado da correção. Num barramento lento a
+máquina age, o eixo anda, e só muito depois ela vê onde parou — e age de
+novo em cima de um número velho. Isso não converge: fica **caçando o
+ponto**, com micro variação em torno do alvo.
+
+Por isso o **ritmo do barramento decide quem leva o eixo**:
+
+| leituras por segundo | quem leva |
+|---|---|
+| **10 ou mais** | o encoder guia: afina ao chegar, freia no alvo, assenta no fim |
+| **abaixo de 10** | a **rampa** do gerador de pulso leva, desacelera e para |
+
+Abaixo do limite o encoder continua valendo para tudo o mais — dizer onde
+o braço está, ancorar a partida, calibrar, avisar de travamento. Ele só
+não manda no motor. E a máquina diz, ao chegar: *"cheguei pela rampa; o
+encoder está a uma leitura cada N ms — lento demais para acertar o ponto
+sem ficar caçando"*.
+
+O ritmo é o **medido**, com as falhas incluídas, e não o período
+configurado: o que conta é o que chega. Um intervalo acima de 2 s é
+tratado como **lacuna** (cabo que caiu, reconfiguração) e não entra na
+média.
+
+> Um barramento a 4,6 leituras por segundo é um problema de bancada, não
+> de firmware: cabo, terminação de 120 Ω nas duas pontas, ou aterramento.
+> O que o firmware faz é não piorar — parar de tentar fechar uma malha
+> que aquele sensor não sustenta.
+
+Cenário **V30**.
+
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o
 sistema dá um retoque curto.
 

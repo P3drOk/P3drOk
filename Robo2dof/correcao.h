@@ -129,6 +129,24 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 void correcaoAlvoPedido(float t1, float t2, bool valido);
 void correcaoFrearNoAlvo();
 
+// ---------------------------------------------------------------------
+// O ENCODER CHEGA A TEMPO DE GUIAR O MOVIMENTO?
+//
+// correcaoMedirRitmo() mede, a cada ciclo, o intervalo entre leituras
+// BOAS de cada junta -- o que chega, com as falhas incluidas, e nao a
+// taxa nominal configurada.
+//
+// encoderGuiaOMovimento() responde se esse ritmo permite fechar a malha.
+// Nao permitindo, quem leva o eixo e a rampa do gerador de pulso, que
+// desacelera e para exatamente onde foi mandada; o encoder continua
+// dizendo onde o braco esta, ancorando a partida, calibrando e avisando
+// de travamento. Corrigir a partir de medida que chega tarde demais nao
+// converge -- fica cacando o ponto.
+// ---------------------------------------------------------------------
+void     correcaoMedirRitmo();
+bool     encoderGuiaOMovimento(uint8_t junta);
+uint32_t correcaoRitmoMs(uint8_t junta);
+
 void correcaoIniciar();                  // core 1: chegou, comeca a assentar
 void correcaoAtualizar();                // core 1: chamada do loop
 bool correcaoEmCurso();
