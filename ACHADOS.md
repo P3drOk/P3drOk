@@ -4886,11 +4886,95 @@ longo de dezenas de movimentos; o que se prende é a **causa** (a régua
 não se mexe dentro do movimento) e não o sintoma. O sintoma some porque a
 causa sumiu, mas isso quem confirma é a máquina.
 
+## R163 · "Ir ao ângulo 45" — o vai-e-vem tinha 1,3 grau  `V29`  ✅
+
+Da bancada: *"o sistema atual não para no ponto especificado no ângulo.
+Se eu peço para ir ao ângulo 45 ele vai, minimiza a velocidade e para
+exatamente no ângulo 45. Atualmente está todo atrapalhado."*
+
+### Medir antes de mexer — e a medição desmontou a minha suposição
+
+Eu ia reescrever a lógica inteira de posicionamento. Antes disso
+instrumentei o caminho até o ângulo, pedindo cinco ângulos seguidos e
+registrando três coisas: o erro final, **quanto o braço passou do alvo**
+e quantas vezes ele **inverteu de sentido**.
+
+| | erro final | passou do alvo | inversões |
+|---|---|---|---|
+| régua certa | 0,012° | **0** | **0** |
+| régua errada por 2× | 0,048° | **1,3°** | **2 por movimento** |
+
+Isso mudou tudo. **A precisão já estava boa** — o assentamento fechava em
+todos os casos. O que estava ruim era o *caminho*: o braço passava do
+número em mais de um grau e voltava. É isso que se vê da bancada como
+"atrapalhado", e não falta de exatidão.
+
+E com a régua certa não havia vai-e-vem nenhum. Ou seja: o defeito inteiro
+morava na régua digitada errada.
+
+### O conserto é uma linha de física, no lugar certo
+
+Não era preciso reescrever nada. O movimento corria no ritmo cheio até o
+fim e o freio do encoder parava tarde — faltava **afinar ao chegar**:
+
+```
+v = min(velocidade pedida, raiz(2 · a · falta))
+```
+
+`raiz(2·a·falta)` é a velocidade da qual ainda se para dentro do que
+falta. Longe do alvo ela é maior que o ritmo configurado e não muda nada;
+perto, vai baixando e o eixo chega no passo de quem vai encostar.
+
+### A margem é o coração disso, e quase passou batido
+
+A primeira versão dessa conta **quase não melhorou**: 1,3° de excesso
+virou 1,3°. O motivo é sutil e vale registrar: `a` é a aceleração em
+graus **da régua**. Com a régua errada por um fator de dois, a aceleração
+real é metade — o eixo freia menos do que a conta promete, e chega ao
+alvo ainda rápido.
+
+Planejar a frenagem com **um quarto** da aceleração (`FREIO_ENC_MARGEM`)
+cobre régua até quatro vezes errada. Com ela:
+
+| | antes | depois |
+|---|---|---|
+| passou do alvo | 1,3° | **0,06°** |
+| inversões de sentido | 2 | **0** |
+| retoques de assentamento | 2 | **0** |
+| tempo do movimento | 3960 ms | **3520 ms** |
+
+Mais preciso, sem vai-e-vem **e mais rápido** — porque o tempo que se
+perdia era justamente o de voltar.
+
+Com a régua certa nada piorou: continua 0 de excesso e 0 inversões, 4 %
+mais lento no encosto final.
+
+### O que eu tentei antes, e por que não foi
+
+Antes de medir eu escrevi uma substituição completa do caminho de
+posicionamento — malha fechada no encoder, com aprendizado local da razão
+entre grau comandado e grau andado. Ela funcionava no caso principal e
+quebrava cinco outros: recuperação de escorregão grande, a interação com
+o vigia de travamento, a reancoragem da contagem no fim. Fui de 11 para
+14 cenários vermelhos iterando às cegas, e reverti.
+
+A lição não é sobre o código: é sobre a ordem. **Medir primeiro teria
+poupado a reescrita inteira** — o número que importava (1,3° de excesso,
+zero com a régua certa) apontava para uma linha, não para uma
+arquitetura.
+
+### O que fica prendendo
+
+`V29` roda os cinco ângulos nos dois casos de régua e exige, nos dois:
+erro final abaixo de 0,15°, excesso abaixo de 0,3° e **zero inversões**.
+Confirmado reintroduzindo os dois defeitos separadamente — sem a margem,
+1,37° de excesso; sem a afinação inteira, 2,52°.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **509 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **515 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

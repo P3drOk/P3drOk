@@ -981,24 +981,39 @@ dele — e **quem escreve a régua é você**.
 > pedido de três graus. Duas medidas concordando não salvam: se a causa é
 > leitura parada, as duas concordam no mesmo número errado.
 
-#### O freio do encoder
+#### Ele afina ao chegar, e para no número
 
 O que faz o braço chegar **sem depender da régua**: o ângulo que você
 digitou fica guardado em graus, e enquanto o braço anda a máquina olha a
-medida. Chegou ou passou — **para**.
+medida.
 
-Não é malha fechada de servo: não há ganho nem correção durante o
-movimento (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
-disso faria o braço oscilar). É um **fim de curso por medida** — um
-teste, uma decisão.
+- **Perto do alvo ele afina.** A velocidade passa a sair do que falta:
+  `v = √(2·a·falta)`, que é a velocidade da qual ainda se para dentro do
+  que falta. Longe, ela é maior que o ritmo configurado e não muda nada;
+  perto, vai baixando sozinha.
+- **Chegou, para.** O freio pelo encoder põe o ponto final.
 
-| situação | o que acontece |
-|---|---|
-| régua errada por 2×, pedido de 45° | pararia a 90°; o freio para perto de 45° |
-| régua errada por 2×, pedido de 3° | 2 retoques curtos — eram 7 |
-| **régua certa**, pedido de 3° | **um tiro, sem retoque** |
+Não é malha fechada de servo: não há ganho nem correção contínua durante
+o movimento (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
+disso faria o braço oscilar). É a velocidade escolhida a partir do que
+falta, e um fim de curso por medida.
 
-Cenários **M11a**, **V28**.
+> **A margem de frenagem.** A conta usa a aceleração em graus **da
+> régua**. Se a régua estiver errada por um fator, a aceleração real é
+> menor na mesma proporção — o eixo freia menos do que a conta promete e
+> passa do ponto. Por isso a frenagem é planejada com **um quarto** da
+> aceleração (`FREIO_ENC_MARGEM`): assim uma régua até quatro vezes
+> errada ainda para no ângulo. Sem essa margem o excesso volta a 1,3°.
+
+Medido no banco, cinco ângulos seguidos (3, 45, −30, 0 e 12,5):
+
+| | erro final | passou do alvo | inversões de sentido |
+|---|---|---|---|
+| régua certa | ≤ **0,012°** | **0** | **0** |
+| régua errada por 2× | ≤ **0,064°** | ≤ **0,064°** | **0** |
+| *(antes, régua errada por 2×)* | *0,048°* | *1,3°* | *2 por movimento* |
+
+Cenário **V29**.
 
 Quando o braço chega, o encoder diz onde ele **realmente** parou e o
 sistema dá um retoque curto.

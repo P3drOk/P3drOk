@@ -5986,6 +5986,115 @@ static void teste_V28_ir_a_tres_graus_sem_enrosco() {
 }
 
 // ---------------------------------------------------------------------
+// V29: ir a um angulo e FLUIDO -- nao passa do ponto nem volta.
+//
+// Da bancada: "se eu peco para ir ao angulo 45 ele vai, minimiza a
+// velocidade e para exatamente no angulo 45; atualmente esta todo
+// atrapalhado".
+//
+// O "atrapalhado" tem numero. Medido aqui antes do conserto, com a regua
+// digitada errada por um fator de dois: o braco passava do angulo pedido
+// em 1,3 GRAU e voltava, duas inversoes de sentido por movimento. A
+// precisao final ja era boa -- o assentamento fechava --, mas o caminho
+// ate ela era o vai-e-vem que se ve da bancada.
+//
+// A causa: o movimento corria no ritmo cheio ate o fim e o freio do
+// encoder parava tarde. Faltava AFINAR ao chegar.
+//
+// raiz(2.a.falta) e a velocidade da qual ainda se para dentro do que
+// falta. Com ela, perto do alvo o eixo ja vem devagar e o freio so poe o
+// ponto final.
+//
+// A MARGEM importa e e o coracao do conserto: essa conta usa a
+// aceleracao em graus DA REGUA, e se a regua esta errada por um fator a
+// aceleracao real e menor na mesma proporcao -- o eixo freia menos do
+// que a conta promete. Planejar com um quarto da aceleracao cobre regua
+// ate quatro vezes errada. Sem a margem o excesso volta a 1,3 grau.
+// ---------------------------------------------------------------------
+static void teste_V29_ir_a_um_angulo_e_fluido() {
+  secao("V29  Ir a um angulo: chega no numero, sem passar e voltar");
+
+  for (int caso = 0; caso < 2; caso++) {
+    reiniciarSistema();
+    const uint32_t ppvReal = J1.passosPorVolta;
+    g_ppvReal[0] = ppvReal;
+    // O caso 1 e o da bancada: a regua digitada nao bate com o drive.
+    if (caso == 1) J1.passosPorVolta = ppvReal * 2;
+    recalcularResolucao();
+    prepararRoboCalibrado(180.0f);
+    protCurso = false;
+    prepararEncoder(90, true, 0);
+    rodarComWeb(300);
+    enviarComando(CMD_ENCODER_ZERAR, 0);
+    rodarComWeb(120);
+    g_espelharEixo = true;
+    rodarComWeb(200);
+
+    nota("=== regua %s (configurada %lu, real %lu) ===",
+         caso == 0 ? "CERTA" : "DOBRADA",
+         (unsigned long)J1.passosPorVolta, (unsigned long)ppvReal);
+
+    const float pedidos[] = {3.0f, 45.0f, -30.0f, 0.0f, 12.5f};
+    float piorErro = 0.0f, piorExcesso = 0.0f;
+    int   piorInv = 0;
+    for (int p = 0; p < 5; p++) {
+      const float alvo = pedidos[p];
+      char rota[64];
+      snprintf(rota, sizeof(rota), "/api/mover?t1=%.2f&t2=0", (double)alvo);
+      webPost(rota);
+      // O POST entra na fila: espera o modo virar antes de cronometrar.
+      { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+      const float partiu = encoderLer(1).graus;
+      const int8_t rumo = (alvo > partiu) ? 1 : -1;
+      float ant = partiu, excesso = 0.0f;
+      int inv = 0; int8_t sent = 0;
+      uint32_t t = 0;
+      while (modoAtual != MODO_MANUAL && t < 40000) {
+        rodarComWeb(20); t += 20;
+        const float g = encoderLer(1).graus, d = g - ant;
+        const float alem = (float)rumo * (g - alvo);   // quanto passou
+        if (alem > excesso) excesso = alem;
+        if (fabsf(d) > 0.08f) {
+          const int8_t sg = (d > 0) ? 1 : -1;
+          if (sent != 0 && sg != sent) inv++;
+          sent = sg; ant = g;
+        }
+      }
+      rodarComWeb(200);
+      const float onde = encoderLer(1).graus;
+      const float erro = fabsf(onde - alvo);
+      if (erro > piorErro)       piorErro = erro;
+      if (excesso > piorExcesso) piorExcesso = excesso;
+      if (inv > piorInv)         piorInv = inv;
+      nota("  pedi %6.2f -> encoder %7.3f (erro %.3f) | passou do alvo em "
+           "%.3f | %d inversao(oes) | %u ms",
+           (double)alvo, (double)onde, (double)erro, (double)excesso,
+           inv, (unsigned)t);
+    }
+    nota("  pior: erro %.3f grau, excesso %.3f grau, %d inversao(oes)",
+         (double)piorErro, (double)piorExcesso, piorInv);
+
+    const char* qual = (caso == 0) ? "com a regua certa" : "com a regua dobrada";
+    checar(piorErro < 0.15f, (caso == 0) ? "V29a" : "V29d",
+           (caso == 0)
+             ? "com a regua certa o braco para NO numero pedido, em cinco "
+               "angulos seguidos"
+             : "e com a regua digitada errada por um fator ele para no "
+               "numero do mesmo jeito -- quem manda e o encoder");
+    checar(piorExcesso < 0.30f, (caso == 0) ? "V29b" : "V29e",
+           (caso == 0)
+             ? "sem passar do ponto: ele chega afinando, nao freando"
+             : "e sem passar do ponto tambem -- eram 1,3 grau de excesso "
+               "antes da margem de frenagem");
+    checar(piorInv == 0, (caso == 0) ? "V29c" : "V29f",
+           (caso == 0)
+             ? "e sem vai-e-vem: nenhuma inversao de sentido"
+             : "e sem vai-e-vem: eram duas inversoes por movimento");
+    (void)qual;
+  }
+}
+
+// ---------------------------------------------------------------------
 static void teste_V24_curso_medido_nao_cala_o_encoder() {
   secao("V24  Curso medido nao cala o encoder com o limite desligado");
   reiniciarSistema();
@@ -8574,6 +8683,7 @@ int main() {
   teste_V10_habilitar_so_a_junta_2();
   teste_V11_um_controle_manda_nos_dois();
   teste_V12_leitura_absurda_nao_e_confiavel();
+  teste_V29_ir_a_um_angulo_e_fluido();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
   teste_V28_ir_a_tres_graus_sem_enrosco();

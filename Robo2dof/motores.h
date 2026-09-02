@@ -34,6 +34,11 @@ void aplicarSuavidade();
 // passosPorGrau daquela junta e o teto do driver.
 uint32_t grausPorSegParaHz(const Junta& j, float grausPorS);
 
+// A velocidade escolhida ja multiplicada pelo fator daquela junta (ver
+// Junta.fatorVel em estado.h). Quem mexe na velocidade de um eixo
+// sozinho precisa dela para nao sair do ritmo do resto.
+float velDaJuntaPub(const Junta& j, float base);
+
 bool motoresEmMovimento();
 float velocidadeJ1Hz();
 float velocidadeJ2Hz();

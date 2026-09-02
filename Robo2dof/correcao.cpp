@@ -36,6 +36,9 @@ static float alvoGraus1 = 0.0f, alvoGraus2 = 0.0f;
 // com a regua errada os dois divergem, e quem manda e o que foi pedido.
 // E dele que sai o freio do encoder.
 static float  alvoPedido[2]  = {0.0f, 0.0f};
+// Ultimo Hz mandado pela afinacao. Reprogramar o gerador com o MESMO
+// numero a cada leitura suja o trem de pulsos sem mudar nada.
+static uint32_t freioHzAplicado[2] = {0, 0};
 static int8_t alvoSentido[2] = {0, 0};   // +1 subindo, -1 descendo
 static bool   temAlvoPedido  = false;
 
@@ -231,6 +234,7 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
 // =====================================================================
 void correcaoAlvoPedido(float t1, float t2, bool valido) {
   temAlvoPedido = valido;
+  freioHzAplicado[0] = freioHzAplicado[1] = 0;
   if (!valido) { alvoSentido[0] = alvoSentido[1] = 0; return; }
   alvoPedido[0] = t1;
   alvoPedido[1] = t2;
@@ -257,6 +261,40 @@ void correcaoFrearNoAlvo() {
     if (!leituraConfiavel(k)) continue;
 
     const float agora = encoderLer(k).graus;
+    const float falta = fabsf(alvoPedido[i] - agora);
+
+    // ---- AFINA AO CHEGAR, em vez de correr e frear ----
+    //
+    // "Se eu peco para ir ao angulo 45 ele vai, minimiza a velocidade e
+    // para exatamente no angulo 45."
+    //
+    // raiz(2.a.falta) e a velocidade da qual ainda se para dentro do que
+    // FALTA, com a rampa da propria junta. Longe, ela e maior que o
+    // ritmo configurado e nao muda nada; perto, ela vai baixando e o
+    // eixo chega devagar.
+    //
+    // E o que tira o vai-e-vem. Com a regua digitada errada por um
+    // fator, o destino em passos cai longe do angulo pedido e o eixo
+    // passava por ele a toda: o freio parava tarde, o assentamento
+    // trazia de volta, e o operador via o braco ir, voltar e hesitar --
+    // duas inversoes de sentido por movimento, medidas no banco. Com a
+    // velocidade saindo do que falta, ele chega no passo de quem vai
+    // encostar, e o freio so poe o ponto final.
+    //
+    // A regua nao entra nesta conta: falta e velocidade estao os dois em
+    // graus do ENCODER.
+    {
+      const float acel = (j.aceleracao > 1.0f) ? j.aceleracao : ACEL_PADRAO;
+      float v = sqrtf(2.0f * acel * FREIO_ENC_MARGEM * falta);
+      if (v > velAuto)              v = velAuto;
+      if (v < FREIO_ENC_VEL_MINIMA) v = FREIO_ENC_VEL_MINIMA;
+      const uint32_t hz = grausPorSegParaHz(j, velDaJuntaPub(j, v));
+      if (hz != freioHzAplicado[i]) {
+        freioHzAplicado[i] = hz;
+        j.motor->setSpeedInHz(hz);
+      }
+    }
+
     // Chegou ou passou, no sentido em que estava indo.
     if ((float)alvoSentido[i] * (agora - alvoPedido[i]) < 0.0f) continue;
 

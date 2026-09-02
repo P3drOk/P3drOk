@@ -494,6 +494,20 @@ static const float MARGEM_LIMITE_GRAUS = 0.5f;
 // para nao frear um movimento que ja nasceu no alvo.
 static const float FREIO_ENC_MINIMO_GRAUS = 0.5f;
 
+// O encosto final da afinacao. Abaixo disto o eixo praticamente nao anda
+// entre duas leituras do barramento, e a chegada ficaria eterna.
+static const float FREIO_ENC_VEL_MINIMA = 1.5f;   // graus/s
+
+// MARGEM DA DESACELERACAO.
+//
+// A conta raiz(2.a.falta) usa a aceleracao em graus DA REGUA. Se a regua
+// estiver errada por um fator, a aceleracao real e menor na mesma
+// proporcao -- o eixo freia menos do que a conta promete e passa do
+// ponto. Planejar a frenagem com uma fracao da aceleracao e a folga que
+// cobre isso: com 0,25, uma regua ate quatro vezes errada ainda para no
+// angulo.
+static const float FREIO_ENC_MARGEM = 0.25f;
+
 static const float CURSO_MINIMO_GRAUS = 5.0f;
 
 // Depois de gravar os limites a maquina religa o torque e volta ao zero.

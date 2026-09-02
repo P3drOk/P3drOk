@@ -259,6 +259,12 @@ static float velDaJunta(const Junta& j, float base) {
   return (v > 0.01f) ? v : 0.01f;
 }
 
+// A mesma conta, para quem esta fora deste arquivo. A afinacao da
+// chegada precisa dela: cada junta anda na velocidade escolhida VEZES o
+// fator dela, e ignorar isso faria a chegada andar num ritmo diferente
+// do resto do movimento.
+float velDaJuntaPub(const Junta& j, float base) { return velDaJunta(j, base); }
+
 void aplicarVelocidadeManual() {
   const float g = velNormal;
   programarVelocidade(J1, 0, grausPorSegParaHz(J1, velDaJunta(J1, g)));
