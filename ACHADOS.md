@@ -5170,12 +5170,141 @@ devolver 20 % em vez de 5 % derruba `V31d`.
 terminação de 120 Ω nas duas pontas, ou aterramento. O firmware agora
 **não piora** com o barramento nesse estado; ele não conserta o cabo.
 
+## R166 · Duas versões antigas concordavam numa coisa só  `V31`–`V33`  ✅
+
+> "Tenho essas duas versões em que o controle de rotação funcionava
+> melhor, ajuste dessa forma a melhor possível."
+
+Chegaram dois pacotes: `2dof4.0` (sem encoder nenhum) e `ROBO2DOF-main`
+(com encoder, mas antes do freio). Fui procurar o que elas tinham em
+comum, e é uma coisa só:
+
+> **Ninguém toca na velocidade enquanto o eixo anda.** `moveTo()` e a
+> rampa correm inteiras, do começo ao fim.
+
+E as próprias versões enviadas explicam por quê, no comentário delas:
+
+> *"Reprogramar a cada ciclo obriga o gerador a refazer a rampa mil vezes
+> por segundo, o que aparece como **aspereza no movimento**."*
+> — `2dof4.0/RoboCNC/motores.cpp:307`
+
+Esse aviso **nunca saiu do código**. Ele está no firmware de hoje, em
+`motores.cpp:235`, dizendo que *toda* escrita de velocidade passa por
+`programarVelocidade()` — que tem um cache justamente para não
+reprogramar à toa. A correção que eu tinha escrito furava os dois: ela
+recalculava a velocidade a cada leitura do encoder **e** chamava
+`motor->setSpeedInHz()` direto, por fora do cache.
+
+Medido: **20 reprogramações** numa viagem de 45° com o barramento bom,
+contra **3** agora.
+
+### Três comandos, e a rampa faz o resto
+
+| fase | quando | comando |
+|---|---|---|
+| **larga** | ao pedir o ângulo | velocidade + aceleração + `moveTo()` |
+| **aproxima** | a medida diz que falta pouco | **um** degrau para baixo |
+| **para** | a medida diz que chegou | `stopMove()` |
+
+O "diminuir suavemente" não some: um `setSpeedInHz` mais baixo não dá
+tranco — a biblioteca desacelera até ele com a rampa. **O degrau é o
+comando; a suavidade é da rampa.**
+
+### O fator da régua virou uma conta por viagem
+
+Antes eu media velocidade dentro de uma janela de 217 ms: dois números
+vizinhos e ruidosos. Agora é uma conta por viagem — graus que a régua
+mandou andar contra graus que o encoder mediu, de ponta a ponta.
+
+Três armadilhas no caminho, e nenhuma delas é óbvia:
+
+**1. As duas pontas só valem com o eixo parado.** Uma leitura de 217 ms
+atrás conta onde a junta *estava*. Parada, tudo bem. A 48 °/s, são dez
+graus de erro — e o erro entra **nos dois sentidos ao mesmo tempo** (a
+régua parece ter andado menos, o encoder parece ter andado mais). A
+máquina "aprendeu" que a régua era oito vezes maior quando era quatro, e
+o braço passou a andar a 6,6 °/s com 12 pedidos.
+
+**2. O teto de 1 vale no resultado, nunca na medida.** Travar a medida
+em 1 antes da média parece a mesma coisa e não é: o ruído de uma régua
+*certa* cai dos dois lados de 1, e travando um dos lados só o outro entra
+na conta. O fator descia sozinho — 1,000 → 0,987 → 0,97 — e a máquina
+acabava rastejando com a régua perfeitamente certa. Apareceu num cenário
+que não tinha nada a ver com régua.
+
+**3. Um escorregão não é uma régua errada.** A estimativa no meio da
+viagem lia um salto de 7 graus do encoder como "régua 50 vezes maior".
+Exigir que **a régua também tenha andado** dilui o salto num percurso de
+verdade antes de ele valer alguma coisa.
+
+### E o instrumento mentiu de novo, do outro lado
+
+Na rodada passada o banco media velocidade contando voltas do laço, e
+saía o dobro. Consertei para medir pelo relógio. Agora o mesmo cenário
+saía pela **metade** — e a causa é o outro lado da mesma moeda:
+
+> `delay()` e `delayMicroseconds()` adiantam o relógio simulado **sem
+> chamar `avancar()` no gerador de pulso** — e a espera do Modbus é feita
+> de `delay`. Com o barramento a 220 ms o relógio anda o dobro do tempo
+> que o motor viu.
+
+A saída foi medir no **comando**: o Hz que o firmware mandou, lido pela
+régua real. É o que a queixa fala ("a velocidade é alta" é sobre o que o
+motor recebe) e não depende de relógio nenhum. As contas de **distância**
+— onde parou, quanto passou, quantas inversões — nunca dependeram.
+
+> Duas rodadas seguidas em que o instrumento estava errado, nas duas
+> direções. **A régua do banco precisa da mesma desconfiança que a régua
+> da máquina.**
+
+### O que ficou medido
+
+Régua **quatro vezes** errada *e* barramento a 217 ms — o pior caso da
+bancada (`V31`, `V32`):
+
+| | antes | agora |
+|---|---|---|
+| onde parou | 40,14° | **40,07°** |
+| velocidade, com 12 pedidos | 0,43 do fator (sub-corrigido) | **12,0 °/s** |
+| inversões | 0 | **0** |
+| largada com o barramento calado | 24,1 °/s | **12,0 °/s** |
+
+Com a régua **certa**, cinco ângulos seguidos: erro ≤ 0,012°, **zero** de
+excesso, **zero** inversões.
+
+### O que piorou, e por quê
+
+Com a régua digitada errada por 2×, a **primeira** viagem da máquina
+passa 0,276° do ponto e o assentamento dá um retoque. Antes eram 0,064°.
+
+Isso é honesto e não tem conserto dentro deste desenho: **antes de andar,
+a máquina não tem como saber que a régua está errada** — a razão entre
+passo e grau só aparece depois de um percurso. Ela larga acreditando no
+número digitado. `V29h` prende o tamanho desse excesso; `V29f` prende que
+ele **não se repete** depois que ela se mediu.
+
+### Um defeito de invariante, sem sintoma conhecido
+
+Escrever velocidade por fora de `programarVelocidade()` deixa o cache
+`velProgramada[]` mentindo, e a próxima escrita que coincidir com esse
+número é descartada. **Não achei uma entrada em que isso mude o
+comportamento hoje** — o Hz de largada sai de uma conta de distância por
+tempo e quase nunca cai exatamente sobre o Hz do manual. `V33c` prende a
+invariante mesmo assim, para não depender de a coincidência aparecer para
+só então ser consertada.
+
+### O que o banco não prova
+
+Aspereza de trem de pulso não aparece num mock de gerador. O banco prende
+a **causa** — quantas vezes a rampa é reprogramada; quem julga o
+resultado é a máquina na bancada.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **527 / 0** |
-| interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **532 / 0** |
+| interface | 121 / 0 | 125 / 0 | 209 / 0 | **311 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer
 (`testes/sanitizar.sh`).

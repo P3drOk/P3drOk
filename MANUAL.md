@@ -987,77 +987,99 @@ O que faz o braço chegar **sem depender da régua**: o ângulo que você
 digitou fica guardado em graus, e enquanto o braço anda a máquina olha a
 medida.
 
-- **Perto do alvo ele afina.** A velocidade passa a sair do que falta:
-  `v = √(2·a·falta)`, que é a velocidade da qual ainda se para dentro do
-  que falta. Longe, ela é maior que o ritmo configurado e não muda nada;
-  perto, vai baixando sozinha.
-- **Chegou, para.** O freio pelo encoder põe o ponto final.
-- **E a velocidade sai pela medida, não pela régua.** Se o eixo anda mais
-  do que foi mandado, a máquina encolhe o comando na mesma proporção —
-  esse é o **governador**, e ele é a única coisa no caminho que não
-  depende de `passosPorVolta` estar certo.
+São **três comandos por viagem**, e no meio deles a rampa corre sozinha:
+
+| fase | quando | o comando |
+|---|---|---|
+| **larga** | ao pedir o ângulo | velocidade + aceleração + `moveTo()`, uma vez |
+| **aproxima** | quando a medida diz que falta pouco | **um** degrau de velocidade para baixo |
+| **para** | quando a medida diz que chegou | `stopMove()` |
+
+Entre eles o gerador de pulso **não é tocado**. O "diminuir a velocidade
+suavemente" não vem de mil ajustes: vem da rampa, que desacelera até o
+degrau com a aceleração configurada.
+
+Isso não é economia de código. Reprogramar a velocidade obriga o gerador
+a refazer a rampa, e o aviso está no próprio firmware desde as primeiras
+versões da máquina, no comentário de `programarVelocidade()`. Houve uma
+rodada em que a correção recalculava a velocidade a cada leitura — **20
+reprogramações** numa viagem de 45°, contra 3 agora —, e da bancada isso
+se vê como *"micro variação"*, *"ele fica tentando acertar"*.
 
 Não é malha fechada de servo: não há ganho nem correção contínua durante
 o movimento (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
-disso faria o braço oscilar). É a velocidade escolhida a partir do que
-falta, e um fim de curso por medida.
+disso faria o braço oscilar). São três decisões e uma rampa.
 
-> **A margem de frenagem.** A conta usa a aceleração em graus **da
-> régua**. Se a régua estiver errada por um fator, a aceleração real é
-> menor na mesma proporção — o eixo freia menos do que a conta promete e
-> passa do ponto. Por isso a frenagem é planejada com **um quarto** da
-> aceleração (`FREIO_ENC_MARGEM`): assim uma régua até quatro vezes
-> errada ainda para no ângulo. Sem essa margem o excesso volta a 1,3°.
+> **A distância do degrau.** Ela tem duas parcelas, as duas em graus de
+> verdade: o que a rampa consome para cair da velocidade de cruzeiro até
+> a de aproximação, e o que o eixo anda **às cegas** até a próxima
+> leitura chegar. Num barramento de 217 ms, a 12 °/s, são 2,6 graus em
+> que a máquina não vê nada — dar o degrau só quando a medida já disse
+> que chegou seria dar tarde.
 
 Medido no banco, cinco ângulos seguidos (3, 45, −30, 0 e 12,5):
 
 | | erro final | passou do alvo | inversões de sentido |
 |---|---|---|---|
 | régua certa | ≤ **0,012°** | **0** | **0** |
-| régua errada por 2× | ≤ **0,064°** | ≤ **0,064°** | **0** |
-| *(antes, régua errada por 2×)* | *0,048°* | *1,3°* | *2 por movimento* |
+| régua errada por 2×, depois da 1ª viagem | ≤ **0,064°** | ≤ **0,064°** | **0** |
+| régua errada por 2×, **na 1ª viagem** | 0,120° | **0,276°** | 1 retoque |
 
-Cenário **V29**.
+Cenário **V29**. A primeira viagem é contada à parte de propósito: antes
+de andar, a máquina não tem como saber que a régua digitada está errada
+— a razão entre passo e grau só aparece depois de um percurso. Ela larga
+acreditando no número digitado, e se ele mentir, chega um pouco além. O
+que fica preso é que **isso não se repete** depois que ela se mediu.
 
-#### O governador: quando a régua digitada exagera
+#### O fator da régua: quando o que está digitado exagera
 
 `passosPorGrau` errado escala **tudo** — a distância (pedir 40 graus anda
 160) e a velocidade (pedir 12 °/s anda 48). O encoder mede a **junta**,
 então ele é o único que sabe a verdade.
 
-A cada leitura nova a máquina compara o que o eixo **andou** com o que
-foi **mandado naquela janela**, e encolhe o comando na proporção da
-diferença. Ele só encolhe: devolve 5 % por leitura, nunca acima de 1 —
-um limitador que acelerasse viraria malha fechada, que é o que faz caçar
-o ponto.
+No fim de cada viagem a máquina faz **uma** conta: quantos graus a régua
+mandou andar, contra quantos graus o encoder mediu. A razão entre os dois
+é o exagero da régua, e o inverso dela é o fator que segura o eixo na
+largada seguinte.
 
-Três detalhes que decidem se ele funciona:
+**Uma conta por viagem, e não uma por leitura.** A viagem dura segundos e
+usa as duas pontas; medir velocidade dentro de uma janela de 217 ms usa
+dois números vizinhos e ruidosos, e dá um resultado diferente a cada vez.
 
-- **compara com o comando, não com a velocidade pedida.** Na chegada o
-  eixo anda devagar porque foi *mandado* andar devagar. Lido como folga,
-  o fator era devolvido a cada parada e cada movimento largava mais
-  rápido que o anterior (13,5 °/s no segundo, 16,2 no terceiro, com 12
-  pedidos);
-- **o fator fica entre os movimentos.** O exagero é propriedade da
-  máquina, não do movimento — e é o que permite a **largada** já sair
-  contida, mesmo que a primeira leitura do movimento falhe. Ele volta a
-  1 sozinho quando a régua for corrigida;
-- **amostra por leitura nova, não por relógio.** Entre duas leituras o
-  ângulo não muda.
+Três detalhes decidem se ela funciona:
+
+- **as duas pontas se tomam com o eixo parado.** Uma leitura de 217 ms
+  atrás conta onde a junta *estava*. Parado isso não importa; a 48 °/s
+  importa dez graus. Por isso a partida é registrada antes de o eixo
+  andar, e a chegada só depois que uma leitura nova chega com o eixo já
+  parado — o robô segura o `POSICIONANDO` até ela;
+- **o teto de 1 vale no resultado, nunca na medida.** O ruído de uma
+  régua *certa* cai dos dois lados de 1; travando um dos lados, só o
+  outro entra na conta e o fator desce sozinho viagem após viagem, até a
+  máquina rastejar com a régua perfeitamente certa;
+- **a primeira medida entra inteira**, as seguintes pela metade. Antes de
+  andar, o 1,0 não é conhecimento — é a suposição de que a régua está
+  certa.
+
+O fator **só entra na velocidade**, nunca na distância. Mexer na
+distância seria adotar a régua medida por baixo do pano, e isso já foi
+tentado duas vezes: as duas terminaram com o braço dando voltas.
 
 Medido no pior caso da bancada — régua **quatro vezes** errada *e*
 barramento a 217 ms (`V31`, `V32`):
 
 | | resultado |
 |---|---|
-| onde parou | **40,14°** (pedido 40; a régua mandaria 160) |
-| velocidade de pico | **11,2 °/s** (pedido 12) |
+| onde parou | **40,07°** (pedido 40; a régua mandaria 160) |
+| velocidade | **12,0 °/s**, com 12 pedidos |
 | inversões de sentido | **0** |
-| largada com o barramento **calado** | **11,9 °/s** (sem o fator: 24,1) |
+| largada com o barramento **calado** | **12,0 °/s** |
 
-> Isto **não substitui** acertar `passosPorVolta` na Configuração. O
-> governador impede que a régua errada dispare o braço; ele não faz a
-> régua certa. Com ela certa, o fator fica em 1 e nada disso atua.
+> **A tela avisa.** Quando o fator sai de 1, a página de Encoder passa a
+> dizer, em destaque, quantas vezes a régua digitada está maior que a
+> medida e em que percentual o eixo está sendo segurado. O firmware
+> contém o estrago; quem escreve `passosPorVolta` é uma pessoa, e com o
+> número certo o fator volta a 1 e a velocidade cheia volta junto.
 
 #### Quando o encoder NÃO guia o movimento
 

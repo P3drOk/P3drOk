@@ -707,7 +707,10 @@ body.semNotasCfg .cfgRol .nt{display:none}
 input[type=file]{font-size:11px;color:var(--fraca);margin-bottom:8px;max-width:100%}
 .res{font-family:var(--mono);font-size:10.5px;color:var(--arco);background:var(--face);
  border:1px solid var(--linha);border-radius:3px;padding:8px 10px;margin-bottom:9px;
- line-height:1.6}
+ line-height:1.6;white-space:pre-line}
+/* A regua digitada errada nao e uma observacao: e a causa de o braco
+   andar mais devagar do que o numero pedido. Ela se destaca. */
+.res.alerta{color:var(--quente);border-color:var(--quente)}
 .pgr{height:3px;background:var(--fundo);border-radius:2px;overflow:hidden;margin:9px 0 3px}
 .pgr i{display:block;height:100%;background:var(--quente);width:0;transition:width .25s}
 
@@ -5714,13 +5717,30 @@ function aplicar(d){
                  " pulsos por volta, e aqui esta "+k[2]+
                  " ("+(dif*100).toFixed(0)+"% de diferenca)");
       });
+      /* O FATOR APRENDIDO ANDANDO, que e outra coisa e vale mais.
+         A medida acima sai de uma divisao instantanea e e ruidosa; esta
+         sai do percurso INTEIRO de cada viagem -- quantos graus a regua
+         mandou andar contra quantos o encoder mediu. E ela que o
+         firmware usa para segurar o eixo, entao e ela que explica por
+         que o braco anda mais devagar do que o numero pedido. */
+      let segurando=false;
+      [[1,d.fatR1],[2,d.fatR2]].forEach(function(k){
+        if(!k[1]||k[1]>=0.87)return;   /* 1/1,15 */
+        segurando=true;
+        lin.push("J"+k[0]+" · andando, a maquina mediu que a regua daqui e "+
+                 (1/k[1]).toFixed(1)+"x maior que a real. Ela esta segurando "+
+                 "este eixo em "+(k[1]*100).toFixed(0)+"% da velocidade "+
+                 "pedida para o braco nao disparar.");
+      });
       cx.textContent = lin.length
         ? (lin.join("\n")+
            "\nA maquina nao troca sozinha. Se a medida estiver certa, "+
            "escreva-a no campo acima e salve: e ela que faz o movimento "+
-           "acertar de primeira.")
+           "acertar de primeira"+
+           (segurando?" e devolve a velocidade cheia.":"."))
         : "";
       cx.style.display = lin.length ? "" : "none";
+      cx.className = segurando ? "res alerta" : "res";
     }
   }
 

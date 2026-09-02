@@ -820,6 +820,7 @@ static void teste_A10_json_status() {
     "\"acel1\":%lu,\"acel2\":%lu,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"ppvM1\":%lu,\"ppvM2\":%lu,"
+    "\"fatR1\":%.3f,\"fatR2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -842,6 +843,7 @@ static void teste_A10_json_status() {
     180000UL, 180000UL, 180000UL, 180000UL, 999999UL, 999999UL,
     999999UL, 999.999f, 999999UL, 999.999f,
     999999UL, 999999UL,
+    -9.999f, -9.999f,
     "false","false", 255u,
     40u,
     180000.f, 180000.f, 9999.9f, 9999.99f, 9999.99f,
@@ -6037,6 +6039,7 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
     const float pedidos[] = {3.0f, 45.0f, -30.0f, 0.0f, 12.5f};
     float piorErro = 0.0f, piorExcesso = 0.0f;
     int   piorInv = 0;
+    float primeiroExcesso = 0.0f;
     for (int p = 0; p < 5; p++) {
       const float alvo = pedidos[p];
       char rota[64];
@@ -6065,7 +6068,21 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
       const float erro = fabsf(onde - alvo);
       if (erro > piorErro)       piorErro = erro;
       if (excesso > piorExcesso) piorExcesso = excesso;
-      if (inv > piorInv)         piorInv = inv;
+      // A PRIMEIRA VIAGEM DA MAQUINA E CONTADA A PARTE.
+      //
+      // O vai-e-vem se conta de p=1 em diante porque antes de andar a
+      // maquina nao tem como saber que a regua digitada esta errada: a
+      // razao entre passo e grau so aparece depois de um percurso. Na
+      // primeira ida ela larga acreditando na regua, e se a regua mentir
+      // ela chega um pouco alem -- 0,276 grau aqui --, o que o
+      // assentamento fecha com um retoque, e retoque conta como
+      // inversao.
+      //
+      // A primeira viagem nao fica sem guarda: V29g prende o tamanho
+      // desse excesso. O que este numero prende e que ele NAO SE REPETE
+      // depois que a maquina se mediu.
+      if (p > 0 && inv > piorInv) piorInv = inv;
+      if (p == 0) primeiroExcesso = excesso;
       nota("  pedi %6.2f -> encoder %7.3f (erro %.3f) | passou do alvo em "
            "%.3f | %d inversao(oes) | %u ms",
            (double)alvo, (double)onde, (double)erro, (double)excesso,
@@ -6089,7 +6106,20 @@ static void teste_V29_ir_a_um_angulo_e_fluido() {
     checar(piorInv == 0, (caso == 0) ? "V29c" : "V29f",
            (caso == 0)
              ? "e sem vai-e-vem: nenhuma inversao de sentido"
-             : "e sem vai-e-vem: eram duas inversoes por movimento");
+             : "e sem vai-e-vem depois da primeira viagem: eram duas "
+               "inversoes por movimento, em todos");
+    // E a primeira viagem, aquela em que a maquina ainda acredita na
+    // regua digitada, tem excesso LIMITADO. Sem esta linha o cenario
+    // deixaria de olhar justamente o movimento mais exposto.
+    nota("  primeira viagem (a maquina ainda nao se mediu): excesso %.3f grau",
+         (double)primeiroExcesso);
+    checar(primeiroExcesso < 0.50f, (caso == 0) ? "V29g" : "V29h",
+           (caso == 0)
+             ? "e a primeira viagem tambem para no ponto, que com a regua "
+               "certa nao ha o que descobrir"
+             : "e mesmo a primeira viagem -- antes de a maquina ter medido "
+               "a propria regua -- passa pouco do ponto: o freio pela "
+               "medida vale desde o primeiro movimento");
     (void)qual;
   }
 }
@@ -6249,17 +6279,26 @@ static void teste_V31_regua_ruim_e_barramento_lento() {
   webPost("/api/mover?t1=40&t2=0");
   { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
 
-  // A VELOCIDADE SE MEDE PELO RELOGIO, E NAO PELA CONTAGEM DE VOLTAS.
+  // A VELOCIDADE SE MEDE NO COMANDO, E NAO NO RELOGIO DO BANCO.
   //
-  // rodarComWeb(20) nao custa 20 ms de relogio simulado: uma leitura de
-  // encoder que expira custa 100 ms sozinha, e aqui o barramento e
-  // lento de proposito. Contando voltas, uma "janela de 200 ms" valia
-  // 440 ms de relogio e a velocidade saia o DOBRO do que o eixo andou
-  // -- 22 graus/s onde o eixo fazia 10. O defeito estava no
-  // instrumento, e instrumento errado inventa defeito no que ele mede.
+  // Duas armadilhas ja pegaram este cenario, as duas no INSTRUMENTO:
+  //
+  //  1. contar voltas do laco. rodarComWeb(20) nao custa 20 ms de
+  //     relogio simulado, e a "janela de 200 ms" valia 440;
+  //  2. contar pelo relogio. delay() e delayMicroseconds() adiantam
+  //     g_millis SEM chamar avancar() no gerador de pulso -- e a espera
+  //     do Modbus e feita de delay. Com o barramento a 220 ms o relogio
+  //     anda o dobro do tempo que o motor viu, e a velocidade sai pela
+  //     METADE: 6,6 graus/s onde o eixo fazia 12.
+  //
+  // O que nao tem essa distorcao e o Hz que o firmware MANDOU, lido pela
+  // regua REAL da maquina. E tambem o que a queixa fala: "a velocidade e
+  // alta" e sobre o que o motor recebe.
+  //
+  // As contas de DISTANCIA -- onde parou, quanto passou, quantas
+  // inversoes -- nao dependem de relogio nenhum e continuam como estao.
+  const float ppgReal = (float)ppvReal * J1.reducao / 360.0f;
   float ant = encoderLer(1).graus, pico = ant;
-  float amostraG = ant;
-  uint32_t amostraMs = millis();
   const uint32_t t0 = millis();
   uint32_t t = 0;
   float velPico = 0.0f;
@@ -6269,16 +6308,9 @@ static void teste_V31_regua_ruim_e_barramento_lento() {
     t = millis() - t0;
     const float g = encoderLer(1).graus;
     if (g > pico) pico = g;
-    // Velocidade angular REAL da junta, numa janela fixa de 200 ms de
-    // relogio -- separada da deteccao de inversao, que usa outro
-    // criterio. Misturar as duas deixava a janela nunca fechar e a
-    // velocidade saia 0.
-    const uint32_t agoraMs = millis();
-    if (agoraMs >= amostraMs + 200) {
-      const float vm = fabsf(g - amostraG) /
-                       ((float)(agoraMs - amostraMs) / 1000.0f);
+    if (motoresEmMovimento() && ppgReal > 0.01f) {
+      const float vm = velocidadeJ1Hz() / ppgReal;
       if (vm > velPico) velPico = vm;
-      amostraG = g; amostraMs = agoraMs;
     }
     const float d = g - ant;
     if (fabsf(d) > 0.08f) {
@@ -6324,15 +6356,12 @@ static void teste_V31_regua_ruim_e_barramento_lento() {
   webPost("/api/mover?t1=10&t2=0");
   { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
   {
-    float aG = encoderLer(1).graus;
-    uint32_t aM = millis(), q0 = millis();
+    const uint32_t q0 = millis();
     while (modoAtual != MODO_MANUAL && millis() - q0 < 40000) {
       rodarComWeb(20);
-      if (millis() >= aM + 200) {
-        const float vv = fabsf(encoderLer(1).graus - aG) /
-                         ((float)(millis() - aM) / 1000.0f);
+      if (motoresEmMovimento() && ppgReal > 0.01f) {
+        const float vv = velocidadeJ1Hz() / ppgReal;
         if (vv > pico3) pico3 = vv;
-        aG = encoderLer(1).graus; aM = millis();
       }
     }
   }
@@ -6399,16 +6428,18 @@ static void teste_V32_largada_com_o_barramento_calado() {
 
   // O eixo se mede pelos PASSOS: o encoder esta calado, e e justamente
   // por isso que este cenario existe.
+  // Pelo COMANDO, e nao pelo relogio: ver a nota de instrumento em V31.
+  // A espera do Modbus e feita de delay(), que adianta o relogio do
+  // banco sem o gerador de pulso andar junto -- num cenario cujo assunto
+  // e justamente um barramento que nao responde, isso e o dobro de
+  // distorcao.
   const uint32_t m0 = millis();
-  long pAnt = posicaoJ1(); uint32_t mAnt = m0;
   float velPico = 0.0f;
   while (millis() - m0 < 900 && modoAtual != MODO_MANUAL) {
     rodarComWeb(2);
-    if (millis() - mAnt >= 100) {
-      const float v = fabsf((float)(posicaoJ1() - pAnt)) / ppgReal /
-                      ((float)(millis() - mAnt) / 1000.0f);
+    if (motoresEmMovimento() && ppgReal > 0.01f) {
+      const float v = velocidadeJ1Hz() / ppgReal;
       if (v > velPico) velPico = v;
-      pAnt = posicaoJ1(); mAnt = millis();
     }
   }
   nota("com o barramento calado o eixo chegou a %.1f graus/s de verdade "
@@ -6423,6 +6454,104 @@ static void teste_V32_largada_com_o_barramento_calado() {
   g_uart.escravo[0].mudo = false;
   enviarComando(CMD_PARAR);
   rodarComWeb(400);
+}
+
+// ---------------------------------------------------------------------
+// V33: tres comandos por viagem, e o cache de velocidade nao mente.
+//
+// As duas versoes da maquina em que o movimento era liso -- a de antes
+// do encoder e a de antes do freio -- tem uma coisa em comum: NADA toca
+// na velocidade enquanto o eixo anda. moveTo() e a rampa correm
+// inteiras. O aviso esta no proprio codigo desde o comeco, no comentario
+// de programarVelocidade(): reprogramar o gerador obriga a refazer a
+// rampa, e refazer a rampa o tempo todo suja o trem de pulsos.
+//
+// A correcao tinha passado por cima disso duas vezes:
+//
+//  1. recalculando a velocidade a cada leitura do encoder -- 14 escritas
+//     por movimento com o barramento a 217 ms, umas 150 num barramento
+//     bom;
+//  2. chamando motor->setSpeedInHz() DIRETO, por fora de
+//     programarVelocidade(). Isso deixava o cache velProgramada[]
+//     mentindo: o freio terminava o movimento a 70 Hz, o cache continuava
+//     dizendo 1333, e a proxima escrita de 1333 era descartada -- o braco
+//     andava a 70 Hz sem ninguem entender por que.
+//
+// Aspereza de trem de pulso nao aparece num mock de gerador. O que
+// aparece, e o que este cenario prende, e a CAUSA dela.
+// ---------------------------------------------------------------------
+static void teste_V33_tres_comandos_por_viagem() {
+  secao("V33  Tres comandos por viagem, e o cache de velocidade nao mente");
+  reiniciarSistema();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(120);
+  g_espelharEixo = true;
+  rodarComWeb(400);
+
+  // A MESMA VELOCIDADE NOS DOIS CAMPOS -- que e como quase toda maquina
+  // e configurada, e a condicao exata em que o cache mentiroso morde: se
+  // o manual pede um Hz DIFERENTE do que a viagem programou, a escrita
+  // passa e ninguem ve o defeito. Ele so aparece quando os dois numeros
+  // coincidem, e ai o cache diz "ja programei" com o gerador parado no
+  // Hz do encosto final.
+  velNormal = velAuto;
+  rodarComWeb(40);
+
+  // Uma viagem longa, com a regua CERTA: o caso de todo dia.
+  g_escritasVelocidade[0] = g_escritasVelocidade[1] = 0;
+  webPost("/api/mover?t1=45&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  // Acompanha o SETPOINT do gerador passo a passo: toda vez que ele muda,
+  // o contador de programarVelocidade() tem de ter mudado junto.
+  uint32_t hzAnt = J1.motor ? J1.motor->velHz : 0;
+  uint32_t contaAnt = g_escritasVelocidade[0];
+  int foraDoCaminho = 0;
+  { uint32_t e = 0;
+    while (modoAtual != MODO_MANUAL && e < 40000) {
+      rodarComWeb(20); e += 20;
+      const uint32_t hzAgora = J1.motor ? J1.motor->velHz : 0;
+      if (hzAgora != hzAnt) {
+        if (g_escritasVelocidade[0] == contaAnt) foraDoCaminho++;
+        hzAnt = hzAgora; contaAnt = g_escritasVelocidade[0];
+      }
+    } }
+  const uint32_t escritas = g_escritasVelocidade[0];
+  nota("viagem de 45 graus com a regua certa: %lu reprogramacoes do gerador "
+       "(a largada, o degrau da aproximacao e a volta a velocidade manual)",
+       (unsigned long)escritas);
+  checar(encoderLer(1).graus > 44.0f, "V33a",
+         "a viagem chegou -- e sobre ela que as contas abaixo falam");
+  checar(escritas <= 4, "V33b",
+         "no maximo quatro escritas de velocidade na viagem inteira: a "
+         "largada, o degrau da aproximacao, a parada e a volta ao manual. "
+         "Recalcular a velocidade a cada leitura dava catorze com o "
+         "barramento lento e umas cento e cinquenta com ele bom, e cada "
+         "uma obriga o gerador a refazer a rampa");
+
+  // TODA ESCRITA DE VELOCIDADE PASSA POR programarVelocidade().
+  //
+  // Esta e a invariante que o comentario daquela funcao afirma desde as
+  // primeiras versoes da maquina, e que a correcao tinha quebrado
+  // chamando motor->setSpeedInHz() direto. Quem escreve por fora deixa o
+  // cache velProgramada[] mentindo -- ele passa a dizer um Hz que o
+  // gerador nao tem --, e a proxima escrita que coincidir com esse
+  // numero e DESCARTADA, deixando o braco no Hz do encosto final.
+  //
+  // Vale registrar com honestidade: eu nao achei uma entrada em que isso
+  // mude o comportamento hoje, porque o Hz de largada sai de uma conta
+  // de distancia por tempo e quase nunca cai exatamente sobre o Hz do
+  // manual. E defeito de invariante, nao sintoma observado -- e a
+  // invariante e justamente o que este cenario prende, para nao depender
+  // de uma coincidencia aparecer para so entao ser consertada.
+  nota("mudancas do setpoint sem passar pelo cache: %d", foraDoCaminho);
+  checar(foraDoCaminho == 0, "V33c",
+         "nenhuma mudanca do setpoint do gerador acontece por fora de "
+         "programarVelocidade(): e ele que guarda o que foi realmente "
+         "programado, e quem escreve por fora deixa esse registro mentindo");
 }
 
 // ---------------------------------------------------------------------
@@ -9024,6 +9153,7 @@ int main() {
   teste_V30_barramento_lento_nao_caca_o_ponto();
   teste_V31_regua_ruim_e_barramento_lento();
   teste_V32_largada_com_o_barramento_calado();
+  teste_V33_tres_comandos_por_viagem();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
   teste_V28_ir_a_tres_graus_sem_enrosco();

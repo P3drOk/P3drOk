@@ -803,6 +803,35 @@ async function fecharGaveta(pag) {
   // aberto ontem. Errar ali desloca a area util inteira.
   // O zero absoluto e ajuste: mora na gaveta, pagina Encoder.
   await abrirGaveta(q, 'encoder');
+  // A REGUA DIGITADA ERRADA APARECE NA TELA.
+  //
+  // O firmware segura o eixo quando mede, andando, que passosPorVolta
+  // esta maior do que a maquina de verdade -- senao pedir 40 graus anda
+  // 160. Segurar calado seria a maquina "andando devagar sem motivo":
+  // quem opera precisa saber que o numero digitado e a causa, e qual e.
+  await q.request.post(BASE + '/teste/estado', { data: { fatR1: 0.25 } });
+  await q.waitForTimeout(600);
+  const regua = await q.evaluate(() => {
+    const c = document.getElementById('ppvMedido');
+    return { txt: c ? c.textContent : '', cls: c ? c.className : '',
+             disp: c ? c.style.display : 'nao existe',
+             vis: c ? !!c.offsetParent : false };
+  });
+  checar(/4\.0x maior/.test(regua.txt) && /alerta/.test(regua.cls) &&
+         regua.disp !== 'none',
+         'Regua: quando o firmware segura o eixo, a tela diz o quanto e por que',
+         'vis=' + regua.vis + ' disp="' + regua.disp + '" cls="' + regua.cls +
+         '" | ' + regua.txt.split('\n')[0]);
+  await q.request.post(BASE + '/teste/estado', { data: { fatR1: 1.0 } });
+  await q.waitForTimeout(600);
+  const reguaOk = await q.evaluate(() => {
+    const c = document.getElementById('ppvMedido');
+    return c ? !!c.offsetParent : false;
+  });
+  checar(!reguaOk,
+         'Regua: com a regua batendo com a medida, nao ha aviso nenhum');
+
+
   await q.evaluate(() => {
     const alvo = document.getElementById('etZero');
     document.querySelectorAll('#cfgEncoder .et')

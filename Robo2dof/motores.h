@@ -39,6 +39,22 @@ uint32_t grausPorSegParaHz(const Junta& j, float grausPorS);
 // sozinho precisa dela para nao sair do ritmo do resto.
 float velDaJuntaPub(const Junta& j, float base);
 
+// A UNICA PORTA PARA ESCREVER VELOCIDADE, tambem de fora deste modulo.
+//
+// programarVelocidade() guarda o ultimo Hz REALMENTE programado em cada
+// gerador e pula a escrita quando o valor nao mudou. Quem chamasse
+// motor->setSpeedInHz() por fora deixava esse cache mentindo: o freio do
+// encoder terminava o movimento a 70 Hz, o cache continuava dizendo
+// 1333, e o jog seguinte -- que pede exatamente 1333 -- era DESCARTADO
+// pelo cache. O braco entao andava a 70 Hz sem ninguem entender por que.
+// Por isso a correcao passa por aqui, como todo o resto.
+void programarVelocidadePub(Junta& j, int indice, uint32_t hz);
+
+#ifdef ROBO2DOF_TESTE
+// Contador de reprogramacoes do gerador, so no banco. Ver V33.
+extern uint32_t g_escritasVelocidade[2];
+#endif
+
 bool motoresEmMovimento();
 float velocidadeJ1Hz();
 float velocidadeJ2Hz();

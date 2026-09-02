@@ -525,15 +525,36 @@ static const uint32_t CORR_INTERVALO_MAX_MS = 100;
 // por segundos depois.
 static const uint32_t CORR_LACUNA_MS = 2000;
 
-// MARGEM DA DESACELERACAO.
+// A VELOCIDADE DE APROXIMACAO, como fracao da pedida.
 //
-// A conta raiz(2.a.falta) usa a aceleracao em graus DA REGUA. Se a regua
-// estiver errada por um fator, a aceleracao real e menor na mesma
-// proporcao -- o eixo freia menos do que a conta promete e passa do
-// ponto. Planejar a frenagem com uma fracao da aceleracao e a folga que
-// cobre isso: com 0,25, uma regua ate quatro vezes errada ainda para no
-// angulo.
-static const float FREIO_ENC_MARGEM = 0.25f;
+// O movimento tem TRES comandos, e nao um por leitura: larga na
+// velocidade pedida, baixa UMA vez para esta quando o encoder ve que
+// esta perto, e para. Entre eles ninguem toca no gerador de pulso.
+//
+// Isso nao e economia de codigo, e o que faz o movimento ser liso:
+// reprogramar a velocidade obriga o gerador a refazer a rampa, e refazer
+// a rampa dezenas de vezes por movimento aparece na bancada como
+// aspereza -- "ele fica tentando acertar". O aviso esta em
+// motores.cpp, no comentario de programarVelocidade(), desde as
+// primeiras versoes da maquina; a correcao e que tinha passado por cima
+// dele.
+//
+// Um quinto da velocidade pedida: devagar o bastante para a distancia
+// cega de uma leitura ficar pequena, rapido o bastante para o encosto
+// nao ficar eterno. O piso continua sendo FREIO_ENC_VEL_MINIMA.
+static const float APROX_VEL_FRACAO = 0.2f;
+
+// A PARTIR DE QUE DESVIO A REGUA DIGITADA E DENUNCIADA NA TELA.
+//
+// O firmware contem o estrago de uma regua errada (segurando a
+// velocidade), mas quem escreve passosPorVolta e uma pessoa. Passando
+// deste desvio entre o que foi digitado e o que a maquina mediu andando,
+// a tela para de ficar calada e diz o numero.
+static const float REGUA_SUSPEITA_FATOR = 1.15f;
+
+// Viagem curta demais nao ensina nada: a diferenca entre o que a regua
+// mandou e o que o encoder mediu fica dentro do ruido das duas pontas.
+static const float APRENDER_VIAGEM_MINIMA_GRAUS = 3.0f;
 
 static const float CURSO_MINIMO_GRAUS = 5.0f;
 

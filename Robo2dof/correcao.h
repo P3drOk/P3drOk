@@ -129,6 +129,23 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 void correcaoAlvoPedido(float t1, float t2, bool valido);
 void correcaoFrearNoAlvo();
 
+// O que a viagem ensinou sobre a regua digitada. Chamada UMA vez, quando
+// o movimento termina: compara os graus que a regua mandou andar com os
+// graus que o encoder mediu, de ponta a ponta. O resultado so entra na
+// VELOCIDADE da largada seguinte -- nunca na distancia.
+void correcaoAprenderDaViagem();
+
+// Verdadeiro enquanto a conta acima ainda espera a leitura que fecha a
+// viagem. O robo fica em POSICIONANDO ate isso resolver: no movimento
+// seguinte a ancoragem ja reescreveu a contagem de passos e o percurso
+// da viagem que acabou nao existe mais.
+bool correcaoAprendendo();
+
+// O fator aprendido, para a tela poder denunciar a regua digitada. 1,0 =
+// a regua bate com a medida; 0,25 = a regua esta quatro vezes maior que
+// a real e o firmware esta segurando o eixo nessa proporcao.
+float correcaoFatorRegua(uint8_t junta);
+
 // ---------------------------------------------------------------------
 // O ENCODER CHEGA A TEMPO DE GUIAR O MOVIMENTO?
 //

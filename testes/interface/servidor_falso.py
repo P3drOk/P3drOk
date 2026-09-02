@@ -55,6 +55,10 @@ estado = {
     "ppv1": 10000, "red1": 16.5, "ppv2": 10000, "red2": 4.0,
     # O que o encoder mediu de pulsos por volta. 0 = nada medido ainda.
     "ppvM1": 0, "ppvM2": 0,
+    # O fator aprendido nas viagens: 1,0 = a regua digitada bate com o que
+    # o encoder mediu andando. Abaixo disso o firmware esta segurando o
+    # eixo, e a tela tem de dizer isso.
+    "fatR1": 1.0, "fatR2": 1.0,
     "inv1": False, "inv2": True,
     "suav": 120, "afer1": 0, "afer2": 0,
     "v1": 0, "v2": 0, "vPonta": 0.0, "ppg1": 458.33, "ppg2": 111.11,

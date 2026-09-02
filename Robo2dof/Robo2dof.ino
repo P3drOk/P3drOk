@@ -1014,6 +1014,19 @@ void loop() {
       // teste e o que impede isso de virar voltas sem fim.
       correcaoFrearNoAlvo();
       if (!motoresEmMovimento()) {
+        // O QUE A VIAGEM ENSINOU, antes de qualquer outra coisa.
+        //
+        // Aqui o eixo acabou de parar e as duas pontas do percurso ainda
+        // valem. No movimento seguinte nao valeriam mais: ancorarNoEncoder()
+        // reescreve a contagem de passos e apaga o percurso desta viagem.
+        //
+        // A conta espera uma leitura que seja de DEPOIS da parada -- num
+        // barramento de 217 ms a ultima ainda e de antes, com o eixo
+        // andando --, e por isso o robo segura o POSICIONANDO ate ela
+        // chegar. O prazo, dentro da propria conta, evita que um
+        // barramento mudo prenda a maquina aqui.
+        correcaoAprenderDaViagem();
+        if (correcaoAprendendo()) break;
         // Chegou pela conta de passos. Antes de liberar o jog, o encoder
         // diz onde o braco REALMENTE parou, e o sistema da um retoque se
         // precisar. E isto que faz sair de uma posicao e voltar cair no

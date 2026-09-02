@@ -195,6 +195,7 @@ static void handleStatus() {
     "\"acel1\":%.0f,\"acel2\":%.0f,"
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"ppvM1\":%lu,\"ppvM2\":%lu,"
+    "\"fatR1\":%.3f,\"fatR2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -229,6 +230,10 @@ static void handleStatus() {
     // O que o encoder MEDIU de pulsos por volta. Sugestao, nao regua:
     // a tela mostra ao lado do campo e quem decide e uma pessoa.
     (unsigned long)J1.ppvMedido, (unsigned long)J2.ppvMedido,
+    // O fator aprendido nas viagens: 1,0 = a regua digitada bate com o
+    // que o encoder mediu andando; 0,25 = a regua esta quatro vezes
+    // maior e o firmware esta segurando o eixo nessa proporcao.
+    (double)correcaoFatorRegua(1), (double)correcaoFatorRegua(2),
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
     (unsigned)suavidadePartida,
     (unsigned)MAX_PONTOS,

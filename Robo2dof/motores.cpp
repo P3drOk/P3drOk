@@ -239,11 +239,21 @@ uint32_t grausPorSegParaHz(const Junta& j, float grausPorS) {
 // seguinte podia rodar na velocidade do deslocamento sem reprogramar
 // nada. Toda escrita de velocidade passa por aqui.
 
+#ifdef ROBO2DOF_TESTE
+// Quantas vezes o gerador foi REPROGRAMADO. Cada uma obriga a rampa a ser
+// refeita, e e isso que a bancada sente como aspereza: o banco nao
+// consegue medir trem de pulso, mas consegue contar a causa.
+uint32_t g_escritasVelocidade[2] = {0, 0};
+#endif
+
 static void programarVelocidade(Junta& j, int i, uint32_t hz) {
   if (!j.motor) return;
   const uint32_t v = limitarFreq(hz);
   if (v == velProgramada[i]) return;
   velProgramada[i] = v;
+#ifdef ROBO2DOF_TESTE
+  g_escritasVelocidade[i]++;
+#endif
   j.motor->setSpeedInHz(v);
 }
 
@@ -264,6 +274,11 @@ static float velDaJunta(const Junta& j, float base) {
 // fator dela, e ignorar isso faria a chegada andar num ritmo diferente
 // do resto do movimento.
 float velDaJuntaPub(const Junta& j, float base) { return velDaJunta(j, base); }
+
+void programarVelocidadePub(Junta& j, int indice, uint32_t hz) {
+  if (indice < 0 || indice > 1) return;
+  programarVelocidade(j, indice, hz);
+}
 
 void aplicarVelocidadeManual() {
   const float g = velNormal;
