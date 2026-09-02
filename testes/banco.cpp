@@ -6193,6 +6193,239 @@ static void teste_V30_barramento_lento_nao_caca_o_ponto() {
 }
 
 // ---------------------------------------------------------------------
+// V31: o pior caso da bancada -- regua muito errada E barramento lento.
+//
+// "Quando peco para um eixo ir a tal angulo ela comeca e nao para mais,
+// alem disso a velocidade e alta. Se eu jogar 40 graus o motor deve se
+// mover de acordo com a velocidade ate chegar em 40 graus exatamente."
+//
+// As duas queixas tem a MESMA causa: passosPorGrau maior que o real.
+// Tudo escala por ele -- a distancia (40 graus viram 160 de eixo) e a
+// velocidade (12 graus/s viram 48). O que impede isso de virar um eixo
+// solto e o freio pelo encoder, que mede a JUNTA e nao depende da regua.
+//
+// E eu tinha desligado esse freio junto com o assentamento, numa rodada
+// anterior, ao gatilhar os dois pelo ritmo do barramento. Foi um erro de
+// escopo: o assentamento retoca nos DOIS sentidos e por isso caca o
+// ponto num barramento lento; o freio so REDUZ e PARA, e freio tardio
+// ainda e freio.
+// ---------------------------------------------------------------------
+static void teste_V31_regua_ruim_e_barramento_lento() {
+  secao("V31  Regua quatro vezes errada e barramento lento: ainda para em 40");
+  reiniciarSistema();
+  const uint32_t ppvReal = J1.passosPorVolta;
+  g_ppvReal[0] = ppvReal;
+  // Quatro vezes: pior do que o dobro que os outros cenarios usam.
+  J1.passosPorVolta = ppvReal * 4;
+  recalcularResolucao();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  // O barramento da bancada.
+  configEncoder.periodoMs = 220;
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(240);
+  g_espelharEixo = true;
+  rodarComWeb(1500);
+
+  nota("regua configurada %lu (real %lu); ritmo %lu ms; velocidade pedida "
+       "%.1f graus/s", (unsigned long)J1.passosPorVolta,
+       (unsigned long)ppvReal, (unsigned long)correcaoRitmoMs(1),
+       (double)velAuto);
+
+  // UM MOVIMENTO ANTES, e nao por conveniencia: o governador so pode
+  // conter o eixo depois de ter MEDIDO o eixo, e a primeira medida do
+  // movimento chega uma leitura depois da largada. No primeiro movimento
+  // depois de ligar, com a regua muito errada, ha um arranque rapido ate
+  // ele pegar -- isso e fisica, nao defeito. Do segundo em diante o
+  // fator ja esta aprendido e a largada ja sai contida.
+  webPost("/api/mover?t1=20&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 40000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+  nota("aquecimento: o eixo foi a %.2f graus", (double)encoderLer(1).graus);
+
+  webPost("/api/mover?t1=40&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+
+  // A VELOCIDADE SE MEDE PELO RELOGIO, E NAO PELA CONTAGEM DE VOLTAS.
+  //
+  // rodarComWeb(20) nao custa 20 ms de relogio simulado: uma leitura de
+  // encoder que expira custa 100 ms sozinha, e aqui o barramento e
+  // lento de proposito. Contando voltas, uma "janela de 200 ms" valia
+  // 440 ms de relogio e a velocidade saia o DOBRO do que o eixo andou
+  // -- 22 graus/s onde o eixo fazia 10. O defeito estava no
+  // instrumento, e instrumento errado inventa defeito no que ele mede.
+  float ant = encoderLer(1).graus, pico = ant;
+  float amostraG = ant;
+  uint32_t amostraMs = millis();
+  const uint32_t t0 = millis();
+  uint32_t t = 0;
+  float velPico = 0.0f;
+  int inv = 0; int8_t sent = 0;
+  while (modoAtual != MODO_MANUAL && t < 40000) {
+    rodarComWeb(20);
+    t = millis() - t0;
+    const float g = encoderLer(1).graus;
+    if (g > pico) pico = g;
+    // Velocidade angular REAL da junta, numa janela fixa de 200 ms de
+    // relogio -- separada da deteccao de inversao, que usa outro
+    // criterio. Misturar as duas deixava a janela nunca fechar e a
+    // velocidade saia 0.
+    const uint32_t agoraMs = millis();
+    if (agoraMs >= amostraMs + 200) {
+      const float vm = fabsf(g - amostraG) /
+                       ((float)(agoraMs - amostraMs) / 1000.0f);
+      if (vm > velPico) velPico = vm;
+      amostraG = g; amostraMs = agoraMs;
+    }
+    const float d = g - ant;
+    if (fabsf(d) > 0.08f) {
+      const int8_t sg = (d > 0) ? 1 : -1;
+      if (sent != 0 && sg != sent) inv++;
+      sent = sg; ant = g;
+    }
+  }
+  rodarComWeb(300);
+  const float onde = encoderLer(1).graus;
+  nota("pedi 40: parou em %.3f (pico %.3f), velocidade maxima medida "
+       "%.1f graus/s, %d inversao(oes), %u ms",
+       (double)onde, (double)pico, (double)velPico, inv, (unsigned)t);
+
+  checar(t < 39000, "V31a",
+         "o movimento TERMINA: com a regua quatro vezes errada o destino em "
+         "passos fica a 160 graus, e quem poe fim nisso e o freio pela "
+         "medida -- era o \"comeca e nao para mais\"");
+  checar(pico < 45.0f, "V31b",
+         "e para perto dos 40 pedidos, nao nos 160 que a regua mandaria");
+  checar(fabsf(onde - 40.0f) < 3.0f, "V31c",
+         "chegando ao angulo pedido, medido pelo encoder");
+  checar(velPico < velAuto * 1.2f, "V31d",
+         "e sem disparar: com o fator ja aprendido no movimento anterior, o "
+         "eixo anda perto da velocidade pedida em vez dos quatro vezes que a "
+         "regua mandaria -- a barra e 20% acima do pedido, e nao 60%, porque "
+         "e o que o governador entrega de verdade");
+  checar(inv == 0, "V31e",
+         "sem vai-e-vem: o assentamento continua desligado no barramento "
+         "lento, que era o que fazia cacar o ponto");
+
+  // E O FATOR FICA ONDE APRENDEU, MOVIMENTO APOS MOVIMENTO.
+  //
+  // O governador confere a medida contra o COMANDO que vigorou naquela
+  // janela. Conferindo contra um teto fixo -- a velocidade pedida --,
+  // a chegada mente: ali o eixo anda devagar porque foi MANDADO andar
+  // devagar, nao porque sobra folga, e o governador devolvia fator a
+  // cada parada. Cada movimento largava mais rapido que o anterior:
+  // 13,5 graus/s no segundo, 16,2 no terceiro, com 12 pedidos. E o
+  // "alem disso a velocidade e alta" voltando sozinho depois de algumas
+  // idas e vindas.
+  float pico3 = 0.0f;
+  webPost("/api/mover?t1=10&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  {
+    float aG = encoderLer(1).graus;
+    uint32_t aM = millis(), q0 = millis();
+    while (modoAtual != MODO_MANUAL && millis() - q0 < 40000) {
+      rodarComWeb(20);
+      if (millis() >= aM + 200) {
+        const float vv = fabsf(encoderLer(1).graus - aG) /
+                         ((float)(millis() - aM) / 1000.0f);
+        if (vv > pico3) pico3 = vv;
+        aG = encoderLer(1).graus; aM = millis();
+      }
+    }
+  }
+  nota("terceiro movimento: pico %.1f graus/s (o segundo fez %.1f)",
+       (double)pico3, (double)velPico);
+  checar(pico3 < velAuto * 1.2f, "V31f",
+         "o terceiro movimento nao larga mais rapido que o segundo: o fator "
+         "aprendido nao e devolvido na chegada, quando o eixo esta devagar "
+         "por ordem e nao por folga");
+}
+
+// ---------------------------------------------------------------------
+// V32: a largada quando o barramento CALA na hora exata.
+//
+// Na bancada do operador 4,3% das leituras falham. Se a que falha for a
+// primeira do movimento, o freio pelo encoder nao tem em que se apoiar:
+// leituraConfiavel() diz nao e o ciclo inteiro e pulado. Nesse buraco
+// quem manda no eixo e irParaPassos(), com a velocidade passada pela
+// REGUA -- e com a regua quatro vezes maior o eixo larga a quatro vezes
+// a velocidade pedida ate a primeira leitura boa chegar.
+//
+// O exagero da regua, porem, ja esta MEDIDO do movimento anterior: e
+// propriedade da maquina, nao daquela leitura. Aplicado na largada, o
+// eixo sai contido mesmo sem enxergar nada.
+// ---------------------------------------------------------------------
+static void teste_V32_largada_com_o_barramento_calado() {
+  secao("V32  Barramento calado na largada: o eixo ainda sai na velocidade pedida");
+  reiniciarSistema();
+  const uint32_t ppvReal = J1.passosPorVolta;
+  g_ppvReal[0] = ppvReal;
+  J1.passosPorVolta = ppvReal * 4;
+  recalcularResolucao();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  configEncoder.periodoMs = 220;
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(240);
+  g_espelharEixo = true;
+  rodarComWeb(1500);
+
+  // Um movimento com o barramento vivo: e assim que a maquina aprende o
+  // quanto a regua exagera.
+  webPost("/api/mover?t1=20&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 40000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+  nota("aprendido num movimento normal: o eixo foi a %.2f graus",
+       (double)encoderLer(1).graus);
+
+  // AGORA O DRIVER CALA. A ultima leitura envelhece alem do limite e
+  // leituraConfiavel() passa a recusar.
+  g_uart.escravo[0].mudo = true;
+  rodarComWeb(1400);
+  nota("driver mudo: leitura confiavel = %d (idade %lu ms)",
+       leituraConfiavel(1) ? 1 : 0, (unsigned long)encoderLer(1).idadeMs);
+
+  // A regua REAL, para medir o eixo em graus de verdade.
+  const float ppgReal = (float)ppvReal * J1.reducao / 360.0f;
+
+  webPost("/api/mover?t1=40&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+
+  // O eixo se mede pelos PASSOS: o encoder esta calado, e e justamente
+  // por isso que este cenario existe.
+  const uint32_t m0 = millis();
+  long pAnt = posicaoJ1(); uint32_t mAnt = m0;
+  float velPico = 0.0f;
+  while (millis() - m0 < 900 && modoAtual != MODO_MANUAL) {
+    rodarComWeb(2);
+    if (millis() - mAnt >= 100) {
+      const float v = fabsf((float)(posicaoJ1() - pAnt)) / ppgReal /
+                      ((float)(millis() - mAnt) / 1000.0f);
+      if (v > velPico) velPico = v;
+      pAnt = posicaoJ1(); mAnt = millis();
+    }
+  }
+  nota("com o barramento calado o eixo chegou a %.1f graus/s de verdade "
+       "(pedido %.1f; a regua digitada mandaria %.1f)",
+       (double)velPico, (double)velAuto, (double)(velAuto * 4.0f));
+
+  checar(velPico < velAuto * 1.5f, "V32a",
+         "sem leitura nenhuma o eixo ainda larga perto da velocidade pedida: "
+         "o exagero da regua ja estava medido do movimento anterior, e vale "
+         "na largada mesmo com o encoder calado");
+
+  g_uart.escravo[0].mudo = false;
+  enviarComando(CMD_PARAR);
+  rodarComWeb(400);
+}
+
+// ---------------------------------------------------------------------
 static void teste_V24_curso_medido_nao_cala_o_encoder() {
   secao("V24  Curso medido nao cala o encoder com o limite desligado");
   reiniciarSistema();
@@ -8789,6 +9022,8 @@ int main() {
   teste_V12_leitura_absurda_nao_e_confiavel();
   teste_V29_ir_a_um_angulo_e_fluido();
   teste_V30_barramento_lento_nao_caca_o_ponto();
+  teste_V31_regua_ruim_e_barramento_lento();
+  teste_V32_largada_com_o_barramento_calado();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
   teste_V28_ir_a_tres_graus_sem_enrosco();

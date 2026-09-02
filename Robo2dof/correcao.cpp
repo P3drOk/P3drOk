@@ -39,6 +39,34 @@ static float  alvoPedido[2]  = {0.0f, 0.0f};
 // Ultimo Hz mandado pela afinacao. Reprogramar o gerador com o MESMO
 // numero a cada leitura suja o trem de pulsos sem mudar nada.
 static uint32_t freioHzAplicado[2] = {0, 0};
+// Sentido ainda nao decidido / junta sem freio nesta viagem.
+static const int8_t SENTIDO_PENDENTE   = 2;
+static const int8_t SENTIDO_SEM_FREIO  = 0;
+// Leitura anterior, para medir a velocidade ANGULAR de verdade.
+//
+// Amostrada por LEITURA NOVA, e nao por relogio: entre duas leituras do
+// barramento o angulo nao muda, e dividir zero por um intervalo curto
+// dava velocidade zero -- o governador nunca via o eixo correndo. Pior,
+// no ciclo em que a leitura enfim chegava, o angulo de 217 ms era
+// dividido por 40 ms e a velocidade saia cinco vezes maior do que a real.
+static float    velAntGraus[2] = {0.0f, 0.0f};
+static uint32_t velAntMs[2]    = {0, 0};
+static uint32_t velAntConta[2] = {0, 0};
+// E a velocidade que estava MANDADA durante essa janela. Entre duas
+// leituras o angulo nao muda, entao FALTA nao muda e o comando tambem
+// nao: o valor guardado aqui e exatamente o que vigorou do inicio ao
+// fim da janela. Comparar a medida com o comando de AGORA seria
+// comparar com outro comando, e perto do alvo -- onde o comando cai a
+// cada leitura -- isso encolhia o fator sem motivo.
+static float    velAntPedida[2] = {0.0f, 0.0f};
+// O FATOR DO GOVERNADOR PERSISTE ENTRE OS CICLOS.
+//
+// Ele so podia ser calculado quando chega leitura nova -- uma vez a cada
+// 217 ms na bancada. Aplicando-o so nesse ciclo, o ciclo seguinte
+// recalculava o Hz do zero e devolvia o eixo a velocidade cheia: a
+// correcao durava um milissegundo e o braco corria os outros 216. Agora
+// o fator fica, e e a leitura nova que o revisa.
+static float govFator[2] = {1.0f, 1.0f};
 static int8_t alvoSentido[2] = {0, 0};   // +1 subindo, -1 descendo
 static bool   temAlvoPedido  = false;
 
@@ -235,35 +263,93 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
 void correcaoAlvoPedido(float t1, float t2, bool valido) {
   temAlvoPedido = valido;
   freioHzAplicado[0] = freioHzAplicado[1] = 0;
-  if (!valido) { alvoSentido[0] = alvoSentido[1] = 0; return; }
+  velAntGraus[0]  = velAntGraus[1]  = 0.0f;
+  velAntMs[0]     = velAntMs[1]     = 0;
+  velAntConta[0]  = velAntConta[1]  = 0;
+  velAntPedida[0] = velAntPedida[1] = 0.0f;
+  // O FATOR NAO ZERA ENTRE MOVIMENTOS.
+  //
+  // Ele mede o quanto a regua da maquina exagera, e isso e propriedade
+  // da maquina, nao do movimento. Zerando, todo movimento comecava a
+  // toda e so era contido depois da primeira leitura -- 200 ms de
+  // arranque errado, toda vez. Guardado, o segundo movimento em diante
+  // ja sai no ritmo certo.
+  //
+  // Se a regua for corrigida, o fator volta a 1 sozinho: a cada leitura
+  // em que o eixo anda folgado ele sobe 20%.
+  if (!valido) { alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO; return; }
   alvoPedido[0] = t1;
   alvoPedido[1] = t2;
-  for (uint8_t k = 1; k <= 2; k++) {
-    const uint8_t i = k - 1;
-    alvoSentido[i] = 0;
-    if (!leituraConfiavel(k)) continue;   // sem medida nao ha freio
-    const float agora = encoderLer(k).graus;
-    const float d = alvoPedido[i] - agora;
-    // Movimento curto demais para ter sentido definido: sem freio, o
-    // assentamento resolve.
-    if (d > FREIO_ENC_MINIMO_GRAUS)       alvoSentido[i] = +1;
-    else if (d < -FREIO_ENC_MINIMO_GRAUS) alvoSentido[i] = -1;
-  }
+  // O SENTIDO SE DECIDE NA PRIMEIRA LEITURA BOA, e nao aqui.
+  //
+  // Antes ele exigia leitura confiavel NESTE instante; falhando, a junta
+  // ficava sem freio pelo movimento inteiro. Num barramento com 4% de
+  // falhas isso acontece de vez em quando -- e o resultado e um eixo que
+  // "comeca e nao para mais", porque o unico limite que nao depende da
+  // regua digitada tinha acabado de ser desligado por uma leitura
+  // perdida. Marcar como PENDENTE deixa a primeira leitura boa do
+  // movimento decidir.
+  alvoSentido[0] = alvoSentido[1] = SENTIDO_PENDENTE;
 }
 
+// =====================================================================
+//  O FREIO VALE SEMPRE. NAO E MALHA FECHADA.
+//
+//  Este bloco so faz duas coisas: REDUZIR a velocidade e PARAR. Nenhuma
+//  delas pode fazer o braco cacar o ponto -- para isso seria preciso
+//  mandar o eixo VOLTAR, e aqui nada manda voltar. Quem cacava era o
+//  assentamento, que retoca nos dois sentidos; e so ele que o ritmo do
+//  barramento desliga (ver correcaoIniciar).
+//
+//  Eu ja desliguei este bloco junto com o assentamento, e o resultado na
+//  bancada foi pior do que a caca: "quando peco para um eixo ir a tal
+//  angulo ela comeca e nao para mais, alem disso a velocidade e alta".
+//  Sem o freio, o unico limite do movimento e a regua digitada -- e e
+//  justamente ela que esta errada. Freio tardio ainda e freio; freio
+//  ausente e um eixo solto.
+// =====================================================================
 void correcaoFrearNoAlvo() {
   if (!temAlvoPedido) return;
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
-    if (alvoSentido[i] == 0) continue;
+    if (alvoSentido[i] == SENTIDO_SEM_FREIO) continue;
     Junta& j = (k == 1) ? J1 : J2;
     if (!j.motor || !j.motor->isRunning()) continue;
-    // Barramento lento: quem leva o eixo e a rampa. Ver
-    // encoderGuiaOMovimento().
-    if (!encoderGuiaOMovimento(k)) continue;
+
+    // A LARGADA JA SAI NO FATOR QUE A MAQUINA APRENDEU.
+    //
+    // Quem manda o eixo andar e irParaPassos(), com a velocidade
+    // passada pela regua: com a regua quatro vezes maior, o eixo larga
+    // a 48 graus/s tendo sido pedido 12. O governador so entrava depois
+    // da primeira leitura BOA, e num barramento de 220 ms isso e um
+    // quarto de segundo de eixo disparado -- era o pico de 30 graus/s
+    // com 12 pedidos, medido no banco.
+    //
+    // O exagero da regua e propriedade da MAQUINA e ja esta medido do
+    // movimento anterior. Aplicado aqui, a largada ja sai certa e o
+    // buraco cai de uma leitura para um ciclo.
+    if (alvoSentido[i] == SENTIDO_PENDENTE && govFator[i] < 0.999f) {
+      uint32_t hzL = grausPorSegParaHz(j, velDaJuntaPub(j, velAuto));
+      hzL = (uint32_t)((float)hzL * govFator[i]);
+      if (hzL < 1) hzL = 1;
+      if (hzL != freioHzAplicado[i]) {
+        freioHzAplicado[i] = hzL;
+        j.motor->setSpeedInHz(hzL);
+      }
+    }
+
     if (!leituraConfiavel(k)) continue;
 
     const float agora = encoderLer(k).graus;
+
+    // ---- o sentido, decidido na primeira leitura boa ----
+    if (alvoSentido[i] == SENTIDO_PENDENTE) {
+      const float d = alvoPedido[i] - agora;
+      if (d > FREIO_ENC_MINIMO_GRAUS)       alvoSentido[i] = +1;
+      else if (d < -FREIO_ENC_MINIMO_GRAUS) alvoSentido[i] = -1;
+      else { alvoSentido[i] = SENTIDO_SEM_FREIO; continue; }  // ja esta la
+    }
+
     const float falta = fabsf(alvoPedido[i] - agora);
 
     // ---- AFINA AO CHEGAR, em vez de correr e frear ----
@@ -289,9 +375,93 @@ void correcaoFrearNoAlvo() {
     {
       const float acel = (j.aceleracao > 1.0f) ? j.aceleracao : ACEL_PADRAO;
       float v = sqrtf(2.0f * acel * FREIO_ENC_MARGEM * falta);
-      if (v > velAuto)              v = velAuto;
+      if (v > velAuto) v = velAuto;
+
+      // O TETO DO QUE DA PARA ANDAR AS CEGAS.
+      //
+      // Se a medida chega a cada 220 ms, correr a 20 graus/s significa
+      // passar 4,4 graus do alvo antes de enxergar. Limitando o comando
+      // a metade do que falta por intervalo, o excesso possivel fica
+      // limitado ao proprio erro que ainda resta -- e some junto com
+      // ele. Entra aqui, no COMANDO, e nao so na conferencia: assim o
+      // eixo ja sai devagar perto do alvo em vez de ser contido depois.
+      const uint32_t ritmo = correcaoRitmoMs(k);
+      if (ritmo > 0) {
+        const float cego = falta / (2.0f * (float)ritmo / 1000.0f);
+        if (cego < v) v = cego;
+      }
       if (v < FREIO_ENC_VEL_MINIMA) v = FREIO_ENC_VEL_MINIMA;
-      const uint32_t hz = grausPorSegParaHz(j, velDaJuntaPub(j, v));
+
+      // O que a junta DEVERIA fazer, em graus de verdade por segundo.
+      const float pedida = velDaJuntaPub(j, v);
+      uint32_t hz = grausPorSegParaHz(j, pedida);
+
+      // ---- O GOVERNADOR, QUE SO OLHA A MEDIDA ----
+      //
+      // "Alem disso a velocidade e alta." Tudo acima passou por
+      // passosPorGrau: com a regua maior que a real, pedir 12 graus/s faz
+      // o eixo andar 24, 48, o que for o fator -- e mandar 40 graus faz
+      // ele andar 160. O encoder sabe a verdade, porque mede a JUNTA.
+      //
+      // Daqui para baixo NAO HA REGUA. Compara-se o que o encoder ve com
+      // o que a junta deveria estar fazendo, e encolhe-se o Hz na mesma
+      // proporcao. So ENCOLHE: um limitador que acelerasse viraria malha
+      // fechada, e malha fechada num barramento lento e o que faz cacar
+      // o ponto.
+      //
+      // A conferencia e contra o COMANDO, e nao contra um teto: o
+      // comando ja carrega os dois tetos (velAuto e a distancia cega) e
+      // ja cai perto do alvo. Conferir contra um teto fixo fazia o
+      // fator ser devolvido justamente na chegada -- ali o eixo anda
+      // devagar porque foi MANDADO andar devagar, nao porque sobra
+      // folga -- e o movimento seguinte largava com o fator inflado.
+      // Era isso que ainda deixava o pico em 20 graus/s com 12 pedidos.
+      const uint32_t tAgora   = millis();
+      const uint32_t contaAgo = encoderLer(k).leituras;
+      if (velAntConta[i] != 0 && contaAgo != velAntConta[i] &&
+          tAgora > velAntMs[i]) {
+        const float dt     = (float)(tAgora - velAntMs[i]) / 1000.0f;
+        const float medida = fabsf(agora - velAntGraus[i]) / dt;
+        const float mandei = velAntPedida[i];   // o comando DAQUELA janela
+        if (medida > 0.01f && mandei > 0.01f) {
+          if (medida > mandei) {
+            // Andou mais do que foi mandado: e a regua exagerando. O
+            // quociente e o proprio exagero, entao um so passo ja poe o
+            // fator no lugar.
+            govFator[i] *= mandei / medida;
+            if (govFator[i] < 0.02f) govFator[i] = 0.02f;
+          } else if (medida < mandei * 0.7f) {
+            // Andou MENOS do que foi mandado: sobra comando. Devolve aos
+            // poucos e nunca acima de 1 -- devolver de uma vez seria
+            // acelerar por conta propria, e ai o limitador viraria malha
+            // fechada, que e o que faz cacar o ponto.
+            //
+            // Cinco por cento, e nao vinte: no arranque o eixo esta na
+            // rampa e anda mesmo menos do que foi mandado, sem que
+            // sobre folga nenhuma. A vinte por cento o fator inflava na
+            // largada e tinha de ser desfeito logo em seguida; a cinco,
+            // a rampa passa sem mexer nele, e uma regua de verdade
+            // corrigida ainda devolve a velocidade cheia em poucos
+            // segundos.
+            govFator[i] *= 1.05f;
+            if (govFator[i] > 1.0f) govFator[i] = 1.0f;
+          }
+        }
+        velAntGraus[i]  = agora;
+        velAntMs[i]     = tAgora;
+        velAntConta[i]  = contaAgo;
+        velAntPedida[i] = pedida;
+      } else if (velAntConta[i] == 0) {
+        velAntGraus[i]  = agora;
+        velAntMs[i]     = tAgora;
+        velAntConta[i]  = contaAgo;
+        velAntPedida[i] = pedida;
+      }
+
+      // O fator vale em TODO ciclo, e nao so naquele em que a leitura
+      // chegou.
+      hz = (uint32_t)((float)hz * govFator[i]);
+      if (hz < 1) hz = 1;
       if (hz != freioHzAplicado[i]) {
         freioHzAplicado[i] = hz;
         j.motor->setSpeedInHz(hz);
@@ -301,7 +471,7 @@ void correcaoFrearNoAlvo() {
     // Chegou ou passou, no sentido em que estava indo.
     if ((float)alvoSentido[i] * (agora - alvoPedido[i]) < 0.0f) continue;
 
-    alvoSentido[i] = 0;
+    alvoSentido[i] = SENTIDO_SEM_FREIO;
     j.motor->stopMove();       // parada com rampa, nao tranco
     logEvento("junta %u: o encoder chegou a %.2f graus (pedido %.2f) -- "
               "movimento freado pela medida", (unsigned)k,
@@ -1412,6 +1582,18 @@ void correcaoReiniciarTeste() {
   esquecerGanho();
   esquecerAfericao();
   alertas = 0;
+  // O fator do governador e a memoria de quanto a REGUA daquela maquina
+  // exagera. Na maquina ele so some quando ela reinicia; no banco, um
+  // cenario nao pode herdar o que o anterior aprendeu, senao a ordem em
+  // que os cenarios rodam vira parte do resultado.
+  govFator[0] = govFator[1] = 1.0f;
+  freioHzAplicado[0] = freioHzAplicado[1] = 0;
+  velAntGraus[0] = velAntGraus[1] = 0.0f;
+  velAntMs[0] = velAntMs[1] = 0;
+  velAntConta[0] = velAntConta[1] = 0;
+  velAntPedida[0] = velAntPedida[1] = 0.0f;
+  alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO;
+  temAlvoPedido = false;
   trav.ativo = false; trav.junta = 0; trav.total = 0;
   memset(&z, 0, sizeof(z));
   zeroDesde = 0; zeroComecou = false;

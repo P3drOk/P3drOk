@@ -5046,11 +5046,135 @@ tem as 4,3 % de falhas nem o ruído da bancada —, então `V30b` e `V30c`
 passariam com o portão removido também. Está escrito no cenário, para
 ninguém confundir documentação com guarda.
 
+## R165 · A velocidade alta era a régua, e o instrumento mentia  `V31` `V32`  ✅
+
+> "Quando peço para um eixo ir a tal ângulo ela começa e não para mais,
+> além disso a velocidade é alta. Se eu jogar 40 graus o motor deve se
+> mover de acordo com a velocidade até chegar em 40 graus exatamente,
+> sem ficar retornando."
+
+### O "começa e não para mais" era meu
+
+Na rodada anterior eu tinha posto o freio pelo encoder e o assentamento
+atrás do **mesmo portão** — o ritmo do barramento. Foi um erro de escopo,
+e vale escrever o porquê para não repetir:
+
+| mecanismo | o que faz | serve num barramento lento? |
+|---|---|---|
+| assentamento | retoca nos **dois** sentidos | **não** — caça o ponto |
+| freio do encoder | só **reduz** e **para** | **sim** — freio tardio ainda é freio |
+
+Com o freio desligado junto, sobrou só a régua digitada mandando no eixo.
+Com ela quatro vezes maior, "vá a 40 graus" vira 160 de eixo — o braço
+começa e não para. O portão agora vale só para o assentamento.
+
+### As duas queixas são a mesma causa
+
+`passosPorGrau` errado escala **tudo**: a distância (40 → 160) e a
+velocidade (12 °/s → 48). O encoder mede a **junta** e não depende da
+régua, então ele é o único que sabe a verdade. Daí o governador:
+
+```
+mediu mais do que foi mandado  →  encolhe o comando na mesma proporção
+mediu menos                    →  devolve 5 % por leitura, nunca acima de 1
+```
+
+Três detalhes decidiram se ele funcionava:
+
+**1. Amostrar por leitura nova, não por relógio.** Entre duas leituras o
+ângulo não muda: dividir zero por 40 ms dava velocidade zero, e no ciclo
+em que a leitura enfim chegava, 217 ms de ângulo dividido por 40 ms dava
+cinco vezes a velocidade real.
+
+**2. O fator persiste entre os ciclos.** Ele só pode ser calculado quando
+chega leitura nova — uma vez a cada 217 ms. Aplicado só nesse ciclo, a
+correção durava um milissegundo e o braço corria os outros 216.
+
+**3. Conferir contra o COMANDO daquela janela, não contra um teto.** Na
+chegada o eixo anda devagar porque foi *mandado* andar devagar, não
+porque sobra folga. Conferindo contra a velocidade pedida, o governador
+lia isso como folga e devolvia fator a cada parada — e cada movimento
+largava mais rápido que o anterior:
+
+| | 2º movimento | 3º movimento |
+|---|---|---|
+| conferindo contra um teto fixo | 13,5 °/s | **16,2 °/s** |
+| conferindo contra o comando | 11,2 °/s | **11,8 °/s** |
+
+Com 12 pedidos. É o "a velocidade é alta" voltando sozinho depois de
+algumas idas e vindas (`V31f`).
+
+### A largada, quando o barramento cala
+
+O governador só entra depois de uma leitura **boa**. Na bancada do
+operador 4,3 % delas falham; se a que falha for a primeira do movimento,
+o ciclo inteiro é pulado e quem manda no eixo é `irParaPassos()`, com a
+velocidade passada pela régua.
+
+Mas o exagero da régua é propriedade da **máquina**, não daquela leitura,
+e já está medido do movimento anterior. Aplicado na largada, o eixo sai
+contido mesmo sem enxergar nada — `V32` cala o driver de propósito e
+mede o eixo pelos passos:
+
+| | com o barramento calado |
+|---|---|
+| sem aplicar o fator na largada | **24,1 °/s** |
+| aplicando | **11,9 °/s** |
+
+Pedido: 12. A régua digitada mandaria 48.
+
+### O achado que mais me custou: o instrumento estava errado
+
+Eu passei três rodadas de ajuste tentando baixar um pico de **30,4 °/s**
+que não existia. O banco media a velocidade contando voltas do laço:
+`rodarComWeb(20)` não custa 20 ms de relógio simulado — uma leitura de
+encoder que expira custa 100 ms sozinha, e neste cenário o barramento é
+lento de propósito. A "janela de 200 ms" valia 440 ms de relógio, e a
+velocidade saía o **dobro** do que o eixo andou.
+
+Medindo pelo relógio, o mesmo código dava 11,2 °/s com 12 pedidos — já
+estava certo antes de dois dos ajustes que eu fiz por causa do número
+errado.
+
+> **Instrumento errado inventa defeito no que ele mede.** A régua do
+> banco tem de ser conferida com o mesmo cuidado que a régua da máquina —
+> foi exatamente o mesmo tipo de erro nas duas pontas.
+
+### Isolamento entre cenários
+
+O fator do governador é `static` no módulo: na máquina ele só some quando
+ela reinicia, mas no banco um cenário herdava o que o anterior aprendeu, e
+a ordem em que os cenários rodam virava parte do resultado.
+`correcaoReiniciarTeste()` agora o zera junto com o resto.
+
+### O que ficou medido
+
+Régua quatro vezes errada **e** barramento a 217 ms — o pior caso da
+bancada, os dois juntos (`V31`):
+
+| | resultado |
+|---|---|
+| onde parou | **40,14°** (pedido 40; a régua mandaria 160) |
+| velocidade de pico | **11,2 °/s** (pedido 12) |
+| inversões de sentido | **0** |
+| terceiro movimento | **11,8 °/s** — o fator não infla |
+
+Cada uma das quatro mudanças foi confirmada **reintroduzindo só ela**:
+o portão de volta no freio derruba `V31b`/`V31c`/`V31d`; tirar o fator da
+largada derruba `V32a`; conferir contra um teto fixo derruba `V31f`;
+devolver 20 % em vez de 5 % derruba `V31d`.
+
+### Continua de bancada, não de firmware
+
+4,6 leituras/s com 4,3 % de falha não é ritmo de RS485 — é cabo,
+terminação de 120 Ω nas duas pontas, ou aterramento. O firmware agora
+**não piora** com o barramento nesse estado; ele não conserta o cabo.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **520 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **527 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **309 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

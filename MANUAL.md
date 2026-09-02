@@ -992,6 +992,10 @@ medida.
   que falta. Longe, ela é maior que o ritmo configurado e não muda nada;
   perto, vai baixando sozinha.
 - **Chegou, para.** O freio pelo encoder põe o ponto final.
+- **E a velocidade sai pela medida, não pela régua.** Se o eixo anda mais
+  do que foi mandado, a máquina encolhe o comando na mesma proporção —
+  esse é o **governador**, e ele é a única coisa no caminho que não
+  depende de `passosPorVolta` estar certo.
 
 Não é malha fechada de servo: não há ganho nem correção contínua durante
 o movimento (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
@@ -1015,6 +1019,46 @@ Medido no banco, cinco ângulos seguidos (3, 45, −30, 0 e 12,5):
 
 Cenário **V29**.
 
+#### O governador: quando a régua digitada exagera
+
+`passosPorGrau` errado escala **tudo** — a distância (pedir 40 graus anda
+160) e a velocidade (pedir 12 °/s anda 48). O encoder mede a **junta**,
+então ele é o único que sabe a verdade.
+
+A cada leitura nova a máquina compara o que o eixo **andou** com o que
+foi **mandado naquela janela**, e encolhe o comando na proporção da
+diferença. Ele só encolhe: devolve 5 % por leitura, nunca acima de 1 —
+um limitador que acelerasse viraria malha fechada, que é o que faz caçar
+o ponto.
+
+Três detalhes que decidem se ele funciona:
+
+- **compara com o comando, não com a velocidade pedida.** Na chegada o
+  eixo anda devagar porque foi *mandado* andar devagar. Lido como folga,
+  o fator era devolvido a cada parada e cada movimento largava mais
+  rápido que o anterior (13,5 °/s no segundo, 16,2 no terceiro, com 12
+  pedidos);
+- **o fator fica entre os movimentos.** O exagero é propriedade da
+  máquina, não do movimento — e é o que permite a **largada** já sair
+  contida, mesmo que a primeira leitura do movimento falhe. Ele volta a
+  1 sozinho quando a régua for corrigida;
+- **amostra por leitura nova, não por relógio.** Entre duas leituras o
+  ângulo não muda.
+
+Medido no pior caso da bancada — régua **quatro vezes** errada *e*
+barramento a 217 ms (`V31`, `V32`):
+
+| | resultado |
+|---|---|
+| onde parou | **40,14°** (pedido 40; a régua mandaria 160) |
+| velocidade de pico | **11,2 °/s** (pedido 12) |
+| inversões de sentido | **0** |
+| largada com o barramento **calado** | **11,9 °/s** (sem o fator: 24,1) |
+
+> Isto **não substitui** acertar `passosPorVolta` na Configuração. O
+> governador impede que a régua errada dispare o braço; ele não faz a
+> régua certa. Com ela certa, o fator fica em 1 e nada disso atua.
+
 #### Quando o encoder NÃO guia o movimento
 
 Corrigir o eixo a partir de uma medida só converge se a **próxima** medida
@@ -1023,18 +1067,25 @@ máquina age, o eixo anda, e só muito depois ela vê onde parou — e age de
 novo em cima de um número velho. Isso não converge: fica **caçando o
 ponto**, com micro variação em torno do alvo.
 
-Por isso o **ritmo do barramento decide quem leva o eixo**:
+Mas isso vale só para o que **retoca nos dois sentidos**. Um mecanismo
+que apenas *reduz* e *para* não caça ponto nenhum, por mais tarde que
+chegue a medida: freio tardio ainda é freio. A separação é essa:
 
-| leituras por segundo | quem leva |
-|---|---|
-| **10 ou mais** | o encoder guia: afina ao chegar, freia no alvo, assenta no fim |
-| **abaixo de 10** | a **rampa** do gerador de pulso leva, desacelera e para |
+| mecanismo | o que faz | com barramento lento |
+|---|---|---|
+| afinar ao chegar, freio no alvo, governador | só **reduz** e **para** | **continua valendo** |
+| assentamento no fim | retoca nos **dois** sentidos | **desligado** |
 
-Abaixo do limite o encoder continua valendo para tudo o mais — dizer onde
-o braço está, ancorar a partida, calibrar, avisar de travamento. Ele só
-não manda no motor. E a máquina diz, ao chegar: *"cheguei pela rampa; o
-encoder está a uma leitura cada N ms — lento demais para acertar o ponto
-sem ficar caçando"*.
+O ritmo do barramento gateia **só o assentamento**. Abaixo de 10 leituras
+por segundo a máquina diz, ao chegar: *"cheguei pela rampa; o encoder
+está a uma leitura cada N ms — lento demais para acertar o ponto sem
+ficar caçando"* — mas o freio pela medida já pôs o ponto final, e é ele
+que impede o braço de correr até onde a régua digitada mandaria.
+
+> **Isto já esteve errado.** Numa rodada eu pus o freio atrás do mesmo
+> portão do assentamento. Sobrou só a régua mandando no eixo, e com ela
+> quatro vezes maior "vá a 40 graus" virou 160: o braço começava e não
+> parava mais. Cenário `V31`.
 
 O ritmo é o **medido**, com as falhas incluídas, e não o período
 configurado: o que conta é o que chega. Um intervalo acima de 2 s é
