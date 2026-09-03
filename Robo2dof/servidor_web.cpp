@@ -803,13 +803,22 @@ static void handleProgDesenho() {
 // ---------------------------------------------------------------------
 static void jsonEncoderJunta(String& out, uint8_t j) {
   const LeituraEncoder L = encoderLer(j);
-  char b[360];
+  char b[400];
   snprintf(b, sizeof(b),
     "{\"ok\":%s,\"bruto\":%ld,\"ref\":%ld,\"graus\":%.3f,\"erro\":%.3f,"
     "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu,\"saltos\":%lu,\"motivo\":%u,"
     // Derivados: calculados no firmware, com os instantes de verdade.
     "\"delta\":%ld,\"vel\":%.1f,\"rpm\":%.2f,\"sent\":%d,"
     "\"passos\":%lu,\"inv\":%lu,"
+    // O RITMO MEDIDO PELO FIRMWARE, e nao o contado pelo navegador.
+    //
+    // A tela ja mostrava "por segundo", mas contando as respostas que
+    // chegam a ela -- e ela consulta a 4 Hz, uma regua cinco vezes mais
+    // grossa que a disponivel. Quem tem os instantes de verdade e quem
+    // le. E este e o numero que decide: com as duas juntas ligadas o
+    // ciclo alterna, cada junta e lida a cada DOIS periodos, e e isso
+    // que a tela precisa dizer em vez de deixar o operador somar.
+    "\"ritmo\":%lu,"
     "\"bmin\":%ld,\"bmax\":%ld,\"vmax\":%.1f,\"vmin\":%.1f}",
     L.valido ? "true" : "false", (long)L.bruto, (long)L.referencia,
     L.graus, L.erro, (unsigned long)L.idadeMs,
@@ -817,6 +826,7 @@ static void jsonEncoderJunta(String& out, uint8_t j) {
     (unsigned long)L.saltos, (unsigned)L.motivo,
     (long)L.delta, L.velocidade, L.rpm, (int)L.sentido,
     (unsigned long)L.passosTotais, (unsigned long)L.inversoes,
+    (unsigned long)correcaoRitmoMs(j),
     (long)L.brutoMin, (long)L.brutoMax, L.velMax, L.velMin);
   out += b;
 }

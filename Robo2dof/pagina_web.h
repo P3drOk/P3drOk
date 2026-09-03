@@ -1255,6 +1255,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="encCel"><span class="rot">leituras</span><b id="anN1">--</b></div>
               <div class="encCel"><span class="rot">falhas</span><b id="anF1">--</b></div>
               <div class="encCel"><span class="rot">por segundo</span><b id="anHz1">--</b></div>
+              <div class="encCel"><span class="rot">ritmo real</span><b id="anRt1">--</b></div>
               <div class="encCel"><span class="rot">erro medio</span><b id="anMe1">--</b></div>
               <div class="encCel"><span class="rot">pior erro</span><b id="anMx1">--</b></div>
               <div class="encCel"><span class="rot">oscilacao</span><b id="anSd1">--</b></div>
@@ -1274,6 +1275,7 @@ h4.dobra.aberto::before{transform:rotate(90deg)}
               <div class="encCel"><span class="rot">leituras</span><b id="anN2">--</b></div>
               <div class="encCel"><span class="rot">falhas</span><b id="anF2">--</b></div>
               <div class="encCel"><span class="rot">por segundo</span><b id="anHz2">--</b></div>
+              <div class="encCel"><span class="rot">ritmo real</span><b id="anRt2">--</b></div>
               <div class="encCel"><span class="rot">erro medio</span><b id="anMe2">--</b></div>
               <div class="encCel"><span class="rot">pior erro</span><b id="anMx2">--</b></div>
               <div class="encCel"><span class="rot">oscilacao</span><b id="anSd2">--</b></div>
@@ -4975,7 +4977,7 @@ function analisar(d){
     const cv =(i===0)?d.cv1:d.cv2;
 
     if(!reg){
-      ["anN","anF","anHz","anMe","anMx","anSd","anBr","anVo","anId",
+      ["anN","anF","anHz","anRt","anMe","anMx","anSd","anBr","anVo","anId",
        "anVe","anRp","anSe","anPa","anIv","anFx"]
         .forEach(function(x){anCel(x+k,"--");});
       return;
@@ -4989,6 +4991,16 @@ function analisar(d){
       ?(encAmostras[encAmostras.length-1].t-encAmostras[0].t)/1000:0;
     const nJan=encAmostras.filter(function(a){return a[campo]!==null;}).length;
     anCel("anHz"+k,dt>0.5?(nJan/dt).toFixed(1)+"/s":"--");
+
+    /* O RITMO QUE O FIRMWARE MEDE, que e o que decide.
+       "por segundo", acima, conta o que chega AO NAVEGADOR, e ele
+       consulta a 4 Hz. Este vem de quem le. Com as duas juntas ligadas o
+       ciclo alterna entre elas, entao cada uma e lida a cada DOIS
+       periodos -- e um periodo confortavel na tela vira um ritmo que nao
+       serve para fechar malha nenhuma. Vale dizer isso aqui em vez de
+       deixar o operador descobrir pela conta. */
+    const rt=L.ritmo||0;
+    anCel("anRt"+k,rt?(rt+" ms"+(rt>100?" (lento)":"")):"--");
 
     const vals=encAmostras.map(function(a){return a[campo];})
                           .filter(function(v){return v!==null;});

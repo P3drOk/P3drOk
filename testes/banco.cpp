@@ -9582,6 +9582,20 @@ static void teste_W03_duas_juntas_dobram_o_ritmo() {
          "uma leitura a cada 100 ms e de sobra para quem precisa de uma");
   checar(fabsf(encoderLer(1).graus - 35.0f) < 1.0f, "W03c",
          "e o braco chega no angulo pedido, medido pelo encoder");
+
+  // E O NUMERO CHEGA NA TELA. Sem isto o operador ve "por segundo",
+  // contado pelo navegador a 4 Hz, e nao tem como saber que o ritmo real
+  // da junta e o dobro do periodo que ele digitou.
+  webGet("/api/encoder");
+  const std::string je = webCorpo();
+  const bool temRitmo = je.find("\"ritmo\":") != std::string::npos;
+  char busca[32];
+  snprintf(busca, sizeof(busca), "\"ritmo\":%lu", (unsigned long)r1);
+  nota("/api/encoder traz o ritmo medido: %s",
+       temRitmo ? "sim" : "NAO");
+  checar(temRitmo && je.find(busca) != std::string::npos, "W03d",
+         "e o ritmo MEDIDO PELO FIRMWARE vai para a tela, com o numero da "
+         "junta 1 -- e ele que decide, e nao o periodo digitado");
 }
 
 // =====================================================================
