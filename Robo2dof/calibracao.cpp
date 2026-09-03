@@ -126,12 +126,21 @@ static int8_t torqueAssentou() {
 static bool irAoZero() {
   if (!movimentoSeguro) return false;
   if (!J1.habilitado && !J2.habilitado) return false;
+  // PELA PORTA, e nao por setSpeedInHz() direto.
+  //
+  // Escrever no gerador por fora deixa o cache de motores.cpp mentindo:
+  // ele guarda o ultimo Hz REALMENTE programado e pula a escrita quando o
+  // valor nao mudou. Depois de uma volta ao zero feita por fora, o
+  // primeiro movimento que pedisse por acaso o valor cacheado era
+  // DESCARTADO, e o eixo andava numa velocidade que ninguem pediu. E o
+  // mesmo defeito que motores.h descreve no comentario de
+  // programarVelocidade(), e que ja custou uma bancada.
   if (J1.habilitado && J1.motor) {
-    J1.motor->setSpeedInHz(grausPorSegParaHz(J1, velAuto));
+    programarVelocidadePub(J1, 0, grausPorSegParaHz(J1, velAuto));
     J1.motor->moveTo(0);
   }
   if (J2.habilitado && J2.motor) {
-    J2.motor->setSpeedInHz(grausPorSegParaHz(J2, velAuto));
+    programarVelocidadePub(J2, 1, grausPorSegParaHz(J2, velAuto));
     J2.motor->moveTo(0);
   }
   return true;

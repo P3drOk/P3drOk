@@ -58,15 +58,6 @@ void programarVelocidadePub(Junta& j, int indice, uint32_t hz);
 // do movimento tem de ESCALAR esses numeros, nunca troca-los por um valor
 // proprio: trocar faz a junta de percurso curto sair na velocidade da
 // outra, chegar muito antes e passar longe do ponto.
-// A BUSCA: um jog cujo dedo e o ENCODER.
-//
-// Anda em velocidade constante no sentido pedido, com todas as guardas
-// do jog -- seguranca, torque por eixo, antecipacao da postura no fim da
-// freada -- e sem heartbeat, porque quem confirma a cada ciclo e o
-// firmware olhando a medida. direcao 0 ou velocidade 0 para a junta.
-void buscaDefinir(uint8_t junta, int8_t direcao, float grausPorS);
-bool buscaMovendo();
-
 uint32_t velProgramadaPub(int indice);
 uint32_t acelProgramadaPub(int indice);
 
@@ -106,7 +97,15 @@ void jogZerar();
 // E isso que faz o caminho ser previsivel em vez de um "L".
 // 'grausPorS' e a velocidade ANGULAR do eixo que tem mais caminho a
 // percorrer; o outro e escalado para os dois chegarem juntos.
-void moverCoordenado(long alvo1, long alvo2, float grausPorS);
+//
+// 'fatorAcel' escala a rampa dos dois eixos junto (1,0 = a configurada).
+// Existe para o retoque curto: um ajuste de um decimo de grau com a
+// aceleracao cheia e todo arranque e freada dentro desse decimo, e sai
+// como um tranco em vez de um encosto. Escalando os DOIS na mesma
+// proporcao, as rampas continuam comecando e terminando juntas e o
+// caminho continua reto no espaco das juntas.
+void moverCoordenado(long alvo1, long alvo2, float grausPorS,
+                     float fatorAcel = 1.0f);
 
 // Seguimento de setpoint, usado na reproducao de trajetoria: reemite o
 // alvo a cada ciclo sem esperar a parada, o que da movimento continuo.

@@ -58,7 +58,7 @@ static void tarefaRede(void* p) {
 // posturaValidaDet() ja trata "sem limites, nada e violacao". Quem
 // protege ali sao os batentes da maquina e o operador, exatamente como
 // no jog, que sempre rodou livre.
-static bool irParaPassos(long p1, long p2) {
+static bool irParaPassos(long p1, long p2, bool jaValidado = false) {
   if (!movimentoSeguro) {
     definirMensagem("Movimento bloqueado: intertravamento de seguranca");
     return false;
@@ -76,15 +76,25 @@ static bool irParaPassos(long p1, long p2) {
     return false;
   }
 
+  // A VALIDACAO PODE JA TER ACONTECIDO EM GRAUS.
+  //
+  // Ir a um angulo calcula o destino em passos a partir da MEDIDA do
+  // encoder, multiplicada pelo fator de escala -- e com fator diferente
+  // de 1 esse numero de passos, lido de volta pela regua digitada, nao da
+  // o angulo pedido. Validar ali seria conferir um angulo que ninguem
+  // pediu. Quem chama de la ja conferiu os graus de verdade, com as
+  // mesmas funcoes, e passa jaValidado.
   const char* motivo = nullptr;
-  if (!posturaValidaPassos(p1, p2, &motivo)) {
-    definirMensagem("Movimento recusado: %s", motivo ? motivo : "postura invalida");
-    return false;
-  }
-  if (!caminhoJuntasValidoPassos(posicaoJ1(), posicaoJ2(), p1, p2, &motivo)) {
-    definirMensagem("Movimento recusado: o caminho passa por %s",
-                    motivo ? motivo : "postura invalida");
-    return false;
+  if (!jaValidado) {
+    if (!posturaValidaPassos(p1, p2, &motivo)) {
+      definirMensagem("Movimento recusado: %s", motivo ? motivo : "postura invalida");
+      return false;
+    }
+    if (!caminhoJuntasValidoPassos(posicaoJ1(), posicaoJ2(), p1, p2, &motivo)) {
+      definirMensagem("Movimento recusado: o caminho passa por %s",
+                      motivo ? motivo : "postura invalida");
+      return false;
+    }
   }
 
   // UMA VELOCIDADE SO, e ela vem do campo em mm/s.
@@ -133,23 +143,53 @@ static void irParaAngulos(float t1, float t2) {
   // bater nele. Se o encoder diz 3 graus, o braco esta em 3 graus -- e
   // nenhuma regua errada faz ele dar voltas.
   const Ancoragem anc = ancorarNoEncoder();
-  if (!irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) return;
 
-  // A BUSCA. O alvo em graus e o que o operador digitou, e o eixo anda em
-  // velocidade constante ate a medida chegar nele.
+  // O DESTINO SAI DA MEDIDA, e nao da contagem convertida.
   //
-  // O irParaPassos() acima continua valendo por duas razoes, e nenhuma e
-  // sobra: ele e quem VALIDA a postura e o caminho antes de qualquer
-  // motor girar, e ele e o caminho de quem nao pode buscar -- junta sem
-  // leitura confiavel na hora de largar, ou a correcao pelo encoder
-  // desligada. Nesses casos a rampa leva o eixo ao destino em passos,
-  // como sempre levou.
+  // Depois de ancorar, a contagem descreve o braco -- mas converter o
+  // angulo pedido por grausParaPassos() usa a regua DIGITADA, e e ela que
+  // costuma estar errada. O deslocamento que falta e conhecido em graus
+  // do ENCODER; multiplicado pela escala que as viagens anteriores
+  // mediram, ele vira o numero de pulsos que de fato leva o eixo ate la.
   //
-  // IR A UM ANGULO E A UNICA COISA QUE BUSCA. Ponto de programa, DXF e
-  // trajetoria continuam na rampa, com o movimento coordenado: ali o
-  // CAMINHO importa tanto quanto o destino, e velocidade constante por
-  // junta nao desenha reta. A busca serve para chegar; a rampa, para
-  // desenhar.
+  // Sem leitura confiavel nao ha medida de onde partir: ali vale a
+  // conversao de sempre, e a mensagem la embaixo diz que foi assim.
+  long p1 = grausParaPassos(J1, t1);
+  long p2 = grausParaPassos(J2, t2);
+  for (uint8_t k = 1; k <= 2; k++) {
+    Junta& j = (k == 1) ? J1 : J2;
+    if (!j.motor || j.passosPorGrau <= 0.0f) continue;
+    if (!leituraConfiavel(k)) continue;
+    const float alvoG = (k == 1) ? t1 : t2;
+    const float falta = alvoG - encoderLer(k).graus;
+    const long  agora = (k == 1) ? posicaoJ1() : posicaoJ2();
+    const long  destino =
+        agora + lroundf(falta * j.passosPorGrau * correcaoFatorEscala(k));
+    if (k == 1) p1 = destino; else p2 = destino;
+  }
+
+  // VALIDACAO EM GRAUS, porque e em graus que o pedido existe.
+  const char* motivo = nullptr;
+  if (!posturaValida(t1, t2, &motivo)) {
+    definirMensagem("Movimento recusado: %s", motivo ? motivo : "postura invalida");
+    return;
+  }
+  if (!caminhoJuntasValido(passosParaGraus(J1, posicaoJ1()),
+                           passosParaGraus(J2, posicaoJ2()), t1, t2, &motivo)) {
+    definirMensagem("Movimento recusado: o caminho passa por %s",
+                    motivo ? motivo : "postura invalida");
+    return;
+  }
+  if (!irParaPassos(p1, p2, true)) return;
+
+  // O ALVO EM GRAUS, guardado. Ele serve a duas coisas depois daqui: o
+  // FREIO DE FUGA, enquanto o eixo anda, e o ASSENTAMENTO, quando ele
+  // para -- os dois precisam do numero que o operador digitou, e nao da
+  // contagem de destino convertida por uma regua que pode estar errada.
+  //
+  // Ir a um angulo e o unico movimento que tem angulo pedido. Ponto de
+  // programa, DXF e trajetoria se dao em passos, sobre a mesma regua com
+  // que foram gravados, e passam com valido=false.
   correcaoAlvoPedido(t1, t2, true);
 
   // A MENSAGEM DIZ EM QUE CONTA O MOVIMENTO SAIU.
@@ -172,6 +212,18 @@ static void irParaAngulos(float t1, float t2) {
     definirMensagem("Indo para %.1f / %.1f graus (a contagem estava %.2f "
                     "graus fora e foi acertada pelo encoder)",
                     t1, t2, (double)anc.ajuste);
+  } else if (fabsf(correcaoFatorEscala(1) - 1.0f) > 0.05f ||
+             fabsf(correcaoFatorEscala(2) - 1.0f) > 0.05f) {
+    // A REGUA DIGITADA NAO BATE COM A MEDIDA, e o firmware esta
+    // compensando. Dizer isso importa: quem escreve passosPorVolta e uma
+    // pessoa, e ela nao tem outro jeito de descobrir que o numero esta
+    // errado -- o braco chega no lugar certo justamente porque o
+    // firmware esta segurando a diferenca.
+    definirMensagem("Indo para %.1f / %.1f graus, medido pelo encoder "
+                    "(a regua digitada esta %.2fx / %.2fx fora e o "
+                    "movimento sai corrigido)", t1, t2,
+                    (double)(1.0f / correcaoFatorEscala(1)),
+                    (double)(1.0f / correcaoFatorEscala(2)));
   } else if (anc.comEncoder) {
     definirMensagem("Indo para %.1f / %.1f graus, medido pelo encoder", t1, t2);
   } else {
@@ -576,10 +628,17 @@ static void processarComando(const Comando& c) {
       if (modoAtual != MODO_MANUAL) {
         definirMensagem("Referencie com o robo parado no modo manual");
         break;
+      }
       // A contagem do encoder tambem recomeca aqui: as duas medidas
       // tem de partir do mesmo ponto, senao o erro nasce torto.
+      //
+      // Esta chamada ficou anos INALCANCAVEL: a chave de fechar estava
+      // depois dela, dentro do bloco de recusa e depois do break. O
+      // compilador nao avisa de codigo morto assim, e o banco nao tinha
+      // como perceber -- referenciar zerava a contagem de passos e
+      // deixava a do encoder onde estava, que e exatamente o "erro nasce
+      // torto" que a linha acima existe para evitar.
       encoderZerar(0);
-      }
       calibReferenciar();
       logEvento("referenciado na posicao atual");
       break;
@@ -1021,12 +1080,17 @@ void loop() {
       break;
 
     case MODO_POSICIONANDO:
-      // A BUSCA: enquanto o braco anda, um teste e uma decisao por ciclo
-      // -- chegou pela medida? passou? segue. Quem move o eixo e o jog,
-      // com o encoder no lugar do dedo, e por isso ele roda aqui tambem.
-      correcaoBuscarAlvo();
-      jogAtualizar();
-      if (!correcaoBuscando() && !motoresEmMovimento()) {
+      // QUEM LEVA O EIXO E A RAMPA, ja programada na largada: ela
+      // desacelera e para exatamente no passo comandado, sem precisar de
+      // ninguem olhando. O freio so vigia -- se a medida disser, em duas
+      // leituras seguidas, que o eixo passou do alvo com folga, ele
+      // encurta a viagem. Quase sempre ele termina sem ter feito nada.
+      //
+      // O jog NAO roda aqui. Ele rodava porque a busca o usava para
+      // andar; sem ela, o dedo do operador nao tem o que fazer no meio de
+      // um posicionamento.
+      correcaoFrearNoAlvo();
+      if (!motoresEmMovimento()) {
         // O QUE A VIAGEM ENSINOU, antes de qualquer outra coisa.
         //
         // Aqui o eixo acabou de parar e as duas pontas do percurso ainda
@@ -1055,7 +1119,20 @@ void loop() {
         aplicarAceleracao();
         modoAtual = MODO_MANUAL;
         const ResumoCorrecao rc = correcaoResumo();
-        if (rc.estado == CORR_PRONTA && rc.tentativas > 0)
+        // O FREIO TER AGIDO NAO PODE SUMIR NA MENSAGEM FINAL.
+        //
+        // Ele so age quando o destino calculado caiu longe do angulo
+        // pedido, e isso quer dizer uma coisa so: passosPorVolta esta
+        // errado. A tela ja mostra o fator medido ao lado do campo, mas
+        // "cheguei, e tive de frear" e a unica pista no instante em que
+        // acontece -- e sem ela o operador ve um posicionamento bem
+        // sucedido e nunca descobre que a regua da maquina mente.
+        const bool freou = correcaoFreou(1) || correcaoFreou(2);
+        if (freou)
+          definirMensagem("Posicionado -- mas o encoder teve de FREAR a "
+                          "viagem: o destino calculado passou do ponto. "
+                          "Confira pulsos por volta na aba Encoder");
+        else if (rc.estado == CORR_PRONTA && rc.tentativas > 0)
           definirMensagem("Posicionado e conferido pelo encoder (%u retoque%s)",
                           (unsigned)rc.tentativas, rc.tentativas == 1 ? "" : "s");
         else if (rc.estado == CORR_DESISTIU || rc.estado == CORR_RECUSADA)

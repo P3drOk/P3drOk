@@ -385,6 +385,19 @@ void carregarConfiguracoes() {
   configEncoder.reg[1]       = (uint16_t)prefs.getUInt("encRg2", 0);
   configEncoder.contagensPorVolta[0] = prefs.getFloat("encCv1", ENC_CONTAGENS_PADRAO);
   configEncoder.contagensPorVolta[1] = prefs.getFloat("encCv2", ENC_CONTAGENS_PADRAO);
+  J1.fatorEscala = prefs.getFloat("fEsc1", 1.0f);
+  J2.fatorEscala = prefs.getFloat("fEsc2", 1.0f);
+  J1.escalaAprendida = prefs.getBool("fEscA1", false);
+  J2.escalaAprendida = prefs.getBool("fEscA2", false);
+  J1.escalaRegua = prefs.getFloat("fEscR1", 0.0f);
+  J2.escalaRegua = prefs.getFloat("fEscR2", 0.0f);
+  // Os mesmos limites da medida valem para o que veio da flash: NVS
+  // corrompido ou gravado por uma versao anterior nao pode entregar um
+  // fator que multiplique a distancia por mil.
+  if (J1.fatorEscala < ESCALA_MIN || J1.fatorEscala > ESCALA_MAX)
+    { J1.fatorEscala = 1.0f; J1.escalaAprendida = false; }
+  if (J2.fatorEscala < ESCALA_MIN || J2.fatorEscala > ESCALA_MAX)
+    { J2.fatorEscala = 1.0f; J2.escalaAprendida = false; }
   J1.fatorVel = prefs.getFloat("fVel1", 1.0f);
   J2.fatorVel = prefs.getFloat("fVel2", 1.0f);
   configEncoder.contagensPorGrau[0] = prefs.getFloat("encCg1", 0.0f);
@@ -571,6 +584,17 @@ void salvarConfiguracoes() {
   prefs.putFloat("encCv2", configEncoder.contagensPorVolta[1]);
   prefs.putFloat("fVel1", J1.fatorVel);
   prefs.putFloat("fVel2", J2.fatorVel);
+  // A escala MEDIDA sobrevive ao desligamento pelo mesmo motivo que a
+  // regua digitada: ela descreve a maquina, nao o movimento. Sem isso o
+  // primeiro movimento depois de cada boot repetiria o erro inteiro.
+  // A regua com que ela foi medida vai junto: e ela que faz o fator cair
+  // sozinho quando alguem corrige passosPorVolta.
+  prefs.putFloat("fEsc1",  J1.fatorEscala);
+  prefs.putFloat("fEsc2",  J2.fatorEscala);
+  prefs.putBool ("fEscA1", J1.escalaAprendida);
+  prefs.putBool ("fEscA2", J2.escalaAprendida);
+  prefs.putFloat("fEscR1", J1.escalaRegua);
+  prefs.putFloat("fEscR2", J2.escalaRegua);
   prefs.putFloat("encCg1", configEncoder.contagensPorGrau[0]);
   prefs.putFloat("encCg2", configEncoder.contagensPorGrau[1]);
   prefs.putUInt ("sonRg",  configSon.reg);
@@ -663,6 +687,17 @@ void restaurarPadroes() {
   envYMin        = ENV_Y_MIN_PADRAO;
   envRaioMin     = ENV_RAIO_MIN_PADRAO;
   escalaVelocidadeTraj = 100;
+  // O QUE AS VIAGENS APRENDERAM TAMBEM VOLTA AO PADRAO.
+  //
+  // O fator de escala compensa a diferenca entre a regua digitada e a
+  // maquina. Restaurar padroes reescreve passosPorVolta e reducao, e um
+  // fator sobrevivente passaria a compensar um erro que deixou de
+  // existir: o braco andaria de menos exatamente pelo tanto que a regua
+  // melhorou, e sem nada na tela explicando. A proxima viagem mede de
+  // novo.
+  J1.fatorEscala = J2.fatorEscala = 1.0f;
+  J1.escalaAprendida = J2.escalaAprendida = false;
+  J1.escalaRegua = J2.escalaRegua = 0.0f;
   // A mesa ensinada NAO e apagada aqui. "Restaurar padroes" devolve
   // parametros de fabrica; a area util e uma medida da instalacao, do
   // mesmo tipo da calibracao -- e apagar meia hora de trabalho de quem so

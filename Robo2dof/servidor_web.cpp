@@ -196,6 +196,12 @@ static void handleStatus() {
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"ppvM1\":%lu,\"ppvM2\":%lu,"
     "\"fatR1\":%.3f,\"fatR2\":%.3f,"
+    // E o fator que entra na DISTANCIA. Sao dois usos da mesma medida:
+    // um segura a velocidade, o outro encurta ou estica o deslocamento
+    // comandado. Quem monta a maquina precisa ver os dois -- e o unico
+    // sinal de que passosPorVolta esta errado, ja que o braco passa a
+    // chegar no lugar certo justamente porque o firmware compensa.
+    "\"escl1\":%.3f,\"escl2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -234,6 +240,7 @@ static void handleStatus() {
     // que o encoder mediu andando; 0,25 = a regua esta quatro vezes
     // maior e o firmware esta segurando o eixo nessa proporcao.
     (double)correcaoFatorRegua(1), (double)correcaoFatorRegua(2),
+    (double)correcaoFatorEscala(1), (double)correcaoFatorEscala(2),
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
     (unsigned)suavidadePartida,
     (unsigned)MAX_PONTOS,
@@ -803,13 +810,22 @@ static void handleProgDesenho() {
 // ---------------------------------------------------------------------
 static void jsonEncoderJunta(String& out, uint8_t j) {
   const LeituraEncoder L = encoderLer(j);
-  char b[360];
+  char b[400];
   snprintf(b, sizeof(b),
     "{\"ok\":%s,\"bruto\":%ld,\"ref\":%ld,\"graus\":%.3f,\"erro\":%.3f,"
     "\"idade\":%lu,\"n\":%lu,\"falhas\":%lu,\"saltos\":%lu,\"motivo\":%u,"
     // Derivados: calculados no firmware, com os instantes de verdade.
     "\"delta\":%ld,\"vel\":%.1f,\"rpm\":%.2f,\"sent\":%d,"
     "\"passos\":%lu,\"inv\":%lu,"
+    // O RITMO MEDIDO PELO FIRMWARE, e nao o contado pelo navegador.
+    //
+    // A tela ja mostrava "por segundo", mas contando as respostas que
+    // chegam a ela -- e ela consulta a 4 Hz, uma regua cinco vezes mais
+    // grossa que a disponivel. Quem tem os instantes de verdade e quem
+    // le. E este e o numero que decide: com as duas juntas ligadas o
+    // ciclo alterna, cada junta e lida a cada DOIS periodos, e e isso
+    // que a tela precisa dizer em vez de deixar o operador somar.
+    "\"ritmo\":%lu,"
     "\"bmin\":%ld,\"bmax\":%ld,\"vmax\":%.1f,\"vmin\":%.1f}",
     L.valido ? "true" : "false", (long)L.bruto, (long)L.referencia,
     L.graus, L.erro, (unsigned long)L.idadeMs,
@@ -817,6 +833,7 @@ static void jsonEncoderJunta(String& out, uint8_t j) {
     (unsigned long)L.saltos, (unsigned)L.motivo,
     (long)L.delta, L.velocidade, L.rpm, (int)L.sentido,
     (unsigned long)L.passosTotais, (unsigned long)L.inversoes,
+    (unsigned long)correcaoRitmoMs(j),
     (long)L.brutoMin, (long)L.brutoMax, L.velMax, L.velMin);
   out += b;
 }

@@ -110,7 +110,7 @@ void correcaoNovoMovimento();
 bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 
 // ---------------------------------------------------------------------
-// O FREIO DO ENCODER.
+// O FREIO DE FUGA.
 //
 // correcaoAlvoPedido() guarda o angulo que o operador pediu, em GRAUS, e
 // o sentido em que o braco vai andar para chegar nele. Chame ao iniciar
@@ -119,20 +119,37 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 // e nao tem angulo pedido.
 //
 // correcaoFrearNoAlvo() e chamada a cada ciclo enquanto o braco anda: se
-// o encoder diz que a junta chegou ou passou do alvo, ela para o motor.
+// o encoder disser, em DUAS leituras novas seguidas, que a junta passou
+// do alvo com folga, ela para o motor pela rampa.
 //
-// Nao e malha fechada de servo -- nao ha ganho nem correcao durante o
-// movimento. E um fim de curso por MEDIDA, e e o que torna impossivel o
-// braco dar voltas por causa de uma regua errada: "se o encoder diz 3
-// graus, ele esta em 3 graus".
+// Nao e malha fechada e nao e a lei de controle -- quem leva o eixo e a
+// rampa do gerador de pulso, que para exatamente no passo comandado.
+// Isto e a rede embaixo dela: com passosPorGrau muito errado o destino
+// em passos cai longe do angulo pedido, e sem freio a rampa levaria o
+// eixo ate la. E o que torna impossivel o braco dar voltas por causa de
+// uma regua errada: "se o encoder diz 3 graus, ele esta em 3 graus".
+//
+// As DUAS confirmacoes sao a diferenca entre isto e a busca que havia
+// aqui: decidir por uma amostra so fazia uma leitura ruidosa parar o
+// braco no meio do curso.
 // ---------------------------------------------------------------------
 void correcaoAlvoPedido(float t1, float t2, bool valido);
-// A busca: anda em velocidade constante ate a medida bater no alvo.
-// Chamada a cada ciclo em MODO_POSICIONANDO, antes de jogAtualizar().
-void correcaoBuscarAlvo();
+void correcaoFrearNoAlvo();
+// Esta junta foi parada pelo freio nesta viagem? Quem chegou pela rampa
+// assenta com dois retoques; quem foi freado pode precisar de muitos.
+bool correcaoFreou(uint8_t junta);
 
-// Verdadeiro enquanto alguma junta ainda esta buscando.
-bool correcaoBuscando();
+// ---------------------------------------------------------------------
+// O FATOR DE ESCALA: a medida da viagem aplicada na DISTANCIA.
+//
+// Mesma conta de correcaoAprenderDaViagem(), outro uso. Ele multiplica o
+// deslocamento comandado num movimento por angulo, e so isso -- nao toca
+// em passosPorGrau, nao mexe nos limites de curso, nao muda o angulo de
+// nenhum ponto ja gravado. Persistido, porque a regua da maquina tambem
+// persiste.
+// ---------------------------------------------------------------------
+float correcaoFatorEscala(uint8_t junta);
+void  correcaoEscalaZerar();
 
 // O que a viagem ensinou sobre a regua digitada. Chamada UMA vez, quando
 // o movimento termina: compara os graus que a regua mandou andar com os
