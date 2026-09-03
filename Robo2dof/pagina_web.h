@@ -5744,6 +5744,21 @@ function aplicar(d){
                  "este eixo em "+(k[1]*100).toFixed(0)+"% da velocidade "+
                  "pedida para o braco nao disparar.");
       });
+      /* E O MESMO FATOR APLICADO NA DISTANCIA.
+         Este e o que faz o braco CHEGAR no angulo pedido com a regua
+         errada: o deslocamento comandado sai multiplicado por ele. Vale
+         dizer porque o sintoma some -- o braco passa a acertar -- e sem
+         isto na tela ninguem descobriria que passosPorVolta esta errado.
+         Ele cobre os dois lados: regua MAIOR que a real da fator abaixo
+         de 1, regua menor da acima. */
+      [[1,d.escl1],[2,d.escl2]].forEach(function(k){
+        if(!k[1]||Math.abs(k[1]-1)<0.05)return;
+        segurando=true;
+        lin.push("J"+k[0]+" · e o movimento por angulo sai com a distancia "+
+                 "corrigida em "+(k[1]*100).toFixed(0)+"%: o braco chega no "+
+                 "ponto porque o firmware esta compensando, e nao porque a "+
+                 "regua esta certa.");
+      });
       cx.textContent = lin.length
         ? (lin.join("\n")+
            "\nA maquina nao troca sozinha. Se a medida estiver certa, "+

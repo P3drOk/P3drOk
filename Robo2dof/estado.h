@@ -66,6 +66,33 @@ struct Junta {
   // 1,0 = igual as duas, que e como a maquina nasce.
   float    fatorVel   = 1.0f;
 
+  // O QUE AS VIAGENS MEDIRAM SOBRE A REGUA DIGITADA.
+  //
+  // passosPorGrau sai de dois numeros que uma PESSOA digita, e o mais
+  // errado dos dois costuma ser passosPorVolta -- parametro do driver,
+  // que muda quando alguem troca o drive, sem nada na tela denunciar.
+  // Cada movimento por angulo compara, de ponta a ponta, os graus que a
+  // regua mandou andar com os graus que o encoder mediu; a razao entre os
+  // dois e o exagero da regua, e este fator e o inverso dele.
+  //
+  // Ele multiplica o DESLOCAMENTO comandado, e nada mais. Nao reescreve
+  // passosPorGrau, nao mexe em passosMin/passosMax, nao muda o angulo de
+  // nenhum ponto ja gravado -- que era justamente o estrago das duas
+  // tentativas anteriores de adotar a engrenagem sozinha.
+  //
+  // 1,0 = a regua digitada bate com a medida. 0,5 = ela esta duas vezes
+  // maior que a real, e o firmware manda metade dos pulsos que ela pediria.
+  float    fatorEscala     = 1.0f;
+  bool     escalaAprendida = false;
+  // COM QUE REGUA o fator acima foi medido.
+  //
+  // Ele compensa a diferenca entre passosPorGrau e a maquina. Corrigido
+  // passosPorGrau -- que e o conserto de verdade, e o que a tela pede que
+  // a pessoa faca --, o fator antigo passa a compensar um erro que nao
+  // existe mais e o braco anda de menos pelo mesmo tanto. Guardando a
+  // regua junto, o fator cai sozinho quando ela muda.
+  float    escalaRegua     = 0.0f;
+
   // Sentido do eixo. Se a fiacao do DIR estiver invertida em relacao ao
   // que a cinematica espera, o braco vai para um lado e o desenho para o
   // outro -- e nenhuma calibracao conserta isso, porque o erro nao e de

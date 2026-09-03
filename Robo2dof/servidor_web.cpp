@@ -196,6 +196,12 @@ static void handleStatus() {
     "\"ppv1\":%lu,\"red1\":%.3f,\"ppv2\":%lu,\"red2\":%.3f,"
     "\"ppvM1\":%lu,\"ppvM2\":%lu,"
     "\"fatR1\":%.3f,\"fatR2\":%.3f,"
+    // E o fator que entra na DISTANCIA. Sao dois usos da mesma medida:
+    // um segura a velocidade, o outro encurta ou estica o deslocamento
+    // comandado. Quem monta a maquina precisa ver os dois -- e o unico
+    // sinal de que passosPorVolta esta errado, ja que o braco passa a
+    // chegar no lugar certo justamente porque o firmware compensa.
+    "\"escl1\":%.3f,\"escl2\":%.3f,"
     "\"inv1\":%s,\"inv2\":%s,\"suav\":%u,"
     "\"maxPts\":%u,"
     "\"v1\":%.0f,\"v2\":%.0f,\"vPonta\":%.1f,\"ppg1\":%.2f,\"ppg2\":%.2f,"
@@ -234,6 +240,7 @@ static void handleStatus() {
     // que o encoder mediu andando; 0,25 = a regua esta quatro vezes
     // maior e o firmware esta segurando o eixo nessa proporcao.
     (double)correcaoFatorRegua(1), (double)correcaoFatorRegua(2),
+    (double)correcaoFatorEscala(1), (double)correcaoFatorEscala(2),
     J1.inverterDir ? "true" : "false", J2.inverterDir ? "true" : "false",
     (unsigned)suavidadePartida,
     (unsigned)MAX_PONTOS,

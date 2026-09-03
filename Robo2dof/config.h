@@ -357,9 +357,6 @@ static const uint8_t TRAV_AMOSTRAS_MINIMAS = 3;
 // num movimento de trabalho.
 static const float    AFERIR_VOLTAS_MIN = 0.10f;
 static const long     AFERIR_PASSOS_MIN = 200;
-// Abaixo disto a diferenca nao paga uma escrita na flash. A regua converge
-// em dois ou tres movimentos e para de mudar.
-static const float    AFERIR_GRAVAR_REL = 0.005f;
 
 #ifndef PIN_SD_CS
 #define PIN_SD_CS    5
@@ -489,15 +486,6 @@ static const float MARGEM_LIMITE_GRAUS = 0.5f;
 // Curso minimo que a calibracao aceita por junta. Precisa ser bem maior
 // que 2 x MARGEM_LIMITE_GRAUS, senao a calibracao "valida" produz um
 // intervalo util negativo e tranca o eixo.
-// Abaixo disto o movimento e curto demais para ter sentido definido, e o
-// freio do encoder nao arma: quem fecha e o assentamento. Serve tambem
-// para nao frear um movimento que ja nasceu no alvo.
-static const float FREIO_ENC_MINIMO_GRAUS = 0.5f;
-
-// O encosto final da afinacao. Abaixo disto o eixo praticamente nao anda
-// entre duas leituras do barramento, e a chegada ficaria eterna.
-static const float FREIO_ENC_VEL_MINIMA = 1.5f;   // graus/s
-
 // ATE QUE RITMO DE LEITURA VALE FECHAR A MALHA NO ENCODER.
 //
 // Corrigir o eixo a partir de uma medida so funciona se a proxima medida
@@ -525,64 +513,98 @@ static const uint32_t CORR_INTERVALO_MAX_MS = 100;
 // por segundos depois.
 static const uint32_t CORR_LACUNA_MS = 2000;
 
-// A VELOCIDADE DE APROXIMACAO, como fracao da pedida.
+// COMO O BRACO VAI A UM ANGULO: a rampa leva, e o encoder confere.
 //
-// O movimento tem TRES comandos, e nao um por leitura: larga na
-// velocidade pedida, baixa UMA vez para esta quando o encoder ve que
-// esta perto, e para. Entre eles ninguem toca no gerador de pulso.
+// Ir a um angulo e, hoje, tres coisas em ordem:
 //
-// Isso nao e economia de codigo, e o que faz o movimento ser liso:
-// reprogramar a velocidade obriga o gerador a refazer a rampa, e refazer
-// a rampa dezenas de vezes por movimento aparece na bancada como
-// aspereza -- "ele fica tentando acertar". O aviso esta em
-// motores.cpp, no comentario de programarVelocidade(), desde as
-// primeiras versoes da maquina; a correcao e que tinha passado por cima
-// dele.
+//   1. ANCORAR. A contagem de passos e reescrita pelo que o encoder mede,
+//      com o eixo parado. Dali em diante ela descreve o braco.
+//   2. UMA RAMPA. O destino se calcula em passos a partir dessa medida e
+//      sai um moveTo(): o gerador de pulso acelera, cruzeiro, desacelera
+//      e para EXATAMENTE no passo comandado. Nao ha nada a inventar aqui
+//      -- a distancia de frenagem e a biblioteca que calcula.
+//   3. ASSENTAR. Parado, o encoder diz onde o braco ficou de verdade, e
+//      o que sobrou fecha em retoques curtos e cada vez mais lentos.
 //
-// A BUSCA: ir ao angulo e andar ate a medida bater.
+// O QUE ISTO SUBSTITUIU, e por que.
 //
-//   "So quero que ele acerte. O braco tem a leitura do encoder, entao e
-//    so mover o braco em uma velocidade constante ate que a leitura do
-//    encoder seja a mesma. Nao precisa de tudo isso de reducao nesse
-//    caso -- sera necessario apenas quando formos usar para desenhos."
+// Havia aqui uma BUSCA: o eixo andava em velocidade CONSTANTE e parava
+// quando a medida batia no alvo. Ela nasceu de um pedido legitimo --
+// "nao quero uma matematica complexa pra tentar acertar a posicao, so
+// quero que ele acerte" -- e da propriedade de nao depender da regua.
 //
-// E o que esta escrito abaixo. Nenhuma conta de distancia de frenagem,
-// nenhum degrau planejado, nenhuma regua: o eixo anda em velocidade
-// constante e para quando o encoder diz o numero.
+// Mas ela e um controlador liga-desliga com sensor atrasado, e isso nao
+// para num ponto: o comando de parar so sai quando a medida diz que JA
+// passou, e ate a medida chegar o eixo andou. O excesso era assumido em
+// "cerca de um grau"; na bancada, com o barramento real, virava o
+// vai-e-vem que o operador descreveu. Nao e defeito de ajuste: e o
+// desenho. Nenhuma constante conserta tempo morto.
 //
-// Dentro desta tolerancia a busca considera que chegou. Ela nao pode ser
-// menor que o que a maquina consegue repetir, senao a busca ficaria indo
-// e voltando atras de ruido de leitura.
-static const float BUSCA_TOLERANCIA_GRAUS = 0.20f;
+// E ela cancelava a rampa: buscaDefinir() mandava runForward(), que
+// descarta o alvo do moveTo() que acabara de ser programado. Os dois
+// controladores brigavam pelo mesmo eixo dentro do mesmo movimento.
+//
+// A rampa e o mecanismo que programa, DXF e trajetoria sempre usaram --
+// e nao e de posicionamento que ninguem reclama neles.
 
-// SE PASSAR, VOLTA MAIS DEVAGAR.
+// SE O ENCODER DISSER QUE PASSOU DISTO, PARA.
 //
-// Isto nao e "matematica para acertar a posicao": e a unica coisa que
-// impede a mesma frase de se repetir para sempre. Voltando na MESMA
-// velocidade, o eixo passaria de novo pelo mesmo tanto, e de novo.
+// O freio de fuga. Nao e a lei de controle -- quem leva o eixo e a rampa
+// --, e a rede embaixo dela: com passosPorGrau digitado muito errado o
+// destino em passos cai longe do angulo pedido, e sem freio o eixo iria
+// ate la. Era esta a propriedade boa da busca, e ela continua de pe.
 //
-// Num barramento saudavel a primeira passada ja chega e nada disto
-// acontece. Num barramento a 4,6 leituras por segundo o eixo anda as
-// cegas por 200 ms e passa: ai sao duas ou tres passadas curtas, cada
-// uma quatro vezes mais devagar que a anterior. Consertar o cabo tira
-// essas passadas.
-static const float   BUSCA_REDUCAO      = 0.25f;
-static const uint8_t BUSCA_PASSADAS_MAX = 3;
+// A margem existe para o freio NUNCA disparar num movimento saudavel:
+// com a regua certa a rampa para no alvo sem nunca passar dele.
+static const float FREIO_MARGEM_GRAUS = 1.0f;
 
-// Piso: abaixo disto o encosto ficaria eterno.
-static const float BUSCA_VEL_MINIMA = 0.5f;   // graus/s
-
-// TETO DE TEMPO, que a busca precisa e o movimento com destino nao.
+// E SO PARA COM DUAS LEITURAS CONFIRMANDO.
 //
-// Um moveTo() termina sozinho: o destino esta em passos e o gerador para
-// ao chegar nele. A busca nao tem destino em passos -- ela para quando a
-// MEDIDA disser. Se a medida congelar com o eixo andando (cabo solto no
-// meio do movimento), nada mais a faria parar. O teto e o tempo que a
-// regua digitada preve para o percurso, com folga larga, e mais alguns
-// segundos: nao serve para acertar nada, serve para nao existir eixo
-// solto.
-static const float    BUSCA_FOLGA_TEMPO = 4.0f;
-static const uint32_t BUSCA_TEMPO_EXTRA_MS = 4000;
+// Uma leitura solta que pule alem do alvo nao pode parar o braco no meio
+// do curso -- e isso, exatamente, era o "para do nada em um ponto
+// aleatorio": a busca decidia por UMA amostra, sem confirmacao nenhuma.
+// Exigindo duas leituras NOVAS seguidas dizendo a mesma coisa, um glitch
+// nao freia nada e um destino errado de verdade freia na segunda medida.
+static const uint8_t FREIO_CONFIRMACOES = 2;
+
+// A ESCALA MEDIDA ENTRA NA DISTANCIA, e nao so na velocidade.
+//
+// correcaoAprenderDaViagem() compara, de ponta a ponta de cada viagem, os
+// graus que a REGUA mandou andar com os graus que o ENCODER mediu. Essa
+// razao e o exagero da regua digitada, e ate agora ela so segurava a
+// VELOCIDADE -- o que impedia o eixo de sair no talo, mas nao o fazia
+// parar no lugar certo.
+//
+// Agora ela multiplica o DESLOCAMENTO comandado, e e o que faz a rampa
+// cair no angulo pedido ja na segunda viagem mesmo com a regua errada.
+//
+// POR QUE ISTO NAO E A ADOCAO AUTOMATICA QUE JA DEU ERRADO DUAS VEZES:
+//
+//   - ela reescrevia passosPorVolta, mudando TODOS os angulos da maquina
+//     por baixo dos limites e dos pontos gravados. Este fator nao toca na
+//     regua: ele multiplica um deslocamento, uma vez, naquele movimento;
+//   - ela media a cada leitura, dentro de uma janela de 217 ms, onde uma
+//     leitura parada com o eixo andando produzia uma engrenagem enorme.
+//     Esta e UMA conta por viagem, entre duas pontas separadas por
+//     segundos, com o eixo parado nas duas;
+//   - o teto que havia era 200 vezes o valor real e nao segurava nada.
+//     Estes limites sao apertados, e acima deles esta o freio de fuga:
+//     mesmo no teto, o eixo para quando a medida diz que passou.
+static const float ESCALA_MIN = 0.25f;
+static const float ESCALA_MAX = 4.00f;
+
+// Viagem curta demais nao mede escala nenhuma: a diferenca entre as duas
+// pontas fica dentro do ruido delas. (Ver APRENDER_VIAGEM_MINIMA_GRAUS.)
+
+// A CHEGADA E UM ENCOSTO, NAO UM TRANCO.
+//
+// O retoque ja afinava a VELOCIDADE conforme o que falta, mas saia com a
+// aceleracao cheia: um retoque de um decimo de grau e todo arranque e
+// freada, e a rampa inteira acontece nesse decimo. Abaixo deste tamanho
+// o retoque anda com a aceleracao reduzida, e ai o ultimo pedaco e um
+// encosto.
+static const float RETOQUE_SUAVE_GRAUS = 1.0f;
+static const float RETOQUE_SUAVE_ACEL  = 0.25f;
 
 // A PARTIR DE QUE DESVIO A REGUA DIGITADA E DENUNCIADA NA TELA.
 //

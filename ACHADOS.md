@@ -1404,6 +1404,124 @@ as dezoito rotas que a interface pode disparar com o braço andando e
 denuncia quem encostar. Passou limpo — o que confirmou que a causa do
 "anda dois segundos e trava" estava no firmware (R127), não numa rota.
 
+## R170 · Quatro defeitos com o banco verde  `W01`–`W03`  ✅
+
+> *"o braço para do nada em um ponto aleatório, ou não chega ao ponto
+> determinado... o braço fica louco com movimento"*
+
+Antes de trocar qualquer coisa, o que estava quebrado sem trocar nada.
+543 cenários passavam com os quatro dentro.
+
+**Referenciar não zerava o encoder.** A chave de fechar do bloco de recusa
+estava *depois* de `encoderZerar(0)`, dentro dele e depois do `break`: a
+chamada era **inalcançável**. Referenciar zerava a contagem de passos e
+deixava a do encoder onde estava — as duas réguas passando a contar de
+pontos diferentes, que é o *"senão o erro nasce torto"* escrito na linha de
+cima. O compilador não avisa de código morto assim, e `-Wall -Wextra`
+tampouco.
+
+**A calibração escrevia velocidade por fora da porta.** `irAoZero()` chamava
+`setSpeedInHz()` direto, o padrão que `motores.h` proíbe por escrito. O cache
+guarda o último Hz realmente programado e pula a escrita quando o valor não
+mudou: depois de uma volta ao zero feita por fora, o primeiro movimento que
+pedisse por acaso o valor cacheado era **descartado**, e o eixo andava numa
+velocidade que ninguém pediu.
+
+**O assentamento era recusado por aritmética.** Ele exigia ritmo de 10
+leituras por segundo. Mas `ciclo()` lê **uma junta por vez** com o intervalo
+valendo para o ciclo inteiro: com as duas ligadas, cada uma é lida a cada
+dois períodos, mais a transação Modbus. A máquina de duas juntas não
+satisfaz o portão com nenhum período confortável — e dizia *"barramento
+lento"* sobre um barramento saudável, deixando o braço onde a rampa o
+largou. Com um driver só o ritmo cabia; era por isso que o defeito aparecia
+**depois de ligar o segundo driver**.
+
+**A busca que desistia dizia que tinha chegado.** Gastas as três passadas,
+`buscaEncerrar()` deixava `buscouEstaViagem[]` de pé — e com ele de pé o
+assentamento tratava a junta como "chegou", gravava a contagem em cima de
+**onde o braço parou** e a tela escrevia *"Posicionamento concluído"*. O
+desvio entrava na contagem como se fosse verdade.
+
+E **o ganho do retoque nunca era esquecido em produção**: `esquecerGanho()`
+só tinha chamador dentro de `ROBO2DOF_TESTE`.
+
+Os três cenários novos foram vistos **vermelhos** com o firmware antigo antes
+de entrarem. O quarto ficou sem cenário de propósito: o encoder do banco é
+lento mas **perfeito**, e com ele a busca fecha até com a régua doze vezes
+errada — o ramo de desistir não é alcançável aqui, e um cenário que passa dos
+dois lados é pior que nenhum.
+
+## R171 · A rampa leva o eixo, e o encoder confere  `W05`–`W07`  ✅
+
+A busca saiu. O que ela fazia agora é feito por três coisas em ordem:
+ancorar, uma rampa com destino em passos, e assentar.
+
+### A causa: dois controladores no mesmo eixo
+
+`irParaAngulos()` disparava os dois. `moverCoordenado()` programava um
+`moveTo()` — que para exatamente no passo comandado — e logo depois a busca
+chamava `runForward()`, **que descarta o alvo da rampa**. O braço passava a
+andar em velocidade constante, às cegas, até o encoder dizer que já passou.
+
+Um liga-desliga com sensor atrasado não para num ponto: o comando de parar
+só sai quando a medida diz que **já passou**. Não é defeito de ajuste, é o
+desenho — e as quatro rodadas de constante que `d85ff95` lista são a prova.
+
+### O que segurava a busca de pé, e o que ficou no lugar
+
+| a busca dava | agora |
+|---|---|
+| não dependia de `passosPorGrau` | `Junta.fatorEscala`, medido nas viagens, entra na **distância** |
+| impedia o braço de dar voltas com régua errada | o **freio de fuga**, com duas confirmações |
+| parava sozinha | o `moveTo()` termina sozinho — nunca precisou de teto de tempo |
+
+O **freio de fuga** exige duas leituras novas seguidas dizendo que passou do
+alvo com folga de 1,0°. É o conserto do *"para do nada"*: a busca decidia por
+**uma** amostra, e um quadro corrompido que passasse pelas guardas congelava
+o braço num ponto aleatório (`W05`).
+
+O **fator de escala** é a mesma medida de `correcaoAprenderDaViagem()`, com
+outro limite: `govFator` é travado em 1,0 porque só pode *segurar* o eixo, e
+por isso nunca cobriu a régua **menor** que a real, em que o braço anda de
+menos (`W06`). Ele multiplica um deslocamento, uma vez, naquele movimento —
+não reescreve `passosPorVolta`, não mexe em limite nem em ponto gravado — e
+**cai sozinho quando alguém corrige a régua**, que foi um defeito real
+apanhado por `V28`.
+
+### Medido
+
+| | erro | passou do alvo | inversões |
+|---|---|---|---|
+| cinco ângulos, régua certa | **0,012°** | **0,000°** | **0** |
+| régua 2×, da 2ª viagem em diante | **0,012°** | **0,000°** | **0** |
+| régua 2×, primeira viagem | 0,048° | 3,05° (o freio) | 2 |
+| régua 4× **menor**, terceira viagem | **0,00°** | — | 0 retoques |
+| barramento a 217 ms, pedido 45° | **45,000°** | 0 | 0 retoques |
+| eixo a 60 °/s com redução 100 | **80,00°** | — | — |
+
+O último era o caso em que o braço **não chegava**: a rampa de parada da
+busca consumia quase trinta graus depois de a medida mandar parar. Com a
+rampa levando, a freada acontece *dentro* do movimento.
+
+### `AJUSTES_APOS_CHEGAR` passou a existir de verdade
+
+A constante estava em `config.h` com um comentário de catorze linhas
+explicando um comportamento que o código não tinha. Ela vale agora — e o
+critério é o erro **com que o eixo chegou**, não o que ainda falta: julgando
+pelo que falta, o teto mordia no meio de uma convergência legítima e deixava
+um grau na peça (`M06`).
+
+### Onze cenários re-expressos, um apagado
+
+`M01`, `M02`, `M12`, `M14`, `V28`–`V31`, `V34`, `R01`. Todos prendiam o
+mecanismo antigo — "sem retoque nenhum", "a busca engole o escorregão", "a
+velocidade é constante do começo ao fim". `V34e` prende hoje o que importa:
+o gerador recebe a velocidade **uma vez** e não é tocado de novo, porque
+refazer a rampa a cada leitura é o que a bancada sente como aspereza.
+
+O apagado foi um cenário novo meu, escrito e removido no mesmo dia: ele
+passava dos dois lados do conserto. Ver R170.
+
 ## Cobertura
 
 | banco | antes | agora |
@@ -5568,7 +5686,7 @@ está escrito lá por quê.
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **543 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **560 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **311 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

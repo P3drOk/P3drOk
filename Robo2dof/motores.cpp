@@ -33,15 +33,6 @@ static bool    sonJaEnergizou[2] = {false, false};
 static int8_t   jogDir[2]     = {0, 0};
 static uint32_t jogUltimoMs[2] = {0, 0};
 static float    jogFracao[2]  = {1.0f, 1.0f};
-// A BUSCA: graus/s pedidos quando quem move o eixo e o encoder, e nao um
-// dedo. Zero = nao ha busca nesta junta, e vale o jog normal.
-//
-// Ela reaproveita o jog inteiro de proposito. Andar em velocidade
-// constante ate uma condicao de parada e exatamente o que o jog faz, e
-// com ele vem tudo o que ja foi resolvido ali: o portao de seguranca, o
-// torque por eixo, e a antecipacao da postura no fim da freada -- que e
-// o que impede o braco de sair da area util enquanto persegue um numero.
-static float    buscaVelGraus[2] = {0.0f, 0.0f};
 // Ultimo valor realmente programado no gerador de pulso, para nao
 // reprogramar a rampa a cada ciclo de 1 ms.
 static uint32_t jogHzAplicado[2]      = {0, 0};
@@ -378,31 +369,7 @@ void jogDefinir(uint8_t junta, int8_t direcao, float fracao) {
   jogUltimoMs[i] = millis();
 }
 
-void buscaDefinir(uint8_t junta, int8_t direcao, float grausPorS) {
-  if (junta != 1 && junta != 2) return;
-  const uint8_t i = junta - 1;
-  if (direcao == 0 || grausPorS <= 0.0f) {
-    buscaVelGraus[i] = 0.0f;
-    if (jogDir[i] != 0) {
-      jogDir[i] = 0;
-      jogSentidoAplicado[i] = 0;
-      jogHzAplicado[i]      = 0;
-      Junta& j = (i == 0) ? J1 : J2;
-      if (j.motor) j.motor->stopMove();
-    }
-    return;
-  }
-  buscaVelGraus[i] = grausPorS;
-  jogDir[i]        = direcao;
-  jogUltimoMs[i]   = millis();
-}
-
-bool buscaMovendo() {
-  return buscaVelGraus[0] > 0.0f || buscaVelGraus[1] > 0.0f;
-}
-
 void jogZerar() {
-  buscaVelGraus[0] = buscaVelGraus[1] = 0.0f;
   jogDir[0] = jogDir[1] = 0;
   jogFracao[0] = jogFracao[1] = 1.0f;
   jogHzAplicado[0] = jogHzAplicado[1] = 0;
@@ -462,10 +429,11 @@ void jogAtualizar() {
     // Heartbeat: se a interface parou de confirmar o jog, o eixo para.
     // Protege contra queda de Wi-Fi com o botao pressionado.
     //
-    // A BUSCA NAO TEM HEARTBEAT: quem a confirma a cada ciclo e o proprio
-    // firmware, olhando o encoder. Nao ha dedo para soltar.
-    if (buscaVelGraus[i] <= 0.0f &&
-        jogDir[i] != 0 && (agora - jogUltimoMs[i] > TIMEOUT_JOG_MS)) {
+    // Havia aqui uma excecao: a BUSCA usava este mesmo caminho para andar
+    // sozinha e nao podia depender de um dedo. Com a busca fora, o jog
+    // voltou a ser so o dedo do operador, e o heartbeat vale sempre --
+    // que e como uma trava de homem-morto deve ser.
+    if (jogDir[i] != 0 && (agora - jogUltimoMs[i] > TIMEOUT_JOG_MS)) {
       jogDir[i] = 0;
     }
 
@@ -485,11 +453,9 @@ void jogAtualizar() {
     // runForward a cada milissegundo obriga o gerador a refazer a rampa
     // o tempo todo, o que suja o trem de pulsos.
     {
-      const bool  emBusca = (buscaVelGraus[i] > 0.0f);
-      const float base = emBusca ? buscaVelGraus[i] : velNormal;
-      float f = emBusca ? 1.0f : jogFracao[i];
-      if (!emBusca && f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
-      const uint32_t hz = grausPorSegParaHz(j, velDaJunta(j, base) * f);
+      float f = jogFracao[i];
+      if (f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
+      const uint32_t hz = grausPorSegParaHz(j, velDaJunta(j, velNormal) * f);
       if (hz != jogHzAplicado[i]) {
         jogHzAplicado[i] = hz;
         programarVelocidade(j, i, hz);
@@ -536,7 +502,8 @@ void jogAtualizar() {
 // ---------------------------------------------------------------------
 // MOVIMENTO COORDENADO
 // ---------------------------------------------------------------------
-void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
+void moverCoordenado(long alvo1, long alvo2, float grausPorS,
+                     float fatorAcel) {
   // BASTA UM MOTOR. Exigir os dois fazia a maquina de um eixo so nao
   // andar NADA -- nem o eixo que existe --, e sem uma palavra na tela.
   // Coordenar dois movimentos e o caso comum, nao a condicao para haver
@@ -574,8 +541,12 @@ void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
 
   // Aceleracao escalada na mesma proporcao: as duas rampas comecam e
   // terminam juntas, entao o caminho fica reto no espaco das juntas.
-  uint32_t a1 = grausPorSegParaHz(J1, J1.aceleracao * (g1 / gmax));
-  uint32_t a2 = grausPorSegParaHz(J2, J2.aceleracao * (g2 / gmax));
+  // O fator entra nos DOIS na mesma proporcao: escalar so um faria as
+  // rampas terminarem em instantes diferentes e o caminho deixaria de ser
+  // reto no espaco das juntas, que e o que este movimento garante.
+  const float fa = (fatorAcel > 0.01f) ? fatorAcel : 1.0f;
+  uint32_t a1 = grausPorSegParaHz(J1, J1.aceleracao * (g1 / gmax) * fa);
+  uint32_t a2 = grausPorSegParaHz(J2, J2.aceleracao * (g2 / gmax) * fa);
   if (a1 < 100) a1 = 100;
   if (a2 < 100) a2 = 100;
 
