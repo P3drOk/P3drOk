@@ -9367,6 +9367,223 @@ static void teste_J03_qualquer_endereco_cai_no_painel() {
          "e ele e atendido no laco da tarefa de rede, sem bloquear nada");
 }
 
+
+// =====================================================================
+//  SERIE W -- Etapa A: o que o banco nao estava olhando.
+//
+//  Os quatro defeitos abaixo estavam no firmware com 543 cenarios verdes.
+//  Nenhum deles e sutil; o que faltava era alguem perguntar.
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// W01: referenciar zera AS DUAS contagens.
+//
+// A chamada encoderZerar(0) estava dentro do bloco de recusa e DEPOIS do
+// break -- inalcancavel. O compilador nao avisa disso, e o banco nunca
+// perguntou. Resultado: referenciar zerava a contagem de passos e deixava
+// a do encoder onde estava. As duas reguas passavam a partir de pontos
+// diferentes, que e literalmente o que o comentario ao lado da linha diz
+// que nao pode acontecer: "senao o erro nasce torto".
+// ---------------------------------------------------------------------
+static void teste_W01_referenciar_zera_as_duas_contagens() {
+  secao("W01  Referenciar zera a contagem de passos E a do encoder");
+  reiniciarSistema();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoder(90, true, 0);
+  rodarComWeb(200);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(200);
+
+  // O BRACO EMPURRADO A MAO, sem espelho.
+  //
+  // O espelho do banco calcula a posicao do escravo a partir da PROPRIA
+  // referencia -- entao reescrever a referencia move o valor cru junto e
+  // o cenario nao conseguiria ver o zero acontecer. Aqui o escravo e
+  // movido a mao, que e o que um encoder de verdade faz: ele le o ferro,
+  // e o ferro nao sabe onde esta a referencia do firmware.
+  const float cv  = configEncoder.contagensPorVolta[0];
+  const float red = (J1.reducao > 0.001f) ? J1.reducao : 1.0f;
+  g_uart.escravo[0].parar();
+  g_uart.escravo[0].posicao += (int32_t)lroundf((30.0f * red / 360.0f) * cv);
+  rodarComWeb(400);
+  // E a contagem de passos tambem sai do zero, para haver o que zerar dos
+  // dois lados.
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, 30.0f));
+  rodarComWeb(100);
+
+  const float grausAntes  = encoderLer(1).graus;
+  const long  passosAntes = posicaoJ1();
+  nota("antes de referenciar: encoder %.2f graus, contagem %ld passos",
+       (double)grausAntes, passosAntes);
+  checar(fabsf(grausAntes) > 5.0f && passosAntes != 0, "W01a",
+         "as duas reguas estao longe do zero -- ha o que zerar dos dois lados");
+
+  enviarComando(CMD_REFERENCIAR);
+  rodarComWeb(400);
+
+  const float grausDepois  = encoderLer(1).graus;
+  const long  passosDepois = posicaoJ1();
+  nota("depois de referenciar: encoder %.3f graus, contagem %ld passos",
+       (double)grausDepois, passosDepois);
+
+  checar(passosDepois == 0, "W01b",
+         "a contagem de passos recomeca do zero -- isto ja funcionava");
+  checar(fabsf(grausDepois - J1.grausHome) < 0.2f, "W01c",
+         "e a contagem do ENCODER recomeca junto. A chamada que faz isso "
+         "estava INALCANCAVEL -- dentro do bloco de recusa e depois do "
+         "break --, entao referenciar deixava as duas medidas partindo de "
+         "pontos diferentes, e todo erro calculado depois nascia com a "
+         "diferenca dentro dele");
+}
+
+// ---------------------------------------------------------------------
+// W02: o cache de velocidade nao pode mentir.
+//
+// motores.cpp guarda o ultimo Hz REALMENTE programado em cada gerador e
+// pula a escrita quando o valor nao mudou. Quem escreve por fora -- e a
+// volta ao zero da calibracao escrevia -- deixa esse cache descrevendo um
+// valor que nao esta no gerador. O movimento seguinte que pedisse por
+// acaso o numero cacheado era DESCARTADO, e o eixo andava numa velocidade
+// que ninguem pediu, sem nada na tela.
+//
+// O cenario nao olha a calibracao: olha a INVARIANTE. Depois de qualquer
+// coisa que a maquina faca, o cache tem de bater com o gerador.
+// ---------------------------------------------------------------------
+static void teste_W02_cache_de_velocidade_nao_mente() {
+  secao("W02  Nada escreve velocidade por fora da porta");
+  reiniciarSistema();
+  prepararEncoderDasDuasJuntas();
+  prepararConfigPendente();
+  configPendente.red1 = 16.5f; configPendente.red2 = 16.5f;
+  enviarComando(CMD_APLICAR_CONFIG);
+  rodarComWeb(300);
+  g_espelharEixo = false;
+
+  enviarComando(CMD_SERVOS, 1, 0);
+  rodarComWeb(300);
+  if (J1.motor) J1.motor->setCurrentPosition(grausParaPassos(J1, 40.0f));
+  if (J2.motor) J2.motor->setCurrentPosition(grausParaPassos(J2, 25.0f));
+  colarEncoderNaContagem();
+  rodarComWeb(50);
+
+  auto ateEtapa = [&](EstadoCalib alvo) {
+    uint32_t t = 0;
+    while (estadoCalib != alvo && t < 40000) {
+      colarEncoderNaContagem();
+      rodarComWeb(10); t += 10;
+    }
+    return estadoCalib == alvo;
+  };
+  auto empurrar = [&](uint8_t k, float graus) {
+    const Junta& j = (k == 1) ? J1 : J2;
+    const float red = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+    const float cv = configEncoder.contagensPorVolta[k - 1];
+    g_uart.escravo[k - 1].parar();
+    g_uart.escravo[k - 1].posicao +=
+        (int32_t)lroundf((graus * red / 360.0f) * cv);
+    rodarComWeb(400);
+  };
+
+  // A calibracao inteira: os dois batentes, e no fim ela religa o torque
+  // e manda os dois eixos ao zero. E nessa viagem que a velocidade era
+  // escrita por fora.
+  enviarComando(CMD_CALIB_INICIAR);
+  ateEtapa(CAL_LADO_A);
+  empurrar(1, -60.0f); empurrar(2, -60.0f);
+  enviarComando(CMD_CALIB_CONFIRMAR);
+  ateEtapa(CAL_LADO_B);
+  empurrar(1, 120.0f); empurrar(2, 120.0f);
+  enviarComando(CMD_CALIB_CONFIRMAR);
+  { uint32_t t = 0;
+    while (estadoCalib != CAL_INATIVO && t < 40000) {
+      colarEncoderNaContagem(); rodarComWeb(10); t += 10;
+    } }
+  rodarComWeb(200);
+
+  const uint32_t cache1 = velProgramadaPub(0);
+  const uint32_t real1  = J1.motor ? J1.motor->velHz : 0;
+  const uint32_t cache2 = velProgramadaPub(1);
+  const uint32_t real2  = J2.motor ? J2.motor->velHz : 0;
+  nota("junta 1: cache %lu Hz, gerador %lu Hz | junta 2: cache %lu Hz, "
+       "gerador %lu Hz", (unsigned long)cache1, (unsigned long)real1,
+       (unsigned long)cache2, (unsigned long)real2);
+
+  checar(cache1 == real1 && cache2 == real2, "W02a",
+         "depois da calibracao inteira o cache de velocidade continua "
+         "descrevendo o que esta no gerador. Cache mentindo faz a proxima "
+         "escrita que peca o valor cacheado ser DESCARTADA, e o eixo anda "
+         "numa velocidade que ninguem pediu");
+}
+
+// ---------------------------------------------------------------------
+// W03: duas juntas com o periodo de fabrica ainda assentam.
+//
+// ciclo(), em encoder.cpp, le UMA junta por vez, e o intervalo vale para
+// o ciclo inteiro. Com as duas juntas ligadas cada uma e lida a cada dois
+// periodos, mais a transacao Modbus -- com o periodo de fabrica (50 ms)
+// isso passa dos 100 ms que CORR_INTERVALO_MAX_MS exige, e o assentamento
+// era recusado com "barramento lento" sobre um barramento saudavel.
+//
+// Os preparadores do banco sempre usaram ENC_PERIODO_MIN_MS (20 ms), que
+// e por que 543 cenarios nunca viram isto. Este usa o numero da maquina.
+// ---------------------------------------------------------------------
+static void teste_W03_duas_juntas_dobram_o_ritmo() {
+  secao("W03  Duas juntas: o rodizio dobra o ritmo, e o assentamento roda assim mesmo");
+  reiniciarSistema();
+  prepararEncoderDasDuasJuntas();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  // UM PERIODO QUE O OPERADOR PODE ESCOLHER, e duas juntas.
+  //
+  // Com o padrao de fabrica (50 ms) o rodizio ja leva cada junta a ~97 ms
+  // no banco -- tres milissegundos do teto, e na maquina a transacao
+  // Modbus (5 a 20 ms por leitura) passa dele. O banco tem UART
+  // instantanea e nao consegue encenar essa transacao, entao aqui o mesmo
+  // efeito se obtem com 60 ms: nada de excepcional, um numero do campo da
+  // tela. O que se prende e a consequencia, que e a mesma.
+  configEncoder.periodoMs = 60;
+  rodarComWeb(1500);        // deixa o ritmo ser medido nas duas
+  g_espelharEixo = true;
+  rodarComWeb(1500);
+
+  const uint32_t r1 = correcaoRitmoMs(1), r2 = correcaoRitmoMs(2);
+  nota("com as duas juntas a 60 ms de periodo, o ritmo MEDIDO e de uma "
+       "leitura cada %lu / %lu ms (o teto do portao antigo era %lu)",
+       (unsigned long)r1, (unsigned long)r2,
+       (unsigned long)CORR_INTERVALO_MAX_MS);
+  checar(r1 >= 110 && r2 >= 110 && !encoderGuiaOMovimento(1), "W03a",
+         "com as duas juntas ligadas, cada uma e lida a cada DOIS periodos "
+         "-- o ciclo le uma junta por vez e o intervalo vale para o ciclo "
+         "inteiro. O teto de ritmo foi escrito ignorando esse rodizio: uma "
+         "maquina de duas juntas nao consegue satisfaze-lo com nenhum "
+         "periodo confortavel");
+
+  // E mesmo assim ela assenta: perde passo, pede um angulo, e o retoque
+  // tem de acontecer.
+  webPost("/api/mover?t1=20&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 60000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+  perderPassos(4.0f);
+  rodarComWeb(600);
+  webPost("/api/mover?t1=35&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 60000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(600);
+
+  const ResumoCorrecao rc = correcaoResumo();
+  nota("estado do assentamento: %d (%s), %u retoque(s), erro final %.3f",
+       (int)rc.estado, rc.motivo, (unsigned)rc.tentativas,
+       (double)rc.erroFinal1);
+  checar(rc.estado != CORR_RECUSADA, "W03b",
+         "o assentamento nao e mais recusado pelo ritmo: ele so age com o "
+         "eixo PARADO e ja espera uma leitura nova de depois da parada -- "
+         "uma leitura a cada 100 ms e de sobra para quem precisa de uma");
+  checar(fabsf(encoderLer(1).graus - 35.0f) < 1.0f, "W03c",
+         "e o braco chega no angulo pedido, medido pelo encoder");
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -9520,6 +9737,10 @@ int main() {
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();
+
+  teste_W01_referenciar_zera_as_duas_contagens();
+  teste_W02_cache_de_velocidade_nao_mente();
+  teste_W03_duas_juntas_dobram_o_ritmo();
 
   teste_J01_wifi_proprio();
   teste_J02_endereco_do_painel();

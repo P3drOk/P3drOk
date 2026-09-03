@@ -182,6 +182,16 @@ static float   fechavelAnterior = 0.0f;
 // =====================================================================
 static float ganhoRetoque[2]   = {1.0f, 1.0f};
 static bool  ganhoAprendido[2] = {false, false};
+// COM QUE REGUA aquele ganho foi medido.
+//
+// O ganho e a razao entre graus PEDIDOS e graus ANDADOS, e o pedido sai
+// em pulsos por passosPorGrau. Mude passosPorGrau e o mesmo eixo passa a
+// andar outra coisa pelo mesmo pedido: o ganho guardado deixa de
+// descrever a maquina. Sem isto ele so era esquecido em
+// correcaoReiniciarTeste(), que so existe no banco -- ou seja, NUNCA em
+// producao: um ganho medido uma vez num regime atipico governava todo
+// retoque ate o proximo boot.
+static float ganhoRegua[2]     = {0.0f, 0.0f};
 static float retoquePedido[2]  = {0.0f, 0.0f};   // graus comandados
 static float medidoAntes[2]    = {0.0f, 0.0f};   // encoder antes do retoque
 static bool  temMedidoAntes[2] = {false, false};
@@ -198,8 +208,28 @@ static const float GANHO_MAX = 6.0f;
 static void esquecerGanho() {
   ganhoRetoque[0] = ganhoRetoque[1] = 1.0f;
   ganhoAprendido[0] = ganhoAprendido[1] = false;
+  ganhoRegua[0] = ganhoRegua[1] = 0.0f;
   retoquePedido[0] = retoquePedido[1] = 0.0f;
   temMedidoAntes[0] = temMedidoAntes[1] = false;
+}
+
+// A REGUA MUDOU: o ganho medido com a antiga nao vale mais.
+//
+// Conferido no comeco de todo movimento, e nao num gancho dentro de
+// recalcularResolucao(): estado.cpp e a camada de baixo e nao pode passar
+// a depender daqui. Assim tambem pega quem mexer na resolucao por
+// qualquer caminho -- tela, calibracao, restaurar backup.
+static void esquecerGanhoSeAReguaMudou() {
+  for (uint8_t i = 0; i < 2; i++) {
+    if (!ganhoAprendido[i]) continue;
+    const float ppg = (i == 0) ? J1.passosPorGrau : J2.passosPorGrau;
+    if (fabsf(ppg - ganhoRegua[i]) < 0.0001f) continue;
+    ganhoRetoque[i]   = 1.0f;
+    ganhoAprendido[i] = false;
+    ganhoRegua[i]     = 0.0f;
+    logEvento("junta %u: a resolucao mudou -- o ganho medido foi esquecido",
+              (unsigned)(i + 1));
+  }
 }
 
 // Limita a MAGNITUDE de um retoque, guardando o sinal.
@@ -503,10 +533,19 @@ void correcaoBuscarAlvo() {
       // impede a mesma frase de se repetir para sempre.
       buscaPassadas[i]++;
       if (buscaPassadas[i] > BUSCA_PASSADAS_MAX) {
-        buscaEncerrar(k, i);
-        logEvento("junta %u: parou a %.2f graus (pedido %.2f) -- e o que a "
-                  "medida distingue neste barramento", (unsigned)k,
+        // DESISTIR, e nao ENCERRAR. A diferenca e buscouEstaViagem[]:
+        // encerrar deixava a marca de pe, o assentamento tratava a junta
+        // como "chegou", gravava a contagem em cima de onde o braco tinha
+        // PARADO e a tela dizia "Posicionamento concluido" com o braco
+        // fora do ponto. Desistindo, o assentamento assume -- ele retoca
+        // nos dois sentidos e e o unico que ainda pode fechar o resto.
+        buscaDesistir(k, i);
+        logEvento("junta %u: a busca gastou as passadas a %.2f graus "
+                  "(pedido %.2f) -- o assentamento assume", (unsigned)k,
                   (double)encoderLer(k).graus, (double)alvoPedido[i]);
+        definirMensagem("Junta %u: a busca nao fechou em %u passadas -- o "
+                        "assentamento assume", (unsigned)k,
+                        (unsigned)BUSCA_PASSADAS_MAX);
         continue;
       }
       buscaVel[i] *= BUSCA_REDUCAO;
@@ -774,6 +813,7 @@ void correcaoNovoMovimento() {
   erroAnterior = 0.0f;
   semProgresso = 0;
   fechavelAnterior = 0.0f;
+  esquecerGanhoSeAReguaMudou();
   marcarInicioParaAfericao();
   dizer("");
 }
@@ -783,29 +823,27 @@ void correcaoIniciar() {
   if (!configCorrecao.ativa) return;
   if (soldaLigada()) return;     // retoque no meio do cordao estraga o cordao
 
-  // BARRAMENTO LENTO NAO ASSENTA.
+  // O RITMO DO BARRAMENTO NAO DECIDE MAIS SE HA ASSENTAMENTO.
   //
-  // Cada retoque anda e so muito depois a maquina ve onde parou; o
-  // seguinte sai em cima de um numero velho. Da bancada, a 4,6 leituras
-  // por segundo: "fica tentando acertar". Sem assentamento o braco para
-  // onde a rampa o deixou -- que e onde ele parava antes de existir
-  // correcao, e exatamente o que o operador pediu de volta.
+  // Havia aqui um portao: sem 10 leituras por segundo, nada de retoque.
+  // Ele foi calibrado para a epoca em que o encoder tinha de guiar o eixo
+  // EM VOO -- ali a medida atrasada realmente nao converge. O
+  // assentamento nao e isso: ele so age com o eixo PARADO e ja espera uma
+  // leitura NOVA de depois da parada (ESPERA_ASSENTAR_MS). Uma leitura a
+  // cada 100 ms e de sobra para quem so precisa de uma.
   //
-  // Maquina SEM encoder nenhum nao entra aqui: ali operar pela contagem e
-  // escolha da instalacao, nao falha, e nao ha o que avisar. Quem leva
-  // aviso e quem TEM encoder e ele nao esta dando conta.
-  if (!encoderGuiaOMovimento(1) && !encoderGuiaOMovimento(2)) {
-    const uint32_t m = correcaoRitmoMs(1) ? correcaoRitmoMs(1)
-                                          : correcaoRitmoMs(2);
-    if (m > 0) {
-      r.estado = CORR_RECUSADA;
-      dizer("barramento lento: sem assentamento");
-      definirMensagem("Cheguei pela rampa. O encoder esta a uma leitura cada "
-                      "%lu ms -- lento demais para acertar o ponto sem ficar "
-                      "cacando", (unsigned long)m);
-    }
-    return;
-  }
+  // E o portao era impossivel de satisfazer na maquina de duas juntas.
+  // ciclo(), em encoder.cpp, le UMA junta por vez com o intervalo valendo
+  // para o ciclo inteiro: com periodoMs de 50 e as duas juntas ligadas,
+  // cada uma e lida a cada 100 ms MAIS a transacao Modbus. O ritmo medido
+  // fica logo acima do teto, o assentamento e recusado por aritmetica, e
+  // o braco fica onde a rampa o deixou -- dizendo "barramento lento" sobre
+  // um barramento que estava funcionando. Com uma junta so o ritmo e ~55
+  // ms e tudo andava; era por isso que o defeito aparecia depois de ligar
+  // o segundo driver.
+  //
+  // encoderGuiaOMovimento() continua valendo e continua sendo medido: ele
+  // e a resposta certa para quem age COM O EIXO ANDANDO.
 
   r.estado     = CORR_ESPERANDO;
   r.tentativas = 0;
@@ -894,6 +932,7 @@ void correcaoAtualizar() {
     if (g > GANHO_MIN && g < GANHO_MAX) {
       ganhoRetoque[i] = g;
       ganhoAprendido[i] = true;
+      ganhoRegua[i]     = (k == 1) ? J1.passosPorGrau : J2.passosPorGrau;
       logEvento("junta %u: retoque pediu %.3f grau e o eixo andou %.3f "
                 "(ganho %.2f)", (unsigned)k, (double)retoquePedido[i],
                 (double)andou, (double)g);

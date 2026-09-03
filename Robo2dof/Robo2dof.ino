@@ -576,10 +576,17 @@ static void processarComando(const Comando& c) {
       if (modoAtual != MODO_MANUAL) {
         definirMensagem("Referencie com o robo parado no modo manual");
         break;
+      }
       // A contagem do encoder tambem recomeca aqui: as duas medidas
       // tem de partir do mesmo ponto, senao o erro nasce torto.
+      //
+      // Esta chamada ficou anos INALCANCAVEL: a chave de fechar estava
+      // depois dela, dentro do bloco de recusa e depois do break. O
+      // compilador nao avisa de codigo morto assim, e o banco nao tinha
+      // como perceber -- referenciar zerava a contagem de passos e
+      // deixava a do encoder onde estava, que e exatamente o "erro nasce
+      // torto" que a linha acima existe para evitar.
       encoderZerar(0);
-      }
       calibReferenciar();
       logEvento("referenciado na posicao atual");
       break;
