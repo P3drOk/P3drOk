@@ -5451,11 +5451,124 @@ usa quantos passos precisar (`V34d`, 7° fechando em três).
 Cinco ângulos seguidos (3, 45, −30, 0 e 12,5): erro final entre **0,000°
 e 0,012°**, excesso **zero**, inversões **zero**.
 
+## R169 · A busca: andar até a medida bater  `V36`  ✅
+
+> "Não quero uma matemática complexa pra tentar acertar a posição, só
+> quero que ele acerte. O braço tem a leitura do encoder, então é só
+> mover o braço em uma velocidade constante até que a leitura do encoder
+> seja a mesma. Não precisa de tudo isso de redução nesse caso — será
+> necessário apenas quando formos usar para desenhos."
+
+Quatro rodadas de conta cada vez mais elaborada errando o ponto: freio
+pela medida, lei de desaceleração `√(2·a·falta)`, governador por leitura,
+três comandos, quatro comandos com redução na metade. Cada uma consertava
+o defeito da anterior e trazia um novo.
+
+**Tudo isso saiu.** Ir a um ângulo passou a ser:
+
+```
+falta = ângulo pedido − o que o encoder diz
+   dentro da tolerância?   para.
+   ainda não?              segue, na mesma velocidade.
+parou. olha de novo.
+   ainda não bateu?        vai de novo, mais devagar.
+```
+
+Nenhum destino em passos, nenhuma rampa planejada, nenhuma distância de
+frenagem. Nada aqui depende de `passosPorVolta` estar certo: a régua
+entra só na velocidade, e a velocidade não decide onde o eixo para.
+
+### O que foi reaproveitado, e por quê
+
+Quem move o eixo é o **jog** — com o encoder no lugar do dedo. Andar em
+velocidade constante até uma condição de parada é literalmente o que o
+jog faz, e com ele vem tudo o que já estava resolvido ali: o portão de
+segurança, o torque por eixo, e a antecipação da postura no fim da
+frenagem, que é o que impede o braço de sair da área útil enquanto
+persegue um número.
+
+### As três coisas que não são "conta para acertar a posição"
+
+**1. A volta mais devagar.** É a única coisa que impede a mesma frase de
+se repetir para sempre: voltando na mesma velocidade, o eixo passaria de
+novo pelo mesmo tanto. Um quarto da velocidade a cada volta, no máximo
+três. Retirando isso, **16 cenários** ficam vermelhos — o braço
+simplesmente nunca chega.
+
+**2. A proporção entre as juntas.** A que anda 4° enquanto a outra anda
+40 vai a um décimo da velocidade. Uma proporção, e nada mais. Sem ela a
+junta curta corria no talo e passava 3,2° onde a longa passava 0,5.
+
+**3. O teto de tempo.** Um `moveTo()` termina sozinho; a busca não tem
+destino em passos e só para quando a medida disser. Se a medida congelar
+com o eixo andando, nada mais a faria parar — sem o teto, `V36` mostra o
+eixo correndo **375 segundos e 40 mil passos**. Não serve para acertar
+nada: serve para não existir eixo solto.
+
+### Duas fases, porque a rampa de parada existe
+
+A primeira versão parava quando a leitura entrava na tolerância e dava
+por encerrado — e a rampa de parada carregava o eixo mais 1,13° depois
+disso. A busca tem duas fases: **andando** até a medida bater, e
+**parando** até o eixo assentar e uma leitura nova dizer onde ele ficou.
+Só então se decide se chegou.
+
+### O assentamento não discute mais
+
+Junta que a busca levou não entra no retoque: a busca já é malha fechada
+no encoder, e duas malhas pelo mesmo eixo eram de onde vinha o vai-e-vem.
+Ele continua inteiro para o que a busca não levou — ponto de programa,
+máquina sem encoder, junta sem leitura na largada — e **assume quando a
+busca não consegue terminar**. É uma escalada: quem sabe fazer melhor
+tentou primeiro.
+
+### O que continua na rampa
+
+**Ir a um ângulo é a única coisa que busca.** Ponto de programa, DXF e
+trajetória seguem no movimento coordenado com rampa: ali o caminho
+importa tanto quanto o destino, e velocidade constante por junta não
+desenha reta. A busca serve para chegar; a rampa, para desenhar.
+
+### Medido
+
+| | resultado |
+|---|---|
+| cinco ângulos, régua certa | erro **0,108°**, uma volta |
+| cinco ângulos, régua 2× errada | erro **0,144°**, uma volta |
+| régua 4× errada **e** barramento a 217 ms | parou em **40,10°**, 12,0 °/s |
+| duas juntas, 40° e 13° | **40,10° / 13,39°** |
+| escorregão de 40° | absorvido no caminho, **zero** retoques |
+
+O excesso antes da volta é de cerca de um grau — o que a rampa de parada
+consome. Foi aceito de própria voz: *"se passar um pouquinho apenas
+ajustar"*.
+
+### Onde ele não chega, e diz
+
+`M14` troca a redução para 100 sem mexer na escala do encoder: as duas
+réguas passam a discordar por seis vezes e meia. A 60 °/s a rampa de
+parada consome quase trinta graus medidos, o eixo para fora do curso
+calibrado, e ali a leitura é recusada como implausível. A busca perde a
+medida e o assentamento também não pode agir.
+
+O braço fica longe do pedido — e **a máquina diz isso**. Nenhum controle
+conserta sozinho um sensor que mente por seis vezes; o que ele deve fazer
+é não deixar o operador achando que chegou.
+
+### Quinze cenários re-expressos, nenhum apagado
+
+`M01`, `M02`, `M12`, `M14`, `V29`, `V30`, `V31`, `V34`, `R01`. Todos
+prendiam o mecanismo antigo — "o assentamento retocou", "zero inversões",
+"a velocidade caiu na metade". A intenção de cada um continua presa, pelo
+resultado: o braço chega, e chega sem caçar. `V34e` prende hoje o
+**contrário** do que prendia ontem — que a velocidade é constante — e
+está escrito lá por quê.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **540 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **543 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **311 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

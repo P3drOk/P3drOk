@@ -33,6 +33,15 @@ static bool    sonJaEnergizou[2] = {false, false};
 static int8_t   jogDir[2]     = {0, 0};
 static uint32_t jogUltimoMs[2] = {0, 0};
 static float    jogFracao[2]  = {1.0f, 1.0f};
+// A BUSCA: graus/s pedidos quando quem move o eixo e o encoder, e nao um
+// dedo. Zero = nao ha busca nesta junta, e vale o jog normal.
+//
+// Ela reaproveita o jog inteiro de proposito. Andar em velocidade
+// constante ate uma condicao de parada e exatamente o que o jog faz, e
+// com ele vem tudo o que ja foi resolvido ali: o portao de seguranca, o
+// torque por eixo, e a antecipacao da postura no fim da freada -- que e
+// o que impede o braco de sair da area util enquanto persegue um numero.
+static float    buscaVelGraus[2] = {0.0f, 0.0f};
 // Ultimo valor realmente programado no gerador de pulso, para nao
 // reprogramar a rampa a cada ciclo de 1 ms.
 static uint32_t jogHzAplicado[2]      = {0, 0};
@@ -369,7 +378,31 @@ void jogDefinir(uint8_t junta, int8_t direcao, float fracao) {
   jogUltimoMs[i] = millis();
 }
 
+void buscaDefinir(uint8_t junta, int8_t direcao, float grausPorS) {
+  if (junta != 1 && junta != 2) return;
+  const uint8_t i = junta - 1;
+  if (direcao == 0 || grausPorS <= 0.0f) {
+    buscaVelGraus[i] = 0.0f;
+    if (jogDir[i] != 0) {
+      jogDir[i] = 0;
+      jogSentidoAplicado[i] = 0;
+      jogHzAplicado[i]      = 0;
+      Junta& j = (i == 0) ? J1 : J2;
+      if (j.motor) j.motor->stopMove();
+    }
+    return;
+  }
+  buscaVelGraus[i] = grausPorS;
+  jogDir[i]        = direcao;
+  jogUltimoMs[i]   = millis();
+}
+
+bool buscaMovendo() {
+  return buscaVelGraus[0] > 0.0f || buscaVelGraus[1] > 0.0f;
+}
+
 void jogZerar() {
+  buscaVelGraus[0] = buscaVelGraus[1] = 0.0f;
   jogDir[0] = jogDir[1] = 0;
   jogFracao[0] = jogFracao[1] = 1.0f;
   jogHzAplicado[0] = jogHzAplicado[1] = 0;
@@ -428,7 +461,11 @@ void jogAtualizar() {
 
     // Heartbeat: se a interface parou de confirmar o jog, o eixo para.
     // Protege contra queda de Wi-Fi com o botao pressionado.
-    if (jogDir[i] != 0 && (agora - jogUltimoMs[i] > TIMEOUT_JOG_MS)) {
+    //
+    // A BUSCA NAO TEM HEARTBEAT: quem a confirma a cada ciclo e o proprio
+    // firmware, olhando o encoder. Nao ha dedo para soltar.
+    if (buscaVelGraus[i] <= 0.0f &&
+        jogDir[i] != 0 && (agora - jogUltimoMs[i] > TIMEOUT_JOG_MS)) {
       jogDir[i] = 0;
     }
 
@@ -448,9 +485,10 @@ void jogAtualizar() {
     // runForward a cada milissegundo obriga o gerador a refazer a rampa
     // o tempo todo, o que suja o trem de pulsos.
     {
-      const float base = velNormal;
-      float f = jogFracao[i];
-      if (f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
+      const bool  emBusca = (buscaVelGraus[i] > 0.0f);
+      const float base = emBusca ? buscaVelGraus[i] : velNormal;
+      float f = emBusca ? 1.0f : jogFracao[i];
+      if (!emBusca && f < JOY_FRACAO_MIN) f = JOY_FRACAO_MIN;
       const uint32_t hz = grausPorSegParaHz(j, velDaJunta(j, base) * f);
       if (hz != jogHzAplicado[i]) {
         jogHzAplicado[i] = hz;

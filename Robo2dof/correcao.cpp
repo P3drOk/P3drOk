@@ -36,46 +36,45 @@ static float alvoGraus1 = 0.0f, alvoGraus2 = 0.0f;
 // com a regua errada os dois divergem, e quem manda e o que foi pedido.
 // E dele que sai o freio do encoder.
 static float  alvoPedido[2]  = {0.0f, 0.0f};
-// Sentido ainda nao decidido / junta sem freio nesta viagem.
-static const int8_t SENTIDO_PENDENTE   = 2;
-static const int8_t SENTIDO_SEM_FREIO  = 0;
-// AS TRES ESCRITAS DE VELOCIDADE DA VIAGEM, uma por fase.
+// A BUSCA: ir ao angulo e andar ate a medida bater.
 //
-// largou[]  : a largada ja saiu, com o fator aprendido aplicado.
-// aproximou[]: o degrau de aproximacao ja foi dado.
+// Nao ha destino em passos, nao ha rampa planejada, nao ha conta de
+// distancia de frenagem. O eixo anda em velocidade CONSTANTE no sentido
+// do alvo e para quando o encoder diz o numero -- foi o que a bancada
+// pediu, depois de quatro rodadas de conta cada vez mais elaborada
+// errando o ponto:
 //
-// Sao TRAVAS, e nao caches de valor: cada fase manda uma vez e nunca
-// mais. O que existia antes -- recalcular o Hz a cada leitura -- media
-// 14 reprogramacoes por movimento no banco com o barramento a 217 ms, e
-// umas 150 num barramento saudavel. Cada uma obriga o gerador a refazer
-// a rampa, e e isso que a bancada sente como aspereza.
-static bool largou[2]    = {false, false};
-static bool reduziu[2]   = {false, false};
-static bool aproximou[2] = {false, false};
-// O Hz de CRUZEIRO desta viagem, por junta, ja com o fator da regua.
+//   "So quero que ele acerte. O braco tem a leitura do encoder, entao e
+//    so mover o braco em uma velocidade constante ate que a leitura do
+//    encoder seja a mesma."
 //
-// Guardado porque moverCoordenado() nao da a mesma velocidade as duas:
-// da a cada uma a que faz as DUAS chegarem juntas. O degrau da
-// aproximacao escala ESTE numero -- escalar velAuto punha a junta de
-// percurso curto na velocidade da outra, e ela chegava muito antes, no
-// talo, passando longe do ponto.
-static uint32_t hzCruzeiro[2] = {0, 0};
-// E o que esta valendo agora, depois das reducoes.
-static uint32_t hzAgora[2] = {0, 0};
-// Onde a viagem comecou, para saber o que e "metade do caminho".
-static float partidaGraus[2] = {0.0f, 0.0f};
+// Quem anda o eixo e o JOG, com o encoder no lugar do dedo: dali vem o
+// portao de seguranca, o torque por eixo e a antecipacao da postura no
+// fim da freada.
+static bool     buscando[2]      = {false, false};
+static int8_t   buscaSentido[2]  = {0, 0};
+static float    buscaVel[2]      = {0.0f, 0.0f};   // graus/s comandados
+static uint8_t  buscaPassadas[2] = {0, 0};
+static uint32_t buscaPrazo[2]    = {0, 0};
+// Depois de mandar parar, o eixo ainda anda o que a rampa de parada
+// levar. Por isso a busca tem duas fases: ANDANDO ate a medida bater, e
+// PARANDO ate o eixo assentar e uma leitura nova dizer onde ele ficou.
+// So entao se decide se chegou ou se vai de novo, mais devagar.
+static bool     buscaParando[2]     = {false, false};
+static uint32_t buscaContaParada[2] = {0, 0};
+static uint32_t buscaPrazoParada[2] = {0, 0};
+// Esta junta foi levada pela BUSCA nesta viagem.
+//
+// O assentamento nao toca nela: a busca ja e malha fechada no encoder --
+// ela so para quando a medida diz o numero, e absorve escorregao no
+// caminho. Retocar depois seria uma segunda malha discutindo com a
+// primeira, que e de onde vinha o vai-e-vem.
+//
+// O assentamento continua inteiro para o que a busca NAO levou: pontos
+// de programa, maquina sem encoder, junta cuja leitura nao servia na
+// hora de largar.
+static bool     buscouEstaViagem[2] = {false, false};
 
-// O QUE A VIAGEM ENSINA, medido de ponta a ponta.
-//
-// Guardados na largada: onde o encoder dizia que a junta estava, e em
-// que contagem de passos o motor estava. No fim, a razao entre os graus
-// que a REGUA mandou andar e os graus que o ENCODER mediu e exatamente o
-// exagero da regua.
-//
-// Uma conta por VIAGEM, e nao uma por leitura. A viagem inteira dura
-// segundos e usa as duas pontas; medir velocidade dentro de uma janela
-// de 217 ms usava dois numeros vizinhos e ruidosos, e a conta saia
-// diferente a cada leitura.
 // AS DUAS PONTAS SO VALEM COM O EIXO PARADO.
 //
 // Uma leitura de 217 ms atras conta onde a junta ESTAVA. Com o eixo
@@ -104,31 +103,12 @@ static uint32_t prazoAprender[2]   = {0, 0};
 // MAQUINA, nao do movimento. Guardado, a largada seguinte ja sai no
 // ritmo certo -- inclusive quando a primeira leitura do movimento falha,
 // que num barramento com 4% de falhas acontece.
-// A MEDIDA CONFIRMOU A CHEGADA DESTA JUNTA.
-//
-// Verdadeiro quando o freio parou o eixo porque o encoder disse que ele
-// chegou ao angulo pedido -- ou quando ele ja estava la ao pedir.
-//
-// E o que dispensa o assentamento. O driver e servo: ele segura a
-// posicao sozinho. Se a MEDIDA ja disse que a junta esta no angulo, o
-// que sobra e ruido de leitura e o tanto que o eixo escorregou na rampa
-// de parada -- decimos de grau. Retocar isso e mandar o braco atras de
-// um numero que muda a cada leitura, e da bancada se ve como "chega ao
-// objetivo e fica oscilando ate acertar o grau certo".
-//
-// O assentamento continua existindo para o caso em que a medida NAO
-// confirmou nada: perda de passo, acoplamento solto, leitura ruim
-// durante o movimento inteiro. Ali o erro e de graus, nao de decimos, e
-// nenhum servo conserta sozinho o que o eixo deixou de andar.
-static bool chegouPelaMedida[2] = {false, false};
-
 static float govFator[2] = {1.0f, 1.0f};
 // Se ja houve uma viagem longa o bastante para medir. Antes dela o 1,0
 // acima nao e conhecimento, e so a suposicao de que a regua digitada
 // esta certa -- e a primeira medida de verdade vale mais do que uma
 // suposicao, entao ela entra inteira em vez de pela metade.
 static bool govAprendeu[2] = {false, false};
-static int8_t alvoSentido[2] = {0, 0};   // +1 subindo, -1 descendo
 static bool   temAlvoPedido  = false;
 
 // Depois que o eixo para, a ultima leitura do encoder ainda e de antes
@@ -323,289 +303,244 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
 // =====================================================================
 void correcaoAlvoPedido(float t1, float t2, bool valido) {
   temAlvoPedido = valido;
-  largou[0]    = largou[1]    = false;
-  reduziu[0]   = reduziu[1]   = false;
-  aproximou[0] = aproximou[1] = false;
-  chegouPelaMedida[0] = chegouPelaMedida[1] = false;
-  hzCruzeiro[0] = hzCruzeiro[1] = 0;
-  hzAgora[0]    = hzAgora[1]    = 0;
-  // O FATOR NAO ZERA ENTRE MOVIMENTOS -- ver a declaracao. Se a regua
-  // for corrigida, a viagem seguinte o traz de volta para 1 sozinha.
-  if (!valido) { alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO; return; }
+  for (uint8_t i = 0; i < 2; i++) {
+    buscando[i]      = false;
+    buscaSentido[i]  = 0;
+    buscaPassadas[i] = 0;
+    buscaVel[i]      = 0.0f;
+    buscaParando[i]  = false;
+    buscouEstaViagem[i] = false;
+  }
+  buscaDefinir(1, 0, 0.0f);
+  buscaDefinir(2, 0, 0.0f);
+  if (!valido) return;
+  // DESLIGAR A CORRECAO PELO ENCODER DESLIGA A BUSCA JUNTO.
+  //
+  // A chave diz "nao use o encoder para mexer no meu posicionamento", e
+  // a busca e exatamente isso -- so que durante o movimento, em vez de
+  // depois. Com ela desligada o braco anda pela contagem de passos e
+  // para no destino em passos, como antes de existir encoder.
+  if (!configCorrecao.ativa) return;
 
+  alvoPedido[0] = t1;
+  alvoPedido[1] = t2;
   largadaValida[0]   = largadaValida[1]   = false;
   esperandoParada[0] = esperandoParada[1] = false;
 
-  // A PONTA DE PARTIDA, aqui, com o eixo ainda parado: e o unico
-  // instante em que a contagem de passos e a leitura do encoder falam do
-  // mesmo momento, por mais velho que seja o ultimo quadro do
-  // barramento.
+  // O PERCURSO DE CADA JUNTA, para as duas chegarem juntas.
+  float percurso[2] = {0.0f, 0.0f}, maior = 0.0f;
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
-    if (!leituraConfiavel(k)) continue;
+    const Junta& j = (k == 1) ? J1 : J2;
+    if (!j.motor || !j.habilitado || !leituraConfiavel(k)) continue;
+    percurso[i] = fabsf(alvoPedido[i] - encoderLer(k).graus);
+    if (percurso[i] > maior) maior = percurso[i];
+  }
+
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    const Junta& j = (k == 1) ? J1 : J2;
+    if (!j.motor || !j.habilitado) continue;
+    if (!leituraConfiavel(k)) continue;   // sem medida nao ha o que buscar
+
+    // A PONTA DE PARTIDA, com o eixo ainda parado: e o unico instante em
+    // que a contagem de passos e a leitura do encoder falam do mesmo
+    // momento, por mais velho que seja o ultimo quadro do barramento.
     largadaValida[i] = true;
     largadaGraus[i]  = encoderLer(k).graus;
-    partidaGraus[i]  = largadaGraus[i];
     largadaPassos[i] = (k == 1) ? posicaoJ1() : posicaoJ2();
+
+    const float falta = alvoPedido[i] - largadaGraus[i];
+    if (fabsf(falta) <= BUSCA_TOLERANCIA_GRAUS) continue;   // ja esta la
+
+    buscando[i] = true;
+    buscouEstaViagem[i] = true;
+    // A VELOCIDADE, CONSTANTE, e a que o operador pediu.
+    //
+    // O fator da regua entra so aqui, e so para que "12 graus/s" seja
+    // mesmo 12: com passosPorVolta digitado maior que o real, o mesmo Hz
+    // vira mais grau por segundo. Ele nao decide distancia nenhuma --
+    // quem decide onde parar e a medida.
+    // E ELA E PROPORCIONAL AO PERCURSO DA JUNTA.
+    //
+    // Uma proporcao, e nada mais: a junta que anda 4 graus enquanto a
+    // outra anda 40 vai a um decimo da velocidade. As duas chegam
+    // juntas, o caminho sai reto, e -- o que importa aqui -- a junta de
+    // percurso curto nao corre no talo para depois nao conseguir parar.
+    // Sem isto ela passava 3,2 graus onde a longa passava 0,5.
+    buscaVel[i] = velAuto * govFator[i];
+    if (maior > 0.001f) buscaVel[i] *= percurso[i] / maior;
+    if (buscaVel[i] < BUSCA_VEL_MINIMA) buscaVel[i] = BUSCA_VEL_MINIMA;
+
+    // O TETO DE TEMPO. Nao serve para acertar nada: serve para que uma
+    // medida que congela com o eixo andando nao vire eixo solto.
+    const float vReal = (velAuto > 0.1f) ? velAuto : 1.0f;
+    const uint32_t previsto =
+        (uint32_t)(maior / vReal * 1000.0f * BUSCA_FOLGA_TEMPO);
+    buscaPrazo[i] = millis() + previsto + BUSCA_TEMPO_EXTRA_MS;
   }
-  alvoPedido[0] = t1;
-  alvoPedido[1] = t2;
-  // O SENTIDO SE DECIDE NA PRIMEIRA LEITURA BOA, e nao aqui.
-  //
-  // Antes ele exigia leitura confiavel NESTE instante; falhando, a junta
-  // ficava sem freio pelo movimento inteiro. Num barramento com 4% de
-  // falhas isso acontece de vez em quando -- e o resultado e um eixo que
-  // "comeca e nao para mais", porque o unico limite que nao depende da
-  // regua digitada tinha acabado de ser desligado por uma leitura
-  // perdida. Marcar como PENDENTE deixa a primeira leitura boa do
-  // movimento decidir.
-  alvoSentido[0] = alvoSentido[1] = SENTIDO_PENDENTE;
+
+  // A JUNTA QUE A BUSCA NAO PEGOU ANDA PELA RAMPA -- e a rampa foi
+  // programada com a regua digitada. Com ela maior que a real o eixo sai
+  // rapido demais; o fator ja medido corrige isso, e e a unica coisa que
+  // ainda vale ali. Acontece quando a leitura nao servia na hora de
+  // largar, que num barramento com falhas acontece.
+  for (uint8_t k = 1; k <= 2; k++) {
+    const uint8_t i = k - 1;
+    Junta& j = (k == 1) ? J1 : J2;
+    if (buscando[i] || !j.motor || govFator[i] >= 0.999f) continue;
+    uint32_t hz = velProgramadaPub(i);
+    if (hz < 1) continue;
+    hz = (uint32_t)((float)hz * govFator[i]);
+    if (hz < 1) hz = 1;
+    programarVelocidadePub(j, i, hz);
+  }
 }
 
-// ---------------------------------------------------------------------
-// A velocidade de aproximacao daquela junta, em graus/s de verdade.
-static float velDeAproximacao() {
-  float v = velAuto * APROX_VEL_FRACAO;
-  if (v < FREIO_ENC_VEL_MINIMA) v = FREIO_ENC_VEL_MINIMA;
-  if (v > velAuto)              v = velAuto;
-  return v;
+bool correcaoBuscando() {
+  return buscando[0] || buscando[1];
 }
 
-// O EXAGERO DA REGUA MEDIDO NESTA VIAGEM, ate agora.
+// Para a busca de uma junta e deixa o eixo parar com a rampa.
 //
-// Mesma conta do fim da viagem -- graus da regua sobre graus medidos --
-// so que aplicada ao trecho ja percorrido. Continua usando as DUAS
-// PONTAS de um percurso longo, e nao dois numeros vizinhos: nada aqui
-// depende de janela curta.
-//
-// Serve para a primeira viagem da maquina, quando ainda nao ha nada
-// aprendido. Sem isto, um "va a 45 graus" com a regua dobrada largava a
-// 24 graus/s achando que ia a 12, e o degrau da aproximacao era dado
-// tarde -- um grau de excesso, medido no banco. Com isto a propria
-// viagem se corrige no meio do caminho.
-//
-// Enquanto o trecho for curto demais para dizer alguma coisa, vale o que
-// a maquina ja sabia.
-static float fatorDaViagem(uint8_t k, uint8_t i, const Junta& j) {
-  if (!largadaValida[i] || j.passosPorGrau <= 0.0f) return govFator[i];
-  const long  passosAgora = (k == 1) ? posicaoJ1() : posicaoJ2();
-  const float grausRegua  =
-      fabsf((float)(passosAgora - largadaPassos[i])) / j.passosPorGrau;
-  const float grausMedidos = fabsf(encoderLer(k).graus - largadaGraus[i]);
-  // AS DUAS PONTAS PRECISAM TER ANDADO.
-  //
-  // No fim da viagem basta a medida ser longa, porque a regua e que fica
-  // curta quando o freio para o movimento no meio. Aqui nao: no comeco
-  // da viagem a regua ainda nao andou nada, e um SALTO do encoder --
-  // escorregao, ancoragem, uma leitura ruim -- vira uma razao absurda.
-  // Foi assim que um cenario de escorregao de 7 graus produziu "regua 50
-  // vezes maior", e o eixo saiu rastejando: a maquina leu o escorregao
-  // como se fosse a regua.
-  //
-  // Exigindo que a REGUA tambem tenha andado, o salto fica diluido num
-  // percurso de verdade antes de valer alguma coisa.
-  if (grausMedidos < APRENDER_VIAGEM_MINIMA_GRAUS) return govFator[i];
-  if (grausRegua   < APRENDER_VIAGEM_MINIMA_GRAUS) return govFator[i];
-  float f = grausRegua / grausMedidos;
-  // Acima de 1 e um eixo que ficou PARA TRAS do que foi mandado --
-  // escorregao, batente, carga. Isso e verdade sobre esta viagem e entra
-  // na conta; o teto so evita numero absurdo vindo de leitura ruim.
-  if (f > 4.0f)  f = 4.0f;
-  if (f < 0.02f) f = 0.02f;
-  return f;
+// A CONTAGEM NAO SE ACERTA AQUI. Ela e acertada no fim do assentamento,
+// depois que o movimento ja mediu a engrenagem e ja ensinou o fator da
+// regua -- as duas contas saem de "quantos passos o eixo andou", e
+// reescrever a contagem antes delas apagaria justamente o que elas
+// medem. Ja aconteceu duas vezes nesta mesma funcao.
+static void buscaEncerrar(uint8_t k, uint8_t i) {
+  buscando[i] = false;
+  buscaDefinir(k, 0, 0.0f);
 }
 
-// A ACELERACAO REAL da junta, em graus/s2 de verdade.
+// A BUSCA NAO CONSEGUIU TERMINAR: o assentamento assume.
 //
-// setAcceleration() recebe passos/s2, contados pela regua digitada. Com
-// a regua maior que a real por um fator, cada passo vale MENOS grau, e
-// os mesmos passos/s2 viram MAIS graus/s2 reais na mesma proporcao. O
-// fator e 1/exagero, entao a aceleracao real e a configurada DIVIDIDA
-// por ele.
-static float aceleracaoReal(const Junta& j, float fator) {
-  const float a = (j.aceleracao > 1.0f) ? j.aceleracao : ACEL_PADRAO;
-  const float f = (fator > 0.02f) ? fator : 0.02f;
-  return a / f;
-}
-
-// A QUE DISTANCIA DO ALVO SE DA O ENCOSTO.
+// Perder a medida no meio -- leitura fora do curso, cabo caido, o teto de
+// tempo -- deixaria o braco parado onde estivesse, e "onde estivesse"
+// pode ser longe. Limpando a marca de que esta junta foi buscada, o
+// assentamento volta a olhar para ela: ele e mais lento e retoca em
+// passos, mas e o unico que ainda pode trazer o braco de volta.
 //
-// Duas parcelas, as duas em graus de verdade:
-//
-//  1. o que a rampa consome para cair da velocidade de AGORA ate a do
-//     encosto: (v2 - va2) / 2a;
-//  2. o que o eixo anda AS CEGAS ate a proxima leitura chegar. Num
-//     barramento de 217 ms, a 5 graus/s, e mais de um grau em que a
-//     maquina nao ve nada.
-//
-// A reducao da metade do caminho NAO entra aqui: ela e uma fase propria,
-// e nao depende de conta nenhuma. Esta aqui e so o encosto.
-static float distanciaDoDegrau(const Junta& j, uint8_t k, uint8_t i,
-                               uint32_t hzAprox) {
-  if (j.passosPorGrau <= 0.0f) return 0.0f;
-  const float fator = fatorDaViagem(k, i, j);
-  const float f     = (fator > 0.02f) ? fator : 0.02f;
-
-  // Hz -> graus/s de VERDADE. A regua exagera por 1/fator, entao os
-  // passos por grau reais sao os digitados vezes o fator.
-  const float ppgReal = j.passosPorGrau * f;
-  if (ppgReal <= 0.0f) return 0.0f;
-  const float vAgora = (float)hzAgora[i] / ppgReal;
-  const float vAprox = (float)hzAprox    / ppgReal;
-
-  // A aceleracao REALMENTE programada nesta junta -- moverCoordenado()
-  // escala a rampa pela fracao do percurso, entao a configurada nao
-  // serve.
-  const uint32_t aHz = acelProgramadaPub(i);
-  const float aReal = (aHz > 0) ? ((float)aHz / ppgReal) : (ACEL_PADRAO / f);
-
-  float d = 0.0f;
-  if (aReal > 0.01f && vAgora > vAprox)
-    d = (vAgora * vAgora - vAprox * vAprox) / (2.0f * aReal);
-  const uint32_t ritmo = correcaoRitmoMs(k);
-  if (ritmo > 0) d += vAgora * (float)ritmo / 1000.0f;
-  return d;
-}
-
-// Escala o cruzeiro desta junta por uma fracao, com piso.
-static uint32_t hzEscalado(const Junta& j, uint8_t i, float fracao) {
-  uint32_t hz = (uint32_t)((float)hzCruzeiro[i] * fracao);
-  const uint32_t piso = grausPorSegParaHz(j, FREIO_ENC_VEL_MINIMA);
-  if (hz < piso)          hz = piso;
-  if (hz > hzCruzeiro[i]) hz = hzCruzeiro[i];
-  return hz;
+// E uma escalada, nao um remendo: quem sabe fazer melhor tentou primeiro.
+static void buscaDesistir(uint8_t k, uint8_t i) {
+  buscaEncerrar(k, i);
+  buscouEstaViagem[i] = false;
 }
 
 // =====================================================================
-//  TRES COMANDOS POR VIAGEM, E A RAMPA FAZ O RESTO.
+//  ANDA ATE A MEDIDA BATER. E SO ISSO.
 //
-//  As duas versoes da maquina em que o movimento era liso -- a de antes
-//  do encoder e a de antes deste bloco -- tem uma coisa em comum: NADA
-//  toca na velocidade enquanto o eixo anda. moveTo() e a rampa correm
-//  inteiras.
+//  Um teste e uma decisao por ciclo:
 //
-//  Este bloco escreve velocidade tres vezes, no maximo:
+//    falta = alvo - o que o encoder diz
+//    chegou dentro da tolerancia?  para.
+//    o sinal de falta inverteu?    passou: volta mais devagar.
+//    senao                         segue no mesmo sentido, mesma velocidade.
 //
-//    1. LARGADA      -- a velocidade pedida, corrigida pelo fator que a
-//                       maquina aprendeu sobre a propria regua;
-//    2. APROXIMACAO  -- um degrau para baixo quando a medida diz que
-//                       falta pouco. A biblioteca desacelera ATE ele com
-//                       a rampa configurada: o degrau e o comando, a
-//                       suavidade e da rampa;
-//    3. PARADA       -- stopMove() quando a medida diz que chegou.
+//  Nao ha distancia de frenagem, nao ha degrau planejado, nao ha destino
+//  em passos. Nada aqui depende de passosPorVolta estar certo: a regua
+//  entra so na velocidade, e a velocidade nao decide onde o eixo para.
 //
-//  Entre elas o gerador nao e tocado. O que existia antes recalculava a
-//  velocidade a cada leitura -- 14 escritas por movimento com o
-//  barramento a 217 ms, umas 150 num barramento bom --, e cada escrita
-//  obriga o gerador a refazer a rampa. Era isso que a bancada sentia:
-//  "micro variacao", "ele fica tentando acertar", "antes ele ia ao ponto
-//  e ia desacelerando com rampa e parava exatamente".
+//  A REDUCAO AO INVERTER nao e conta para acertar a posicao -- e a unica
+//  coisa que impede a mesma frase de se repetir para sempre. Voltando na
+//  mesma velocidade, o eixo passaria de novo pelo mesmo tanto.
 //
-//  NADA AQUI MANDA O EIXO VOLTAR. As tres acoes so reduzem ou param, e
-//  por isso nenhuma delas pode cacar o ponto -- nem num barramento
-//  lento, onde a medida chega tarde. Quem cacava era o assentamento, que
-//  retoca nos dois sentidos, e e so ele que o ritmo do barramento
-//  desliga (ver correcaoIniciar).
+//  Num barramento saudavel a primeira passada ja chega. Num barramento a
+//  4,6 leituras por segundo o eixo anda 200 ms as cegas e passa: dai duas
+//  ou tres passadas curtas. Consertar o cabo tira essas passadas -- o
+//  firmware nao cria medida que nao chegou.
 // =====================================================================
-void correcaoFrearNoAlvo() {
+void correcaoBuscarAlvo() {
   if (!temAlvoPedido) return;
   for (uint8_t k = 1; k <= 2; k++) {
     const uint8_t i = k - 1;
-    if (alvoSentido[i] == SENTIDO_SEM_FREIO) continue;
+    if (!buscando[i]) continue;
     Junta& j = (k == 1) ? J1 : J2;
-    if (!j.motor || !j.motor->isRunning()) continue;
+    if (!j.motor || !j.habilitado) { buscaDesistir(k, i); continue; }
 
-    // ---- 1. LARGADA: uma escrita, no primeiro ciclo da viagem ----
-    //
-    // Quem manda o eixo andar e irParaPassos(), com a velocidade passada
-    // pela regua digitada: com a regua quatro vezes maior, o eixo larga
-    // a 48 graus/s tendo sido pedido 12. O exagero ja esta medido da
-    // viagem anterior e nao depende de leitura nenhuma -- por isso este
-    // trecho vem ANTES do teste de leitura confiavel. Se a primeira
-    // leitura do movimento falhar, a largada ainda sai contida.
-    if (!largou[i]) {
-      largou[i] = true;
-      // A velocidade que moverCoordenado() acabou de dar A ESTA JUNTA.
-      // Ela nao e velAuto: e a fracao de velAuto que faz as duas juntas
-      // chegarem juntas. O fator da regua a ESCALA; trocar por um valor
-      // proprio quebrava a coordenacao e mandava a junta de percurso
-      // curto no talo.
-      uint32_t hz = velProgramadaPub(i);
-      if (hz < 1) hz = grausPorSegParaHz(j, velDaJuntaPub(j, velAuto));
-      if (govFator[i] < 0.999f) {
-        hz = (uint32_t)((float)hz * govFator[i]);
-        if (hz < 1) hz = 1;
-        programarVelocidadePub(j, i, hz);
-      }
-      hzCruzeiro[i] = hz;
-      hzAgora[i]    = hz;
+    // O teto de tempo vem primeiro: ele existe justamente para o caso em
+    // que a medida parou de chegar e nada mais faria o eixo parar.
+    if ((int32_t)(millis() - buscaPrazo[i]) >= 0) {
+      buscaDesistir(k, i);
+      logEvento("junta %u: a busca passou do tempo previsto e parou",
+                (unsigned)k);
+      definirMensagem("Junta %u parou: a busca passou do tempo previsto -- "
+                      "confira a leitura do encoder", (unsigned)k);
+      continue;
     }
 
+    // ---- FASE 2: mandou parar, agora espera assentar e olha ----
+    if (buscaParando[i]) {
+      if (j.motor->isRunning()) continue;      // a rampa ainda esta correndo
+      if (buscaContaParada[i] == 0) {
+        buscaContaParada[i] = encoderLer(k).leituras;
+        buscaPrazoParada[i] = millis() + ESPERA_ASSENTAR_MS;
+        continue;
+      }
+      // Uma leitura NOVA, de depois da parada: a anterior conta onde o
+      // eixo estava, nao onde ele ficou.
+      if (encoderLer(k).leituras == buscaContaParada[i] &&
+          (int32_t)(millis() - buscaPrazoParada[i]) < 0) continue;
+
+      buscaParando[i]     = false;
+      buscaContaParada[i] = 0;
+      if (!leituraConfiavel(k)) {
+        buscaDesistir(k, i);
+        definirMensagem("Junta %u: a busca perdeu a leitura do encoder -- o "
+                        "assentamento assume", (unsigned)k);
+        continue;
+      }
+
+      const float falta = alvoPedido[i] - encoderLer(k).graus;
+      if (fabsf(falta) <= BUSCA_TOLERANCIA_GRAUS) {
+        buscaEncerrar(k, i);
+        logEvento("junta %u: o encoder diz %.2f graus (pedido %.2f) -- "
+                  "chegou", (unsigned)k, (double)encoderLer(k).graus,
+                  (double)alvoPedido[i]);
+        continue;
+      }
+      // Nao bateu. Vai de novo, MAIS DEVAGAR -- e a unica coisa que
+      // impede a mesma frase de se repetir para sempre.
+      buscaPassadas[i]++;
+      if (buscaPassadas[i] > BUSCA_PASSADAS_MAX) {
+        buscaEncerrar(k, i);
+        logEvento("junta %u: parou a %.2f graus (pedido %.2f) -- e o que a "
+                  "medida distingue neste barramento", (unsigned)k,
+                  (double)encoderLer(k).graus, (double)alvoPedido[i]);
+        continue;
+      }
+      buscaVel[i] *= BUSCA_REDUCAO;
+      if (buscaVel[i] < BUSCA_VEL_MINIMA) buscaVel[i] = BUSCA_VEL_MINIMA;
+      buscaSentido[i] = (falta > 0.0f) ? (int8_t)+1 : (int8_t)-1;
+      buscaDefinir(k, buscaSentido[i], buscaVel[i]);
+      logEvento("junta %u: faltam %.2f grau -- de novo, a %.2f graus/s",
+                (unsigned)k, (double)falta, (double)buscaVel[i]);
+      continue;
+    }
+
+    // ---- FASE 1: andando ate a medida bater ----
+    //
+    // Sem leitura nova e confiavel o eixo SEGUE no que ja estava fazendo.
+    // Parar a cada falha de leitura, num barramento com 4% delas, seria
+    // um movimento aos solavancos. Quem cuida do caso em que a leitura
+    // nunca mais volta e o teto de tempo, la em cima.
     if (!leituraConfiavel(k)) continue;
 
     const float agora = encoderLer(k).graus;
+    const float falta = alvoPedido[i] - agora;
 
-    // ---- o sentido, decidido na primeira leitura boa ----
-    //
-    // Antes ele exigia leitura confiavel no instante da largada;
-    // falhando, a junta ficava sem freio pelo movimento inteiro -- e um
-    // eixo sem freio com a regua errada e o "comeca e nao para mais".
-    if (alvoSentido[i] == SENTIDO_PENDENTE) {
-      const float d = alvoPedido[i] - agora;
-      if (d > FREIO_ENC_MINIMO_GRAUS)       alvoSentido[i] = +1;
-      else if (d < -FREIO_ENC_MINIMO_GRAUS) alvoSentido[i] = -1;
-      else {
-        // Ja estava la. Isto tambem e a medida confirmando: nao ha
-        // movimento para assentar depois.
-        alvoSentido[i] = SENTIDO_SEM_FREIO;
-        chegouPelaMedida[i] = true;
-        continue;
-      }
+    if (buscaSentido[i] == 0)
+      buscaSentido[i] = (falta > 0.0f) ? (int8_t)+1 : (int8_t)-1;
+
+    // Chegou ou passou, no sentido em que estava indo.
+    if ((float)buscaSentido[i] * falta <= 0.0f ||
+        fabsf(falta) <= BUSCA_TOLERANCIA_GRAUS) {
+      buscaParando[i]     = true;
+      buscaContaParada[i] = 0;
+      buscaDefinir(k, 0, 0.0f);           // stopMove, com rampa
+      continue;
     }
-
-    const float falta = fabsf(alvoPedido[i] - agora);
-
-    // ---- 2. APROXIMACAO: uma escrita, quando entra na distancia ----
-    if (hzCruzeiro[i] > 0) {
-      // 2a. A METADE DO CAMINHO. Sem conta nenhuma: foi o que a bancada
-      //     pediu, e nao depende de suposicao sobre regua nem rampa.
-      if (!reduziu[i]) {
-        const float percurso = fabsf(alvoPedido[i] - partidaGraus[i]);
-        if (percurso > 2.0f * FREIO_ENC_MINIMO_GRAUS &&
-            falta <= percurso * 0.5f) {
-          reduziu[i] = true;
-          const uint32_t hz = hzEscalado(j, i, APROX_MEIO_FRACAO);
-          if (hz < hzAgora[i]) {
-            hzAgora[i] = hz;
-            programarVelocidadePub(j, i, hz);
-            logEvento("junta %u: metade do caminho (faltam %.2f de %.2f) "
-                      "-- reduzindo para %lu Hz", (unsigned)k, (double)falta,
-                      (double)percurso, (unsigned long)hz);
-          }
-        }
-      }
-      // 2b. O ENCOSTO, na distancia em que a rampa cabe.
-      if (!aproximou[i]) {
-        const uint32_t hz = hzEscalado(j, i, APROX_VEL_FRACAO);
-        if (hz < hzAgora[i] && falta <= distanciaDoDegrau(j, k, i, hz)) {
-          aproximou[i] = true;
-          hzAgora[i] = hz;
-          programarVelocidadePub(j, i, hz);
-          logEvento("junta %u: encostando (faltam %.2f graus) a %lu Hz",
-                    (unsigned)k, (double)falta, (unsigned long)hz);
-        }
-      }
-    }
-
-    // ---- 3. PARADA: chegou ou passou, no sentido em que estava indo ----
-    if ((float)alvoSentido[i] * (agora - alvoPedido[i]) < 0.0f) continue;
-
-    alvoSentido[i] = SENTIDO_SEM_FREIO;
-    chegouPelaMedida[i] = true;
-    j.motor->stopMove();       // parada com rampa, nao tranco
-    logEvento("junta %u: o encoder chegou a %.2f graus (pedido %.2f) -- "
-              "movimento freado pela medida", (unsigned)k,
-              (double)agora, (double)alvoPedido[i]);
+    buscaDefinir(k, buscaSentido[i], buscaVel[i]);
   }
 }
 
@@ -973,8 +908,14 @@ void correcaoAtualizar() {
   const float m1 = fabsf(e1), m2 = fabsf(e2);
   const float tol = configCorrecao.toleranciaGraus;
 
-  const bool ok1 = !t1 || m1 <= tol;
-  const bool ok2 = !t2 || m2 <= tol;
+  // JUNTA QUE A BUSCA LEVOU NAO ENTRA NO RETOQUE.
+  //
+  // A busca ja e malha fechada no encoder: ela para quando a medida diz o
+  // numero. Duas malhas discutindo pelo mesmo eixo e de onde vinha o
+  // vai-e-vem. O erro medido continua sendo calculado e mostrado; o que
+  // muda e que ele nao vira comando.
+  const bool ok1 = !t1 || m1 <= tol || buscouEstaViagem[0];
+  const bool ok2 = !t2 || m2 <= tol || buscouEstaViagem[1];
 
   // Chegou.
   if (ok1 && ok2) {
@@ -991,11 +932,22 @@ void correcaoAtualizar() {
     // engrenagem foi aferida durante este assentamento, o numero de passos
     // que descreve aquele angulo mudou. Devolver o valor velho reporia na
     // contagem justamente o erro que a afericao acabou de tirar.
-    if (r.tentativas > 0) {
-      ajustarContagem(J1, (J1.passosPorGrau > 0.0f)
-                          ? grausParaPassos(J1, alvoGraus1) : alvo1Original);
-      ajustarContagem(J2, (J2.passosPorGrau > 0.0f)
-                          ? grausParaPassos(J2, alvoGraus2) : alvo2Original);
+    //
+    // Junta que a BUSCA levou tem a contagem acertada no que a MEDIDA
+    // diz, e nao no alvo: a busca para onde o encoder mandou, e se ela
+    // parou a um decimo dali e esse decimo que a contagem tem de contar.
+    for (uint8_t k = 1; k <= 2; k++) {
+      const uint8_t i = k - 1;
+      Junta& j = (k == 1) ? J1 : J2;
+      if (buscouEstaViagem[i] && j.passosPorGrau > 0.0f &&
+          leituraConfiavel(k)) {
+        ajustarContagem(j, grausParaPassos(j, encoderLer(k).graus));
+      } else if (r.tentativas > 0) {
+        const float alvoG = (k == 1) ? alvoGraus1 : alvoGraus2;
+        const long  orig  = (k == 1) ? alvo1Original : alvo2Original;
+        ajustarContagem(j, (j.passosPorGrau > 0.0f)
+                           ? grausParaPassos(j, alvoG) : orig);
+      }
     }
     r.estado = CORR_PRONTA;
     r.totalOk++;
@@ -1051,25 +1003,6 @@ void correcaoAtualizar() {
     r.estado = CORR_DESISTIU;
     r.totalDesistiu++;
     dizer("o retoque nao aproxima: veja acoplamento e reducao");
-    return;
-  }
-  // "SE PASSAR UM POUQUINHO, APENAS AJUSTAR."
-  //
-  // Quando a MEDIDA confirmou a chegada -- o freio parou o eixo porque o
-  // encoder disse que ele chegou --, o que sobra e o escorrego da rampa
-  // de parada mais o ruido da leitura. Dois ajustes fecham isso; o
-  // terceiro em diante ja e o braco perseguindo um numero que muda a
-  // cada leitura, e da bancada se via como "fica oscilando ate acertar o
-  // grau certo".
-  //
-  // Sem confirmacao da medida o teto nao vale: perda de passo pede
-  // quantos passos forem necessarios, e e o unico jeito de o braco
-  // chegar (ver V34d).
-  if ((chegouPelaMedida[0] || chegouPelaMedida[1]) &&
-      r.tentativas >= AJUSTES_APOS_CHEGAR) {
-    r.estado = CORR_PRONTA;
-    r.totalOk++;
-    dizer("ajustado ate onde a medida distingue");
     return;
   }
   // Teto absoluto, so para nunca existir laco infinito no core 1.
@@ -1869,14 +1802,13 @@ void correcaoReiniciarTeste() {
   // que os cenarios rodam vira parte do resultado.
   govFator[0] = govFator[1] = 1.0f;
   govAprendeu[0] = govAprendeu[1] = false;
-  largou[0]    = largou[1]    = false;
-  reduziu[0]   = reduziu[1]   = false;
-  aproximou[0] = aproximou[1] = false;
-  chegouPelaMedida[0] = chegouPelaMedida[1] = false;
-  hzCruzeiro[0] = hzCruzeiro[1] = 0;
-  hzAgora[0]    = hzAgora[1]    = 0;
+  buscando[0]      = buscando[1]      = false;
+  buscaSentido[0]  = buscaSentido[1]  = 0;
+  buscaVel[0]      = buscaVel[1]      = 0.0f;
+  buscaPassadas[0] = buscaPassadas[1] = 0;
+  buscaParando[0]  = buscaParando[1]  = false;
+  buscouEstaViagem[0] = buscouEstaViagem[1] = false;
   largadaValida[0] = largadaValida[1] = false;
-  alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO;
   temAlvoPedido = false;
   trav.ativo = false; trav.junta = 0; trav.total = 0;
   memset(&z, 0, sizeof(z));

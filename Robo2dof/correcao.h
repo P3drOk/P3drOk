@@ -127,7 +127,12 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont);
 // graus, ele esta em 3 graus".
 // ---------------------------------------------------------------------
 void correcaoAlvoPedido(float t1, float t2, bool valido);
-void correcaoFrearNoAlvo();
+// A busca: anda em velocidade constante ate a medida bater no alvo.
+// Chamada a cada ciclo em MODO_POSICIONANDO, antes de jogAtualizar().
+void correcaoBuscarAlvo();
+
+// Verdadeiro enquanto alguma junta ainda esta buscando.
+bool correcaoBuscando();
 
 // O que a viagem ensinou sobre a regua digitada. Chamada UMA vez, quando
 // o movimento termina: compara os graus que a regua mandou andar com os

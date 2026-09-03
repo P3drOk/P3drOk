@@ -539,28 +539,50 @@ static const uint32_t CORR_LACUNA_MS = 2000;
 // primeiras versoes da maquina; a correcao e que tinha passado por cima
 // dele.
 //
-// DUAS REDUCOES, e nao uma. Foi o que a bancada pediu:
+// A BUSCA: ir ao angulo e andar ate a medida bater.
 //
-//   "O braco deve comecar suavemente e na metade do caminho reduzir, e
-//    se passar um pouquinho apenas ajustar. O ideal e que de primeira
-//    chegue la."
+//   "So quero que ele acerte. O braco tem a leitura do encoder, entao e
+//    so mover o braco em uma velocidade constante ate que a leitura do
+//    encoder seja a mesma. Nao precisa de tudo isso de reducao nesse
+//    caso -- sera necessario apenas quando formos usar para desenhos."
 //
-//  1. METADE DO CAMINHO -- 40% da velocidade de cruzeiro. Nao sai de
-//     conta nenhuma: as contas de frenagem sao o MINIMO que a fisica
-//     exige e erram sempre que alguma suposicao esta errada (a regua, a
-//     rampa, o ritmo do barramento). Metade do caminho nao depende de
-//     suposicao.
+// E o que esta escrito abaixo. Nenhuma conta de distancia de frenagem,
+// nenhum degrau planejado, nenhuma regua: o eixo anda em velocidade
+// constante e para quando o encoder diz o numero.
 //
-//  2. O ENCOSTO -- 15%, ja perto, na distancia em que a rampa cabe. E o
-//     que deixa a distancia cega de uma leitura pequena: a 4 graus/s com
-//     o barramento a 217 ms sao 0,9 grau; a 1,8, sao 0,4.
+// Dentro desta tolerancia a busca considera que chegou. Ela nao pode ser
+// menor que o que a maquina consegue repetir, senao a busca ficaria indo
+// e voltando atras de ruido de leitura.
+static const float BUSCA_TOLERANCIA_GRAUS = 0.20f;
+
+// SE PASSAR, VOLTA MAIS DEVAGAR.
 //
-// Reduzir a metade do caminho DIRETO para os 15% chegava tambem, mas
-// levava tres vezes mais tempo -- medido no banco, uma viagem de 45
-// graus estourou o tempo do cenario. Duas reducoes custam uma
-// reprogramacao a mais da rampa e devolvem o tempo.
-static const float APROX_MEIO_FRACAO = 0.40f;
-static const float APROX_VEL_FRACAO  = 0.15f;
+// Isto nao e "matematica para acertar a posicao": e a unica coisa que
+// impede a mesma frase de se repetir para sempre. Voltando na MESMA
+// velocidade, o eixo passaria de novo pelo mesmo tanto, e de novo.
+//
+// Num barramento saudavel a primeira passada ja chega e nada disto
+// acontece. Num barramento a 4,6 leituras por segundo o eixo anda as
+// cegas por 200 ms e passa: ai sao duas ou tres passadas curtas, cada
+// uma quatro vezes mais devagar que a anterior. Consertar o cabo tira
+// essas passadas.
+static const float   BUSCA_REDUCAO      = 0.25f;
+static const uint8_t BUSCA_PASSADAS_MAX = 3;
+
+// Piso: abaixo disto o encosto ficaria eterno.
+static const float BUSCA_VEL_MINIMA = 0.5f;   // graus/s
+
+// TETO DE TEMPO, que a busca precisa e o movimento com destino nao.
+//
+// Um moveTo() termina sozinho: o destino esta em passos e o gerador para
+// ao chegar nele. A busca nao tem destino em passos -- ela para quando a
+// MEDIDA disser. Se a medida congelar com o eixo andando (cabo solto no
+// meio do movimento), nada mais a faria parar. O teto e o tempo que a
+// regua digitada preve para o percurso, com folga larga, e mais alguns
+// segundos: nao serve para acertar nada, serve para nao existir eixo
+// solto.
+static const float    BUSCA_FOLGA_TEMPO = 4.0f;
+static const uint32_t BUSCA_TEMPO_EXTRA_MS = 4000;
 
 // A PARTIR DE QUE DESVIO A REGUA DIGITADA E DENUNCIADA NA TELA.
 //

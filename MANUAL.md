@@ -987,55 +987,73 @@ O que faz o braço chegar **sem depender da régua**: o ângulo que você
 digitou fica guardado em graus, e enquanto o braço anda a máquina olha a
 medida.
 
-São **quatro comandos por viagem**, e no meio deles a rampa corre sozinha:
+**Ir a um ângulo é andar até a medida bater. Só isso.**
 
-| fase | quando | o comando |
-|---|---|---|
-| **larga** | ao pedir o ângulo | velocidade + aceleração + `moveTo()`, uma vez |
-| **reduz** | na **metade do caminho** | um degrau para 40 % do cruzeiro |
-| **encosta** | na distância em que a rampa cabe | um degrau para 15 % |
-| **para** | quando a medida diz que chegou | `stopMove()` |
+```
+falta = ângulo pedido − o que o encoder diz
+   dentro da tolerância?   para.
+   ainda não?              segue, na mesma velocidade.
+parou. olha de novo.
+   ainda não bateu?        vai de novo, mais devagar.
+```
 
-Entre eles o gerador de pulso **não é tocado**. O "diminuir a velocidade
-suavemente" não vem de mil ajustes: vem da rampa, que desacelera até o
-degrau com a aceleração configurada.
+Não há destino em passos, não há rampa planejada, não há conta de
+distância de frenagem. Quem move o eixo é o **jog**, com o encoder no
+lugar do dedo — e dali vem tudo o que já estava resolvido ali: o portão
+de segurança, o torque por eixo, e a antecipação da postura no fim da
+frenagem.
 
-> **Cada degrau escala a velocidade DAQUELA junta**, e nunca a substitui
-> por um número próprio. `moverCoordenado()` não dá a mesma velocidade às
-> duas: dá a cada uma a que faz as **duas chegarem juntas** — a que anda
-> pouco vai devagar, e é isso que deixa o caminho reto. Trocar por um
-> valor próprio punha a junta de percurso curto na velocidade da outra:
-> ela chegava muito antes, no talo, e passava longe do ponto. Como todo
-> cenário de ângulo mexia numa junta só, nenhum deles via — e a máquina
-> de verdade sempre mexe as duas. Cenário `V35`.
+Isso veio da bancada, depois de quatro rodadas de conta cada vez mais
+elaborada errando o ponto:
 
-**A redução na metade do caminho não sai de conta nenhuma.** As contas de
-frenagem são o mínimo que a física exige e erram sempre que uma suposição
-está errada — a régua, a rampa, o ritmo do barramento. Metade do caminho
-não depende de suposição. Custa tempo (uma viagem leva cerca de 1,7× o
-que levava) e paga com o braço chegando de primeira.
+> *"Não quero uma matemática complexa pra tentar acertar a posição, só
+> quero que ele acerte. O braço tem a leitura do encoder, então é só
+> mover o braço em uma velocidade constante até que a leitura do encoder
+> seja a mesma."*
 
-E se ainda assim passar um pouco, o assentamento **ajusta no máximo duas
-vezes** (`AJUSTES_APOS_CHEGAR`) e para. Caçar o ponto precisa de muitas
-idas e voltas; com esse teto elas não existem.
+**A volta mais devagar não é conta para acertar a posição** — é a única
+coisa que impede a mesma frase de se repetir para sempre. Voltando na
+mesma velocidade, o eixo passaria de novo pelo mesmo tanto. Num
+barramento saudável a primeira passada já chega; a 4,6 leituras por
+segundo o eixo anda 200 ms às cegas e passa, e aí é **uma** volta curta.
+Consertar o cabo tira essa volta.
 
-Isso não é economia de código. Reprogramar a velocidade obriga o gerador
-a refazer a rampa, e o aviso está no próprio firmware desde as primeiras
-versões da máquina, no comentário de `programarVelocidade()`. Houve uma
-rodada em que a correção recalculava a velocidade a cada leitura — **20
-reprogramações** numa viagem de 45°, contra 3 agora —, e da bancada isso
-se vê como *"micro variação"*, *"ele fica tentando acertar"*.
+| | |
+|---|---|
+| tolerância | `BUSCA_TOLERANCIA_GRAUS` = 0,20° |
+| cada volta | `BUSCA_REDUCAO` = ¼ da velocidade anterior |
+| no máximo | `BUSCA_PASSADAS_MAX` = 3 voltas |
 
-Não é malha fechada de servo: não há ganho nem correção contínua durante
-o movimento (leitura Modbus custa 5 a 20 ms com jitter, e retocar em cima
-disso faria o braço oscilar). São três decisões e uma rampa.
+> **As duas juntas andam proporcional ao percurso de cada uma.** Uma
+> proporção, e nada mais: a que anda 4° enquanto a outra anda 40 vai a um
+> décimo da velocidade. As duas chegam juntas, e — o que importa aqui —
+> a junta de percurso curto não corre no talo para depois não conseguir
+> parar. Sem isso ela passava 3,2° onde a longa passava 0,5.
 
-> **A distância do degrau.** Ela tem duas parcelas, as duas em graus de
-> verdade: o que a rampa consome para cair da velocidade de cruzeiro até
-> a de aproximação, e o que o eixo anda **às cegas** até a próxima
-> leitura chegar. Num barramento de 217 ms, a 12 °/s, são 2,6 graus em
-> que a máquina não vê nada — dar o degrau só quando a medida já disse
-> que chegou seria dar tarde.
+#### O teto de tempo, que a busca precisa e a rampa não
+
+Um `moveTo()` termina sozinho: o destino está em passos e o gerador para
+ao chegar nele. A busca não tem destino em passos — ela para quando a
+**medida** disser. Se a medida congelar com o eixo andando (cabo solto no
+meio do movimento), nada mais a faria parar.
+
+O teto é o tempo que a régua prevê para o percurso, com folga larga, mais
+alguns segundos. Não serve para acertar nada: serve para não existir eixo
+solto. Sem ele, no cenário `V36`, o eixo corre 375 segundos e 40 mil
+passos.
+
+E quando a busca **não consegue terminar** — perdeu a leitura, estourou o
+tempo —, o assentamento assume. É uma escalada, não um remendo: quem sabe
+fazer melhor tentou primeiro.
+
+#### O que continua na rampa: o desenho
+
+**Ir a um ângulo é a única coisa que busca.** Ponto de programa, DXF e
+trajetória continuam no movimento coordenado com rampa: ali o **caminho**
+importa tanto quanto o destino, e velocidade constante por junta não
+desenha reta.
+
+> A busca serve para **chegar**; a rampa, para **desenhar**.
 
 Medido no banco, cinco ângulos seguidos (3, 45, −30, 0 e 12,5):
 
@@ -1115,10 +1133,13 @@ chegue a medida: freio tardio ainda é freio. A separação é essa:
 
 | mecanismo | o que faz | com barramento lento |
 |---|---|---|
-| afinar ao chegar, freio no alvo, governador | só **reduz** e **para** | **continua valendo** |
+| a **busca** | anda num sentido só até a medida bater, e para | **continua valendo** |
 | assentamento no fim | retoca nos **dois** sentidos | **desligado** |
 
-E o assentamento só olha o que a medida **não** confirmou — ver adiante.
+A busca chega tarde num barramento lento — o eixo anda às cegas e passa —
+mas cada passada é **num sentido só** e a seguinte é mais devagar, com
+teto. Isso converge. O assentamento retoca nos dois sentidos contra uma
+tolerância menor que o próprio ruído da leitura, e isso é o que caçava.
 
 O ritmo do barramento gateia **só o assentamento**. Abaixo de 10 leituras
 por segundo a máquina diz, ao chegar: *"cheguei pela rampa; o encoder
@@ -1143,35 +1164,27 @@ média.
 
 Cenário **V30**.
 
-### E o que a medida já confirmou não se retoca
+### O assentamento não discute com a busca
 
-O freio para o eixo quando o encoder diz que ele chegou ao ângulo pedido.
-Depois disso o que sobra é o escorrego da rampa de parada mais o ruído da
-leitura — décimos de grau, abaixo do que a máquina repete.
-
-**Isso não vira uma caçada.** O driver é servo: ele segura a posição
-sozinho. Perseguir o último décimo é mandar o braço atrás de um número
-que muda a cada leitura, e da bancada se vê assim:
+A busca **já é** malha fechada no encoder: ela só para quando a medida diz
+o número, e absorve escorregão no caminho. Retocar depois seria uma
+segunda malha discutindo com a primeira pelo mesmo eixo — era daí que
+vinha o vai-e-vem:
 
 > *"Quando chega ao objetivo fica oscilando até acertar o grau certo, e
 > como se trata de um servo motor isso não é necessário."*
 
-O contrato é: **no máximo dois ajustes** quando a medida confirmou a
-chegada — um ou dois passos fechando o que sobrou não é caçada, e é o que
-o operador pediu com *"se passar um pouquinho apenas ajustar"*. Medido no
-cenário `V34`, com a régua 2× errada e o barramento a 77 ms: chega em
-45,14°, ajusta **uma vez**, anda 0,22° no total e para.
+Então: **junta que a busca levou não entra no retoque.** O erro medido
+continua sendo calculado e mostrado; o que muda é que ele não vira
+comando.
 
-O assentamento **não** foi removido. Ele continua inteiro para o caso em
-que a medida *não* confirmou nada — perda de passo, acoplamento solto,
-leitura ruim durante o movimento inteiro. Ali o erro é de graus, não de
-décimos, e nenhum servo conserta sozinho o que o eixo deixou de andar:
-`V34d` prende essa metade, com 7° de perda fechando em três retoques.
+O assentamento continua inteiro para tudo o que a busca **não** levou:
+ponto de programa, máquina sem encoder, junta cuja leitura não servia na
+hora de largar, e a escalada de quando a busca perde a medida no meio.
 
-> O freio só consegue **parar** o eixo mais cedo; ele nunca estende um
-> movimento. Por isso a perda de passo continua precisando do
-> assentamento: o eixo chega ao destino em passos com o ângulo ainda
-> faltando, e não há mais movimento para o freio interromper.
+E desligar a correção pelo encoder desliga a busca junto — a chave diz
+*"não use o encoder para mexer no meu posicionamento"*, e a busca é
+exatamente isso, só que durante o movimento em vez de depois.
 
 Quando o braço chega sem a medida confirmar, o encoder diz onde ele
 **realmente** parou e o sistema dá um retoque curto.

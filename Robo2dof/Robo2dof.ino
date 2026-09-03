@@ -128,15 +128,28 @@ static void irParaAngulos(float t1, float t2) {
   // A medida continua sendo feita e continua aparecendo na tela, ao lado
   // do campo. Quem escreve a regua da maquina e uma pessoa.
   //
-  // O que faz o braco CHEGAR sem depender da regua e o freio do encoder,
-  // logo abaixo: o alvo pedido fica guardado em GRAUS e o movimento para
-  // quando o encoder diz que chegou. Se o encoder diz 3 graus, o braco
-  // esta em 3 graus -- e nenhuma regua errada faz ele dar voltas.
+  // O que faz o braco CHEGAR sem depender da regua e a BUSCA, logo
+  // abaixo: o alvo fica guardado em GRAUS e o eixo anda ate a medida
+  // bater nele. Se o encoder diz 3 graus, o braco esta em 3 graus -- e
+  // nenhuma regua errada faz ele dar voltas.
   const Ancoragem anc = ancorarNoEncoder();
   if (!irParaPassos(grausParaPassos(J1, t1), grausParaPassos(J2, t2))) return;
 
-  // O FREIO. O alvo em graus e o que o operador digitou, e o movimento
-  // para quando o encoder disser que chegou nele.
+  // A BUSCA. O alvo em graus e o que o operador digitou, e o eixo anda em
+  // velocidade constante ate a medida chegar nele.
+  //
+  // O irParaPassos() acima continua valendo por duas razoes, e nenhuma e
+  // sobra: ele e quem VALIDA a postura e o caminho antes de qualquer
+  // motor girar, e ele e o caminho de quem nao pode buscar -- junta sem
+  // leitura confiavel na hora de largar, ou a correcao pelo encoder
+  // desligada. Nesses casos a rampa leva o eixo ao destino em passos,
+  // como sempre levou.
+  //
+  // IR A UM ANGULO E A UNICA COISA QUE BUSCA. Ponto de programa, DXF e
+  // trajetoria continuam na rampa, com o movimento coordenado: ali o
+  // CAMINHO importa tanto quanto o destino, e velocidade constante por
+  // junta nao desenha reta. A busca serve para chegar; a rampa, para
+  // desenhar.
   correcaoAlvoPedido(t1, t2, true);
 
   // A MENSAGEM DIZ EM QUE CONTA O MOVIMENTO SAIU.
@@ -1008,12 +1021,12 @@ void loop() {
       break;
 
     case MODO_POSICIONANDO:
-      // O FREIO DO ENCODER, antes de tudo: enquanto o braco anda, se a
-      // medida disser que a junta chegou ao angulo pedido, ela para.
-      // Uma regua errada faz o movimento sair grande demais -- este
-      // teste e o que impede isso de virar voltas sem fim.
-      correcaoFrearNoAlvo();
-      if (!motoresEmMovimento()) {
+      // A BUSCA: enquanto o braco anda, um teste e uma decisao por ciclo
+      // -- chegou pela medida? passou? segue. Quem move o eixo e o jog,
+      // com o encoder no lugar do dedo, e por isso ele roda aqui tambem.
+      correcaoBuscarAlvo();
+      jogAtualizar();
+      if (!correcaoBuscando() && !motoresEmMovimento()) {
         // O QUE A VIAGEM ENSINOU, antes de qualquer outra coisa.
         //
         // Aqui o eixo acabou de parar e as duas pontas do percurso ainda
