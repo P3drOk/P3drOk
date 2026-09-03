@@ -3687,8 +3687,12 @@ static int irComPerda(float t1, float t2, float perdaGraus) {
            "&t2=" + std::to_string((int)t2)).c_str());
   rodarComWeb(60);
   if (perdaGraus != 0.0f) perderPassos(perdaGraus);
+  // O DOBRO DE FOLGA desde que o movimento passou a reduzir na metade do
+  // caminho: a segunda metade corre a 40% e uma viagem de 45 graus leva
+  // quase o dobro do tempo. Estourar aqui deixava o eixo em pleno voo e
+  // o cenario seguinte media outra coisa.
   uint32_t t = 0;
-  while (modoAtual != MODO_MANUAL && t < 8000) { rodarComWeb(20); t += 20; }
+  while (modoAtual != MODO_MANUAL && t < 20000) { rodarComWeb(20); t += 20; }
   return cod;
 }
 
@@ -6566,22 +6570,20 @@ static void teste_V33_tres_comandos_por_viagem() {
 }
 
 // ---------------------------------------------------------------------
-// V34: chegou, para de mexer. O driver e servo.
+// V34: chegou, AJUSTA UMA VEZ, e para.
 //
-// "O movimento parece estar suave, mas quando chega ao objetivo fica
-// oscilando ate acertar o grau certo. Como se trata de um servo motor
-// isso nao e necessario."
+// "Quando chega ao objetivo fica oscilando ate acertar o grau certo."
+// E, depois: "se passar um pouquinho apenas ajustar."
 //
-// Esta certo. O freio ja para o eixo quando o ENCODER diz que ele chegou
-// ao angulo pedido. O que sobra depois disso e o escorrego da rampa de
-// parada mais o ruido da leitura -- decimos de grau, abaixo do que a
-// maquina repete. O assentamento perseguia esse resto: cada retoque
-// errava para o outro lado e pedia o proximo.
+// As duas frases juntas dao o contrato: o que nao pode e a CACADA --
+// retoque atras de retoque perseguindo um numero que muda a cada
+// leitura. Um ou dois ajustes fechando o que sobrou nao e cacada, e e o
+// que o operador pediu.
 //
-// O assentamento NAO foi removido. Ele continua inteiro para o caso em
-// que a medida nao confirmou nada -- perda de passo, acoplamento solto
-// --, onde o erro e de graus e nenhum servo conserta sozinho o que o
-// eixo deixou de andar. As duas metades estao aqui, e e o par que
+// O teto e AJUSTES_APOS_CHEGAR, e vale quando a MEDIDA confirmou a
+// chegada. Sem confirmacao -- perda de passo, acoplamento solto -- o
+// teto nao vale: ali o erro e de graus e o braco precisa de quantos
+// passos forem necessarios. As duas metades estao aqui, e e o par que
 // importa: quem "consertar" isto apagando o assentamento derruba V34d.
 // ---------------------------------------------------------------------
 static void teste_V34_chegou_para_de_mexer() {
@@ -6624,10 +6626,31 @@ static void teste_V34_chegou_para_de_mexer() {
          "o ritmo do barramento permite assentar: o que vem abaixo e "
          "escolha, e nao o portao do barramento fazendo o trabalho");
 
+  const float partiuDe = encoderLer(1).graus;
   webPost("/api/mover?t1=45&t2=0");
   { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(60);
+  const uint32_t hzLargada = J1.motor ? J1.motor->velHz : 0;
+  uint32_t hzNaMetade = hzLargada;
+  const float meio = partiuDe + (45.0f - partiuDe) * 0.5f;
+  bool passouMeio = false;
   // Corre ate o eixo parar pela primeira vez -- e a chegada.
-  { uint32_t e = 0; while (motoresEmMovimento() && e < 40000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0;
+    while (motoresEmMovimento() && e < 40000) {
+      rodarComWeb(20); e += 20;
+      if (!passouMeio && encoderLer(1).graus >= meio) {
+        passouMeio = true;
+        hzNaMetade = J1.motor ? J1.motor->velHz : 0;
+      }
+    } }
+  nota("largou a %lu Hz; ao cruzar a metade do caminho (%.1f graus) estava "
+       "a %lu Hz", (unsigned long)hzLargada, (double)meio,
+       (unsigned long)hzNaMetade);
+  checar(passouMeio && hzNaMetade < hzLargada, "V34e",
+         "na metade do caminho a velocidade JA CAIU: \"o braco deve comecar "
+         "suavemente e na metade do caminho reduzir\". As contas de frenagem "
+         "sao o minimo que a fisica exige e erram sempre que uma suposicao "
+         "esta errada; a metade do caminho nao depende de suposicao nenhuma");
 
   const float grausNaChegada = encoderLer(1).graus;
 
@@ -6650,16 +6673,17 @@ static void teste_V34_chegou_para_de_mexer() {
   const float vaiVem = encAlto - encBaixo;
 
   nota("chegou em %.3f graus; depois disso o eixo andou %.3f grau no total "
-       "e o assentamento fez %u retoque(s) -- \"%s\"",
+       "e o assentamento fez %u ajuste(s) -- \"%s\"",
        (double)grausNaChegada, (double)vaiVem,
        (unsigned)correcaoResumo().tentativas, correcaoResumo().motivo);
 
-  checar(vaiVem < 0.02f, "V34b",
-         "depois de chegar o eixo NAO se mexe mais: e o que a bancada via "
-         "como \"fica oscilando ate acertar o grau certo\"");
-  checar(correcaoResumo().tentativas == 0, "V34c",
-         "e nenhum retoque foi pedido: a medida ja tinha confirmado a "
-         "chegada, e o driver segura a posicao sozinho");
+  checar(vaiVem < 0.60f, "V34b",
+         "depois de chegar o braco ajusta POUCO e para: o total que ele "
+         "anda no fim e uma fracao de grau, e nao um vai-e-vem que nao "
+         "acaba");
+  checar(correcaoResumo().tentativas <= AJUSTES_APOS_CHEGAR, "V34c",
+         "e em no maximo dois ajustes -- cacar o ponto precisa de muitas "
+         "idas e voltas, e com este teto elas nao existem");
 
   // A OUTRA METADE. Perda de passo: aqui a medida nao confirma nada, o
   // erro e de graus, e o assentamento tem de continuar existindo.
@@ -6683,6 +6707,82 @@ static void teste_V34_chegou_para_de_mexer() {
          "mas o assentamento continua inteiro para quando a medida NAO "
          "confirma: com perda de passo ele retoca e o braco chega -- e o "
          "que nao pode e retocar o que ja esta certo");
+}
+
+// ---------------------------------------------------------------------
+// V35: DUAS juntas no mesmo movimento, que e como a maquina anda.
+//
+// "Cada vez que peco para ele ir a um ponto ele passa longe."
+//
+// moverCoordenado() nao da a mesma velocidade as duas juntas: ele da a
+// cada uma a velocidade que faz as DUAS chegarem juntas -- a que anda
+// pouco vai devagar, e por isso o caminho sai reto. A largada pelo fator
+// da regua sobrescrevia as duas com a velocidade cheia, e a junta que
+// devia ir devagar saia a toda: chegava muito antes, no talo, e passava
+// do ponto pelo tanto que o barramento leva para contar.
+//
+// Todo cenario de angulo anterior mexia UMA junta so -- por isso nenhum
+// deles viu. A maquina de verdade sempre mexe as duas.
+// ---------------------------------------------------------------------
+static void teste_V35_duas_juntas_chegam_juntas() {
+  secao("V35  Duas juntas no mesmo movimento: a curta nao dispara");
+  reiniciarSistema();
+  // AS DUAS REGUAS ERRADAS, que e quando a largada pelo fator entra em
+  // acao -- com a regua certa o fator vale 1 e o bloco nem dispara.
+  const uint32_t ppv1 = J1.passosPorVolta, ppv2 = J2.passosPorVolta;
+  g_ppvReal[0] = ppv1; g_ppvReal[1] = ppv2;
+  J1.passosPorVolta = ppv1 * 2;
+  J2.passosPorVolta = ppv2 * 2;
+  recalcularResolucao();
+  prepararRoboCalibrado(180.0f);
+  protCurso = false;
+  prepararEncoderDasDuasJuntas();
+  configEncoder.periodoMs = 80;
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(240);
+  g_espelharEixo = true;
+  rodarComWeb(900);
+
+  // Uma viagem antes, para a maquina ja ter medido a propria regua: e
+  // com o fator aprendido que a largada passa a mexer na velocidade.
+  webPost("/api/mover?t1=10&t2=10");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 40000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+  nota("aquecimento: juntas em %.2f / %.2f; fator aprendido %.3f / %.3f",
+       (double)encoderLer(1).graus, (double)encoderLer(2).graus,
+       (double)correcaoFatorRegua(1), (double)correcaoFatorRegua(2));
+
+  // Percursos MUITO diferentes: J1 anda 30 graus, J2 anda 3. A junta 2
+  // tem de andar a um decimo da velocidade da junta 1.
+  webPost("/api/mover?t1=40&t2=13");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 2000) { rodarComWeb(20); e += 20; } }
+
+  float pico1 = 0.0f, pico2 = 0.0f;
+  { uint32_t e = 0;
+    while (modoAtual != MODO_MANUAL && e < 40000) {
+      rodarComWeb(20); e += 20;
+      const float g1 = encoderLer(1).graus, g2 = encoderLer(2).graus;
+      if (g1 > pico1) pico1 = g1;
+      if (g2 > pico2) pico2 = g2;
+    } }
+  rodarComWeb(300);
+  const float f1 = encoderLer(1).graus, f2 = encoderLer(2).graus;
+
+  nota("pedi 40 / 13: parou em %.3f / %.3f (pico %.3f / %.3f)",
+       (double)f1, (double)f2, (double)pico1, (double)pico2);
+  nota("excesso: junta 1 %.3f grau, junta 2 %.3f grau",
+       (double)(pico1 - 40.0f), (double)(pico2 - 13.0f));
+
+  checar(fabsf(f1 - 40.0f) < 0.30f, "V35a",
+         "a junta que anda MUITO chega ao angulo pedido");
+  checar(fabsf(f2 - 13.0f) < 0.30f, "V35b",
+         "e a junta que anda POUCO tambem -- ela nao pode sair na "
+         "velocidade cheia so porque a outra tem caminho longo");
+  checar(pico2 - 13.0f < 0.30f, "V35c",
+         "sem passar longe do ponto: era o que a bancada via em todo "
+         "movimento, porque a maquina de verdade sempre mexe as duas juntas");
 }
 
 // ---------------------------------------------------------------------
@@ -9286,6 +9386,7 @@ int main() {
   teste_V32_largada_com_o_barramento_calado();
   teste_V33_tres_comandos_por_viagem();
   teste_V34_chegou_para_de_mexer();
+  teste_V35_duas_juntas_chegam_juntas();
   teste_V24_curso_medido_nao_cala_o_encoder();
   teste_V26_batentes_do_mesmo_lado();
   teste_V28_ir_a_tres_graus_sem_enrosco();

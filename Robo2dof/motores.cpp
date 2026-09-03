@@ -47,6 +47,11 @@ static uint32_t limitarFreq(uint32_t v) {
 
 // ---------------------------------------------------------------------
 static uint32_t velProgramada[2] = {0, 0};
+// E a aceleracao, pela mesma razao: moverCoordenado() escala a rampa de
+// cada junta pela fracao do percurso que ela faz, para as duas rampas
+// comecarem e terminarem juntas. Quem for calcular distancia de frenagem
+// precisa da aceleracao QUE FOI PROGRAMADA, e nao da configurada.
+static uint32_t acelProgramada[2] = {0, 0};
 
 bool motoresIniciar() {
   J1.pinoPulso = PIN_J1_PULSO; J1.pinoDir = PIN_J1_DIR;
@@ -280,6 +285,14 @@ void programarVelocidadePub(Junta& j, int indice, uint32_t hz) {
   programarVelocidade(j, indice, hz);
 }
 
+uint32_t velProgramadaPub(int indice) {
+  return (indice >= 0 && indice <= 1) ? velProgramada[indice] : 0;
+}
+
+uint32_t acelProgramadaPub(int indice) {
+  return (indice >= 0 && indice <= 1) ? acelProgramada[indice] : 0;
+}
+
 void aplicarVelocidadeManual() {
   const float g = velNormal;
   programarVelocidade(J1, 0, grausPorSegParaHz(J1, velDaJunta(J1, g)));
@@ -287,8 +300,10 @@ void aplicarVelocidadeManual() {
 }
 
 void aplicarAceleracao() {
-  if (J1.motor) J1.motor->setAcceleration(grausPorSegParaHz(J1, J1.aceleracao));
-  if (J2.motor) J2.motor->setAcceleration(grausPorSegParaHz(J2, J2.aceleracao));
+  if (J1.motor) { acelProgramada[0] = grausPorSegParaHz(J1, J1.aceleracao);
+                  J1.motor->setAcceleration(acelProgramada[0]); }
+  if (J2.motor) { acelProgramada[1] = grausPorSegParaHz(J2, J2.aceleracao);
+                  J2.motor->setAcceleration(acelProgramada[1]); }
   aplicarSuavidade();
 }
 
@@ -527,11 +542,13 @@ void moverCoordenado(long alvo1, long alvo2, float grausPorS) {
   if (a2 < 100) a2 = 100;
 
   if (J1.motor) {
+    acelProgramada[0] = a1;
     J1.motor->setAcceleration(a1);
     programarVelocidade(J1, 0, v1);
     J1.motor->moveTo(alvo1);
   }
   if (J2.motor) {
+    acelProgramada[1] = a2;
     J2.motor->setAcceleration(a2);
     programarVelocidade(J2, 1, v2);
     J2.motor->moveTo(alvo2);

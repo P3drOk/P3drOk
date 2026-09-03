@@ -50,7 +50,20 @@ static const int8_t SENTIDO_SEM_FREIO  = 0;
 // umas 150 num barramento saudavel. Cada uma obriga o gerador a refazer
 // a rampa, e e isso que a bancada sente como aspereza.
 static bool largou[2]    = {false, false};
+static bool reduziu[2]   = {false, false};
 static bool aproximou[2] = {false, false};
+// O Hz de CRUZEIRO desta viagem, por junta, ja com o fator da regua.
+//
+// Guardado porque moverCoordenado() nao da a mesma velocidade as duas:
+// da a cada uma a que faz as DUAS chegarem juntas. O degrau da
+// aproximacao escala ESTE numero -- escalar velAuto punha a junta de
+// percurso curto na velocidade da outra, e ela chegava muito antes, no
+// talo, passando longe do ponto.
+static uint32_t hzCruzeiro[2] = {0, 0};
+// E o que esta valendo agora, depois das reducoes.
+static uint32_t hzAgora[2] = {0, 0};
+// Onde a viagem comecou, para saber o que e "metade do caminho".
+static float partidaGraus[2] = {0.0f, 0.0f};
 
 // O QUE A VIAGEM ENSINA, medido de ponta a ponta.
 //
@@ -311,8 +324,11 @@ bool aferirEngrenagem(uint8_t junta, long dPasso, int32_t dCont) {
 void correcaoAlvoPedido(float t1, float t2, bool valido) {
   temAlvoPedido = valido;
   largou[0]    = largou[1]    = false;
+  reduziu[0]   = reduziu[1]   = false;
   aproximou[0] = aproximou[1] = false;
   chegouPelaMedida[0] = chegouPelaMedida[1] = false;
+  hzCruzeiro[0] = hzCruzeiro[1] = 0;
+  hzAgora[0]    = hzAgora[1]    = 0;
   // O FATOR NAO ZERA ENTRE MOVIMENTOS -- ver a declaracao. Se a regua
   // for corrigida, a viagem seguinte o traz de volta para 1 sozinha.
   if (!valido) { alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO; return; }
@@ -329,6 +345,7 @@ void correcaoAlvoPedido(float t1, float t2, bool valido) {
     if (!leituraConfiavel(k)) continue;
     largadaValida[i] = true;
     largadaGraus[i]  = encoderLer(k).graus;
+    partidaGraus[i]  = largadaGraus[i];
     largadaPassos[i] = (k == 1) ? posicaoJ1() : posicaoJ2();
   }
   alvoPedido[0] = t1;
@@ -411,32 +428,52 @@ static float aceleracaoReal(const Junta& j, float fator) {
   return a / f;
 }
 
-// A QUE DISTANCIA DO ALVO SE DA O DEGRAU DA APROXIMACAO.
+// A QUE DISTANCIA DO ALVO SE DA O ENCOSTO.
 //
 // Duas parcelas, as duas em graus de verdade:
 //
-//  1. o que a rampa consome para cair da velocidade de cruzeiro ate a de
-//     aproximacao -- (v2 - va2) / 2a, a mesma fisica de sempre;
+//  1. o que a rampa consome para cair da velocidade de AGORA ate a do
+//     encosto: (v2 - va2) / 2a;
 //  2. o que o eixo anda AS CEGAS ate a proxima leitura chegar. Num
-//     barramento de 217 ms, a 12 graus/s, sao 2,6 graus em que a maquina
-//     nao ve nada. Dar o degrau so quando a medida ja disse que chegou
-//     seria dar tarde.
+//     barramento de 217 ms, a 5 graus/s, e mais de um grau em que a
+//     maquina nao ve nada.
 //
-// A soma e a distancia em que o degrau ainda cabe inteiro.
+// A reducao da metade do caminho NAO entra aqui: ela e uma fase propria,
+// e nao depende de conta nenhuma. Esta aqui e so o encosto.
 static float distanciaDoDegrau(const Junta& j, uint8_t k, uint8_t i,
-                               float vAprox) {
+                               uint32_t hzAprox) {
+  if (j.passosPorGrau <= 0.0f) return 0.0f;
   const float fator = fatorDaViagem(k, i, j);
-  const float aReal = aceleracaoReal(j, fator);
-  // A velocidade de CRUZEIRO em graus de verdade: foi mandada
-  // velAuto*govFator pela regua, e a regua exagera por 1/fator.
-  float vCruz = velAuto * govFator[i] / ((fator > 0.02f) ? fator : 0.02f);
-  if (vCruz < vAprox) vCruz = vAprox;
+  const float f     = (fator > 0.02f) ? fator : 0.02f;
+
+  // Hz -> graus/s de VERDADE. A regua exagera por 1/fator, entao os
+  // passos por grau reais sao os digitados vezes o fator.
+  const float ppgReal = j.passosPorGrau * f;
+  if (ppgReal <= 0.0f) return 0.0f;
+  const float vAgora = (float)hzAgora[i] / ppgReal;
+  const float vAprox = (float)hzAprox    / ppgReal;
+
+  // A aceleracao REALMENTE programada nesta junta -- moverCoordenado()
+  // escala a rampa pela fracao do percurso, entao a configurada nao
+  // serve.
+  const uint32_t aHz = acelProgramadaPub(i);
+  const float aReal = (aHz > 0) ? ((float)aHz / ppgReal) : (ACEL_PADRAO / f);
+
   float d = 0.0f;
-  if (aReal > 0.01f && vCruz > vAprox)
-    d = (vCruz * vCruz - vAprox * vAprox) / (2.0f * aReal);
+  if (aReal > 0.01f && vAgora > vAprox)
+    d = (vAgora * vAgora - vAprox * vAprox) / (2.0f * aReal);
   const uint32_t ritmo = correcaoRitmoMs(k);
-  if (ritmo > 0) d += vCruz * (float)ritmo / 1000.0f;
+  if (ritmo > 0) d += vAgora * (float)ritmo / 1000.0f;
   return d;
+}
+
+// Escala o cruzeiro desta junta por uma fracao, com piso.
+static uint32_t hzEscalado(const Junta& j, uint8_t i, float fracao) {
+  uint32_t hz = (uint32_t)((float)hzCruzeiro[i] * fracao);
+  const uint32_t piso = grausPorSegParaHz(j, FREIO_ENC_VEL_MINIMA);
+  if (hz < piso)          hz = piso;
+  if (hz > hzCruzeiro[i]) hz = hzCruzeiro[i];
+  return hz;
 }
 
 // =====================================================================
@@ -488,12 +525,20 @@ void correcaoFrearNoAlvo() {
     // leitura do movimento falhar, a largada ainda sai contida.
     if (!largou[i]) {
       largou[i] = true;
+      // A velocidade que moverCoordenado() acabou de dar A ESTA JUNTA.
+      // Ela nao e velAuto: e a fracao de velAuto que faz as duas juntas
+      // chegarem juntas. O fator da regua a ESCALA; trocar por um valor
+      // proprio quebrava a coordenacao e mandava a junta de percurso
+      // curto no talo.
+      uint32_t hz = velProgramadaPub(i);
+      if (hz < 1) hz = grausPorSegParaHz(j, velDaJuntaPub(j, velAuto));
       if (govFator[i] < 0.999f) {
-        uint32_t hz = grausPorSegParaHz(j, velDaJuntaPub(j, velAuto));
         hz = (uint32_t)((float)hz * govFator[i]);
         if (hz < 1) hz = 1;
         programarVelocidadePub(j, i, hz);
       }
+      hzCruzeiro[i] = hz;
+      hzAgora[i]    = hz;
     }
 
     if (!leituraConfiavel(k)) continue;
@@ -521,16 +566,34 @@ void correcaoFrearNoAlvo() {
     const float falta = fabsf(alvoPedido[i] - agora);
 
     // ---- 2. APROXIMACAO: uma escrita, quando entra na distancia ----
-    if (!aproximou[i]) {
-      const float vAprox = velDeAproximacao();
-      if (velAuto > vAprox && falta <= distanciaDoDegrau(j, k, i, vAprox)) {
-        aproximou[i] = true;
-        uint32_t hz = grausPorSegParaHz(j, velDaJuntaPub(j, vAprox));
-        hz = (uint32_t)((float)hz * govFator[i]);
-        if (hz < 1) hz = 1;
-        programarVelocidadePub(j, i, hz);
-        logEvento("junta %u: faltam %.2f graus -- aproximando a %.1f "
-                  "graus/s", (unsigned)k, (double)falta, (double)vAprox);
+    if (hzCruzeiro[i] > 0) {
+      // 2a. A METADE DO CAMINHO. Sem conta nenhuma: foi o que a bancada
+      //     pediu, e nao depende de suposicao sobre regua nem rampa.
+      if (!reduziu[i]) {
+        const float percurso = fabsf(alvoPedido[i] - partidaGraus[i]);
+        if (percurso > 2.0f * FREIO_ENC_MINIMO_GRAUS &&
+            falta <= percurso * 0.5f) {
+          reduziu[i] = true;
+          const uint32_t hz = hzEscalado(j, i, APROX_MEIO_FRACAO);
+          if (hz < hzAgora[i]) {
+            hzAgora[i] = hz;
+            programarVelocidadePub(j, i, hz);
+            logEvento("junta %u: metade do caminho (faltam %.2f de %.2f) "
+                      "-- reduzindo para %lu Hz", (unsigned)k, (double)falta,
+                      (double)percurso, (unsigned long)hz);
+          }
+        }
+      }
+      // 2b. O ENCOSTO, na distancia em que a rampa cabe.
+      if (!aproximou[i]) {
+        const uint32_t hz = hzEscalado(j, i, APROX_VEL_FRACAO);
+        if (hz < hzAgora[i] && falta <= distanciaDoDegrau(j, k, i, hz)) {
+          aproximou[i] = true;
+          hzAgora[i] = hz;
+          programarVelocidadePub(j, i, hz);
+          logEvento("junta %u: encostando (faltam %.2f graus) a %lu Hz",
+                    (unsigned)k, (double)falta, (unsigned long)hz);
+        }
       }
     }
 
@@ -910,18 +973,8 @@ void correcaoAtualizar() {
   const float m1 = fabsf(e1), m2 = fabsf(e2);
   const float tol = configCorrecao.toleranciaGraus;
 
-  // JUNTA QUE A MEDIDA CONFIRMOU NAO ENTRA NO RETOQUE.
-  //
-  // O freio parou o eixo quando o encoder disse que ele chegou. O que
-  // resta e o escorrego da rampa de parada mais o ruido da leitura --
-  // decimos de grau, abaixo do que a maquina consegue repetir. Perseguir
-  // isso e o "fica oscilando ate acertar o grau certo": cada retoque
-  // erra o alvo para o outro lado e pede o proximo.
-  //
-  // O erro medido continua sendo CALCULADO e mostrado; o que muda e que
-  // ele nao vira comando.
-  const bool ok1 = !t1 || m1 <= tol || chegouPelaMedida[0];
-  const bool ok2 = !t2 || m2 <= tol || chegouPelaMedida[1];
+  const bool ok1 = !t1 || m1 <= tol;
+  const bool ok2 = !t2 || m2 <= tol;
 
   // Chegou.
   if (ok1 && ok2) {
@@ -998,6 +1051,25 @@ void correcaoAtualizar() {
     r.estado = CORR_DESISTIU;
     r.totalDesistiu++;
     dizer("o retoque nao aproxima: veja acoplamento e reducao");
+    return;
+  }
+  // "SE PASSAR UM POUQUINHO, APENAS AJUSTAR."
+  //
+  // Quando a MEDIDA confirmou a chegada -- o freio parou o eixo porque o
+  // encoder disse que ele chegou --, o que sobra e o escorrego da rampa
+  // de parada mais o ruido da leitura. Dois ajustes fecham isso; o
+  // terceiro em diante ja e o braco perseguindo um numero que muda a
+  // cada leitura, e da bancada se via como "fica oscilando ate acertar o
+  // grau certo".
+  //
+  // Sem confirmacao da medida o teto nao vale: perda de passo pede
+  // quantos passos forem necessarios, e e o unico jeito de o braco
+  // chegar (ver V34d).
+  if ((chegouPelaMedida[0] || chegouPelaMedida[1]) &&
+      r.tentativas >= AJUSTES_APOS_CHEGAR) {
+    r.estado = CORR_PRONTA;
+    r.totalOk++;
+    dizer("ajustado ate onde a medida distingue");
     return;
   }
   // Teto absoluto, so para nunca existir laco infinito no core 1.
@@ -1798,8 +1870,11 @@ void correcaoReiniciarTeste() {
   govFator[0] = govFator[1] = 1.0f;
   govAprendeu[0] = govAprendeu[1] = false;
   largou[0]    = largou[1]    = false;
+  reduziu[0]   = reduziu[1]   = false;
   aproximou[0] = aproximou[1] = false;
   chegouPelaMedida[0] = chegouPelaMedida[1] = false;
+  hzCruzeiro[0] = hzCruzeiro[1] = 0;
+  hzAgora[0]    = hzAgora[1]    = 0;
   largadaValida[0] = largadaValida[1] = false;
   alvoSentido[0] = alvoSentido[1] = SENTIDO_SEM_FREIO;
   temAlvoPedido = false;

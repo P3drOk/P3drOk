@@ -5365,11 +5365,97 @@ se mede.
 > quem o mediu.**
 
 
+## R168 · "Passa longe": a junta curta saía no talo  `V35`  ✅
+
+> "O único objetivo do braço com o ângulo é ir até o ângulo, e ele não
+> faz isso. Cada vez que peço para ele ir a um ponto ele passa longe. O
+> braço deve começar suavemente e na metade do caminho reduzir, e se
+> passar um pouquinho apenas ajustar."
+
+### A causa, e ela era minha
+
+`moverCoordenado()` **não** dá a mesma velocidade às duas juntas: dá a
+cada uma a que faz as **duas chegarem juntas**. A que anda pouco vai
+devagar, e é isso que deixa o caminho reto no espaço das juntas.
+
+A largada pelo fator da régua, que eu tinha escrito duas rodadas antes,
+**sobrescrevia as duas com `velAuto`**. A junta de percurso curto saía na
+velocidade da outra, chegava muito antes, no talo — e passava do ponto
+pelo tanto que o barramento leva para contar.
+
+> **Todo cenário de ângulo mexia UMA junta só.** V29, V30, V31, V32, V34
+> — todos com `t2=0` e a junta 2 parada. A máquina de verdade sempre mexe
+> as duas, e por isso a bancada via em todo movimento o que o banco não
+> via em nenhum.
+
+Medido em `V35`, percursos de 40° e 13° com as duas réguas 2× erradas:
+
+| | junta longa | junta curta |
+|---|---|---|
+| trocando a velocidade coordenada | 0,140° | **0,356°** |
+| escalando a velocidade de cada uma | 0,140° | **0,068°** |
+
+O conserto: cada degrau **escala** o Hz que aquela junta já tem
+(`velProgramadaPub`), nunca o substitui. A distância de frenagem passou a
+usar a aceleração **realmente programada** (`acelProgramadaPub`) pelo
+mesmo motivo — `moverCoordenado()` escala a rampa de cada junta pela
+fração do percurso.
+
+### Quatro comandos, e a metade do caminho
+
+O movimento passou de três comandos para quatro:
+
+| fase | quando | comando |
+|---|---|---|
+| larga | ao pedir | velocidade + aceleração + `moveTo()` |
+| **reduz** | **na metade do caminho** | 40 % do cruzeiro |
+| encosta | onde a rampa cabe | 15 % |
+| para | a medida diz que chegou | `stopMove()` |
+
+A redução na metade **não sai de conta nenhuma** — veio da bancada. As
+contas de frenagem são o mínimo que a física exige e erram sempre que uma
+suposição está errada (a régua, a rampa, o ritmo do barramento). Metade
+do caminho não depende de suposição.
+
+Primeira tentativa: reduzir na metade direto para os 15 %. Chegava, mas
+levava três vezes mais — uma viagem de 45° **estourou o tempo do
+cenário** e deixou o eixo em pleno voo. Daí as duas reduções: uma
+reprogramação de rampa a mais, e o tempo de volta.
+
+**O que isso custa, dito com todas as letras:** uma viagem leva cerca de
+1,7× o que levava. E o banco mostra ganho pequeno — no pior caso (régua
+4× errada, barramento a 217 ms) o excesso foi de 0,500° para 0,464°. O
+que o cenário prende, então, não é um ganho que ele não vê: é que **a
+velocidade realmente cai antes da metade** (`V34e`, 667 Hz → 266 Hz).
+Quem tirar a fase derruba isso.
+
+### "Se passar um pouquinho, apenas ajustar"
+
+Na rodada anterior eu tinha ido longe demais: junta que a medida
+confirmou não era retocada **de jeito nenhum**. Isso tirou a oscilação e
+trouxe o problema oposto — o escorrego da parada virava erro permanente,
+e "passa longe" toda vez.
+
+Agora o assentamento volta, com teto: **no máximo dois ajustes**
+(`AJUSTES_APOS_CHEGAR`) quando a medida confirmou a chegada. Caçar o
+ponto precisa de muitas idas e voltas; com esse teto elas não existem.
+Sem confirmação da medida — perda de passo — o teto não vale, e o braço
+usa quantos passos precisar (`V34d`, 7° fechando em três).
+
+> O teto é um **limite**, e o banco não consegue exercitá-lo: aqui o
+> assentamento converge em um ajuste e nunca chega a dois. Fica registrado
+> como tal, e não como se fosse um defeito medido — igual a `V33c`.
+
+### Medido, com a régua certa
+
+Cinco ângulos seguidos (3, 45, −30, 0 e 12,5): erro final entre **0,000°
+e 0,012°**, excesso **zero**, inversões **zero**.
+
 ## Cobertura
 
 | banco | rodada 20 | rodada 22 | rodada 24 | agora |
 |-------|-----------|-----------|-----------|-------|
-| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **536 / 0** |
+| firmware | 229 / 0 | 241 / 0 | 367 / 0 | **540 / 0** |
 | interface | 121 / 0 | 125 / 0 | 209 / 0 | **311 / 0** |
 
 E o banco inteiro roda limpo sob AddressSanitizer e UndefinedBehaviorSanitizer

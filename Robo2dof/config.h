@@ -539,10 +539,28 @@ static const uint32_t CORR_LACUNA_MS = 2000;
 // primeiras versoes da maquina; a correcao e que tinha passado por cima
 // dele.
 //
-// Um quinto da velocidade pedida: devagar o bastante para a distancia
-// cega de uma leitura ficar pequena, rapido o bastante para o encosto
-// nao ficar eterno. O piso continua sendo FREIO_ENC_VEL_MINIMA.
-static const float APROX_VEL_FRACAO = 0.2f;
+// DUAS REDUCOES, e nao uma. Foi o que a bancada pediu:
+//
+//   "O braco deve comecar suavemente e na metade do caminho reduzir, e
+//    se passar um pouquinho apenas ajustar. O ideal e que de primeira
+//    chegue la."
+//
+//  1. METADE DO CAMINHO -- 40% da velocidade de cruzeiro. Nao sai de
+//     conta nenhuma: as contas de frenagem sao o MINIMO que a fisica
+//     exige e erram sempre que alguma suposicao esta errada (a regua, a
+//     rampa, o ritmo do barramento). Metade do caminho nao depende de
+//     suposicao.
+//
+//  2. O ENCOSTO -- 15%, ja perto, na distancia em que a rampa cabe. E o
+//     que deixa a distancia cega de uma leitura pequena: a 4 graus/s com
+//     o barramento a 217 ms sao 0,9 grau; a 1,8, sao 0,4.
+//
+// Reduzir a metade do caminho DIRETO para os 15% chegava tambem, mas
+// levava tres vezes mais tempo -- medido no banco, uma viagem de 45
+// graus estourou o tempo do cenario. Duas reducoes custam uma
+// reprogramacao a mais da rampa e devolvem o tempo.
+static const float APROX_MEIO_FRACAO = 0.40f;
+static const float APROX_VEL_FRACAO  = 0.15f;
 
 // A PARTIR DE QUE DESVIO A REGUA DIGITADA E DENUNCIADA NA TELA.
 //
@@ -551,6 +569,21 @@ static const float APROX_VEL_FRACAO = 0.2f;
 // deste desvio entre o que foi digitado e o que a maquina mediu andando,
 // a tela para de ficar calada e diz o numero.
 static const float REGUA_SUSPEITA_FATOR = 1.15f;
+
+// QUANTOS AJUSTES DEPOIS DE CHEGAR, quando a MEDIDA confirmou a chegada.
+//
+//   "Se passar um pouquinho, apenas ajustar."
+//
+// Dois, e nunca mais que dois. O assentamento fecha o que sobrou e para
+// -- por construcao ele nao tem como cacar o ponto, porque cacar precisa
+// de muitas idas e voltas. Sem teto ele perseguia o ultimo decimo contra
+// uma tolerancia menor que o proprio ruido da leitura, e da bancada isso
+// se via como "fica oscilando ate acertar o grau certo".
+//
+// Quando a medida NAO confirmou nada -- perda de passo, acoplamento
+// solto -- o teto nao vale: ali o erro e de graus e o braco precisa de
+// quantos passos forem necessarios para chegar.
+static const uint8_t AJUSTES_APOS_CHEGAR = 2;
 
 // Viagem curta demais nao ensina nada: a diferenca entre o que a regua
 // mandou e o que o encoder mediu fica dentro do ruido das duas pontas.

@@ -987,17 +987,37 @@ O que faz o braço chegar **sem depender da régua**: o ângulo que você
 digitou fica guardado em graus, e enquanto o braço anda a máquina olha a
 medida.
 
-São **três comandos por viagem**, e no meio deles a rampa corre sozinha:
+São **quatro comandos por viagem**, e no meio deles a rampa corre sozinha:
 
 | fase | quando | o comando |
 |---|---|---|
 | **larga** | ao pedir o ângulo | velocidade + aceleração + `moveTo()`, uma vez |
-| **aproxima** | quando a medida diz que falta pouco | **um** degrau de velocidade para baixo |
+| **reduz** | na **metade do caminho** | um degrau para 40 % do cruzeiro |
+| **encosta** | na distância em que a rampa cabe | um degrau para 15 % |
 | **para** | quando a medida diz que chegou | `stopMove()` |
 
 Entre eles o gerador de pulso **não é tocado**. O "diminuir a velocidade
 suavemente" não vem de mil ajustes: vem da rampa, que desacelera até o
 degrau com a aceleração configurada.
+
+> **Cada degrau escala a velocidade DAQUELA junta**, e nunca a substitui
+> por um número próprio. `moverCoordenado()` não dá a mesma velocidade às
+> duas: dá a cada uma a que faz as **duas chegarem juntas** — a que anda
+> pouco vai devagar, e é isso que deixa o caminho reto. Trocar por um
+> valor próprio punha a junta de percurso curto na velocidade da outra:
+> ela chegava muito antes, no talo, e passava longe do ponto. Como todo
+> cenário de ângulo mexia numa junta só, nenhum deles via — e a máquina
+> de verdade sempre mexe as duas. Cenário `V35`.
+
+**A redução na metade do caminho não sai de conta nenhuma.** As contas de
+frenagem são o mínimo que a física exige e erram sempre que uma suposição
+está errada — a régua, a rampa, o ritmo do barramento. Metade do caminho
+não depende de suposição. Custa tempo (uma viagem leva cerca de 1,7× o
+que levava) e paga com o braço chegando de primeira.
+
+E se ainda assim passar um pouco, o assentamento **ajusta no máximo duas
+vezes** (`AJUSTES_APOS_CHEGAR`) e para. Caçar o ponto precisa de muitas
+idas e voltas; com esse teto elas não existem.
 
 Isso não é economia de código. Reprogramar a velocidade obriga o gerador
 a refazer a rampa, e o aviso está no próprio firmware desde as primeiras
@@ -1129,20 +1149,18 @@ O freio para o eixo quando o encoder diz que ele chegou ao ângulo pedido.
 Depois disso o que sobra é o escorrego da rampa de parada mais o ruído da
 leitura — décimos de grau, abaixo do que a máquina repete.
 
-**Isso não vira retoque.** O driver é servo: ele segura a posição
+**Isso não vira uma caçada.** O driver é servo: ele segura a posição
 sozinho. Perseguir o último décimo é mandar o braço atrás de um número
 que muda a cada leitura, e da bancada se vê assim:
 
 > *"Quando chega ao objetivo fica oscilando até acertar o grau certo, e
 > como se trata de um servo motor isso não é necessário."*
 
-Medido no cenário `V34`, com a régua digitada errada por 2× (que é o que
-deixa um resto de verdade) e o barramento a 77 ms:
-
-| | o braço andou depois de chegar | retoques |
-|---|---|---|
-| retocando o que a medida confirmou | **0,252°** | 1 |
-| sem retocar | **0,000°** | **0** |
+O contrato é: **no máximo dois ajustes** quando a medida confirmou a
+chegada — um ou dois passos fechando o que sobrou não é caçada, e é o que
+o operador pediu com *"se passar um pouquinho apenas ajustar"*. Medido no
+cenário `V34`, com a régua 2× errada e o barramento a 77 ms: chega em
+45,14°, ajusta **uma vez**, anda 0,22° no total e para.
 
 O assentamento **não** foi removido. Ele continua inteiro para o caso em
 que a medida *não* confirmou nada — perda de passo, acoplamento solto,

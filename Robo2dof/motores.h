@@ -50,6 +50,17 @@ float velDaJuntaPub(const Junta& j, float base);
 // Por isso a correcao passa por aqui, como todo o resto.
 void programarVelocidadePub(Junta& j, int indice, uint32_t hz);
 
+// O QUE ESTA PROGRAMADO EM CADA GERADOR, em Hz e Hz/s.
+//
+// moverCoordenado() NAO da a mesma velocidade as duas juntas: da a cada
+// uma a que faz as DUAS chegarem juntas -- a que anda pouco vai devagar,
+// e e isso que deixa o caminho reto. Quem for mexer na velocidade no meio
+// do movimento tem de ESCALAR esses numeros, nunca troca-los por um valor
+// proprio: trocar faz a junta de percurso curto sair na velocidade da
+// outra, chegar muito antes e passar longe do ponto.
+uint32_t velProgramadaPub(int indice);
+uint32_t acelProgramadaPub(int indice);
+
 #ifdef ROBO2DOF_TESTE
 // Contador de reprogramacoes do gerador, so no banco. Ver V33.
 extern uint32_t g_escritasVelocidade[2];
