@@ -843,6 +843,107 @@ body.cfgProcurando .cfgAbas{opacity:.35;pointer-events:none}
 body.cfgProcurando .cfgRol .pane{display:block}
 body.cfgProcurando .et.foraDaBusca{display:none}
 
+/* =====================================================================
+   A AREA QUE ROLA, E AS ABAS.
+   =====================================================================
+
+   ESTAS DUAS REGRAS JA SUMIRAM UMA VEZ, POR ACIDENTE.
+
+   Um commit de limpeza apagou de uma vez o roteiro "por onde comecar", a
+   engrenagem animada e -- no meio do mesmo bloco -- estas duas, que nao
+   tinham nada a ver com aquilo. O estrago era invisivel para o banco e
+   obvio para quem opera: o conteudo da aba ficava CORTADO sem barra
+   nenhuma (o pai e overflow:hidden com altura fixa; sem overflow-y aqui,
+   o que passa e simplesmente ceifado), e as abas viravam quatro botoes
+   crus espremidos no canto esquerdo.
+
+   Que .cfgRol ainda apareca na lista de overscroll-behavior la em cima e
+   a prova do acidente: aquilo so faz sentido em quem rola.
+
+   Elas moram juntas de proposito, e com este comentario em cima. */
+
+/* QUEM ROLA E A AREA DE CONTEUDO DA ABA, e nao a janela.
+   So um .pane fica visivel por vez, entao a barra e sempre a da aba
+   ativa. A tela por baixo nao rola: .app e overflow:hidden e a gaveta e
+   position:fixed.
+   min-height:0 nao e enfeite -- sem ele um item de coluna flex nao
+   encolhe abaixo do proprio conteudo, e a barra nunca chega a aparecer.
+   Mesmo molde do .rol da coluna principal. */
+.cfgRol{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+ padding:10px 14px 16px;scrollbar-width:thin;min-width:0;
+ /* O fundo e declarado aqui, e nao herdado do avo: e ESTA cor que a aba
+    escolhida copia para emendar com o conteudo. Deixando transparente, a
+    emenda passava a depender de quem pinta atras -- e quem for mexer no
+    veu um dia nao teria como saber que quebrou o ficharo. */
+ background:var(--fundo)}
+
+/* AS ABAS SAO UM FICHARIO, e nao quatro botoes lado a lado.
+   A aba escolhida tem o fundo da area de conteudo e a borda de baixo da
+   mesma cor: com o margin-bottom negativo ela cobre a linha do painel e
+   EMENDA com o que esta embaixo. E o desenho de fichario de sempre, o
+   mesmo que qualquer painel de maquina usa, e ele diz sozinho que o que
+   esta embaixo pertence aquela aba.
+   A largura sai do conteudo. Esticar as quatro em flex:1 dava quatro
+   faixas iguais de nomes de tamanhos diferentes, que e o contrario do
+   que um fichario faz. */
+.cfgAbas{display:flex;gap:2px;padding:8px 14px 0;flex:0 0 auto;
+ border-bottom:1px solid var(--linha2);background:var(--face)}
+.cfgAbas button{background:var(--painel);border:1px solid var(--linha);
+ border-bottom-color:var(--linha2);margin-bottom:-1px;
+ border-radius:2px 2px 0 0;color:var(--letra2);font:inherit;font-size:11.5px;
+ padding:6px 16px;cursor:pointer;white-space:nowrap}
+.cfgAbas button:hover{color:var(--letra);background:var(--mesa)}
+.cfgAbas button.on{background:var(--fundo);color:var(--letra);font-weight:600;
+ border-bottom-color:var(--fundo)}
+
+/* =====================================================================
+   DENSIDADE DE PAINEL DE MAQUINA -- e SO na Configuracao.
+   =====================================================================
+
+   O tema ja e industrial: cinza quente, borda de 1 px, rotulo em fonte
+   mono com espacamento. Nao ha estilo de site a remover aqui -- o que
+   faltava era DENSIDADE. A Configuracao e a tela com mais linhas do
+   painel inteiro, e cada pixel de respiro nela custa um item a menos na
+   altura da tela: apertando o cartao, cabem duas ou tres linhas a mais
+   por coluna, e o operador rola menos para achar o que procura.
+
+   TUDO AQUI ESTA PRESO A #veuCfg, DE PROPOSITO.
+
+   .et, .cab, .mk, .tt e .dentro sao classes GLOBAIS -- os mesmos cartoes
+   aparecem em Mover, Programa e Mao livre, e a gaveta de Arquivos usa
+   .cfgRol tambem. Mexer nelas sem escopo apertaria o painel inteiro, e o
+   que se pediu foi a Configuracao. O escopo e o que impede uma mudanca
+   de densidade de virar uma mudanca de tela. */
+
+/* O cartao: canto reto e menos respiro. */
+#veuCfg .et{border-radius:2px;margin-bottom:6px}
+#veuCfg .cab{padding:7px 9px;gap:8px}
+#veuCfg .mk{width:20px;height:20px;font-size:10px}
+#veuCfg .mk .ic{width:12px;height:12px}
+#veuCfg .tt{font-size:12px}
+#veuCfg .sb{font-size:9px;margin-top:1px}
+#veuCfg .dentro{padding:0 9px 9px}
+
+/* As linhas de ajuste. A faixa alternada fica: e ela que faz esta tela
+   se ler como a Saude da maquina, e o olho nao se perder entre o nome na
+   esquerda e o valor na direita. */
+#veuCfg .cfgRol .cp{padding:5px 10px;gap:8px}
+#veuCfg .cfgRol .cp label{font-size:11.5px}
+#veuCfg .cfgRol .cp input,
+#veuCfg .cfgRol .cp select{padding:5px 7px;font-size:11.5px}
+#veuCfg .cfgRol .cp .un{font-size:8.5px;width:32px}
+#veuCfg .cfgRol .tr{padding:5px 10px;gap:8px}
+#veuCfg .cfgRol .tr span{font-size:11.5px}
+
+/* Titulo de grupo: uma tira baixa, so para separar assunto. */
+#veuCfg .cfgRol h4{font-size:9.5px;padding:5px 10px;margin-top:10px}
+
+/* Botoes e notas encolhem junto -- um botao de 11 px de respiro no meio
+   de linhas de 5 px vira um degrau no meio da coluna. */
+#veuCfg .cfgRol .b{padding:8px;font-size:11.5px;margin-top:8px}
+#veuCfg .cfgRol .nt{font-size:11px;line-height:1.45;padding:7px 10px 0}
+#veuCfg .cfgRol .res{font-size:10px;padding:7px 9px;margin-bottom:7px}
+
 
 /* A FAIXA FIXA DO RODAPE.
    Uma tira baixa, acima das abas nas duas larguras. Ela e navegacao de um
