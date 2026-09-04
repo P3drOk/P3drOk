@@ -43,4 +43,8 @@ bool trajEmprestado();
 
 // Validos apenas com o buffer emprestado.
 Waypoint* trajBufferGravavel();
+
+// Mesma renumeracao dos pontos do programa, para a trajetoria gravada.
+// Ver progDeslocarPassos() em programa.h.
+void trajDeslocarPassos(long d1, long d2);
 void      trajDefinirN(uint16_t n);

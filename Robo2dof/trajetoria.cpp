@@ -50,6 +50,16 @@ void trajDevolver() { emprestado = false; }
 
 Waypoint* trajBufferGravavel() { return emprestado ? buffer : nullptr; }
 
+// Ver progDeslocarPassos(): a mesma renumeracao, para o que foi gravado
+// a mao livre.
+void trajDeslocarPassos(long d1, long d2) {
+  if (d1 == 0 && d2 == 0) return;
+  for (uint16_t i = 0; i < nPontos; i++) {
+    buffer[i].p1 = (int32_t)((long)buffer[i].p1 + d1);
+    buffer[i].p2 = (int32_t)((long)buffer[i].p2 + d2);
+  }
+}
+
 void trajDefinirN(uint16_t n) {
   if (!emprestado) return;
   nPontos = (n > MAX_WAYPOINTS) ? MAX_WAYPOINTS : n;

@@ -1244,6 +1244,11 @@ void loop() {
     otaReiniciarAgora();
   }
 
+  // A NUMERACAO VOLTA PARA A FAIXA DE TRABALHO, com o eixo parado.
+  // Antes de zeroAtualizar(): assim a ida ao zero do boot ja sai da
+  // numeracao certa, em vez de dar uma volta inteira para chegar a um
+  // lugar onde o braco ja esta.
+  normalizarVolta();
   zeroAtualizar();
   // A ordem importa: seguirEixoSolto() acerta a contagem com o braco
   // solto ANTES de o botao poder gravar um ponto neste mesmo ciclo.

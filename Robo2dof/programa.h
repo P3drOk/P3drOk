@@ -37,6 +37,21 @@ uint8_t      progQuantidade();
 const Ponto* progLista();
 
 // ---------------------------------------------------------------------
+// DESLOCAR TODOS OS PONTOS, em passos.
+//
+// Nao e edicao: e a mesma peca com outra numeracao. Quando a maquina se
+// renumera para voltar a trabalhar numa volta so (ver normalizarVolta()
+// em correcao.h), a origem da regua anda e os pontos gravados tem de
+// andar junto -- eles descrevem lugares FISICOS, e nenhum deles se
+// mexeu.
+//
+// Nao revalida nada de proposito: validar aqui seria conferir a peca
+// nova contra o curso velho, e os dois numeros nao falam do mesmo
+// sistema. O que entra e o que ja estava, escrito de outro jeito.
+// ---------------------------------------------------------------------
+void progDeslocarPassos(long d1, long d2);
+
+// ---------------------------------------------------------------------
 // Conferencia de um trecho, para a interface avisar ENQUANTO o operador
 // ensina, em vez de o problema so aparecer ao apertar Executar.
 //

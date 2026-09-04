@@ -3,6 +3,8 @@
 #include "motores.h"
 #include "cinematica.h"
 #include "solda.h"
+#include "programa.h"    // progDeslocarPassos(): a renumeracao anda com os pontos
+#include "trajetoria.h"  // idem, para o que foi gravado a mao livre
 #include "armazenamento.h"
 #include <string.h>
 #include <math.h>
@@ -1509,6 +1511,88 @@ static void reancorarSeAContagemSePerdeu() {
   }
 }
 
+// SO UMA VEZ POR LEITURA.
+//
+// Reescrever a referencia nao atualiza leitura[].graus: aquele numero so
+// se refaz quando a proxima resposta do barramento chega. Sem esta
+// guarda a funcao lia o mesmo 360 a cada ciclo de 1 ms, deslocava de
+// novo, e o angulo fugia em multiplos de 360 ate a leitura seguinte --
+// seis voltas por vez, num barramento de 20 ms. E a mesma disciplina do
+// freio de fuga, pelo mesmo motivo: agir duas vezes sobre a mesma
+// amostra e agir sobre um numero que ainda nao viu o que se fez.
+static uint32_t voltaConta[2] = {0, 0};
+
+void normalizarVolta() {
+  // As mesmas guardas do seguidor: eixo parado, em MANUAL, sem solda e
+  // sem assentamento. Renumerar no meio de uma rampa mudaria o destino
+  // que o gerador de pulso ja esta perseguindo.
+  if (modoAtual != MODO_MANUAL) return;
+  if (motoresEmMovimento() || correcaoEmCurso()) return;
+  if (soldaLigada()) return;
+
+  for (uint8_t k = 1; k <= 2; k++) {
+    Junta& j = (k == 1) ? J1 : J2;
+    if (!j.motor || j.passosPorGrau <= 0.0f) continue;
+    if (configEncoder.reg[k - 1] == 0) continue;
+    if (!leituraConfiavel(k)) continue;
+
+    const uint8_t i = k - 1;
+    const LeituraEncoder L = encoderLer(k);
+    if (L.leituras == voltaConta[i]) continue;   // amostra ja considerada
+    voltaConta[i] = L.leituras;
+
+    // A FAIXA DE TRABALHO comeca no curso calibrado; sem calibracao, meia
+    // volta para cada lado do zero.
+    //
+    // A DOBRA E MEIO-ABERTA -- [lo, lo+360) --, e isso nao e preciosismo.
+    // A primeira versao dobrava para o MEIO da faixa, com lroundf: num
+    // curso de 0 a 360 o meio e 180, e 0 e 360 ficam os DOIS a exatamente
+    // meia volta dele. lroundf desempata para longe do zero, entao 360
+    // virava 0 e 0 virava 360, para sempre, um a cada leitura. Com o piso
+    // nao ha empate: cada angulo tem um lugar so na faixa.
+    // E A FAIXA PRECISA FAZER SENTIDO.
+    //
+    // grausMin sai de passosMin dividido por passosPorGrau, e os dois
+    // andam por caminhos diferentes: o curso foi medido com a regua de
+    // ontem e a resolucao pode ter mudado depois. Uma faixa maior que uma
+    // volta nao escolhe volta nenhuma -- todas cabem nela --, e uma faixa
+    // absurda escolhe a errada. Nos dois casos vale meia volta para cada
+    // lado do zero, que nao depende de calibracao nenhuma.
+    const float faixa = j.grausMax - j.grausMin;
+    const bool  cursoUtil = j.calibrada && faixa > 1.0f && faixa <= 360.5f;
+    const float lo    = cursoUtil ? j.grausMin : -180.0f;
+    const float agora = L.graus;
+    const long  n     = (long)floorf((agora - lo) / 360.0f);
+    if (n == 0) continue;
+
+    // Contagens por grau DA JUNTA, na mesma conta que encoder.cpp faz
+    // para produzir o angulo: escala ensinada quando existe, senao o par
+    // contagens-por-volta + reducao.
+    const float cpgCfg = configEncoder.contagensPorGrau[i];
+    const float cv     = configEncoder.contagensPorVolta[i];
+    const float red    = (j.reducao > 0.001f) ? j.reducao : 1.0f;
+    const float cpg    = (fabsf(cpgCfg) > 0.0001f) ? cpgCfg : (cv * red / 360.0f);
+    if (fabsf(cpg) < 0.0001f) continue;
+
+    // graus = (bruto - referencia)/cpg + grausHome. Para o angulo CAIR
+    // 360n, a referencia SOBE 360n*cpg. O bruto nao e tocado -- ele e o
+    // que o ferro respondeu, e continua sendo.
+    const int32_t dRef = (int32_t)lroundf(360.0f * (float)n * cpg);
+    const long    dPas = -lroundf(360.0f * (float)n * j.passosPorGrau);
+
+    encoderCarregarReferencia(k, encoderReferencia(k) + dRef);
+    ajustarContagem(j, ((k == 1) ? posicaoJ1() : posicaoJ2()) + dPas);
+    // E o que estava gravado anda junto: os pontos descrevem lugares
+    // FISICOS, e nenhum deles se mexeu -- so a origem da regua.
+    progDeslocarPassos(k == 1 ? dPas : 0, k == 2 ? dPas : 0);
+    trajDeslocarPassos(k == 1 ? dPas : 0, k == 2 ? dPas : 0);
+
+    logEvento("junta %u: %.1f graus e a mesma postura que %.1f -- a "
+              "numeracao voltou para a faixa de trabalho",
+              (unsigned)k, (double)agora, (double)(agora - 360.0f * (float)n));
+  }
+}
+
 void seguirEixoSolto() {
   // A contagem perdida se conserta com servo ligado ou desligado: e o
   // caso em que ela deixou de significar qualquer coisa.
@@ -1806,6 +1890,7 @@ void correcaoReiniciarTeste() {
   // que os cenarios rodam vira parte do resultado.
   govFator[0] = govFator[1] = 1.0f;
   govAprendeu[0] = govAprendeu[1] = false;
+  voltaConta[0]    = voltaConta[1]    = 0;
   freioSentido[0]  = freioSentido[1]  = 0;
   freioConfirma[0] = freioConfirma[1] = 0;
   freioConta[0]    = freioConta[1]    = 0;
