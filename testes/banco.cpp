@@ -9811,6 +9811,188 @@ static void teste_W07_freio_age_e_diz_qual_junta() {
          "assentamento traz o resto");
 }
 
+
+// =====================================================================
+//  SERIE X -- 0 e 360 sao o mesmo lugar.
+//
+//  O angulo desta maquina e linear de ponta a ponta, e isso e bom: e o
+//  que deixa ela descrever um eixo que da varias voltas sem se perder.
+//  Mas quem digita o destino pensa em circulo, e o firmware nao sabia
+//  disso. Da bancada, as duas caras do mesmo defeito:
+//
+//    "peco 0 grau, ele passa mesmo que minimamente, e ai se atrapalha
+//     com o 360 e continua a trajetoria"
+//    "esta em 340 e peco 5: ele vai pelo caminho mais dificil"
+// =====================================================================
+
+// Leva o braco ate um angulo em SALTOS CURTOS.
+//
+// Um salto de mais de 180 graus seria reescrito pela propria volta mais
+// proxima que estes cenarios existem para testar -- o preparo mexeria no
+// que esta sendo medido. Com saltos de ate 170 a escolha e sempre a
+// identidade, e o braco chega onde o cenario quer sem depender do
+// mecanismo sob teste.
+static void levarAte(float graus) {
+  float onde = encoderLer(1).graus;
+  while (fabsf(graus - onde) > 0.01f) {
+    const float d = graus - onde;
+    const float passo = (fabsf(d) > 170.0f) ? (d > 0 ? 170.0f : -170.0f) : d;
+    char rota[64];
+    snprintf(rota, sizeof(rota), "/api/mover?t1=%.2f&t2=0", (double)(onde + passo));
+    webPost(rota);
+    { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+    { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 90000) { rodarComWeb(20); e += 20; } }
+    rodarComWeb(300);
+    const float agora = encoderLer(1).graus;
+    if (fabsf(agora - onde) < 0.01f) break;   // nao andou: nao insiste
+    onde = agora;
+  }
+}
+
+// Prepara uma maquina com encoder, espelho ligado e o braco no zero.
+static void prepararGiro(float grausCurso, bool comCurso) {
+  reiniciarSistema();
+  prepararRoboCalibrado(grausCurso);
+  protCurso = comCurso;
+  protDobra = false;          // so a junta 1 se move nestes cenarios
+  prepararEncoder(90, true, 0);
+  rodarComWeb(300);
+  enviarComando(CMD_ENCODER_ZERAR, 0);
+  rodarComWeb(150);
+  g_espelharEixo = true;
+  rodarComWeb(300);
+}
+
+// ---------------------------------------------------------------------
+// X01: de 340 para 5 pelo caminho curto.
+// ---------------------------------------------------------------------
+static void teste_X01_volta_curta() {
+  secao("X01  De 340 para 5: vinte e cinco graus, e nao trezentos e trinta e cinco");
+  prepararGiro(180.0f, false);
+  levarAte(340.0f);
+  const float partiu = encoderLer(1).graus;
+  nota("braco em %.2f graus, com o curso desligado", (double)partiu);
+  checar(fabsf(partiu - 340.0f) < 1.0f, "X01a",
+         "o preparo levou o braco a 340 graus -- senao o cenario nao prova nada");
+
+  webPost("/api/mover?t1=5&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 90000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+
+  const float chegou  = encoderLer(1).graus;
+  const float andou   = chegou - partiu;
+  // Onde ele parou, na volta de quem pediu.
+  float resto = fmodf(chegou, 360.0f);
+  if (resto < -180.0f) resto += 360.0f;
+  if (resto >  180.0f) resto -= 360.0f;
+  nota("pedi 5: parou em %.2f (resto %.2f), andou %+.2f grau -- \"%s\"",
+       (double)chegou, (double)resto, (double)andou, ultimaMensagem);
+
+  checar(andou > 0.0f && fabsf(andou - 25.0f) < 1.5f, "X01b",
+         "ele anda +25 graus, PARA FRENTE, atravessando o zero -- e nao "
+         "-335 dando a volta inteira pelo outro lado");
+  checar(fabsf(resto - 5.0f) < 0.5f, "X01c",
+         "e para no lugar pedido: 365 graus e o mesmo ponto que 5");
+}
+
+// ---------------------------------------------------------------------
+// X02: passar de raspao do zero nao vira uma volta inteira.
+// ---------------------------------------------------------------------
+static void teste_X02_raspao_no_zero_nao_vira_volta() {
+  secao("X02  Passou de raspao do zero: o volta e de meio grau, nao de 360");
+  prepararGiro(180.0f, false);
+  levarAte(359.90f);
+  const float partiu = encoderLer(1).graus;
+  nota("o braco passou do zero de raspao: o encoder le %.2f graus",
+       (double)partiu);
+  checar(fabsf(partiu - 359.90f) < 1.0f, "X02a",
+         "o preparo deixou o braco logo depois do zero, que e o caso do relato");
+
+  webPost("/api/mover?t1=0&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 90000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+
+  const float chegou = encoderLer(1).graus;
+  const float andou  = chegou - partiu;
+  nota("pedi 0: parou em %.2f, andou %+.2f grau", (double)chegou, (double)andou);
+  checar(fabsf(andou) < 2.0f, "X02b",
+         "ele fecha o decimo que faltava e para. Era aqui que a maquina se "
+         "atrapalhava com o 360 e saia dando a volta inteira");
+}
+
+// ---------------------------------------------------------------------
+// X03: o curso calibrado manda -- a volta curta so vale se couber.
+// ---------------------------------------------------------------------
+static void teste_X03_o_curso_manda() {
+  secao("X03  A volta curta so vale se couber no curso calibrado");
+  prepararGiro(180.0f, true);      // curso de -180 a +180, LIMITE LIGADO
+  levarAte(170.0f);
+  const float partiu = encoderLer(1).graus;
+  nota("curso de %.1f a %.1f com o limite ligado; braco em %.2f",
+       (double)J1.grausMin, (double)J1.grausMax, (double)partiu);
+  checar(fabsf(partiu - 170.0f) < 1.0f, "X03a",
+         "o preparo levou o braco a 170 graus, perto da ponta do curso");
+
+  // A volta curta de 170 para -170 seria +190 graus: 20 de caminho, mas
+  // FORA do curso. A que cabe e a longa.
+  webPost("/api/mover?t1=-170&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 90000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+
+  const float chegou = encoderLer(1).graus;
+  const float andou  = chegou - partiu;
+  nota("pedi -170: parou em %.2f, andou %+.2f grau", (double)chegou, (double)andou);
+  checar(andou < 0.0f && fabsf(andou + 340.0f) < 2.0f, "X03b",
+         "com o limite ligado ele vai pelo caminho LONGO: a volta curta "
+         "(+190 graus) esta fora do curso calibrado, e curso e curso");
+  checar(fabsf(chegou + 170.0f) < 0.5f, "X03c",
+         "e para no angulo pedido");
+}
+
+// ---------------------------------------------------------------------
+// X04: o que nao cabe em volta nenhuma nao se move.
+// ---------------------------------------------------------------------
+static void teste_X04_fora_do_calibrado_nao_move() {
+  secao("X04  Fora do curso em qualquer volta: recusa, e o eixo nao anda");
+  prepararGiro(90.0f, true);       // curso de -90 a +90, limite ligado
+  const long antes = J1.motor ? (long)J1.motor->pulsosGerados : 0;
+  const int cod = webPost("/api/mover?t1=200&t2=0");
+  rodarComWeb(600);
+  const long depois = J1.motor ? (long)J1.motor->pulsosGerados : 0;
+  nota("pedi 200 com curso de %.0f a %.0f: HTTP %d, pulsos %ld -> %ld -- \"%s\"",
+       (double)J1.grausMin, (double)J1.grausMax, cod, antes, depois,
+       ultimaMensagem);
+  checar(cod != 200, "X04a",
+         "200 graus nao cabe em volta nenhuma do curso: a rota recusa, em "
+         "vez de escolher a menos ruim");
+  checar(depois == antes, "X04b",
+         "e nenhum pulso sai no fio -- recusar de verdade e o eixo nao andar");
+}
+
+// ---------------------------------------------------------------------
+// X05: sem curso valendo, vale o mais perto.
+// ---------------------------------------------------------------------
+static void teste_X05_sem_curso_o_mais_perto() {
+  secao("X05  Com o limite desligado, o caminho e o mais curto");
+  prepararGiro(180.0f, false);     // MESMA geometria de X03, sem o limite
+  levarAte(170.0f);
+  const float partiu = encoderLer(1).graus;
+  webPost("/api/mover?t1=-170&t2=0");
+  { uint32_t e = 0; while (modoAtual == MODO_MANUAL && e < 4000) { rodarComWeb(20); e += 20; } }
+  { uint32_t e = 0; while (modoAtual != MODO_MANUAL && e < 90000) { rodarComWeb(20); e += 20; } }
+  rodarComWeb(400);
+  const float andou = encoderLer(1).graus - partiu;
+  nota("mesma viagem de X03, sem o limite: andou %+.2f grau (com o limite "
+       "foram -340)", (double)andou);
+  checar(andou > 0.0f && fabsf(andou - 20.0f) < 2.0f, "X05a",
+         "sem curso a respeitar ele vai pelos 20 graus, e nao pelos 340. E "
+         "o contrato que a maquina ja tem: ela nasce livre, e ali quem "
+         "protege sao os batentes e o operador");
+}
+
 // =====================================================================
 int main() {
   setvbuf(stdout, nullptr, _IONBF, 0);
@@ -9964,6 +10146,12 @@ int main() {
   teste_K01_sentido_do_eixo();
   teste_K02_sentido_durante_a_calibracao();
   teste_K03_sentido_com_o_braco_andando();
+
+  teste_X01_volta_curta();
+  teste_X02_raspao_no_zero_nao_vira_volta();
+  teste_X03_o_curso_manda();
+  teste_X04_fora_do_calibrado_nao_move();
+  teste_X05_sem_curso_o_mais_perto();
 
   teste_W01_referenciar_zera_as_duas_contagens();
   teste_W02_cache_de_velocidade_nao_mente();

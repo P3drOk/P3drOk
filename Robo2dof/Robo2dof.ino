@@ -112,6 +112,65 @@ static bool irParaPassos(long p1, long p2, bool jaValidado = false) {
   return true;
 }
 
+// =====================================================================
+//  0 E 360 SAO O MESMO LUGAR, e o firmware nao sabia disso.
+//
+//  O angulo desta maquina e linear de ponta a ponta: sai de
+//  (bruto - referencia) / escala + grausHome, e nao ha resto de divisao
+//  em lugar nenhum. Isso e bom -- e o que deixa a maquina descrever um
+//  eixo que da varias voltas sem se perder --, mas quem digita o destino
+//  pensa em circulo. Da bancada, as duas caras do mesmo defeito:
+//
+//    "peco 0 grau, ele passa mesmo que minimamente, e ai se atrapalha
+//     com o 360 e continua a trajetoria"
+//    "esta em 340 e peco 5: ele vai pelo caminho mais dificil"
+//
+//  Com o braco em 359,95 e um pedido de 0, a conta da -359,95 e o eixo
+//  da a volta inteira. De 340 para 5 ela da -335 onde o certo eram +25.
+//
+//  Esta funcao escolhe QUAL VOLTA do angulo pedido -- entre alvo + 360n
+//  -- fica mais perto de onde o braco esta. E ela nao decide seguranca
+//  nenhuma: so oferece um numero, do mais perto para o mais longe, e
+//  para no primeiro que CABE no curso. O que nao cabe nunca e oferecido,
+//  e se nada couber ela devolve o numero digitado -- deixando a recusa,
+//  com o motivo certo, para posturaValida() logo abaixo.
+//
+//  A MARGEM E A MESMA DE posturaValidaDet(), e isso nao e detalhe:
+//  cinematica.cpp avisa por escrito que, quando as duas contas divergem,
+//  sobra uma faixa onde a postura e invalida e a gravidade e zero -- o
+//  braco entra nela e nao sai mais.
+//
+//  Curso desligado ou junta sem calibracao: vale o mais perto, e ponto.
+//  E o contrato que a maquina ja tem escrito -- ela nasce livre, e ali
+//  quem protege sao os batentes e o operador.
+// =====================================================================
+static float voltaMaisProxima(uint8_t k, float alvo) {
+  const Junta& j = (k == 1) ? J1 : J2;
+  if (j.passosPorGrau <= 0.0f) return alvo;
+
+  // ONDE O BRACO ESTA, na mesma regua do alvo. O encoder manda quando a
+  // leitura serve; sem ela sobra a contagem, que e o que existe numa
+  // maquina sem encoder.
+  const float atual = leituraConfiavel(k)
+                    ? encoderLer(k).graus
+                    : passosParaGraus(j, (k == 1) ? posicaoJ1() : posicaoJ2());
+
+  const long n = lroundf((atual - alvo) / 360.0f);
+  if (n == 0) return alvo;              // o digitado ja e o mais perto
+
+  // Do mais perto para o mais longe. O 0 no fim e o proprio numero
+  // digitado: se nem ele couber, quem recusa e a validacao.
+  const long ordem[3] = { n, (n > 0) ? n - 1 : n + 1, 0 };
+  const bool cursoVale = protCurso && j.calibrada;
+  for (uint8_t i = 0; i < 3; i++) {
+    const float c = alvo + 360.0f * (float)ordem[i];
+    if (!cursoVale) return c;
+    if (c >= j.grausMin + MARGEM_LIMITE_GRAUS &&
+        c <= j.grausMax - MARGEM_LIMITE_GRAUS) return c;
+  }
+  return alvo;
+}
+
 // Nomear um angulo: "ir para o zero" e "ir para um angulo" sao a mesma
 // frase do operador, so muda o numero.
 //
@@ -138,11 +197,24 @@ static void irParaAngulos(float t1, float t2) {
   // A medida continua sendo feita e continua aparecendo na tela, ao lado
   // do campo. Quem escreve a regua da maquina e uma pessoa.
   //
-  // O que faz o braco CHEGAR sem depender da regua e a BUSCA, logo
-  // abaixo: o alvo fica guardado em GRAUS e o eixo anda ate a medida
-  // bater nele. Se o encoder diz 3 graus, o braco esta em 3 graus -- e
-  // nenhuma regua errada faz ele dar voltas.
+  // O que faz o braco CHEGAR sem depender da regua e o FATOR DE ESCALA,
+  // que as viagens medem, mais o FREIO DE FUGA: o alvo fica guardado em
+  // GRAUS e o encoder para o eixo se o destino calculado passar do ponto.
+  // Se o encoder diz 3 graus, o braco esta em 3 graus -- e nenhuma regua
+  // errada faz ele dar voltas.
   const Ancoragem anc = ancorarNoEncoder();
+
+  // A VOLTA MAIS PROXIMA, antes de qualquer conta.
+  //
+  // Reescrever t1/t2 aqui faz a funcao INTEIRA trabalhar com a volta
+  // escolhida -- a validacao em graus, o destino em passos pela medida e
+  // o correcaoAlvoPedido() la embaixo. Isso e essencial e nao e
+  // arrumacao: se o freio e o assentamento recebessem o 0 literal, eles
+  // trariam o braco de volta a -360 depois de a rampa ja ter feito o
+  // certo.
+  const float pedido1 = t1, pedido2 = t2;
+  t1 = voltaMaisProxima(1, t1);
+  t2 = voltaMaisProxima(2, t2);
 
   // O DESTINO SAI DA MEDIDA, e nao da contagem convertida.
   //
@@ -199,7 +271,16 @@ static void irParaAngulos(float t1, float t2) {
   // quando as duas divergem. Sair calado nos dois casos era o pior
   // pedaco do defeito: o operador pedia zero grau, o braco parava longe
   // dali, e a tela dizia a mesma frase de sempre.
-  if (anc.semLeitura || anc.andando) {
+  // A VOLTA ESCOLHIDA APARECE, quando nao e a digitada.
+  //
+  // Pedir 5 graus e ver o painel dizendo que o braco vai para 365 sem
+  // nenhuma explicacao seria trocar um susto por outro. Esta frase vem
+  // antes das outras porque e a que responde "por que ele foi por ali".
+  if (fabsf(t1 - pedido1) > 0.5f || fabsf(t2 - pedido2) > 0.5f) {
+    definirMensagem("Indo para %.1f / %.1f graus -- a volta mais proxima de "
+                    "%.1f / %.1f, que e o mesmo lugar", t1, t2,
+                    (double)pedido1, (double)pedido2);
+  } else if (anc.semLeitura || anc.andando) {
     // Ha encoder configurado e ele nao serviu agora: este movimento NAO
     // e baseado na medida, e quem pediu tem de saber.
     const char* porque = anc.andando ? "o eixo ainda estava andando"
