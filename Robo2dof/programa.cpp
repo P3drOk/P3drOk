@@ -66,6 +66,16 @@ static bool     ramoSeg;        // ramo do cotovelo travado para o trecho
 // ---------------------------------------------------------------------
 uint8_t      progQuantidade()  { return nPontos; }
 const Ponto* progLista()       { return pontos; }
+
+// A peca nao se mexeu: a regua e que passou a contar de outro lugar.
+// Ver progDeslocarPassos() em programa.h.
+void progDeslocarPassos(long d1, long d2) {
+  if (d1 == 0 && d2 == 0) return;
+  for (uint8_t i = 0; i < nPontos; i++) {
+    pontos[i].p1 = (int32_t)((long)pontos[i].p1 + d1);
+    pontos[i].p2 = (int32_t)((long)pontos[i].p2 + d2);
+  }
+}
 bool         progRodando()     { return fase != FASE_PARADO; }
 bool         progEmEnsaio()    { return ensaio; }
 uint8_t      progIndiceAtual() { return idx; }

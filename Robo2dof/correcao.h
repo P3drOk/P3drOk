@@ -315,6 +315,32 @@ struct ResumoZero {
 // aparecer na tela como se fosse medida boa.
 bool       leituraConfiavel(uint8_t junta);
 
+// =====================================================================
+//  A MAQUINA TRABALHA EM UMA VOLTA SO.
+//
+//  O angulo daqui e linear de ponta a ponta, e isso e proposital: e o
+//  que deixa a maquina descrever um eixo que da varias voltas sem se
+//  perder. So que ele NAO VOLTA: pedir 0 estando em 256 leva o braco ao
+//  lugar certo pela volta mais curta e o painel passa a dizer 360 -- e
+//  fica dizendo. Da bancada: "ele chega e continua 360, 350...".
+//
+//  Pior que o incomodo: 360 fica FORA de um curso calibrado que vai ate
+//  350, e o braco trava sem ter saido do lugar.
+//
+//  Esta funcao devolve a numeracao para a faixa de trabalho, SEM MOVER O
+//  EIXO. Nenhum pulso sai no fio: o que anda e a origem da regua.
+//
+//  E ela anda com TUDO junto -- a referencia do encoder, a contagem de
+//  passos, os pontos do programa e a trajetoria gravada. Mexer so na
+//  leitura deixaria os pontos apontando uma volta fora, e o proximo
+//  cordao sairia no lugar errado.
+//
+//  So com o eixo parado, em MANUAL, sem solda e sem assentamento em
+//  curso: renumerar no meio de uma rampa mudaria o destino que o gerador
+//  de pulso ja esta perseguindo.
+// =====================================================================
+void       normalizarVolta();    // core 1: chamada do loop
+
 void       seguirEixoSolto();    // core 1: chamada do loop
 
 void       zeroAtualizar();      // core 1: chamada do loop
