@@ -664,6 +664,130 @@ async function fecharGaveta(pag) {
          'Configuracao: em tela larga abrir um cartao nao fecha o outro',
          cfgFecha.abertos + ' aberto(s), primeiro segue aberto: ' + cfgFecha.primeiro);
 
+  // ---------------------------------------------------------------------
+  // A ABA ROLA ATE O FIM, E QUEM ROLA E ELA.
+  //
+  // Esta e a guarda de uma regressao que passou por 311 cenarios sem
+  // ninguem perceber: um commit de limpeza de CSS apagou .cfgRol junto
+  // com um bloco vizinho, e a area de conteudo ficou sem overflow-y. O
+  // pai e overflow:hidden com altura fixa, entao o que passava era
+  // simplesmente CEIFADO -- sem barra, sem aviso. Da bancada: "apresenta
+  // itens cortados e como nao tem rolagem nao consigo ver o que esta
+  // escrito para baixo a menos que eu ajuste o zoom da tela".
+  //
+  // O banco abria a gaveta e trocava de aba, mas nunca perguntou se dava
+  // para CHEGAR AO FIM da pagina. Agora pergunta, nas quatro.
+  // ---------------------------------------------------------------------
+  //
+  // A JANELA E BAIXA DE PROPOSITO.
+  //
+  // A 1440x900 as quatro paginas CABEM -- em tres colunas o Sistema
+  // termina 160 px acima do fim da area, e um cenario ali passaria com a
+  // rolagem quebrada, provando nada. O defeito e "nao cabe na minha
+  // tela": ele so existe quando ha transbordo. 1280x720 e um notebook
+  // comum, da duas colunas em vez de tres, e ai os oito cartoes do
+  // Sistema passam da altura com folga.
+  const pcBaixo = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const qb = await pcBaixo.newPage();
+  await qb.goto(BASE);
+  await qb.waitForTimeout(900);
+
+  for (const [cfg, nome] of [['maquina','Maquina'], ['calib','Calibracao'],
+                             ['encoder','Encoder'], ['sistema','Sistema']]) {
+    await abrirGaveta(qb, cfg);
+    await qb.waitForTimeout(300);
+    const r = await qb.evaluate(() => {
+      const rol = document.querySelector('#veuCfg .cfgRol');
+      const est = getComputedStyle(rol);
+      // Rola ate o fim e olha onde ficou o rodape do ultimo cartao.
+      rol.scrollTop = rol.scrollHeight;
+      const pane = rol.querySelector('.pane.on');
+      const cartoes = pane ? [...pane.children].filter(x => x.classList.contains('et')) : [];
+      // O PONTO MAIS BAIXO, e nao o ultimo cartao do DOM.
+      //
+      // Em quatro colunas o ultimo na ordem do documento cai no pe da
+      // coluna mais CURTA -- ele pode estar visivel com meia tela de
+      // conteudo cortada ao lado. Quem responde "sobrou alguma coisa
+      // inalcancavel?" e o maior bottom entre todos.
+      const fundo = cartoes.length
+        ? Math.max(...cartoes.map(x => x.getBoundingClientRect().bottom))
+        : -Infinity;
+      // A CAIXA QUE CORTA E A .cfgCx, e nao o proprio rolo.
+      //
+      // Sem overflow, o .cfgRol assume a altura INTEIRA do conteudo e so
+      // e ceifado pelo pai -- entao medir contra ele mesmo diz que esta
+      // tudo dentro, justamente no caso quebrado. Quem tem altura fixa e
+      // overflow:hidden e a .cfgCx: e contra ela que "alcancavel"
+      // significa alguma coisa.
+      const cx = rol.closest('.cfgCx').getBoundingClientRect();
+      return {
+        overflowY: est.overflowY,
+        transborda: rol.scrollHeight > rol.clientHeight + 1,
+        rolou: rol.scrollTop > 0,
+        // Folga de 1 px para arredondamento de subpixel do navegador.
+        ultimoDentro: cartoes.length ? (fundo <= cx.bottom + 1) : true,
+        sobra: cartoes.length ? Math.round(fundo - cx.bottom) : 0,
+        panesVisiveis: [...rol.querySelectorAll('.pane')]
+          .filter(x => getComputedStyle(x).display !== 'none').length,
+        docRola: document.documentElement.scrollHeight > innerHeight + 1,
+      };
+    });
+    checar(r.overflowY === 'auto',
+           'Configuracao/' + nome + ': a area de conteudo e quem rola (overflow-y)',
+           'overflow-y: ' + r.overflowY + (r.transborda ? ', com transbordo' : ', sem transbordo'));
+    // Rolar so se prova quando ha o que rolar. Numa aba curta o
+    // scrollTop fica em 0 legitimamente, e cobrar isso seria cobrar do
+    // cenario uma coisa que depende do tamanho da tela de quem roda.
+    checar(!r.transborda || r.rolou,
+           'Configuracao/' + nome + ': transbordando, ela realmente rola');
+    checar(r.ultimoDentro,
+           'Configuracao/' + nome + ': rolando ate o fim, nada fica para fora '
+           + '-- nenhum conteudo inalcancavel',
+           r.sobra > 0 ? (r.sobra + ' px cortados abaixo da area visivel') : 'tudo dentro');
+    checar(r.panesVisiveis === 1,
+           'Configuracao/' + nome + ': ficharo mostra UMA pagina por vez',
+           r.panesVisiveis + ' pagina(s) visivel(eis)');
+    checar(!r.docRola,
+           'Configuracao/' + nome + ': a janela por baixo nao rola -- a barra e '
+           + 'da aba, e nao do documento');
+  }
+
+  // E AS ABAS SAO UM FICHARIO, e nao quatro botoes crus.
+  //
+  // A mesma limpeza levou .cfgAbas junto, e as quatro viraram <button>
+  // sem estilo, espremidos no canto esquerdo. O que distingue um
+  // fichario de quatro botoes e a aba escolhida EMENDAR com a area de
+  // conteudo: mesmo fundo, e a linha do painel coberta por ela.
+  await abrirGaveta(qb, 'sistema');
+  await qb.waitForTimeout(250);
+  const fich = await qb.evaluate(() => {
+    const on = document.querySelector('#cfgAbas button.on');
+    const off = document.querySelector('#cfgAbas button:not(.on)');
+    const rol = document.querySelector('#veuCfg .cfgRol');
+    const abas = document.getElementById('cfgAbas');
+    return {
+      fundoIgual: getComputedStyle(on).backgroundColor
+                  === getComputedStyle(rol).backgroundColor,
+      difere: getComputedStyle(on).backgroundColor
+              !== getComputedStyle(off).backgroundColor,
+      temBorda: getComputedStyle(on).borderTopWidth !== '0px',
+      // Horizontal: as quatro na mesma linha.
+      umaLinha: new Set([...abas.querySelectorAll('button')]
+                  .map(b => Math.round(b.getBoundingClientRect().top))).size === 1,
+      largura: Math.round(on.getBoundingClientRect().width),
+    };
+  });
+  checar(fich.fundoIgual && fich.temBorda,
+         'Configuracao: a aba escolhida emenda com a area de conteudo -- '
+         + 'fichario, e nao quatro botoes soltos');
+  checar(fich.difere,
+         'Configuracao: e as nao escolhidas ficam atras, com outro fundo');
+  checar(fich.umaLinha,
+         'Configuracao: as quatro abas na horizontal, na mesma linha',
+         'aba ativa com ' + fich.largura + ' px');
+  await qb.screenshot({ path: SAIDA + '/computador-5-config-ficharo.png' });
+  await pcBaixo.close();
+
   await fecharGaveta(q);
   const botaoEnc = await q.evaluate(() => {
     const b = document.querySelector('#abasTopo button[data-aba="enc"]');
